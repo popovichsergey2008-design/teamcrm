@@ -2463,6 +2463,16 @@
 .chat-notify-ask { width: 100%; margin-bottom: 6px; color: var(--accent); border: 1px dashed var(--border-2); }
 .chat-notify-hint { font-size: calc(11px * var(--fs-scale)); padding: 0 6px 6px; line-height: 1.4; }
 .chat-search { flex: 1; min-width: 0; }
+/* шапка списка как в Битриксе (#1587): воронка-фильтр слева, «создать» с меню справа */
+.chat-filter-btn.is-on { color: var(--accent); background: var(--accent-soft); }
+.chat-new-btn { color: var(--accent); background: var(--accent-soft); }
+.chat-new-btn:hover { filter: brightness(.97); }
+.chat-filter-tick { display: inline-flex; width: 15px; color: var(--accent); }
+.chat-filter-item { display: inline-flex; align-items: center; gap: 8px; }
+.chat-new-item { display: flex; flex-direction: column; gap: 1px; white-space: normal; max-width: 260px; padding: 2px 0; }
+.chat-new-item b { font-weight: 600; }
+.chat-new-item small { color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); line-height: 1.3; }
+.chat-filter-note { width: 100%; justify-content: flex-start; margin-bottom: 6px; color: var(--accent); }
 /* список участников в форме группы прокручивается сам, а не растягивает окно */
 .group-members {
   max-height: 260px; overflow-y: auto; border: 1px solid var(--border-2);

@@ -276,6 +276,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   useEffect(() => { setDraft(activeId ? readDraft(`chat:${activeId}`) : ''); }, [activeId]);
   useEffect(() => { if (activeId) writeDraft(`chat:${activeId}`, draft); }, [activeId, draft]);
   const [query, setQuery] = useState('');
+  /** Фильтр над списком (#1587, как в Битриксе): все чаты или только непрочитанные. */
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  /** «Создать → Видеоконференция» открывает окно внешней ссылки в шапке. */
+  const [guestKey, setGuestKey] = useState(0);
   /**
    * Поиск по ПЕРЕПИСКЕ, а не только по названиям чатов.
    *
@@ -1821,8 +1825,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     разговор нескольких человек, диалог — переписка двоих. Валить это в один список
     из сорока строк значит каждый раз искать нужное глазами.
   */
-  const favorites = chats.filter((c) => c.favorite);
-  const rest = chats.filter((c) => !c.favorite);
+  // «Непрочитанные»: открытый сейчас чат не прячем — он прочитан, но человек в нём
+  const isUnread = (c: Chat) => Number(c.unread) > 0 || !!c.markedUnread;
+  const listed = unreadOnly ? chats.filter((c) => isUnread(c) || String(c.id) === String(activeId)) : chats;
+  const unreadTotal = chats.reduce((n, c) => n + (Number(c.unread) || 0), 0);
+  const favorites = listed.filter((c) => c.favorite);
+  const rest = listed.filter((c) => !c.favorite);
   const selfChat = rest.find((c) => c.kind === 'self') ?? null;
   const channels = rest.filter((c) => c.kind === 'channel');
   const external = rest.filter((c) => c.kind === 'external');
@@ -1830,9 +1838,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const groups = rest.filter((c) => c.kind === 'group' || c.kind === 'project');
   // с кем ещё не переписывались — показываем ниже, чтобы можно было начать диалог
   const others = useMemo(() => {
-    const known = new Set(dms.map((c) => String(c.peerId)));
+    if (unreadOnly) return [];
+    const known = new Set(chats.filter((c) => c.kind === 'dm').map((c) => String(c.peerId)));
     return users.filter((u) => String(u.id) !== String(user?.id) && !known.has(String(u.id)));
-  }, [users, dms, user]);
+  }, [users, chats, user, unreadOnly]);
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
   const threadsUnread = threads.reduce((sum, t) => sum + (Number(t.unread) || 0), 0);
@@ -1960,40 +1969,89 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     <div className={`chats${overlay ? ' chats-overlay' : ''}${activeId || view !== 'chat' ? ' chats-picked' : ''}`}>
       {!overlay && (
       <aside className="chat-list">
+        {/*
+          Шапка списка — как в Битриксе (#1587): слева воронка-фильтр (все / непрочитанные /
+          прочитать всё), справа одна кнопка «Создать» с выпадающим списком вместо ряда
+          значков, смысл которых приходилось угадывать по подсказке.
+        */}
         <div className="chat-list-head">
-          <input className="input chat-search" placeholder="Поиск" value={query} onChange={(e) => setQuery(e.target.value)} />
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Создать группу — разговор нескольких человек" onClick={() => setGroupOpen(true)}>
-            <Icon name="plus" />
-          </button>
-          {/* Канал — тема, которая переживёт состав участников. Витрина рядом:
-              публичный канал бесполезен, если о нём никто не знает. */}
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" title="Создать канал — общая тема" onClick={() => setChannelOpen(true)}>
-            <Icon name="hash" />
-          </button>
-          <button
-            className="ui-btn ui-btn-ghost ui-btn-sm"
-            title="Разговор с клиентом или подрядчиком — по ссылке, без доступа к остальному"
-            onClick={async () => {
-              const title = await promptText({ title: 'Внешний разговор', description: 'С кем разговор? Например, «ООО Вектор».', placeholder: 'Название компании или имя', confirmLabel: 'Создать' });
-              if (!title?.trim()) return;
-              try {
-                const chat = await api.createExternalChat({ title: title.trim() });
-                await reload();
-                setView('chat');
-                openChat(String(chat.id));
-              } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать разговор'); }
-            }}
+          <DropdownMenu
+            align="start"
+            trigger={(
+              <button
+                className={`ui-btn ui-btn-ghost ui-btn-sm chat-filter-btn${unreadOnly ? ' is-on' : ''}`}
+                title={unreadOnly ? 'Показаны только непрочитанные' : 'Фильтр чатов'}
+                aria-label="Фильтр чатов"
+              >
+                <Icon name="funnel" />
+              </button>
+            )}
           >
-            <Icon name="link" />
-          </button>
-          <button
-            className="ui-btn ui-btn-ghost ui-btn-sm"
-            title="Все каналы компании"
-            onClick={() => { setView(view === 'channels' ? 'chat' : 'channels'); loadChannels(); }}
+            <MenuItem onSelect={() => setUnreadOnly(false)} icon={<span className="chat-filter-tick">{!unreadOnly && <Icon name="check" size={15} />}</span>}>Все</MenuItem>
+            <MenuItem onSelect={() => setUnreadOnly(true)} icon={<span className="chat-filter-tick">{unreadOnly && <Icon name="check" size={15} />}</span>}>
+              <span className="chat-filter-item">
+                Непрочитанные
+                {unreadTotal > 0 && <span className="chat-unread">{unreadTotal > 99 ? '99+' : unreadTotal}</span>}
+              </span>
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={<Icon name="check-check" size={15} />}
+              disabled={!chats.some(isUnread)}
+              onSelect={async () => {
+                try {
+                  await api.markAllChatsRead();
+                  void reload();
+                } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отметить прочитанным'); }
+              }}
+            >
+              Прочитать всё
+            </MenuItem>
+          </DropdownMenu>
+          <input className="input chat-search" placeholder="Найти сотрудника или чат" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <DropdownMenu
+            trigger={(
+              <button className="ui-btn ui-btn-sm chat-new-btn" title="Создать: группу, канал, внешний разговор, видеоконференцию" aria-label="Создать чат">
+                <Icon name="compose" />
+              </button>
+            )}
           >
-            <Icon name="search" />
-          </button>
+            <MenuItem icon={<Icon name="users" size={15} />} onSelect={() => setGroupOpen(true)}>
+              <span className="chat-new-item"><b>Групповой чат</b><small>Для обсуждения вопросов</small></span>
+            </MenuItem>
+            {/* Канал — тема, которая переживёт состав участников. */}
+            <MenuItem icon={<Icon name="hash" size={15} />} onSelect={() => setChannelOpen(true)}>
+              <span className="chat-new-item"><b>Канал</b><small>Для публикации новостей и общих тем</small></span>
+            </MenuItem>
+            <MenuItem
+              icon={<Icon name="link" size={15} />}
+              onSelect={async () => {
+                const title = await promptText({ title: 'Внешний разговор', description: 'С кем разговор? Например, «ООО Вектор».', placeholder: 'Название компании или имя', confirmLabel: 'Создать' });
+                if (!title?.trim()) return;
+                try {
+                  const chat = await api.createExternalChat({ title: title.trim() });
+                  await reload();
+                  setView('chat');
+                  openChat(String(chat.id));
+                } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось создать разговор'); }
+              }}
+            >
+              <span className="chat-new-item"><b>Внешний разговор</b><small>С клиентом или подрядчиком, без доступа к остальному</small></span>
+            </MenuItem>
+            <MenuItem icon={<Icon name="video" size={15} />} onSelect={() => setGuestKey((k) => k + 1)}>
+              <span className="chat-new-item"><b>Видеоконференция</b><small>Для встреч с внешними участниками</small></span>
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={<Icon name="search" size={15} />} onSelect={() => { setView('channels'); loadChannels(); }}>
+              Все каналы компании
+            </MenuItem>
+          </DropdownMenu>
         </div>
+        {unreadOnly && (
+          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-filter-note" onClick={() => setUnreadOnly(false)}>
+            {chats.some(isUnread) ? 'Только непрочитанные' : 'Непрочитанных нет'} · показать все
+          </button>
+        )}
 
         {/*
           QEVO Bot — отдельным собеседником в самом верху списка (ТЗ-6).
@@ -2153,6 +2211,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             chats={[...dms, ...groups].map((c) => ({ id: String(c.id), title: c.title ?? 'Чат' }))}
             chatId={activeId ? String(activeId) : null}
             compact
+            openKey={guestKey}
           />
           <CallStarter
             chatId={active ? String(active.id) : null}

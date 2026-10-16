@@ -1789,6 +1789,7 @@ export const api = {
       replyToId: reply?.toId ?? undefined, replyExcerpt: reply?.excerpt ?? undefined,
     }, { label: 'Сообщение в чате', preview: body }),
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
+  markAllChatsRead: () => request<{ read: number }>('POST', '/chats/read-all'),
   chatMembers: (chatId: string) => request<{
     canManage: boolean; createdBy: string | null; members: { userId: string; fullName: string }[];
   }>('GET', `/chats/${chatId}/members`),

@@ -1467,6 +1467,18 @@ export class ChatsService {
     return { unread: true };
   }
 
+  /**
+   * Прочитать все чаты разом (#1587). Идём тем же путём, что и открытие чата:
+   * собеседники получают галочки «прочитано», упоминания в лентах гаснут.
+   * Ветки не трогаем — их, как и раньше, гасит открытая ветка.
+   */
+  async markAllRead(tenantId: string, user: { userId: string; role: string }) {
+    const list = await this.list(tenantId, user.userId);
+    const todo = list.filter((c) => c.unread > 0 || c.markedUnread);
+    for (const c of todo) await this.markRead(tenantId, String(c.id), user);
+    return { read: todo.length };
+  }
+
   async markRead(tenantId: string, chatId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     await this.repo.markRead(tenantId, chatId, user.userId);

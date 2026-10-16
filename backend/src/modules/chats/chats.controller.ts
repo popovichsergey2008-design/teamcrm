@@ -131,6 +131,12 @@ export class ChatsController {
     return this.chats.list(u.tenantId, u.userId);
   }
 
+  /** «Прочитать всё» в фильтре над списком чатов (#1587, как в Битриксе). */
+  @Post('read-all')
+  readAll(@CurrentUser() u: AuthUser) {
+    return this.chats.markAllRead(u.tenantId, u);
+  }
+
   /** Открыть личный диалог (создаётся при первом обращении). */
   @Post('dm')
   openDm(@CurrentUser() u: AuthUser, @Body() dto: OpenDmDto) {

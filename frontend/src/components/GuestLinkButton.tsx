@@ -20,7 +20,7 @@ interface ChatOption {
  * записи, ни доступа к проектам, ни к остальной переписке. Он ждёт в комнате ожидания,
  * пока его не впустят, а отзыв ссылки выводит его немедленно.
  */
-export function GuestLinkButton({ chats = [], chatId, compact, label: caption }: {
+export function GuestLinkButton({ chats = [], chatId, compact, label: caption, openKey = 0 }: {
   /** Чаты для выбора: ссылка подписывается разговором, ради которого выдана. */
   chats?: ChatOption[];
   /** Открыли из конкретного чата — он и предлагается по умолчанию. */
@@ -28,6 +28,8 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
   compact?: boolean;
   /** Подпись задаёт место: в тесной панели рядом с «Созвоном» хватает одного слова. */
   label?: string;
+  /** Открыть окно снаружи: «Создать → Видеоконференция» над списком чатов (#1587). */
+  openKey?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
@@ -47,6 +49,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption }:
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setForChat(chatId ?? ''); }, [chatId]);
+  useEffect(() => { if (openKey > 0) setOpen(true); }, [openKey]);
 
   useEffect(() => {
     if (!open) return;
