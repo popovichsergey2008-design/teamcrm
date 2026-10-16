@@ -2184,7 +2184,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         {!sectionsByKey.favorites?.count && notesRow}
 
         {!chatsLoaded && <div style={{ padding: '4px 8px' }}><SkeletonList rows={5} /></div>}
-        {chatsLoaded && listEmpty && (
+        {/* в «Непрочитанных» пустота — не «писать некому»: об этом уже говорит строка фильтра */}
+        {chatsLoaded && listEmpty && !unreadOnly && (
           query.trim() ? (
             <EmptyState compact icon="search" title="Ничего не нашлось" hint={`По запросу «${query.trim()}» нет ни чатов, ни коллег.`} />
           ) : (
@@ -2482,7 +2483,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             <EmptyState
               icon="chat"
               title="Выберите, кому написать"
-              hint="Слева — личные диалоги и группы. Чтобы собрать несколько человек, нажмите «+» над списком. Из любого чата можно позвонить — с ИИ, который запишет разговор."
+              hint="Слева — личные диалоги и группы. Группу, канал или видеоконференцию создаёт кнопка «Создать» над списком. Из любого чата можно позвонить — с ИИ, который запишет разговор."
             />
           </div>
         )}
