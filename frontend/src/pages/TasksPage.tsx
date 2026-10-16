@@ -10,6 +10,7 @@ import { Select } from '../components/ui/select';
 import { Skeleton } from '../components/ui/skeleton';
 import { Spinner } from '../components/ui/spinner';
 import { Toggle } from '../components/ui/toggle';
+import { Menu } from '@base-ui/react/menu';
 import { Tooltip } from '../components/ui/tooltip';
 import { api, TagItem } from '../lib/api';
 import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
@@ -200,7 +201,8 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   const setScopes = (next: RegistryScope[]) => {
     // Снять все галочки нельзя: пустой экран человек читает как поломку, а не
     // как «вы ничего не выбрали». Без единой роли — все задачи, как при входе.
-    const value = (next.length ? next : ['all']).join(',');
+    // Без единой роли — снова все мои задачи (#1570): пустой список читается как поломка.
+    const value = (next.length ? next : ROLE_TABS.map((t) => t.key)).join(',');
     onScope(value as RegistryScope);
     patch({ scope: value as RegistryScope });
   };
@@ -209,6 +211,8 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
     setScopes(on ? [...base, key] : base.filter((k) => k !== key));
   };
   const toggleAll = (on: boolean) => setScopes(on ? ['all'] : ROLE_TABS.map((t) => t.key));
+  // какие роли отмечены — для подписи на кнопке «Мои задачи»
+  const myPicked = picked.includes('all') ? [] : ROLE_TABS.filter((t) => picked.includes(t.key));
   const filterCount = activeFilterCount(request);
   const showWho: 'assignee' | 'manager' = picked.length === 1 && picked[0] === 'delegated' ? 'assignee' : 'manager';
   /*
@@ -273,20 +277,49 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
         поэтому он выключает роли, а не складывается с ними.
       */}
       <nav className="ui-toolbar" aria-label="Мои роли в задачах">
-        {/* «Мои задачи» — вся моя работа: делаю, поручил, помогаю, наблюдаю (просьба 14.10) */}
-        <Toggle
-          pressed={!picked.includes('all') && ROLE_TABS.every((t) => picked.includes(t.key))}
-          onPressedChange={(on) => setScopes(on ? ROLE_TABS.map((t) => t.key) : ['all'])}
-          title="Только мои задачи: где я исполнитель, постановщик, соисполнитель или наблюдатель"
-        >
-          <Icon name="user" size={14} /> Мои задачи
-        </Toggle>
-        <span className="tasks-v2-sep" aria-hidden />
-        {ROLE_TABS.map((t) => (
-          <Toggle key={t.key} pressed={picked.includes(t.key)} onPressedChange={(on) => toggleRole(t.key, on)} title={t.hint}>
-            {t.label}
+        {/*
+          «Мои задачи» — вся моя работа. Роли (делаю, поручил, помогаю, наблюдаю) спрятаны
+          под стрелку рядом (#1570, разгрузить верхнюю строку): в списке их можно отметить
+          по одной, по две, по три. Выбрано не всё — на кнопке видно, что именно.
+        */}
+        <span className="tasks-my" role="group" aria-label="Мои задачи">
+          <Toggle
+            pressed={!picked.includes('all')}
+            onPressedChange={() => setScopes(ROLE_TABS.map((t) => t.key))}
+            title="Мои задачи: где я исполнитель, постановщик, соисполнитель или наблюдатель"
+          >
+            <Icon name="user" size={14} /> Мои задачи
+            {myPicked.length > 0 && myPicked.length < ROLE_TABS.length && (
+              <span className="tasks-my-part">: {myPicked.map((t) => t.label.toLowerCase()).join(', ')}</span>
+            )}
           </Toggle>
-        ))}
+          <Menu.Root>
+            <Menu.Trigger className="ui-toggle ui-toggle-sm tasks-my-arrow" aria-label="Какие мои задачи показать" title="Делаю, поручил, помогаю, наблюдаю — выбрать">
+              <Icon name="chevron-down" size={14} />
+            </Menu.Trigger>
+            <Menu.Portal>
+              <Menu.Positioner className="ui-positioner" sideOffset={4} align="start">
+                <Menu.Popup className="ui-popup ui-menu">
+                  {ROLE_TABS.map((t) => (
+                    <Menu.CheckboxItem
+                      key={t.key}
+                      className="ui-menu-item"
+                      checked={!picked.includes('all') && picked.includes(t.key)}
+                      onCheckedChange={(on) => toggleRole(t.key, on)}
+                      closeOnClick={false}
+                      title={t.hint}
+                    >
+                      <span className="tasks-my-check" aria-hidden>
+                        <Menu.CheckboxItemIndicator keepMounted><Icon name="check" size={14} /></Menu.CheckboxItemIndicator>
+                      </span>
+                      <span className="ui-menu-label">{t.label}</span>
+                    </Menu.CheckboxItem>
+                  ))}
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
+        </span>
         <span className="tasks-v2-sep" aria-hidden />
         <Toggle
           pressed={picked.includes('all')}

@@ -42,6 +42,12 @@ export const REGISTRY_TABS: RegistryTab[] = [
 export const ROLE_TABS: RegistryTab[] = REGISTRY_TABS.filter((t) => t.key !== 'all');
 
 /**
+ * «Мои задачи» — все четыре роли разом. С 16.10 (#1570) это вход в раздел по умолчанию:
+ * человек открывает «Общие задачи» за своей работой, а все задачи компании — по кнопке.
+ */
+export const MY_SCOPE = ROLE_TABS.map((t) => t.key).join(',') as RegistryScope;
+
+/**
  * Подпись под заголовком: что сейчас показано.
  *
  * Перечислять роли словами, а не писать «выбрано 3 из 4»: человек должен понимать
@@ -149,7 +155,8 @@ export function toScope(value: string | undefined | null): RegistryScope {
   const parts = String(value ?? '').split(',').filter(Boolean);
   if (parts.length > 1 && parts.every((p) => isScope(p))) return parts.join(',') as RegistryScope;
   const legacy = LEGACY_VIEWS[String(value ?? '')];
-  return legacy ?? 'all';
+  // без хвоста в адресе — мои задачи (#1570); все задачи компании — /tasks/all
+  return legacy ?? MY_SCOPE;
 }
 
 /**

@@ -936,9 +936,10 @@ test('реестр: пустые фильтры не уезжают в запр�
   assert.equal(plain.includes('due='), false, 'срок «любой» — это отсутствие фильтра');
   assert.equal(plain.includes('sort='), false, 'сортировка по умолчанию не нужна в адресе');
   assert.equal(plain.includes('page='), false, 'первая страница — не параметр');
-  // Без хвоста в адресе — все задачи компании: так решил заказчик (14.09).
-  assert.equal(plain.includes('scope=all'), true, 'вход в раздел — все задачи, роли сужают');
-  assert.equal(m.toScope(undefined), 'all', '/tasks без хвоста — все задачи');
+  // Без хвоста в адресе — мои задачи (заказчик, #1570, 16.10); все задачи компании — /tasks/all.
+  assert.equal(plain.includes('scope=all'), true, 'пустые фильтры — все задачи, роли сужают');
+  assert.equal(m.toScope(undefined), 'doing,delegated,helping,watching', '/tasks без хвоста — мои задачи');
+  assert.equal(m.toScope('all'), 'all', '/tasks/all — все задачи компании');
   assert.equal(m.toScope('doing'), 'doing', 'у роли хвост свой');
   assert.equal(m.toScope('mine'), 'doing', 'старая ссылка живёт');
   assert.equal(plain.includes('dayEnd='), true, 'без границы суток «просрочено» считается по серверу');

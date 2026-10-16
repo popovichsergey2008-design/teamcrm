@@ -9,7 +9,7 @@ import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { FocusPage } from './pages/FocusPage';
 import { TasksPage } from './pages/TasksPage';
-import { toScope } from './lib/task-registry-view';
+import { MY_SCOPE, toScope } from './lib/task-registry-view';
 import { ChatsPage } from './pages/ChatsPage';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
 import { GuestHostCallCard, useGuestHostCalls } from './components/GuestHostCall';
@@ -739,7 +739,7 @@ export function App() {
               onNewTask={() => setNl({})}
               onVoiceTask={() => setNl({ voice: true })}
               scope={toScope(route.view === 'batch' || route.view === 'created' ? undefined : route.view)}
-              onScope={(scope) => navigate({ section: 'tasks', view: scope === 'all' ? undefined : scope })}
+              onScope={(scope) => navigate({ section: 'tasks', view: scope === MY_SCOPE ? undefined : scope })}
               onOpenTask={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
             />
           </Pane>

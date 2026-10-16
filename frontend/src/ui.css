@@ -292,6 +292,13 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 
 /* ── экран «Задачи» (первый переехавший, ТЗ-15) ─────────────────────────────── */
 .tasks-v2-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+/* #1570: «Мои задачи» + стрелка с ролями — одна кнопка из двух половин */
+.tasks-my { display: inline-flex; }
+.tasks-my > .ui-toggle:first-child { border-radius: 999px 0 0 999px; border-right-width: 0; }
+.tasks-my-arrow { border-radius: 0 999px 999px 0; padding: 0 8px; }
+.tasks-my-arrow[data-popup-open] { background: var(--hover); color: var(--text); }
+.tasks-my-part { font-weight: 400; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.tasks-my-check { display: inline-flex; width: 14px; color: var(--accent); }
 .tasks-v2-filters-btn { display: none; }
 .tasks-v2-tags { display: flex; gap: 6px; flex-wrap: wrap; flex-basis: 100%; }
 .tasks-v2-error {
