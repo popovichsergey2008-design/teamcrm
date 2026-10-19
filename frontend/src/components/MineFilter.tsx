@@ -70,11 +70,9 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
           */}
           <button className={`mine-filter-item ${mode === 'both' && !creatorId ? 'active' : ''}`} onClick={() => { onChange({ mode: 'both', creatorId: '', inWorkOnly }); setOpen(false); }}>
             <Icon name="board" size={14} /> Мои задачи
-            <span className="dim">я делаю, помогаю, поручил и наблюдаю</span>
           </button>
           <button className={`mine-filter-item ${mode === 'off' && !creatorId ? 'active' : ''}`} onClick={() => { onChange({ mode: 'off', creatorId: '', inWorkOnly }); setOpen(false); }}>
             <Icon name="list" size={14} /> Все задачи на доске
-            <span className="dim">задачи всех участников</span>
           </button>
           <div className="mine-filter-sep" role="separator" />
 
@@ -86,7 +84,6 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
               onClick={() => pick(v.key)}
             >
               <Icon name={v.icon} size={14} /> {v.label}
-              <span className="dim">{v.hint}</span>
             </button>
           ))}
 
