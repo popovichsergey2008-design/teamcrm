@@ -457,9 +457,17 @@ export class ChatAnalysisRepository {
   }
 
   /** Проекты, среди которых модель выбирает. Архивные не предлагаем. */
-  projects(tenantId: string, limit = 60): Promise<NamedRow[]> {
-    return this.db.many<NamedRow>(
-      `SELECT id::text, name FROM projects
+  /**
+   * Проекты для справочника модели. `about` — ключевые слова и начало описания (19.10):
+   * в переписке проект называют «по CRM», «в мобилке», а не именем доски.
+   */
+  projects(tenantId: string, limit = 60): Promise<(NamedRow & { about: string | null })[]> {
+    return this.db.many<NamedRow & { about: string | null }>(
+      `SELECT id::text, name,
+              NULLIF(concat_ws('. ',
+                CASE WHEN cardinality(aliases) > 0 THEN 'ключевые слова: ' || array_to_string(aliases, ', ') END,
+                NULLIF(left(regexp_replace(coalesce(description, ''), '\s+', ' ', 'g'), 200), '')), '') AS about
+         FROM projects
         WHERE tenant_id = $1 AND status <> 'archived'
         ORDER BY updated_at DESC NULLS LAST, id DESC
         LIMIT $2`,

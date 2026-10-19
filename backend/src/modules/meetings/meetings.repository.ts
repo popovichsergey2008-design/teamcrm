@@ -305,14 +305,17 @@ export class MeetingsRepository {
 
   /** Проекты арендатора вместе с колонками — контекст для разбора встречи. */
   projectsWithColumns(tenantId: string) {
-    return this.db.many<{ id: string; name: string; columns: { id: string; name: string }[] }>(
-      `SELECT p.id, p.name,
+    return this.db.many<{
+      id: string; name: string; columns: { id: string; name: string }[];
+      description: string | null; aliases: string[] | null;
+    }>(
+      `SELECT p.id, p.name, p.description, p.aliases,
               COALESCE(json_agg(json_build_object('id', c.id, 'name', c.name) ORDER BY c.position)
                        FILTER (WHERE c.id IS NOT NULL), '[]') AS columns
          FROM projects p
     LEFT JOIN board_columns c ON c.project_id = p.id
         WHERE p.tenant_id = $1 AND p.status <> 'archived'
-        GROUP BY p.id, p.name
+        GROUP BY p.id, p.name, p.description, p.aliases
         ORDER BY p.name`,
       [tenantId],
     );

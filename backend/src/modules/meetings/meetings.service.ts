@@ -571,9 +571,18 @@ export class MeetingsService {
     const roster = team.length
       ? `Сотрудники компании: ${team.map((u) => u.full_name).slice(0, 60).join(', ')}.\n`
       : '';
+    // О чём проект и его другие названия (19.10): на встрече говорят «по CRM», «в мобилке»,
+    // а не имя доски — без описания модель не свяжет это с проектом.
+    const about = (p: { description: string | null; aliases: string[] | null }) => {
+      const parts = [
+        p.aliases?.length ? `другие названия: ${p.aliases.join(', ')}` : '',
+        p.description?.trim() ? `о чём: ${p.description.trim().replace(/\s+/g, ' ').slice(0, 300)}` : '',
+      ].filter(Boolean);
+      return parts.length ? ` (${parts.join('; ')})` : '';
+    };
     const boards = projects.length
       ? `Проекты и их колонки:\n${projects.slice(0, 40)
-        .map((p) => `- ${p.name}: ${(p.columns ?? []).map((c) => c.name).join(', ') || '—'}`).join('\n')}\n`
+        .map((p) => `- ${p.name}${about(p)}: ${(p.columns ?? []).map((c) => c.name).join(', ') || '—'}`).join('\n')}\n`
       : '';
     // Без даты встречи модель не переведёт «до пятницы» в срок — и срок терялся.
     const meeting = await this.repo.get(tenantId, meetingId);

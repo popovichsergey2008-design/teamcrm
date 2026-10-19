@@ -1065,7 +1065,7 @@ export class ChatAnalysisService {
           project_ref: chat.project_id ? projectRef.get(String(chat.project_id)) ?? null : null,
         },
         people: people.map((p, i) => ({ ref: `u${i + 1}`, name: p.name })),
-        projects: projects.map((p, i) => ({ ref: `p${i + 1}`, name: p.name })),
+        projects: projects.map((p, i) => ({ ref: `p${i + 1}`, name: p.name, ...(p.about ? { about: p.about } : {}) })),
         tasks: candidates.map((t, i) => ({
           ref: `t${i + 1}`, number: `#${t.id}`, title: t.title,
           assignee_ref: t.assignee_id ? userRef.get(String(t.assignee_id)) ?? null : null,
