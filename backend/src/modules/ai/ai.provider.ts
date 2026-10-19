@@ -180,7 +180,7 @@ export class MockAiProvider implements AiProvider {
     if (/секретарь встречи/i.test(_system)) return mockAgenda(user);
     const hasCtx = /\[\d+\]/.test(user);
     return hasCtx
-      ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите OPENAI_API_KEY или ANTHROPIC_API_KEY для реальной генерации.)'
+      ? 'На основе найденных материалов из архива компании (см. источники ниже). [1]\n\n(Демо-ответ: подключите ключ Kimi, OpenAI или Anthropic в «Настройки → Интеграции → ИИ».)'
       : 'В базе знаний не нашлось релевантных материалов по этому вопросу.';
   }
   async generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (t: string) => void): Promise<string> {
@@ -192,6 +192,33 @@ export class MockAiProvider implements AiProvider {
 }
 
 /** Реальный провайдер (OpenAI Whisper + Anthropic) — активен только при наличии ключей. */
+/*
+  Kimi (Moonshot AI, 19.10): OpenAI-совместимый chat/completions. Когда у компании выбрана
+  модель Kimi, вся текстовая работа ИИ идёт через неё, остальные ключи — запасной путь.
+  Речи, озвучки и эмбеддингов у Kimi нет: расшифровка встреч, голос и поиск по базе знаний
+  остаются на ключе OpenAI (или OpenRouter для эмбеддингов).
+*/
+export const KIMI_BASE_URL = 'https://api.moonshot.ai/v1';
+export const KIMI_DEFAULT_MODEL = 'kimi-k3';
+export const KIMI_FALLBACK_MODELS = ['kimi-k3', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed'];
+export const isKimiModel = (m?: string | null) => /^kimi/i.test(m ?? '');
+
+/**
+ * Рассуждение Kimi. У K3 оно всегда включено и по умолчанию «max» — это минуты и
+ * дорогой выход на каждый мелкий вызов (подписи, черновики, разбор сообщений). Для
+ * внутренних задач хватает «low»; KIMI_REASONING_EFFORT меняет это без выкладки кода.
+ * У K2.6 рассуждение выключаем: он нужен как быстрая модель.
+ */
+function kimiExtras(model: string): { body: Record<string, unknown>; reserve: number } {
+  if (/^kimi-k3/i.test(model)) {
+    const effort = process.env.KIMI_REASONING_EFFORT || 'low';
+    // рассуждение входит в max_completion_tokens: без запаса ответ обрывается пустым
+    return { body: { reasoning_effort: effort }, reserve: effort === 'low' ? 8000 : 32000 };
+  }
+  if (/^kimi-k2\.6/i.test(model)) return { body: { thinking: { type: 'disabled' } }, reserve: 0 };
+  return { body: {}, reserve: 16000 }; // k2.7-code: рассуждение не выключается
+}
+
 export class RealAiProvider implements AiProvider {
   name = 'real';
 
@@ -229,7 +256,71 @@ export class RealAiProvider implements AiProvider {
     private readonly model: string,
     private readonly brainModel?: string,
     private readonly openrouterKey?: string,
+    private readonly kimiKey?: string,
   ) {}
+
+  /** Модель Kimi для запроса: явная модель Kimi, иначе выбранная у компании, иначе K3. */
+  private kimiModelFor(model: string): string {
+    if (isKimiModel(model)) return model;
+    if (isKimiModel(this.brainModel)) return this.brainModel!;
+    return KIMI_DEFAULT_MODEL;
+  }
+
+  /**
+   * Идёт ли запрос в Kimi первым. Да — если просят модель Kimi или у компании выбрана
+   * модель Kimi: «вся работа ИИ на Kimi» значит и навыки, у которых в пресете записана
+   * чужая модель (агенты, библиотека промптов). Без выбора модели и с одним ключом Kimi —
+   * тоже Kimi.
+   */
+  private kimiFirst(model: string): boolean {
+    if (!this.kimiKey) return false;
+    return isKimiModel(model) || isKimiModel(this.brainModel) || !model;
+  }
+
+  private kimiBody(model: string, system: string, content: unknown, maxTokens: number, stream = false) {
+    const x = kimiExtras(model);
+    return JSON.stringify({
+      model, max_completion_tokens: maxTokens + x.reserve, ...x.body, ...(stream ? { stream: true } : {}),
+      messages: [{ role: 'system', content: system }, { role: 'user', content }],
+    });
+  }
+
+  private async kimiChat(
+    model: string, system: string, user: string, maxTokens: number, images: { mime: string; base64: string }[] = [],
+  ): Promise<string> {
+    // K3 мультимодальный: картинки — тем же форматом image_url, что у OpenAI
+    const content: unknown = images.length
+      ? [
+        { type: 'text', text: user },
+        ...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })),
+      ]
+      : user;
+    const res = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
+      body: this.kimiBody(model, system, content, maxTokens),
+      // рассуждение K3 занимает время: ждём дольше, чем обычную модель
+      signal: AbortSignal.timeout(Number(process.env.KIMI_TIMEOUT_MS ?? 180_000)),
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (json?.error) throw new Error(typeof json.error === 'string' ? json.error : (json.error.message || JSON.stringify(json.error)));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // рассуждение приходит отдельно (reasoning_content) — в ответ идёт только content
+    return json?.choices?.[0]?.message?.content ?? '';
+  }
+
+  private async kimiStream(model: string, system: string, user: string, maxTokens: number, onDelta: (t: string) => void): Promise<string> {
+    const res = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
+      body: this.kimiBody(model, system, user, maxTokens, true),
+      signal: AbortSignal.timeout(Number(process.env.KIMI_TIMEOUT_MS ?? 180_000)),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    let full = '';
+    await this.readSSE(res, (o) => { const d = o?.choices?.[0]?.delta?.content; if (d) { full += d; onDelta(d); } });
+    return full;
+  }
 
   /** Вызов OpenAI-совместимого chat/completions (OpenAI и OpenRouter — один формат). Бросает ошибку API. */
   private async chatCompletion(
@@ -338,6 +429,21 @@ export class RealAiProvider implements AiProvider {
   }
 
   async parseIntents(maskedText: string, schemaHint?: string): Promise<unknown> {
+    const hint0 = schemaHint ??
+      'Верни СТРОГО JSON {"actions":[{"task_id":number,"status_change":"DONE|IN_PROGRESS|TODO",' +
+      '"time_logged_minutes":number,"blocker_detected":string}],"confidence":0..1}. ' +
+      'Только JSON, без пояснений.';
+    // Разбор стендапа — тоже работа ИИ: с Kimi идёт через Kimi, а не только через Anthropic
+    if (this.kimiKey && (isKimiModel(this.brainModel) || !this.anthropicKey)) {
+      try {
+        const text = await this.kimiChat(this.kimiModelFor(''), hint0, maskedText, 1024);
+        this.lastModel = this.kimiModelFor('');
+        return JSON.parse(text.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''));
+      } catch (e) {
+        providerLog.warn(`parseIntents: kimi — ${(e as Error).message}`);
+        if (!this.anthropicKey) return { actions: [], confidence: 0 };
+      }
+    }
     if (!this.anthropicKey) return new MockAiProvider().parseIntents(maskedText, schemaHint);
     const hint = schemaHint ??
       'Верни СТРОГО JSON {"actions":[{"task_id":number,"status_change":"DONE|IN_PROGRESS|TODO",' +
@@ -378,12 +484,16 @@ export class RealAiProvider implements AiProvider {
     // из-за неудачной free-модели не сваливаться в mock, когда есть рабочий ключ).
     const imgs = opts?.images ?? [];
     const attempts: { name: string; usedModel: string; run: () => Promise<string> }[] = [];
+    const kimiModel = this.kimiModelFor(model);
+    const kimiFirst = this.kimiFirst(model);
+    if (kimiFirst) attempts.push({ name: `kimi(${kimiModel})`, usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs) });
     if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH, imgs) });
     if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, imgs) });
-    if (this.openaiKey && !isOpenRouter) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
+    if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
     // фолбэки на любой доступный ключ
     if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
     if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens, imgs) });
+    if (this.kimiKey && !kimiFirst) attempts.push({ name: 'kimi(fallback)', usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs) });
     if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', usedModel: isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH, imgs) });
 
     for (const a of attempts) {
@@ -454,9 +564,10 @@ export class RealAiProvider implements AiProvider {
     const ORH = { 'HTTP-Referer': 'https://qevo.one', 'X-Title': 'QEVO' };
     try {
       let full = '';
-      if (isOpenRouter && this.openrouterKey) full = await this.openaiStream('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey, model, system, user, maxTokens, onDelta, ORH);
+      if (this.kimiFirst(model)) full = await this.kimiStream(this.kimiModelFor(model), system, user, maxTokens, onDelta);
+      else if (isOpenRouter && this.openrouterKey) full = await this.openaiStream('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey, model, system, user, maxTokens, onDelta, ORH);
       else if (this.anthropicKey && (!model || /^claude/i.test(model))) full = await this.anthropicStream(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, onDelta);
-      else if (this.openaiKey && !isOpenRouter) full = await this.openaiStream('https://api.openai.com/v1/chat/completions', this.openaiKey, model || 'gpt-4o-mini', system, user, maxTokens, onDelta);
+      else if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) full = await this.openaiStream('https://api.openai.com/v1/chat/completions', this.openaiKey, model || 'gpt-4o-mini', system, user, maxTokens, onDelta);
       else throw new Error('нет бэкенда для стрима');
       if (full && full.trim()) return full;
       throw new Error('пустой поток');

@@ -61,6 +61,10 @@ x-api-env: &api-env
   # Ключ OpenAI только для демо «ИИ-созвон за 30 секунд» в онбординге (ТЗ-24): у новой
   # компании своего ключа нет. Пусто — демо идёт правилами, речь распознаёт браузер.
   DEMO_OPENAI_API_KEY: ${DEMO_OPENAI_API_KEY:-}
+  # Kimi (Moonshot AI, 19.10): общий ключ для компаний без своего. Пусто — Kimi только по
+  # ключу компании (Настройки → Интеграции → ИИ). Рассуждение K3: low | high | max.
+  KIMI_API_KEY: ${KIMI_API_KEY:-}
+  KIMI_REASONING_EFFORT: ${KIMI_REASONING_EFFORT:-low}
   MAIL_FROM: ${MAIL_FROM:-noreply@anthill.team}
   MAIL_FROM_NAME: ${MAIL_FROM_NAME:-QEVO}
   APP_BASE_URL: ${APP_BASE_URL:-https://qevo.one}

@@ -2,12 +2,21 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { OptionSelect } from './ui/option-select';
 
+/** Подписи моделей Kimi в выборе: чем они отличаются для работы CRM. */
+const KIMI_HINT: Record<string, string> = {
+  'kimi-k3': 'флагман, рассуждает (медленнее, дороже)',
+  'kimi-k2.6': 'быстрая, без рассуждений',
+  'kimi-k2.7-code': 'для кода',
+  'kimi-k2.7-code-highspeed': 'для кода, быстрая',
+};
+
 /** BYOK: ключи ИИ-провайдеров (шифруются на сервере) + выбор модели чата. Встраивается в «Интеграции». */
 export function AiSettingsSection() {
   const [s, setS] = useState<any>(null);
   const [openaiKey, setOpenaiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
+  const [kimiKey, setKimiKey] = useState('');
   const [brainModel, setBrainModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
@@ -20,8 +29,8 @@ export function AiSettingsSection() {
   const loadModels = () => api.aiSettingsModels().then(setModels).catch(() => undefined);
   useEffect(() => { load(); loadModels(); }, []);
 
-  const save = async (patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; brainModel?: string }) => {
-    try { const r = await api.aiSettingsSave(patch); setS(r); flash('Сохранено'); loadModels(); return r; }
+  const save = async (patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; brainModel?: string }) => {
+    try { const r = await api.aiSettingsSave(patch); setS(r); setBrainModel(r.brainModel ?? ''); flash('Сохранено'); loadModels(); return r; }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
@@ -30,9 +39,10 @@ export function AiSettingsSection() {
     if (openaiKey.trim()) patch.openaiKey = openaiKey.trim();
     if (anthropicKey.trim()) patch.anthropicKey = anthropicKey.trim();
     if (openrouterKey.trim()) patch.openrouterKey = openrouterKey.trim();
+    if (kimiKey.trim()) patch.kimiKey = kimiKey.trim();
     if (!Object.keys(patch).length) return flash('Вставьте ключ');
     await save(patch);
-    setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey('');
+    setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey(''); setKimiKey('');
   };
 
   if (!s) return null;
@@ -41,7 +51,17 @@ export function AiSettingsSection() {
         <div className="dim" style={{ fontSize: 12 }}>Ваш ключ шифруется на сервере и используется вместо общего. Нужен для реального семантического поиска и ответов ИИ.</div>
         {msg && <div className="dim">{msg}</div>}
 
-        <div className="drawer-section-title">Ключ OpenAI (GPT)</div>
+        {/* Kimi — основной ИИ (19.10): с его ключом вся текстовая работа ИИ идёт через Kimi */}
+        <div className="drawer-section-title">Ключ Kimi (Moonshot AI) — основной ИИ</div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
+          Статус: {s.kimiKeySet ? 'задан (свой)' : s.globalKimi ? 'используется общий' : '— не задан —'}.
+          {' '}С ключом Kimi через него идёт вся текстовая работа ИИ: QEVO Bot, разбор встреч и чатов, черновики задач,
+          сводки, секретарь. Расшифровка речи, озвучка и поиск по базе знаний у Kimi нет — для них остаётся ключ OpenAI.
+          Ключ — на <span className="dim">platform.kimi.ai</span>.
+        </div>
+        <input className="input add-user-input" type="password" placeholder="sk-... (ключ Kimi)" value={kimiKey} onChange={(e) => setKimiKey(e.target.value)} />
+
+        <div className="drawer-section-title">Ключ OpenAI (GPT) — речь, голос, поиск</div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
           Статус: {s.openaiKeySet ? 'задан (свой)' : s.globalOpenai ? 'используется общий' : '— не задан —'}
         </div>
@@ -58,15 +78,15 @@ export function AiSettingsSection() {
         <input className="input add-user-input" type="password" placeholder="sk-or-..." value={openrouterKey} onChange={(e) => setOpenrouterKey(e.target.value)} />
 
         <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={saveKeys}>Сохранить ключи</button>
-        {(s.openaiKeySet || s.anthropicKeySet || s.openrouterKeySet) && (
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
+        {(s.openaiKeySet || s.anthropicKeySet || s.openrouterKeySet || s.kimiKeySet) && (
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '', kimiKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
         )}
 
         <div className="drawer-section-title">Модель ответов ИИ (Brain)</div>
         <div className="team-rate">
           <OptionSelect className="input" value={brainModel} onChange={(e) => setBrainModel(e.target.value)}>
             <option value="">по умолчанию</option>
-            {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}</option>)}
+            {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}{KIMI_HINT[m] ? ` — ${KIMI_HINT[m]}` : ''}</option>)}
           </OptionSelect>
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => save({ brainModel })}>Применить</button>
         </div>

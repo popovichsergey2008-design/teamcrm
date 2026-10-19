@@ -82,6 +82,11 @@ const PRICES: { match: RegExp; input: number; output: number }[] = [
   { match: /^claude-haiku/, input: 1, output: 5 },
   { match: /^claude-3-5-sonnet|^claude-sonnet/, input: 3, output: 15 },
   { match: /^claude-opus/, input: 15, output: 75 },
+  // Kimi (Moonshot AI), прайс platform.kimi.ai на октябрь 2026; у K3 рассуждение
+  // всегда включено и тарифицируется как выход
+  { match: /^kimi-k3/, input: 3, output: 15 },
+  { match: /^kimi-k2\.7-code-highspeed/, input: 1.9, output: 8 },
+  { match: /^kimi-k2/, input: 0.95, output: 4 },
   { match: /:free$/, input: 0, output: 0 },
 ];
 

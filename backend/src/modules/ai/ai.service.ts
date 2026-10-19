@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { RedisService } from '../../cache/redis.service';
 import { DbService } from '../../database/db.service';
-import { AiProvider, MockAiProvider, RealAiProvider, TranscriptSegment } from './ai.provider';
+import { AiProvider, KIMI_DEFAULT_MODEL, MockAiProvider, RealAiProvider, TranscriptSegment } from './ai.provider';
 import { AiSettingsService } from './ai-settings.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { maskPII } from './pii';
@@ -47,8 +47,8 @@ export class AiService {
     generate: ((system: string, user: string) => Promise<string>) | null;
   }> {
     const s = await this.settings.resolve(tenantId);
-    const own = s.openaiKey || s.anthropicKey || s.openrouterKey
-      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey) : null;
+    const own = s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey) : null;
     const demo = this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
     // Whisper — только OpenAI: компания с ключом Anthropic распознаёт речь ключом демо
     const stt = s.openaiKey ? own : demo;
@@ -110,12 +110,12 @@ export class AiService {
   /** Провайдер для конкретного арендатора (BYOK: ключ арендатора > глобальный .env). */
   private async providerFor(tenantId: string) {
     const s = await this.settings.resolve(tenantId);
-    const provider: AiProvider = (s.openaiKey || s.anthropicKey || s.openrouterKey)
-      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey)
+    const provider: AiProvider = (s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey)
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey)
       : new MockAiProvider();
     const embedModel = (s.openaiKey || s.openrouterKey) ? 'text-embedding-3-small' : 'mock-embed';
     const brainModel = s.brainModel
-      ?? (s.anthropicKey ? 'claude-3-5-sonnet' : s.openaiKey ? 'gpt-4o-mini' : s.openrouterKey ? 'meta-llama/llama-3.3-70b-instruct:free' : 'mock-llm');
+      ?? (s.kimiKey ? KIMI_DEFAULT_MODEL : s.anthropicKey ? 'claude-3-5-sonnet' : s.openaiKey ? 'gpt-4o-mini' : s.openrouterKey ? 'meta-llama/llama-3.3-70b-instruct:free' : 'mock-llm');
     return { provider, embedModel, brainModel };
   }
 

@@ -10,6 +10,7 @@ class AiSettingsDto {
   @IsOptional() @IsString() @MaxLength(200) openaiKey?: string;
   @IsOptional() @IsString() @MaxLength(200) anthropicKey?: string;
   @IsOptional() @IsString() @MaxLength(200) openrouterKey?: string;
+  @IsOptional() @IsString() @MaxLength(200) kimiKey?: string;
   @IsOptional() @IsString() @MaxLength(96) brainModel?: string;
 }
 
