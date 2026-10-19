@@ -47,6 +47,16 @@ export function MenuItem({ onSelect, icon, children, destructive, disabled, shor
   );
 }
 
+/** Раздел меню с подписью; длинный перечень прокручивается внутри, а не растягивает меню. */
+export function MenuGroup({ label, children, scroll }: { label: ReactNode; children: ReactNode; scroll?: boolean }) {
+  return (
+    <Menu.Group className="ui-menu-group">
+      <Menu.GroupLabel className="ui-menu-group-label">{label}</Menu.GroupLabel>
+      {scroll ? <div className="ui-menu-scroll">{children}</div> : children}
+    </Menu.Group>
+  );
+}
+
 export function MenuSeparator() {
   return <Menu.Separator className="ui-menu-sep" />;
 }

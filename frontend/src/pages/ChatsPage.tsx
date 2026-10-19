@@ -49,7 +49,7 @@ import { pasteBelongsHere, pasteInForeignField } from '../lib/paste-scope';
 import type { User } from '../types';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction, promptText } from '../components/ui/dialog';
-import { DropdownMenu, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
+import { DropdownMenu, MenuGroup, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
 import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
@@ -743,6 +743,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const loadChannels = useCallback(() => {
     api.listChannels().then(setChannelList).catch(() => undefined);
   }, []);
+  // каналы, куда ещё не вступил, — в перечне меню «Создать» (#4602)
+  useEffect(() => { loadChannels(); }, [loadChannels]);
 
   const join = async (chatId: string) => {
     try {
@@ -2012,11 +2014,37 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           <input className="input chat-search" placeholder="Найти сотрудника или чат" value={query} onChange={(e) => setQuery(e.target.value)} />
           <DropdownMenu
             trigger={(
-              <button className="ui-btn ui-btn-sm chat-new-btn" title="Создать: группу, канал, внешний разговор, видеоконференцию" aria-label="Создать чат">
+              <button className="ui-btn ui-btn-sm chat-new-btn" title="Группы, проекты и каналы; создать группу, канал, внешний разговор, видеоконференцию" aria-label="Группы, каналы и создание чата">
                 <Icon name="compose" />
               </button>
             )}
           >
+            {/*
+              #4602: первым — уже созданные группы, чаты проектов и каналы, чтобы в нужный
+              перейти в одно нажатие; ниже — создание. Публичные каналы, где человека ещё
+              нет, здесь же, с пометкой «вступить» — поэтому отдельный пункт «Все каналы
+              компании» убран.
+            */}
+            <MenuGroup label="Группы, проекты и каналы" scroll>
+              {chats.filter((c) => c.kind === 'group' || c.kind === 'project' || c.kind === 'channel').map((c) => (
+                <MenuItem
+                  key={c.id}
+                  icon={<Icon name={c.kind === 'channel' ? 'hash' : c.kind === 'project' ? 'board' : 'users'} size={15} />}
+                  onSelect={() => { setView('chat'); setThread(null); openChat(String(c.id)); }}
+                >
+                  {c.title || 'Без названия'}
+                </MenuItem>
+              ))}
+              {channelList.filter((ch) => !ch.joined).map((ch) => (
+                <MenuItem key={`join-${ch.id}`} icon={<Icon name="hash" size={15} />} onSelect={() => void join(String(ch.id))}>
+                  <span className="chat-new-join">{ch.title || 'Без названия'}<small>вступить</small></span>
+                </MenuItem>
+              ))}
+              {!chats.some((c) => c.kind === 'group' || c.kind === 'project' || c.kind === 'channel') && !channelList.some((ch) => !ch.joined) && (
+                <MenuItem disabled onSelect={() => undefined}>Пока нет — создайте ниже</MenuItem>
+              )}
+            </MenuGroup>
+            <MenuSeparator />
             <MenuItem icon={<Icon name="users" size={15} />} onSelect={() => setGroupOpen(true)}>
               <span className="chat-new-item"><b>Групповой чат</b><small>Для обсуждения вопросов</small></span>
             </MenuItem>
@@ -2045,10 +2073,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             </MenuItem>
             <MenuItem icon={<Icon name="video" size={15} />} onSelect={() => setGuestKey((k) => k + 1)}>
               <span className="chat-new-item"><b>Видеоконференция</b><small>Внешняя ссылка для человека со стороны — войдёт из браузера, без регистрации</small></span>
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem icon={<Icon name="search" size={15} />} onSelect={() => { setView('channels'); loadChannels(); }}>
-              Все каналы компании
             </MenuItem>
           </DropdownMenu>
         </div>

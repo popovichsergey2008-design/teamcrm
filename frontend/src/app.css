@@ -2477,6 +2477,8 @@
 .chat-filter-item { display: inline-flex; align-items: center; gap: 8px; }
 .chat-new-item { display: flex; flex-direction: column; gap: 1px; white-space: normal; max-width: 260px; padding: 2px 0; }
 .chat-new-item b { font-weight: 600; }
+.chat-new-join { display: flex; align-items: baseline; gap: 8px; }
+.chat-new-join small { color: var(--accent); font-size: calc(12px * var(--fs-scale)); }
 .chat-new-item small { color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); line-height: 1.3; }
 .chat-filter-note { width: 100%; justify-content: flex-start; margin-bottom: 6px; color: var(--accent); }
 /* список участников в форме группы прокручивается сам, а не растягивает окно */

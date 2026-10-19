@@ -132,6 +132,8 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .ui-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-menu-check { display: inline-flex; color: var(--accent); }
 .ui-menu-sep { height: 1px; margin: 4px -4px; background: var(--border); }
+.ui-menu-group-label { padding: 6px 8px 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-mut); text-transform: uppercase; letter-spacing: .04em; }
+.ui-menu-scroll { max-height: min(264px, 40vh); overflow-y: auto; }
 .ui-kbd {
   font: inherit; font-size: var(--fs-xs); color: var(--text-mut);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; background: var(--bg-elev-2);
