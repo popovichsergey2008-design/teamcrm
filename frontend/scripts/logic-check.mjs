@@ -1425,7 +1425,8 @@ test('эффекты: задача закрыта — звук, касание �
   // разные события подряд: второй звук раньше 300 мс не играет, касание — да
   assert.deepEqual(decide('task.approved', { ...base, sinceSound: 120 }), { haptic: 'success', motion: 'pop' });
   // создание — только касание (§16), звук не всегда
-  assert.equal(decide('task.created', base).sound, undefined);
+  assert.equal(decide('task.created', base).sound, 'ui_click', 'создание задачи — щелчок (#1523)');
+  assert.equal(decide('task.moved', base).sound, 'ui_click', 'перенос по доске — щелчок (#1523)');
 });
 
 test('эффекты: тишина, свои выключатели, «минимальные», reduced motion', async () => {

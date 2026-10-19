@@ -21,7 +21,10 @@ interface Rule {
 export const RULES: Record<FeedbackEvent, Rule> = {
   'tap': { haptic: 'light' },
   'task.completed': { sound: 'ui_success', haptic: 'light', motion: 'pop' },
-  'task.created': { haptic: 'light', motion: 'pop' },
+  // щелчок на каждом шаге задачи, а не только на «Готово»: иначе звука не слышно днями (#1523)
+  'task.created': { sound: 'ui_click', haptic: 'light', motion: 'pop' },
+  'task.moved': { sound: 'ui_click', haptic: 'light', motion: 'pop' },
+  'task.checked': { sound: 'ui_click', haptic: 'light' },
   'task.approved': { sound: 'ui_click', haptic: 'success', motion: 'pop' },
   'ai.started': { motion: 'ai' },
   'ai.completed': { sound: 'ai_ready', haptic: 'success', motion: 'ai' },

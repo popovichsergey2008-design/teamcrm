@@ -11,7 +11,7 @@
  */
 export type FeedbackEvent =
   | 'tap'                // нажатие, результат которого ещё не известен (§39)
-  | 'task.completed' | 'task.created' | 'task.approved'
+  | 'task.completed' | 'task.created' | 'task.approved' | 'task.moved' | 'task.checked'
   | 'ai.started' | 'ai.completed' | 'postcall.ready'
   | 'focus.started' | 'focus.completed' | 'focus.dayCompleted'
   | 'support.engineerJoined' | 'support.solved'

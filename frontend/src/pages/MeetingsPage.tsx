@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState';
 import { GuestMeetsPanel } from '../components/GuestMeetsPanel';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
+import { feedback } from '../lib/feedback';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import type { Project, User } from '../types';
@@ -236,6 +237,17 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
   }, [busyStatus, load]);
+  /*
+    Протокол готов у тебя на глазах — неоновая вспышка и мягкий сигнал (ТЗ-23, #1523).
+    Только на переходе «разбирается → готово»: открытие давно готовой встречи молчит.
+  */
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (busyStatus) { wasBusy.current = true; return; }
+    if (wasBusy.current && data?.meeting?.status === 'done') feedback('ai.completed', { el: boxRef.current });
+    wasBusy.current = false;
+  }, [busyStatus, data?.meeting?.status]);
 
   if (!data) return <div style={{ padding: 10 }}><SkeletonList rows={3} /></div>;
   const { meeting, segments, summary, drafts, tasks = [] } = data;
@@ -293,7 +305,7 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
   };
 
   return (
-    <div className="invite-box" style={{ marginBottom: 10 }}>
+    <div ref={boxRef} className={`invite-box${busyStatus ? ' ai-working' : ''}`} style={{ marginBottom: 10 }}>
       {meeting.status === 'error' && (
         <div className="error-text" style={{ fontSize: 12 }}>
           {meeting.error}

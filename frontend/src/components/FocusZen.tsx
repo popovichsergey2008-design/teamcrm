@@ -98,6 +98,7 @@ export function FocusZen({ session, onOpenTask }: {
   };
 
   const toggleCheck = (c: Check) => act(async () => {
+    if (!c.is_done) feedback('task.checked');
     setChecks((list) => list.map((x) => (x.id === c.id ? { ...x, is_done: !x.is_done } : x)));
     await api.patchChecklist(task!.id, c.id, { isDone: !c.is_done });
   });

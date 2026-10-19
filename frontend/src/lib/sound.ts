@@ -112,10 +112,19 @@ function note(at: number, freq: number, seconds: number, volume: number, type: O
  * здесь только звуковой контекст. Настройки и тишину проверяет вызывающий.
  */
 export function playNotes(notes: [number, number, number, number, OscillatorType?, number?][]): void {
-  const audio = context();
-  if (!audio || audio.state !== 'running') return;
-  const now = audio.currentTime;
-  for (const [off, freq, dur, vol, type, attack] of notes) note(now + off, freq, dur, vol, type, attack);
+  const audio = create();
+  if (!audio) return;
+  const play = () => {
+    const now = audio.currentTime;
+    for (const [off, freq, dur, vol, type, attack] of notes) note(now + off, freq, dur, vol, type, attack);
+  };
+  if (audio.state === 'running') { play(); return; }
+  /*
+    Контекст уснул (вкладка была в фоне, ноутбук засыпал) — раньше звук здесь молча
+    пропадал. Будим и играем, как только проснётся; не проснулся (жеста ещё не было) —
+    значит, нельзя, на экране и так видно, что действие прошло.
+  */
+  void audio.resume().then(() => { if (audio.state === 'running') play(); }).catch(() => undefined);
 }
 
 /** Короткий сигнал о новом сообщении: две ноты вверх, не похоже на системную ошибку. */

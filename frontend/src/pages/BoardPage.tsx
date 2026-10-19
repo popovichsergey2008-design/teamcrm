@@ -462,7 +462,9 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         dispatch({ type: 'UPSERT_TASK', task: server });
         setGate(null);
         // задача закрылась этим переносом — подтверждение, когда сервер согласился (ТЗ-23)
-        if (server?.closed_at && !current?.closed_at) feedback('task.completed', { el: document.querySelector(`[data-task-id="${CSS.escape(String(taskId))}"]`) });
+        const el = document.querySelector(`[data-task-id="${CSS.escape(String(taskId))}"]`);
+        if (server?.closed_at && !current?.closed_at) feedback('task.completed', { el });
+        else if (current && current.column_id !== columnId) feedback('task.moved', { el });
       } catch (e) {
         if (!(e instanceof ApiError && gateFromError(e.details))) feedback('error');
         // приёмка работы: не ошибка, а вопрос — показываем, чего не хватает, и даём решить

@@ -520,7 +520,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     feedback('tap');
     try {
       const server = await api.moveTask(task.id, { columnId, position: 0, confirmGate });
-      if (server?.closed_at && !task.closed_at) feedback('task.completed');
+      feedback(server?.closed_at && !task.closed_at ? 'task.completed' : 'task.moved');
       setGate(null); onRefresh();
     }
     catch (e) {
@@ -1405,7 +1405,10 @@ function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
           <div key={i.id} className={`tv2-list-row${i.is_done ? ' is-done' : ''}`}>
             <Checkbox
               checked={!!i.is_done}
-              onCheckedChange={async () => { await api.patchChecklist(taskId, i.id, { isDone: !i.is_done }); reload(); onRefresh(); }}
+              onCheckedChange={async () => {
+                if (!i.is_done) feedback('task.checked');
+                await api.patchChecklist(taskId, i.id, { isDone: !i.is_done }); reload(); onRefresh();
+              }}
               label={i.text}
             />
             <Button variant="ghost" size="icon-sm" onClick={async () => { await api.deleteChecklist(taskId, i.id); reload(); onRefresh(); }} title="Удалить пункт" aria-label={`Удалить пункт «${i.text}»`}>
