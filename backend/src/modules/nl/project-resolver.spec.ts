@@ -19,6 +19,13 @@ describe('определитель проекта (ТЗ-31)', () => {
     expect(resolveProject({ text: 'для альфы поправить кнопку — Alpha', projects: P }).projectId).toBe('1');
   });
 
+  it('название с окончанием в две латинские буквы узнаётся в падеже (19.10)', () => {
+    // «стоматология» → stomatologiya: «по стоматологии» раньше проект не находило
+    const projects = [...P, { id: '9', name: 'Стоматология' }];
+    expect(resolveProject({ text: 'обновить цены на сайте стоматологии', projects }).projectId).toBe('9');
+    expect(resolveProject({ text: 'по стоматологии позвонить', projects }).projectId).toBe('9');
+  });
+
   it('создание из проекта / чат проекта → HIGH (§11–12)', () => {
     expect(resolveProject({ text: 'проверить мобильную версию', projects: P, sourceProjectId: '2' }).level).toBe('HIGH');
     expect(resolveProject({ text: 'проверить мобильную версию', projects: P, chatProjectId: '2' }).projectId).toBe('2');

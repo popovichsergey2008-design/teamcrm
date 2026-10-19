@@ -130,7 +130,15 @@ const keysOf = (name: string) => words(name).filter((w) => w.length >= 3 && !STO
 function sameWord(spoken: string, target: string): boolean {
   if (spoken === target) return true;
   if (target.length < 4) return false;
-  return spoken.startsWith(target.slice(0, target.length - 1)) && spoken.length <= target.length + 2;
+  if (spoken.length > target.length + 2) return false;
+  if (spoken.startsWith(target.slice(0, target.length - 1))) return true;
+  /*
+    Окончание после латиницы бывает в две буквы: «стоматология» → stomatologiya, и
+    отрезанная одна буква оставляла «…logiy» — «по стоматологии» (…logii) проект не
+    находило (19.10). Сравниваем по основе без гласного хвоста; основа — от 5 букв.
+  */
+  const stem = target.replace(/(?:ya|yu|ye|yo|[aeiouy])+$/, '');
+  return stem.length >= 5 && stem.length < target.length && spoken.startsWith(stem);
 }
 
 /** Общие слова описаний — ни на какой проект не указывают. */
