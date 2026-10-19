@@ -40,7 +40,7 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
   const creatorName = creators.find(([id]) => id === creatorId)?.[1];
   const label = creatorName ? `Поставил ${creatorName}`
     : mode === 'both' ? 'Мои задачи'
-      : taskViewLabel(mode) || 'Все на доске';
+      : taskViewLabel(mode) || 'Все задачи на доске';
 
   /** Выбор — переключатель: повторное нажатие на активный пункт снимает фильтр. */
   const pick = (next: MineMode) => {
@@ -63,6 +63,21 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
 
       {open && (
         <div className="mine-filter-pop" role="menu" aria-label="Чьи задачи показать">
+          {/*
+            Главный выбор — первым и явно (#4600): «Мои задачи» или «Все задачи на доске».
+            Раньше «все» включались только повторным нажатием на выбранный пункт или
+            кнопкой сброса внизу, а «Мои задачи» стояли последними после видов.
+          */}
+          <button className={`mine-filter-item ${mode === 'both' && !creatorId ? 'active' : ''}`} onClick={() => { onChange({ mode: 'both', creatorId: '', inWorkOnly }); setOpen(false); }}>
+            <Icon name="board" size={14} /> Мои задачи
+            <span className="dim">я делаю, помогаю, поручил и наблюдаю</span>
+          </button>
+          <button className={`mine-filter-item ${mode === 'off' && !creatorId ? 'active' : ''}`} onClick={() => { onChange({ mode: 'off', creatorId: '', inWorkOnly }); setOpen(false); }}>
+            <Icon name="list" size={14} /> Все задачи на доске
+            <span className="dim">задачи всех участников</span>
+          </button>
+          <div className="mine-filter-sep" role="separator" />
+
           {/* Виды задач — те же четыре слова, что и в разделе «Задачи». */}
           {TASK_VIEWS.map((v) => (
             <button
@@ -74,10 +89,6 @@ export function MineFilter({ mode, creatorId, creators, count, inWorkOnly, onCha
               <span className="dim">{v.hint}</span>
             </button>
           ))}
-          <button className={`mine-filter-item ${mode === 'both' ? 'active' : ''}`} onClick={() => pick('both')}>
-            <Icon name="board" size={14} /> Мои задачи
-            <span className="dim">я делаю, помогаю, поручил и наблюдаю</span>
-          </button>
 
           {/*
             «Только в работе» — не вид, а состояние, поэтому стоит отдельно и работает

@@ -1876,6 +1876,7 @@
   color: var(--text-mut); padding: 8px 8px 4px; border-top: 1px solid var(--border); margin-top: 4px;
 }
 .mine-filter-list { max-height: 180px; overflow-y: auto; }
+.mine-filter-sep { height: 1px; margin: 4px 0; background: var(--border); }
 .mine-filter-reset {
   width: 100%; padding: 7px 8px; margin-top: 4px; border: none; background: none;
   border-top: 1px solid var(--border); color: var(--text-dim); cursor: pointer;
