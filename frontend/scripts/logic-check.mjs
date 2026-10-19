@@ -1424,6 +1424,9 @@ test('эффекты: задача закрыта — звук, касание �
   assert.deepEqual(decide('task.completed', { ...base, sinceSame: 50, sinceSound: 50 }), { motion: 'pop' });
   // разные события подряд: второй звук раньше 300 мс не играет, касание — да
   assert.deepEqual(decide('task.approved', { ...base, sinceSound: 120 }), { haptic: 'success', motion: 'pop' });
+  for (const ev of ['task.saved', 'news.published', 'poll.voted', 'action.confirmed', 'warning', 'focus.started']) {
+    assert.ok(decide(ev, base).sound, `${ev} — со звуком (#1523)`);
+  }
   // создание — только касание (§16), звук не всегда
   assert.equal(decide('task.created', base).sound, 'ui_click', 'создание задачи — щелчок (#1523)');
   assert.equal(decide('task.moved', base).sound, 'ui_click', 'перенос по доске — щелчок (#1523)');

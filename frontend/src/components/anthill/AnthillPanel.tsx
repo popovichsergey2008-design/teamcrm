@@ -71,7 +71,6 @@ type Live = { status: string; text: string; sources: AnthillSource[] };
  * единственная причина, по которой ему вообще можно доверить запись.
  */
 /** Ответ дольше этого — сигнал «готово» (человек успел переключиться). */
-const LONG_ANSWER_MS = 4000;
 
 export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
   /** Что открыто у человека под окном — уходит ответом на «о чём речь». */
@@ -211,7 +210,6 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       }, ...steps]);
     };
 
-    const askedAt = performance.now();
     const run = api.anthillAsk(id, question, ctxArg, skill ? skill.id : null, deep, {
       onStatus: (t) => { acc.status = t; show(); },
       onDelta: (t) => { acc.text += t; acc.status = ''; show(); },
@@ -226,11 +224,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
       },
       onDone: (d) => {
         land(String(d.messageId));
-        /*
-          Один сигнал на ответ, не на каждый кусок потока (ТЗ-23, §40–41). И только если
-          ответ шёл долго: человек успел отвернуться. Мгновенный ответ он и так видит.
-        */
-        if (performance.now() - askedAt > LONG_ANSWER_MS) feedback('ai.completed');
+        // Один сигнал на ответ, не на каждый кусок потока (ТЗ-23, §40–41).
+        feedback('ai.completed');
       },
       onError: (m) => setErr(m || 'Не удалось получить ответ. Попробуйте снова.'),
     });
@@ -280,6 +275,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
         return;
       }
       const r = await api.anthillConfirmRun(runId);
+      feedback('action.confirmed');
       const byId = new Map(r.results.map((x) => [x.id, x.status]));
       setMessages((prev) => [
         ...prev.map((m) => (m.action && byId.has(m.action.id)

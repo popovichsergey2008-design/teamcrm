@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { api, ApiError, QUEUED, Scheduled } from '../lib/api';
+import { feedback } from '../lib/feedback';
 import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { getSocket } from '../lib/socket';
@@ -2247,8 +2248,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 disabled={aiBusy}
                 onClick={async () => {
                   setAiBusy(true); setDigest(null); setAiAnswer(null);
-                  try { setDigest((await api.aiMissed()).text); }
-                  catch (e) { setErr(e instanceof ApiError ? e.message : 'ИИ не ответил'); }
+                  try { setDigest((await api.aiMissed()).text); feedback('ai.completed'); }
+                  catch (e) { feedback('error'); setErr(e instanceof ApiError ? e.message : 'ИИ не ответил'); }
                   finally { setAiBusy(false); }
                 }}
                 title="Пересказать всё непрочитанное по доступным чатам"
@@ -2278,8 +2279,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 onKeyDown={async (e) => {
                   if (e.key !== 'Enter' || !aiQuery.trim()) return;
                   setAiBusy(true); setAiAnswer(null); setDigest(null);
-                  try { setAiAnswer(await api.aiSearchChats(aiQuery.trim())); }
-                  catch (err2) { setErr(err2 instanceof ApiError ? err2.message : 'ИИ не ответил'); }
+                  try { setAiAnswer(await api.aiSearchChats(aiQuery.trim())); feedback('ai.completed'); }
+                  catch (err2) { feedback('error'); setErr(err2 instanceof ApiError ? err2.message : 'ИИ не ответил'); }
                   finally { setAiBusy(false); }
                 }}
               />

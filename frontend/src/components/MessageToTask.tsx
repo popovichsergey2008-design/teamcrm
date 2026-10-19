@@ -98,6 +98,8 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
       .then((r) => {
         if (dead) return;
         take(r); setAlready(r.already ?? null);
+        // ИИ разобрал сообщение в черновик — вспышка и сигнал (ТЗ-23); старый черновик молчит
+        if (!r.already && r.draft?.status !== 'transcribing') feedback('ai.completed', { el: document.querySelector('.mtt-drawer') });
       })
       .catch((e) => { if (!dead) setErr(e instanceof ApiError ? e.message : 'Не удалось разобрать сообщение'); })
       .finally(() => { if (!dead) setLoading(false); });
@@ -190,6 +192,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     try {
       const r = await api.instructMessageTaskDraft(draft.draftId, wish.trim());
       take(r); setWish('');
+      feedback('ai.completed', { el: document.querySelector('.mtt-drawer') });
       if ((r.draft?.split?.length ?? 0) >= 2) setMode('split');
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось поправить'); }
     finally { setBusy(false); }

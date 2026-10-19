@@ -107,7 +107,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       // Несколько поручений в одной строке — несколько черновиков, как и у надиктовки.
       setDrafts(await api.nlParseMany(command, currentProjectId, currentKind));
       setHeard(command);
-    } catch (e) { setMsg(e instanceof ApiError ? e.message : 'Ошибка распознавания'); }
+      feedback('ai.completed');
+    } catch (e) { feedback('error'); setMsg(e instanceof ApiError ? e.message : 'Ошибка распознавания'); }
     finally { setBusy(false); }
   };
 
@@ -157,7 +158,9 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         if (next.status === 'ready') {
           setDrafts(next.tasks ?? []);
           setHeard(next.transcript ?? '');
+          feedback('ai.completed');
         }
+        if (next.status === 'error') feedback('error');
       } catch { /* следующий заход попробует снова: сеть моргает, запись цела */ }
     }, 2000);
     return () => clearTimeout(t);

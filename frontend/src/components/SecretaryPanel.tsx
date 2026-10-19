@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
+import { feedback } from '../lib/feedback';
 import { EmptyState } from './EmptyState';
 import { SkeletonList } from './Skeleton';
 import type { AiAction, Ping, Proposal } from '../types';
@@ -184,8 +185,8 @@ function Ask() {
     if (question.length < 3) return;
     setQ(question);
     setBusy(true);
-    try { setAnswer((await api.assistantAsk(question)).answer); }
-    catch { setAnswer('Не получилось спросить — попробуйте ещё раз.'); }
+    try { setAnswer((await api.assistantAsk(question)).answer); feedback('ai.completed'); }
+    catch { feedback('error'); setAnswer('Не получилось спросить — попробуйте ещё раз.'); }
     finally { setBusy(false); }
   };
 

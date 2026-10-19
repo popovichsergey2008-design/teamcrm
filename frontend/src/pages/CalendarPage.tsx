@@ -10,6 +10,7 @@ import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { meetingUrl, shareMeeting } from './MeetingPage';
 import { CalendarSyncPanel } from '../components/CalendarSyncPanel';
 import { api, ApiError } from '../lib/api';
+import { feedback } from '../lib/feedback';
 import { navigate } from '../lib/router';
 import {
   addDays, daysOf, DaySegment, DUE_LABEL, dueMark, isDayOff, layoutDay, rangeTitle, splitByDay,
@@ -285,6 +286,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       // «завтра в 15» — это местное завтра человека, поэтому «сейчас» присылаем своё
       const draft = await api.nlParseEvent(text, isoLocal(new Date()));
       setHeard({ text: draft.source || text, warnings: draft.warnings ?? [] });
+      feedback('ai.completed');
       const start = draft.startsAt ? new Date(draft.startsAt) : nextHalfHour();
       const end = draft.endsAt ? new Date(draft.endsAt) : new Date(start.getTime() + 3600_000);
       setEditing({

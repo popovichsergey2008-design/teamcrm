@@ -37,7 +37,7 @@ import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { Tabs } from './ui/tabs';
 import { useTitleHint } from '../lib/page-title';
-import { feedback } from '../lib/feedback';
+import { feedback, feedback as fx } from '../lib/feedback';
 // «Послушать контекст · 15 сек» (ТЗ-25) — отдельным куском, только у задач со встречи
 const TaskAudioProof = lazy(() => import('./meetings/TaskAudioProof'));
 
@@ -328,6 +328,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
       onRefresh();
       toastSaved('Задача сохранена');
+      feedback('task.saved');
       return true;
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); return false; }
     finally { setSaving(false); }
@@ -1462,6 +1463,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     setBusy(true); setMsg('');
     try {
       const r = await api.agentAssign(taskId, true, runOpts());
+      feedback('ai.completed');
       flash(r.run?.declined ? 'Передано агенту, но задача требует человека (см. ниже)'
         : r.run?.movedTo ? `Передано агенту — выполнено, задача в «${r.run.movedTo}»` : 'Задача передана ИИ-агенту');
       reload(); onRefresh();
@@ -1486,8 +1488,8 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
 
   const run = async () => {
     setBusy(true); setMsg('');
-    try { await api.agentRun(taskId); flash('Готово — черновик ниже и в обсуждении задачи'); reload(); onRefresh(); }
-    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка запуска агента'); }
+    try { await api.agentRun(taskId); feedback('ai.completed'); flash('Готово — черновик ниже и в обсуждении задачи'); reload(); onRefresh(); }
+    catch (e) { feedback('error'); flash(e instanceof ApiError ? e.message : 'Ошибка запуска агента'); }
     finally { setBusy(false); }
   };
   const execute = async () => {
@@ -1499,15 +1501,16 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     setBusy(true); setMsg('');
     try {
       const r = await api.agentExecute(taskId, runOpts());
+      feedback(r.declined ? 'warning' : 'ai.completed');
       flash(r.declined
         ? 'Задача требует человека — агент не может её выполнить (см. пояснение ниже)'
         : `Выполнено${r.fileName ? ' — файл во вкладке «Файлы»' : ''}${r.movedTo ? `, задача в «${r.movedTo}»` : ''}`);
       reload(); onRefresh();
-    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка выполнения'); }
+    } catch (e) { feedback('error'); flash(e instanceof ApiError ? e.message : 'Ошибка выполнения'); }
     finally { setBusy(false); }
   };
   const accept = async (id: string, toChecklist: boolean) => {
-    try { const r = await api.agentAccept(id, toChecklist); flash(toChecklist ? `Принято, добавлено пунктов: ${r.addedChecklist}` : 'Результат принят'); reload(); onRefresh(); }
+    try { const r = await api.agentAccept(id, toChecklist); fx('action.confirmed'); flash(toChecklist ? `Принято, добавлено пунктов: ${r.addedChecklist}` : 'Результат принят'); reload(); onRefresh(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const reject = async (id: string) => {
@@ -1523,7 +1526,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
     });
     if (!feedback || feedback.trim().length < 2) return;
     setBusy(true); setMsg('');
-    try { await api.agentRework(id, feedback.trim()); flash('Доработка готова — новый результат ниже'); reload(); onRefresh(); }
+    try { await api.agentRework(id, feedback.trim()); fx('ai.completed'); flash('Доработка готова — новый результат ниже'); reload(); onRefresh(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка доработки'); }
     finally { setBusy(false); }
   };
