@@ -154,7 +154,17 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
               </div>
               <div className="list-side">
                 {/* итоги после звонка (ТЗ-22, §50): не разобраны — ведём на экран итогов */}
-                {m.review_status === 'review_required' && (
+                {/*
+                  Разбирает итоги только хозяин встречи (postcall canClose). Остальным плашка
+                  «не разобраны» выглядела как сбой ИИ, хотя расшифровка и итог готовы — им
+                  показываем, у кого итоги (19.10).
+                */}
+                {m.review_status === 'review_required' && m.review_owner_id && String(m.review_owner_id) !== String(user?.id) && (
+                  <span className="ui-badge ui-badge-neutral" title="ИИ разобрал встречу; итоги и задачи подтверждает хозяин встречи">
+                    Итоги у {m.review_owner_name ?? 'хозяина встречи'}
+                  </span>
+                )}
+                {m.review_status === 'review_required' && (!m.review_owner_id || String(m.review_owner_id) === String(user?.id)) && (
                   <button
                     type="button" className="ui-badge ui-badge-warn meeting-review"
                     onClick={(e) => { e.stopPropagation(); navigate({ section: 'chat', view: 'postcall', meetingId: String(m.id) }); }}

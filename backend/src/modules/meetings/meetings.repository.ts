@@ -90,13 +90,21 @@ export class MeetingsRepository {
 
   /** Список — только видимые встречи (ТЗ-21, этап 0): закрытый проект и чужой созвон не показываем. */
   list(tenantId: string, viewer: ProjectViewer) {
-    return this.db.many<MeetingRow & { drafts_pending: number; tasks_created: number; review_status: string | null }>(
+    return this.db.many<MeetingRow & {
+      drafts_pending: number; tasks_created: number; review_status: string | null;
+      review_owner_id: string | null; review_owner_name: string | null;
+    }>(
       `SELECT m.*, (SELECT count(*)::int FROM meeting_task_drafts d
                      WHERE d.meeting_id=m.id AND d.status IN ('pending','failed')) AS drafts_pending,
               (SELECT count(*)::int FROM meeting_task_drafts d
                      WHERE d.meeting_id=m.id AND d.task_id IS NOT NULL) AS tasks_created,
               -- разбор итогов после звонка (ТЗ-22): «не разобраны» / «обработаны»
-              (SELECT r.status FROM meeting_postcall_reviews r WHERE r.meeting_id = m.id) AS review_status
+              (SELECT r.status FROM meeting_postcall_reviews r WHERE r.meeting_id = m.id) AS review_status,
+              -- разбирает итоги только хозяин встречи: остальным «не разобраны» читалось как
+              -- «ИИ не разобрал» (19.10), поэтому им показываем, у кого итоги
+              (SELECT r.owner_id::text FROM meeting_postcall_reviews r WHERE r.meeting_id = m.id) AS review_owner_id,
+              (SELECT u.full_name FROM meeting_postcall_reviews r JOIN users u ON u.id = r.owner_id
+                WHERE r.meeting_id = m.id) AS review_owner_name
          FROM meetings m WHERE m.tenant_id=$1
           AND ${meetingVisibleSql('m', { user: '$2', all: '$3', client: '$4' })}
         ORDER BY m.created_at DESC LIMIT 100`,
