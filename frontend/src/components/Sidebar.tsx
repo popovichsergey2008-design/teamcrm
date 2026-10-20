@@ -239,6 +239,15 @@ export function Sidebar({
    */
   const [prefs, setPrefs] = useState<MenuPrefs>(user.uiPrefs ?? {});
   const [archiveOpen, setArchiveOpen] = useState(false);
+  /*
+    Перетаскивание пунктов как в Битриксе (#4601): зажал пункт мышью и тянешь —
+    меню целиком подсвечивается (режим правки), соседи расступаются, отпустил —
+    порядок сохранён. Без отдельного режима «Настроить меню».
+  */
+  const [drag, setDrag] = useState<{ section: string; from: number; to: number; dy: number; h: number } | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
+  /** Отпустили после перетаскивания — следующий клик по ссылке не переход. */
+  const noClickUntil = useRef(0);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
 
   const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
@@ -258,6 +267,57 @@ export function Sidebar({
     // Только своё — порядок, скрытые, главная: остальные ключи настроек пишут другие
     // места (обучение, Chat Bar), и устаревшая копия отсюда затирала бы их.
     void api.saveUiPrefs({ order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '' }).catch(() => undefined);
+  };
+
+  /** Новый порядок: видимые как расставлены, скрытые — следом, их место неважно. */
+  const placeAt = (section: string, to: number) => {
+    const shown = menuItems.map((i) => String(i.section)).filter((x) => x !== section);
+    shown.splice(to, 0, section);
+    const rest = ordered.map((i) => String(i.section)).filter((x) => !shown.includes(x));
+    savePrefs({ ...prefs, order: [...shown, ...rest] });
+  };
+
+  const startDrag = (e: { button: number; pointerType: string; clientY: number; target: EventTarget }, section: string) => {
+    if (e.button !== 0 || e.pointerType !== 'mouse' || collapsed) return;
+    if ((e.target as HTMLElement).closest('.nav-gear')) return;
+    const groups = Array.from(navRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? []);
+    const from = menuItems.findIndex((i) => i.section === section);
+    if (from < 0 || groups.length !== menuItems.length) return;
+    const rects = groups.map((g) => g.getBoundingClientRect());
+    const h = rects[from].height + 2;
+    const startY = e.clientY;
+    let to = from;
+    let started = false;
+    const move = (ev: PointerEvent) => {
+      const dy = ev.clientY - startY;
+      if (!started && Math.abs(dy) < 5) return;
+      started = true;
+      // место среди остальных пунктов: сколько их центров выше указателя
+      to = rects.filter((r, k) => k !== from && ev.clientY > r.top + r.height / 2).length;
+      setDrag({ section, from, to, dy, h });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      document.body.classList.remove('nav-dragging-body');
+      if (started) {
+        noClickUntil.current = Date.now() + 300;
+        if (to !== from) placeAt(section, to);
+      }
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    document.body.classList.add('nav-dragging-body');
+  };
+  /** Сдвиг соседа, пока тянут: место освобождается там, куда пункт встанет. */
+  const dragShift = (k: number): number => {
+    if (!drag || k === drag.from) return 0;
+    const other = k < drag.from ? k : k - 1;
+    const pos = other < drag.to ? other : other + 1;
+    return (pos - k) * drag.h;
   };
 
   const shift = (section: string, dir: -1 | 1) => {
@@ -397,7 +457,10 @@ export function Sidebar({
       href={buildPath(to)}
       title={collapsed ? title : undefined}
       aria-current={active ? 'page' : undefined}
+      draggable={false}
       onClick={(e) => {
+        // только что тащили пункт — это не нажатие
+        if (Date.now() < noClickUntil.current) { e.preventDefault(); return; }
         // Ctrl/Cmd-клик и средняя кнопка должны открывать в новой вкладке как обычная ссылка
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
         e.preventDefault();
@@ -598,7 +661,7 @@ export function Sidebar({
         </div>
 
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
-        <nav className="nav-main" aria-label="Разделы">
+        <nav ref={navRef} className={`nav-main${drag ? ' nav-editing' : ''}`} aria-label="Разделы">
           {menuItems.map((item) => {
             // реестр задач живёт внутри «Проектов» — там и подсветка
             const active = route.section === item.section || (item.section === 'projects' && route.section === 'tasks');
@@ -633,9 +696,11 @@ export function Sidebar({
             return (
               <div
                 key={item.section}
-                className="nav-group"
+                className={`nav-group${drag?.section === item.section ? ' nav-group-dragged' : ''}`}
                 data-tour={`nav-${item.section}`}
                 onMouseEnter={() => onHoverSection(item.section)}
+                onPointerDown={(e) => startDrag(e, item.section)}
+                style={drag ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(idx)}px)` } : undefined}
               >
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
