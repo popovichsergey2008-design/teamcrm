@@ -50,6 +50,15 @@ const INSTRUCT_PROMPT = [
  * нажатия. Назначенная не тому задача выглядит как поручение, которого человек не
  * получал, и разбирать это приходится людям.
  */
+
+/**
+ * Проект, в который чат ставит задачи: чат самого проекта или группа/канал с
+ * привязанным проектом (20.10). Определитель считает его сильным основанием.
+ */
+function chatProject(chat: { project_id: string | null; linked_project_id?: string | null }): string | null {
+  const id = chat.project_id ?? chat.linked_project_id ?? null;
+  return id ? String(id) : null;
+}
 @Injectable()
 export class ChatTaskDraftService {
   private readonly log = new Logger('ChatTaskDraft');
@@ -161,7 +170,7 @@ export class ChatTaskDraftService {
       tenantId, chatId, messageId, initiatorId: user.userId,
       authorId: msg.author_id ? String(msg.author_id) : null,
     });
-    const src = { fileNameFallback: msg.file_name ?? null, projectHint: chat.project_id ? String(chat.project_id) : null };
+    const src = { fileNameFallback: msg.file_name ?? null, projectHint: chatProject(chat) };
 
     /*
       Голосовое (ТЗ-26, §4, §22): сначала расшифровка. Готовая лежит у сообщения —
@@ -253,7 +262,7 @@ export class ChatTaskDraftService {
     if (draft.status !== 'failed' && !stale) throw AppException.conflict('Черновик не в ошибке — повторять нечего');
     const chat = await this.chats.get(tenantId, String(draft.chat_id));
     const msg = await this.chats.messageBody(tenantId, String(draft.message_id));
-    const src = { fileNameFallback: msg?.file_name ?? null, projectHint: chat?.project_id ? String(chat.project_id) : null };
+    const src = { fileNameFallback: msg?.file_name ?? null, projectHint: chat ? chatProject(chat) : null };
     const voice = String(msg?.body ?? '').trim().length < 3 ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
     if (voice) {
       const waiting = (await this.repo.patch(tenantId, draftId, { status: 'transcribing' })) ?? draft;

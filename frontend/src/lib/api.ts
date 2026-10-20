@@ -1831,6 +1831,9 @@ export const api = {
   /** Уведомления по чату: все · только упоминания · выключены (ТЗ-5, этап 5). */
   setChatNotify: (chatId: string, notify: 'all' | 'mentions' | 'none') =>
     request<{ notify: string }>('PUT', `/chats/${chatId}/notify`, { notify }),
+  /** Проект группы/канала: задачи из переписки ставятся в него; null — отвязать. */
+  setChatProject: (chatId: string, projectId: string | null) =>
+    request<{ projectId: string | null; projectName: string | null }>('PATCH', `/chats/${chatId}/project`, { projectId }),
   setChatDescription: (chatId: string, description: string) =>
     request<{ description: string | null }>('PATCH', `/chats/${chatId}/description`, { description }),
   deleteChatMessage: (chatId: string, messageId: string) => request<any>('DELETE', `/chats/${chatId}/messages/${messageId}`),
@@ -3056,6 +3059,8 @@ export interface ChatInfo {
     id: string; kind: string; title: string | null; description: string | null;
     isPrivate: boolean; isExternal: boolean;
     projectId: string | null; projectName: string | null;
+    /** Проект группы/канала — куда ставятся задачи из переписки. */
+    linkedProjectId?: string | null; linkedProjectName?: string | null;
     clientId: string | null; clientName: string | null;
     createdAt: string; createdBy: string | null; createdByName: string | null;
   };

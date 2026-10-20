@@ -4,6 +4,7 @@ import { PeoplePicker } from './PeoplePicker';
 import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { ChatProjectSelect } from './chat/ChatProjectSelect';
 
 /**
  * Создание канала.
@@ -24,6 +25,7 @@ export function ChannelModal({ meId, onClose, onCreated }: {
   useEscape(onClose);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -40,6 +42,7 @@ export function ChannelModal({ meId, onClose, onCreated }: {
         isPrivate,
         userIds: [...chosen],
       });
+      if (projectId) await api.setChatProject(String(chat.id), projectId).catch(() => undefined);
       onCreated(String(chat.id));
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Канал не создался');
@@ -76,6 +79,12 @@ export function ChannelModal({ meId, onClose, onCreated }: {
             placeholder="Технические вопросы и релизы"
             maxLength={300}
           />
+        </div>
+
+        <div className="field">
+          <label>Проект</label>
+          <ChatProjectSelect value={projectId} onChange={setProjectId} />
+          <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Задачи из этого чата ИИ поставит в выбранный проект, исполнителя подберёт сам</div>
         </div>
 
         <div className="field">

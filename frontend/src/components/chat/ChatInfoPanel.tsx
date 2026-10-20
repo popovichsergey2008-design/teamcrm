@@ -13,6 +13,7 @@ import { navigate } from '../../lib/router';
 import type { User } from '../../types';
 import { initialsOf } from '../../lib/initials';
 import { confirmAction } from '../ui/dialog';
+import { ChatProjectSelect } from './ChatProjectSelect';
 
 const KIND_LABEL: Record<string, string> = {
   dm: 'Личный диалог', group: 'Групповой чат', channel: 'Канал', project: 'Чат проекта',
@@ -337,15 +338,17 @@ function NotifyRow({ chatId, value, onChanged }: { chatId: string; value: 'all' 
 function AboutBlock({ chat, manageable, onChanged }: { chat: ChatInfo['chat']; manageable: boolean; onChanged: () => void }) {
   const [title, setTitle] = useState(chat.title ?? '');
   const [desc, setDesc] = useState(chat.description ?? '');
+  const [linked, setLinked] = useState(chat.linkedProjectId ?? '');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setTitle(chat.title ?? ''); setDesc(chat.description ?? ''); }, [chat.title, chat.description]);
+  useEffect(() => { setTitle(chat.title ?? ''); setDesc(chat.description ?? ''); setLinked(chat.linkedProjectId ?? ''); }, [chat.title, chat.description, chat.linkedProjectId]);
 
   const save = async () => {
     setBusy(true);
     try {
       if (title.trim() && title.trim() !== (chat.title ?? '')) await api.renameChat(chat.id, title.trim());
       if (desc.trim() !== (chat.description ?? '')) await api.setChatDescription(chat.id, desc);
+      if (linked !== (chat.linkedProjectId ?? '')) await api.setChatProject(chat.id, linked || null);
       toastSaved();
       setEditing(false);
       onChanged();
@@ -359,6 +362,8 @@ function AboutBlock({ chat, manageable, onChanged }: { chat: ChatInfo['chat']; m
         <>
           <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Название" aria-label="Название чата" />
           <textarea className="input" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Описание: о чём этот чат, правила" aria-label="Описание чата" />
+          <label className="dim" style={{ fontSize: 12 }}>Проект — задачи из чата ИИ поставит в него</label>
+          <ChatProjectSelect value={linked} onChange={setLinked} />
           <div className="ci-row-actions">
             <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={save} disabled={busy}>Сохранить</button>
             <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(false)}>Отмена</button>
@@ -384,6 +389,13 @@ function AboutBlock({ chat, manageable, onChanged }: { chat: ChatInfo['chat']; m
         {(chat.kind === 'channel' || chat.kind === 'group') && <><dt>Доступ</dt><dd>{chat.isPrivate ? 'закрытый' : 'открытый — вступить может любой'}</dd></>}
         {chat.isExternal && <><dt>Внешний</dt><dd>есть участник со стороны — он видит всё сказанное здесь</dd></>}
         {chat.projectName && <><dt>Проект</dt><dd><a href={`/projects/${chat.projectId}`}>{chat.projectName}</a></dd></>}
+        {(chat.kind === 'group' || chat.kind === 'channel') && (chat.linkedProjectName || manageable) && (
+          <><dt>Проект</dt><dd>
+            {chat.linkedProjectName
+              ? <a href={`/projects/${chat.linkedProjectId}`} title="Задачи из этого чата ставятся в этот проект">{chat.linkedProjectName}</a>
+              : <button className="ci-link" onClick={() => setEditing(true)}>Привязать проект</button>}
+          </dd></>
+        )}
         {chat.clientName && <><dt>Клиент</dt><dd>{chat.clientName}</dd></>}
         <dt>Создан</dt><dd>{stampLabel(chat.createdAt)}{chat.createdByName ? ` · ${chat.createdByName}` : ''}</dd>
       </dl>

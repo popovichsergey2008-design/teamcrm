@@ -106,7 +106,7 @@ const W: Record<ReasonCode, number> = {
 
 const HINT: Record<ReasonCode, string> = {
   EXPLICIT_PROJECT_MENTION: 'проект назван в тексте',
-  CHAT_PROJECT: 'чат этого проекта',
+  CHAT_PROJECT: 'проект этого чата',
   SOURCE_PROJECT: 'создаётся из этого проекта',
   MEETING_PROJECT: 'проект встречи',
   CLIENT_RELATION: 'проект клиента',

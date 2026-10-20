@@ -6,6 +6,7 @@ import type { User } from '../types';
 import { overlayProps } from '../lib/overlay';
 import { useEscape } from '../hooks/useEscape';
 import { initialsOf } from '../lib/initials';
+import { ChatProjectSelect } from './chat/ChatProjectSelect';
 
 /**
  * Создание группового чата: название и состав.
@@ -20,6 +21,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
   // Escape закрывает, как и остальные окна
   useEscape(onClose);
   const [title, setTitle] = useState('');
+  const [projectId, setProjectId] = useState('');
   const [picked, setPicked] = useState<Record<string, boolean>>({});
   const [query, setQuery] = useState('');
   const [err, setErr] = useState('');
@@ -38,6 +40,7 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
     setErr(''); setBusy(true);
     try {
       const chat = await api.createChatGroup(title.trim(), chosen);
+      if (projectId) await api.setChatProject(String(chat.id), projectId).catch(() => undefined);
       onCreated(chat.id);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось создать группу');
@@ -55,6 +58,12 @@ export function GroupChatModal({ users, meId, onClose, onCreated }: {
             value={title} onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           />
+        </div>
+
+        <div className="field">
+          <label>Проект</label>
+          <ChatProjectSelect value={projectId} onChange={setProjectId} />
+          <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Задачи из этого чата ИИ поставит в выбранный проект, исполнителя подберёт сам</div>
         </div>
 
         <div className="field">

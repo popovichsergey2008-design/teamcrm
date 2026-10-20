@@ -54,6 +54,9 @@ class CreateChannelDto {
   @IsOptional() @IsBoolean() isPrivate?: boolean;
   @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
 }
+class LinkProjectDto {
+  @IsOptional() @IsString() @MaxLength(32) projectId?: string | null;
+}
 class CreateExternalDto {
   @IsString() @MaxLength(160) title!: string;
   @IsOptional() @IsString() clientId?: string;
@@ -512,6 +515,12 @@ export class ChatsController {
   @Put(':id/notify')
   setNotify(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: NotifyModeDto) {
     return this.chats.setNotify(u.tenantId, id, u, dto.notify);
+  }
+
+  /** Проект группы/канала: задачи из переписки ставятся в него (projectId: null — отвязать). */
+  @Patch(':id/project')
+  setLinkedProject(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: LinkProjectDto) {
+    return this.chats.setLinkedProject(u.tenantId, id, u, dto.projectId ? String(dto.projectId) : null);
   }
 
   @Patch(':id/description')

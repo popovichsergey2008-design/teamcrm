@@ -32,7 +32,7 @@ const VISIBLE = `(c.kind = 'project' OR EXISTS (
 
 /** Поля чата для прохода: одинаковы у разбора по затиханию и у суточной сверки. */
 const DUE_CHAT = `SELECT c.id::text AS chat_id, c.tenant_id::text, c.kind, c.title,
-        c.project_id::text, s.quiet_minutes, t.timezone, s.ask_in_chat,
+        COALESCE(c.project_id, c.linked_project_id)::text AS project_id, s.quiet_minutes, t.timezone, s.ask_in_chat,
         s.mode, s.monthly_limit_usd,
         COALESCE(w.work_start, TIME '09:00')::text AS work_start,
         COALESCE(w.work_end, TIME '18:00')::text AS work_end,
@@ -652,7 +652,7 @@ export class ChatAnalysisRepository {
               a.project_id::text, a.assignee_id::text, a.assigner_id::text,
               a.question_message_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
-              c.kind, c.project_id::text AS chat_project_id,
+              c.kind, COALESCE(c.project_id, c.linked_project_id)::text AS chat_project_id,
               a.action_type, a.meeting_date::text, a.participant_ids::text[] AS participant_ids, t.timezone
          FROM chat_extracted_actions a
          JOIN chats c ON c.id = a.chat_id

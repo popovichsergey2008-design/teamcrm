@@ -8,6 +8,8 @@ export interface ChatRow {
   is_external?: boolean;
   client_id?: string | null;
   project_id: string | null; dm_key: string | null; created_by: string | null;
+  /** Проект группы/канала — куда ставить задачи из переписки (0189). */
+  linked_project_id?: string | null;
   created_at: Date; last_message_at: Date | null;
 }
 
@@ -1234,16 +1236,32 @@ export class ChatsRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
+  async setLinkedProject(tenantId: string, chatId: string, projectId: string | null): Promise<void> {
+    await this.db.query(`UPDATE chats SET linked_project_id=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, chatId, projectId]);
+  }
+
+  /** Проект для привязки: этой компании, не в архиве и виден человеку — тем же правилом, что список проектов. */
+  async linkableProject(tenantId: string, projectId: string, viewer: { userId: string; role: string }) {
+    return this.db.one<{ id: string; name: string }>(
+      `SELECT p.id::text, p.name FROM projects p
+        WHERE p.tenant_id=$1 AND p.id=$2 AND COALESCE(p.status, 'active') <> 'archived'
+          AND ($4 IN ('owner','manager') OR p.visibility = 'all' OR p.owner_user_id = $3::bigint
+               OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = $3::bigint))`,
+      [tenantId, projectId, viewer.userId, viewer.role],
+    );
+  }
+
   async setDescription(tenantId: string, chatId: string, description: string | null): Promise<void> {
     await this.db.query(`UPDATE chats SET description=$3 WHERE tenant_id=$1 AND id=$2`, [tenantId, chatId, description]);
   }
 
   /** Сведения для сайдбара: чат вместе с именами проекта и клиента. */
   info(tenantId: string, chatId: string) {
-    return this.db.one<ChatRow & { project_name: string | null; client_name: string | null; created_by_name: string | null }>(
-      `SELECT c.*, p.name AS project_name, cl.name AS client_name, u.full_name AS created_by_name
+    return this.db.one<ChatRow & { project_name: string | null; linked_project_name: string | null; client_name: string | null; created_by_name: string | null }>(
+      `SELECT c.*, p.name AS project_name, lp.name AS linked_project_name, cl.name AS client_name, u.full_name AS created_by_name
          FROM chats c
     LEFT JOIN projects p ON p.id = c.project_id
+    LEFT JOIN projects lp ON lp.id = c.linked_project_id
     LEFT JOIN clients cl ON cl.id = c.client_id
     LEFT JOIN users u ON u.id = c.created_by
         WHERE c.tenant_id=$1 AND c.id=$2`,

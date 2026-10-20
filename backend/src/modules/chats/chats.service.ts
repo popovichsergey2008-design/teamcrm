@@ -1129,6 +1129,7 @@ export class ChatsService {
         id: String(chat.id), kind: chat.kind, title: chat.title, description: chat.description ?? null,
         isPrivate: chat.is_private !== false, isExternal: chat.is_external === true,
         projectId: chat.project_id ? String(chat.project_id) : null, projectName: chat.project_name,
+        linkedProjectId: chat.linked_project_id ? String(chat.linked_project_id) : null, linkedProjectName: chat.linked_project_name ?? null,
         clientId: chat.client_id ? String(chat.client_id) : null, clientName: chat.client_name,
         createdAt: chat.created_at, createdBy: chat.created_by ? String(chat.created_by) : null, createdByName: chat.created_by_name,
       },
@@ -1200,6 +1201,23 @@ export class ChatsService {
     await this.announce(tenantId, chat, role === 'admin' ? `${name} — теперь администратор` : `${name} больше не администратор`);
     this.emitChatUpdated(tenantId, chat);
     return { role };
+  }
+
+  /**
+   * Проект группы/канала (20.10, просьба заказчика): задачи из этого чата ИИ ставит
+   * сразу в него, а не угадывает по тексту. Исполнитель по-прежнему — по обращению
+   * в сообщении и навыкам. null — отвязать.
+   */
+  async setLinkedProject(tenantId: string, chatId: string, user: { userId: string; role: string }, projectId: string | null) {
+    const chat = await this.group(tenantId, chatId, user);
+    if (chat.kind !== 'group' && chat.kind !== 'channel') throw AppException.validation('Проект привязывается к группе или каналу');
+    if (!(await this.canManageChat(chat, user))) throw AppException.forbidden('Проект чата меняет владелец или администратор чата');
+    const project = projectId ? await this.repo.linkableProject(tenantId, projectId, user) : null;
+    if (projectId && !project) throw AppException.notFound('Проект не найден или недоступен');
+    await this.repo.setLinkedProject(tenantId, chatId, project ? project.id : null);
+    await this.repo.audit({ tenantId, chatId, actorId: user.userId, action: 'project_linked', detail: { projectId: project?.id ?? null } });
+    this.emitChatUpdated(tenantId, chat);
+    return { projectId: project?.id ?? null, projectName: project?.name ?? null };
   }
 
   async setDescription(tenantId: string, chatId: string, user: { userId: string; role: string }, description: string) {
