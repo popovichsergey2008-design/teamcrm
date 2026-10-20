@@ -39,6 +39,7 @@ export function BottomNav({ route, unread, counters, onMore }: {
         return (
           <button
             key={t.key}
+            data-tour={`tab-${t.key}`}
             className={`bottom-nav-item${t.match(route) ? ' active' : ''}`}
             onClick={t.go}
             aria-current={t.match(route) ? 'page' : undefined}
@@ -52,7 +53,7 @@ export function BottomNav({ route, unread, counters, onMore }: {
         );
       })}
       {/* «Новости» живут в «Ещё» (решение 11.10): новое там — точкой на «Ещё», цифра — внутри */}
-      <button className="bottom-nav-item" onClick={onMore} aria-label={(counters.news?.unread ?? 0) > 0 ? `Ещё разделы, в «Новостях» новое: ${counters.news?.unread}` : 'Ещё разделы'} aria-haspopup="menu">
+      <button className="bottom-nav-item" data-tour="tab-more" onClick={onMore} aria-label={(counters.news?.unread ?? 0) > 0 ? `Ещё разделы, в «Новостях» новое: ${counters.news?.unread}` : 'Ещё разделы'} aria-haspopup="menu">
         <span className="bottom-nav-icon">
           <Icon name="more" size={22} />
           {(counters.news?.unread ?? 0) > 0 && <span className="bottom-nav-badge bottom-nav-dot" aria-hidden="true" />}

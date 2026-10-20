@@ -33,6 +33,8 @@ export interface User {
     checks?: Record<string, boolean>;
     /** Эффекты интерфейса (ТЗ-23): вибрация, акценты ИИ, праздничные, «минимальные». Звук — на устройстве. */
     effects?: { haptics?: boolean; ai?: boolean; celebration?: boolean; minimal?: boolean };
+    /** Обучение новичка (#4605): что пройдено и запускать ли самому. */
+    tour?: { auto?: boolean; done?: string[] };
   };
 }
 

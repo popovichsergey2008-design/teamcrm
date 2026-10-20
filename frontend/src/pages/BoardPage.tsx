@@ -683,6 +683,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                       <Button
                         variant="primary"
                         size="sm"
+                        data-tour="board-new"
                         onClick={() => openCreate(board.columns[0].id)}
                         title={`Новая задача в колонку «${board.columns[0].name}» (клавиша C — голосом или текстом)`}
                       >

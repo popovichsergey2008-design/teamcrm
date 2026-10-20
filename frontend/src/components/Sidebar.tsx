@@ -21,6 +21,7 @@ import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
 import { OptionSelect } from './ui/option-select';
 import { initialsOf } from '../lib/initials';
+import { restartTour } from '../lib/tour';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -511,6 +512,14 @@ export function Sidebar({
                 >
                   <Icon name="user" size={15} /> Профиль
                 </button>
+                {/* #4605: пройти обучение заново — общий обзор и подсказки разделов */}
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); setOpen(false); restartTour(); }}
+                >
+                  <Icon name="book" size={15} /> Обучение
+                </button>
                 {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
                 <div className="menu-theme">
                   <span className="dim">Пространство</span>
@@ -669,6 +678,7 @@ export function Sidebar({
               <div
                 key={item.section}
                 className={`nav-group${tuning ? ' nav-group-tuning' : ''}${hiddenNow ? ' nav-group-hidden' : ''}`}
+                data-tour={`nav-${item.section}`}
                 onMouseEnter={() => onHoverSection(item.section)}
                 draggable={tuning}
                 onDragStart={() => setDragged(item.section)}
