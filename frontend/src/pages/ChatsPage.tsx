@@ -1894,6 +1894,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       reload();
     } catch { /* ошибка видна всплывашкой запроса */ }
   };
+  /*
+    Переименовать — прямо из списка и из шапки чата. Раньше это было только в «Сведениях»
+    мелким карандашом, и заказчик не нашёл (20.10). Администратора чата список не знает —
+    ему остаётся карандаш в «Сведениях»; сервер в любом случае проверяет право сам.
+  */
+  const canRenameChat = (c: Chat) => (c.kind === 'group' || c.kind === 'channel')
+    && (String(c.createdBy ?? '') === String(user?.id ?? '') || user?.role === 'owner' || user?.role === 'manager');
+  const renameChat = async (c: Chat) => {
+    const title = await promptText({ title: 'Переименовать чат', placeholder: 'Название', defaultValue: c.title ?? '', confirmLabel: 'Сохранить', minLength: 1, singleLine: true });
+    if (!title?.trim() || title.trim() === (c.title ?? '')) return;
+    try { await api.renameChat(String(c.id), title.trim()); toastSaved('Чат переименован'); reload(); }
+    catch { /* ошибка видна всплывашкой запроса */ }
+  };
   const leaveFromList = async (c: Chat) => {
     if (!(await confirmAction({ title: `Выйти из чата «${c.title ?? 'Чат'}»?`, description: 'Переписка останется у остальных участников. Вернуть вас сможет администратор чата.', confirmLabel: 'Выйти', danger: true }))) return;
     try {
@@ -1910,6 +1923,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       onClick={() => openChat(c.id)} onStar={() => star(c)}
       onInfo={c.kind === 'self' ? undefined : () => { openChat(c.id); setThread(null); setInfoOpen(true); }}
       onLeave={c.kind === 'group' || c.kind === 'channel' ? () => void leaveFromList(c) : undefined}
+      onRename={canRenameChat(c) ? () => void renameChat(c) : undefined}
       onDelete={canDeleteChat(c) ? () => void deleteFromList(c) : undefined}
     />
   );
@@ -2594,6 +2608,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               <span className="chat-head-title">
                 {active.kind === 'dm' && <span className={`presence ${active.peerOnline ? 'on' : ''}`} title={active.peerOnline ? 'в сети' : 'не в сети'} />}
                 <b>{active.title ?? 'Чат'}</b>
+                {canRenameChat(active) && (
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void renameChat(active)} title="Переименовать чат" aria-label="Переименовать чат">
+                    <Icon name="edit" size={14} />
+                  </button>
+                )}
                 {active.kind === 'dm' && groupFor(active.peerId) && (
                   <span className="chat-row-group">{groupFor(active.peerId)}</span>
                 )}
@@ -3744,12 +3763,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   );
 }
 
-function ChatRow({ chat, active, group, onClick, onStar, onInfo, onLeave, onDelete }: {
+function ChatRow({ chat, active, group, onClick, onStar, onInfo, onRename, onLeave, onDelete }: {
   chat: Chat; active: boolean; group?: string; onClick: () => void;
   /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
   onStar?: () => void;
   /** Действия с чатом прямо из списка: сведения, выйти, удалить (нет — пункта нет). */
   onInfo?: () => void;
+  onRename?: () => void;
   onLeave?: () => void;
   onDelete?: () => void;
 }) {
@@ -3788,7 +3808,7 @@ function ChatRow({ chat, active, group, onClick, onStar, onInfo, onLeave, onDele
       </button>
     )}
     {/* Управление чатом из списка: раньше «Удалить» пряталось в самом низу «Сведений» */}
-    {(onInfo || onLeave || onDelete) && (
+    {(onInfo || onRename || onLeave || onDelete) && (
       <DropdownMenu
         trigger={(
           <button className="chat-star chat-row-more" title="Действия с чатом" aria-label={`Действия с чатом «${chat.title ?? 'Чат'}»`}>
@@ -3797,6 +3817,7 @@ function ChatRow({ chat, active, group, onClick, onStar, onInfo, onLeave, onDele
         )}
       >
         {onInfo && <MenuItem onSelect={onInfo} icon={<Icon name="info" size={15} />}>Сведения и участники</MenuItem>}
+        {onRename && <MenuItem onSelect={onRename} icon={<Icon name="edit" size={15} />}>Переименовать</MenuItem>}
         {onLeave && <MenuItem onSelect={onLeave} icon={<Icon name="logout" size={15} />}>Выйти из чата</MenuItem>}
         {onDelete && (
           <>
