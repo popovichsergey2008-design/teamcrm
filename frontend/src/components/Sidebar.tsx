@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
+import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { setQuietSource } from '../lib/quiet';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -92,15 +93,6 @@ const MENU: Item[] = [
     hint: 'Пространства задач компании: списки и канбан',
     // «Клиенты и сделки» переехали в личный кабинет и видны только тому, кто завёл
     // компанию: приглашённым сотрудникам этот раздел не нужен, а место в меню занимал
-  },
-  {
-    // Клиенты (ТЗ-17): рабочий центр отношений с клиентом. Пока — только в сборке dev.
-    section: 'clients',
-    label: 'Клиенты',
-    icon: 'building',
-    hint: 'Клиенты: контакты, сделки, задачи, встречи и что делать дальше',
-    roles: ['owner', 'manager', 'member'],
-    devOnly: 'clients',
   },
   {
     section: 'chat',
@@ -246,42 +238,51 @@ export function Sidebar({
    * само» при первой же смене устройства.
    */
   const [prefs, setPrefs] = useState<MenuPrefs>(user.uiPrefs ?? {});
-  const [tuning, setTuning] = useState(false);
-  const [dragged, setDragged] = useState<string | null>(null);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
 
   const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
     && (!i.devOnly || CLIENTS_ENABLED));
   const ordered = applyOrder(allowed, prefs);
-  // В режиме настройки показываем и спрятанное — иначе вернуть его будет неоткуда.
-  const menuItems = tuning ? ordered : applyHidden(ordered, prefs);
-  // Меню уже трогали: только тогда «Сбросить» вообще имеет смысл.
-  const hasPrefs = !!(prefs.order?.length || prefs.hidden?.length);
+  const menuItems = applyHidden(ordered, prefs);
+  const hiddenItems = ordered.filter((i) => isHidden(i.section, prefs));
+  // Меню уже трогали: только тогда «Вернуть по умолчанию» вообще имеет смысл.
+  const hasPrefs = !!(prefs.order?.length || prefs.hidden?.length || prefs.home);
+  /** Главная страница: открывается при входе и по логотипу (#4601). */
+  const home = prefs.home && allowed.some((i) => i.section === prefs.home) ? prefs.home : 'focus';
 
   const savePrefs = (next: MenuPrefs) => {
     setPrefs(next);
     // Не ждём ответа: перестановка должна ощущаться мгновенно, а неудача сохранения
     // хуже всего лечится замиранием интерфейса.
-    void api.saveUiPrefs(next).catch(() => undefined);
+    // Только своё — порядок, скрытые, главная: остальные ключи настроек пишут другие
+    // места (обучение, Chat Bar), и устаревшая копия отсюда затирала бы их.
+    void api.saveUiPrefs({ order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '' }).catch(() => undefined);
   };
 
-  const dropOn = (section: string) => {
-    if (!dragged || dragged === section) return;
+  const shift = (section: string, dir: -1 | 1) => {
     const current = ordered.map((i) => String(i.section));
-    const to = current.indexOf(section);
-    savePrefs({ ...prefs, order: moveItem(current, dragged, to) });
-    setDragged(null);
+    // соседа ищем среди видимых: скрытые между ними не должны «съедать» нажатие
+    const shown = menuItems.map((i) => String(i.section));
+    const neighbour = shown[shown.indexOf(section) + dir];
+    if (!neighbour) return;
+    savePrefs({ ...prefs, order: moveItem(current, section, current.indexOf(neighbour)) });
   };
-
-  /**
-   * Выход из настройки меню.
-   *
-   * Отдельной функцией, потому что выйти можно тремя способами: кнопкой сверху,
-   * кнопкой снизу и клавишей Esc. В настройке подменяется весь список разделов —
-   * человек, не заметивший мелкую надпись «Готово» внизу, оказывался заперт:
-   * ни один пункт меню в этом режиме не открывается.
-   */
-  const stopTuning = () => { setTuning(false); setDragged(null); };
+  const hide = (section: string) => savePrefs({ ...prefs, hidden: toggleHidden(prefs.hidden ?? [], section) });
+  const unhide = (section: string) => savePrefs({ ...prefs, hidden: (prefs.hidden ?? []).filter((x) => x !== section) });
+  /*
+    «Сделать главной страницей»: пункт встаёт первым и возвращается в меню, если был
+    скрыт, — главная страница не может прятаться (#4601, как в Битриксе).
+  */
+  const makeHome = (section: string) => {
+    const current = ordered.map((i) => String(i.section));
+    savePrefs({ ...prefs, home: section, order: moveItem(current, section, 0), hidden: (prefs.hidden ?? []).filter((x) => x !== section) });
+    go({ section: section as Section });
+  };
+  // Вход на «/» — открываем выбранную главную, а не всегда «Фокус дня».
+  useEffect(() => {
+    if (home !== 'focus' && window.location.pathname === '/') navigate({ section: home as Section }, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Свой статус присутствия: читается из сводки при входе, ставится из меню профиля. */
   const [myStatus, setMyStatus] = useState<'busy' | 'away' | null>(null);
@@ -299,9 +300,6 @@ export function Sidebar({
     void api.setPresenceStatus(status).catch(() => undefined);
   };
   // Esc — тем же общим хуком, что и остальные слои: Escape закрывает верхний.
-  useEscape(stopTuning, tuning);
-  // В свёрнутой панели у настройки нет ни подписей, ни кнопки выхода — выходим сами.
-  useEffect(() => { if (collapsed) stopTuning(); }, [collapsed]);
 
 
   // Фокус и сводка ассистента живут ровно здесь: больше их никто не показывает.
@@ -460,7 +458,7 @@ export function Sidebar({
             */}
             <button
               className="nav-org-mark"
-              onClick={() => go({ section: 'focus' })}
+              onClick={() => go({ section: home as Section })}
               title={`${orgName} · на главную`}
               aria-label="На главную"
             >
@@ -601,48 +599,6 @@ export function Sidebar({
 
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav className="nav-main" aria-label="Разделы">
-          {/*
-            Шапка режима настройки — липкая и всегда на виду.
-
-            В настройке разделы не открываются, поэтому выход обязан быть заметен
-            сразу, а не мелкой строчкой под списком: заказчик написал «зашёл в
-            настройку меню, а обратно выхода нет». Здесь же сказано, что делать.
-          */}
-          {tuning && !collapsed && (
-            <div className="nav-tune-head">
-              <div className="nav-tune-head-row">
-                <span className="nav-tune-title">Настройка меню</span>
-                {/*
-                  Не «Сбросить»: так читалось как «выйти без сохранения», хотя
-                  несохранённого здесь не бывает вовсе. Кнопка стирает УЖЕ
-                  сохранённые порядок и скрытые разделы — и только тогда, когда
-                  им есть что стирать.
-                */}
-                {hasPrefs && (
-                  <button className="ui-btn ui-btn-ghost ui-btn-sm nav-tune-reset" onClick={() => savePrefs({ order: [], hidden: [] })} title="Вернуть меню к заводскому порядку и показать все разделы">
-                    По умолчанию
-                  </button>
-                )}
-                <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={stopTuning} title="Закрыть настройку меню">
-                  <Icon name="check" size={14} />
-                  Готово
-                </button>
-                {/*
-                  Вторая дверь наружу.
-
-                  Делают они одно и то же — и это нарочно: несохранённого здесь не
-                  бывает, порядок и скрытые разделы уезжают на сервер сразу. Человек
-                  в режиме настройки ищет глазами «выйти», а не «готово», и, не найдя,
-                  оказывается заперт: в этом режиме ни один пункт меню не открывается.
-                  Дешевле дать вторую подпись, чем спорить с тем, как её ищут.
-                */}
-                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={stopTuning} title="Выйти из настройки меню — всё уже сохранено">
-                  <Icon name="logout" size={14} />
-                  Выйти
-                </button>
-              </div>
-            </div>
-          )}
           {menuItems.map((item) => {
             // реестр задач живёт внутри «Проектов» — там и подсветка
             const active = route.section === item.section || (item.section === 'projects' && route.section === 'tasks');
@@ -673,41 +629,23 @@ export function Sidebar({
             */
             const hasChildren = subs.length > 0;
             const unfolded = active && !collapsed && !folded.has(item.section);
-            const hiddenNow = isHidden(item.section, prefs);
+            const idx = menuItems.indexOf(item);
             return (
               <div
                 key={item.section}
-                className={`nav-group${tuning ? ' nav-group-tuning' : ''}${hiddenNow ? ' nav-group-hidden' : ''}`}
+                className="nav-group"
                 data-tour={`nav-${item.section}`}
                 onMouseEnter={() => onHoverSection(item.section)}
-                draggable={tuning}
-                onDragStart={() => setDragged(item.section)}
-                onDragOver={(e) => { if (tuning) e.preventDefault(); }}
-                onDrop={() => dropOn(item.section)}
               >
-                {/* В режиме настройки пункт не открывается, а переставляется:
-                    случайный переход посреди перетаскивания сбивает всю затею. */}
-                {tuning && (
-                  <span className="nav-tune-row">
-                    <Icon name="list" size={14} />
-                    <span className="nav-label">{item.label}</span>
-                    <button
-                      className="nav-tune-eye"
-                      title={PROTECTED.includes(item.section)
-                        ? 'Этот раздел скрыть нельзя — из него настраивается всё остальное'
-                        : hiddenNow ? 'Вернуть в меню' : 'Убрать из меню'}
-                      disabled={PROTECTED.includes(item.section)}
-                      onClick={() => savePrefs({ ...prefs, hidden: toggleHidden(prefs.hidden ?? [], item.section) })}
-                    >
-                      <Icon name={hiddenNow ? 'eye-off' : 'eye'} size={15} />
-                    </button>
-                  </span>
-                )}
-                {!tuning && (<>
                 {link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
                     <span className="nav-label">{item.label}</span>
+                    {home === item.section && !collapsed && (
+                      <span className="nav-home" title="Главная страница — открывается при входе">
+                        <Icon name="home" size={13} />
+                      </span>
+                    )}
                     {badge > 0 && (
                       <span
                         className={`nav-count${item.section === 'radar' ? ' nav-count-warn' : ''}`}
@@ -724,6 +662,36 @@ export function Sidebar({
                     )}
                   </>
                 ), hasChildren ? () => toggleFold(item.section) : undefined)}
+                {/*
+                  Шестерёнка у пункта — как в Битриксе (#4601): появляется при наведении,
+                  с задержкой около секунды, чтобы не мелькать, когда мышь просто
+                  проходит по меню. Отдельного режима «Настроить меню» больше нет.
+                */}
+                {!collapsed && (
+                  <DropdownMenu
+                    align="start"
+                    trigger={(
+                      <button className="nav-gear" title="Настроить пункт меню" aria-label={`Настроить пункт «${item.label}»`}>
+                        <Icon name="settings" size={14} />
+                      </button>
+                    )}
+                  >
+                    {home === item.section
+                      ? <MenuItem disabled icon={<Icon name="home" size={15} />} onSelect={() => undefined}>Это главная страница</MenuItem>
+                      : <MenuItem icon={<Icon name="home" size={15} />} onSelect={() => makeHome(item.section)}>Сделать главной страницей</MenuItem>}
+                    {idx > 0 && <MenuItem icon={<Icon name="arrow-up" size={15} />} onSelect={() => shift(item.section, -1)}>Переместить выше</MenuItem>}
+                    {idx < menuItems.length - 1 && <MenuItem icon={<Icon name="arrow-down" size={15} />} onSelect={() => shift(item.section, 1)}>Переместить ниже</MenuItem>}
+                    {home !== item.section && !PROTECTED.includes(item.section) && (
+                      <MenuItem icon={<Icon name="eye-off" size={15} />} onSelect={() => hide(item.section)}>Скрыть пункт</MenuItem>
+                    )}
+                    {hasPrefs && (
+                      <>
+                        <MenuSeparator />
+                        <MenuItem icon={<Icon name="refresh" size={15} />} onSelect={() => savePrefs({ order: [], hidden: [], home: '' })}>Вернуть меню по умолчанию</MenuItem>
+                      </>
+                    )}
+                  </DropdownMenu>
+                )}
                 {/* Проекты раскрываются прямо под своим разделом, как в привычных
                     таск-менеджерах: отдельная колонка слева отъедала место у доски
                     и висела перед глазами даже тогда, когда переключать нечего. */}
@@ -738,28 +706,47 @@ export function Sidebar({
                     ))}
                   </span>
                 ))}
-                </>
-                )}
                 {/* #1567: идущий созвон — сразу под «Чаты & Миты», а не в самом низу под прокруткой */}
-                {item.section === 'chat' && !tuning && callWidget}
+                {item.section === 'chat' && callWidget}
               </div>
             );
           })}
-          {!tuning && !menuItems.some((i) => i.section === 'chat') && callWidget}
+          {!menuItems.some((i) => i.section === 'chat') && callWidget}
 
-          {/* Вход в настройку — внизу списка и мелко: ею пользуются один раз,
-              а место в панели занимают каждый день. В самой настройке этой строки
-              нет: выход живёт в шапке, две кнопки об одном и том же только путают. */}
-          {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
-          {!collapsed && !tuning && <AppUpdateRow />}
-          {!collapsed && !tuning && (
-            <div className="nav-tune-bar">
-              <button className="nav-tune-btn" onClick={() => setTuning(true)}>
-                <Icon name="settings" size={13} />
-                Настроить меню
+          {/*
+            Скрытые пункты — архивом внизу, как в Битриксе (#4601): свёрнуты, видны
+            только когда что-то скрыто. Отсюда же открыть скрытый раздел или вернуть.
+          */}
+          {!collapsed && hiddenItems.length > 0 && (
+            <div className="nav-archive">
+              <button className="nav-archive-head" onClick={() => setArchiveOpen((v) => !v)} aria-expanded={archiveOpen}>
+                <Icon name={archiveOpen ? 'chevron-down' : 'chevron-right'} size={13} />
+                Скрытые пункты · {hiddenItems.length}
               </button>
+              {archiveOpen && (
+                <>
+                  {hiddenItems.map((item) => (
+                    <div key={item.section} className="nav-archive-row">
+                      {link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
+                        <>
+                          <Icon name={item.icon} size={16} />
+                          <span className="nav-label">{item.label}</span>
+                        </>
+                      ))}
+                      <button className="nav-archive-back" onClick={() => unhide(item.section)} title="Вернуть в меню" aria-label={`Вернуть «${item.label}» в меню`}>
+                        <Icon name="eye" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <button className="nav-archive-all" onClick={() => savePrefs({ ...prefs, hidden: [] })}>
+                    <Icon name="refresh" size={13} /> Восстановить все пункты
+                  </button>
+                </>
+              )}
             </div>
           )}
+          {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
+          {!collapsed && <AppUpdateRow />}
 
         </nav>
 

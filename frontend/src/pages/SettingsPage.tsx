@@ -58,6 +58,14 @@ const CARDS: Card[] = [
     roles: ['owner'],
   },
   {
+    /* Клиенты переехали из левого меню сюда — в кабинет руководителя (20.10). */
+    tab: 'clients',
+    title: 'Клиенты',
+    hint: 'Клиенты и сделки: контакты, задачи, встречи и что делать дальше',
+    icon: 'building',
+    roles: ['owner', 'manager'],
+  },
+  {
     tab: 'mail',
     title: 'Почта',
     hint: 'Ваш ящик Gmail, Яндекс, Mail.ru, Outlook или свой: секретарь разбирает письма и готовит ответы',
@@ -186,7 +194,9 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
             className="settings-card"
             onClick={() => (c.tab === 'account'
               ? navigate({ section: 'profile' })
-              : navigate({ section: 'settings', tab: c.tab }))}
+              : c.tab === 'clients'
+                ? navigate({ section: 'clients' })
+                : navigate({ section: 'settings', tab: c.tab }))}
           >
             <span className="settings-card-icon"><Icon name={c.icon} size={20} /></span>
             <span className="settings-card-title">{c.title}</span>

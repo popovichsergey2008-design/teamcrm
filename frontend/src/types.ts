@@ -23,7 +23,7 @@ export interface User {
   avatarUrl?: string | null;
   /** Личное меню: порядок пунктов и скрытые разделы; Chat Bar. Живёт у человека, не в браузере. */
   uiPrefs?: {
-    order?: string[]; hidden?: string[];
+    order?: string[]; hidden?: string[]; home?: string;
     chatBar?: { expanded?: boolean; width?: number };
     /** Секции списка чатов: порядок и свёрнутые (ТЗ-5, раздел 38). */
     chatSections?: { order?: string[]; collapsed?: string[] };

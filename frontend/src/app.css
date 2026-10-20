@@ -157,7 +157,36 @@
 }
 /* основное меню */
 .nav-main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-top: var(--sp-2); border-top: 1px solid var(--border); }
-.nav-group { display: flex; flex-direction: column; gap: 2px; }
+.nav-group { position: relative; display: flex; flex-direction: column; gap: 2px; }
+/*
+  Шестерёнка пункта меню (#4601, как в Битриксе): видна при наведении, но не сразу —
+  примерно через секунду, иначе мелькает у каждого пункта, по которому прошла мышь.
+  Уходит сразу. Открытое меню держит её на виду.
+*/
+.nav-gear {
+  position: absolute; top: 6px; right: 6px; width: 26px; height: 26px;
+  display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 6px;
+  background: var(--bg-elev); color: var(--text-mut); cursor: pointer; box-shadow: 0 0 0 1px var(--border);
+  opacity: 0; pointer-events: none; transition: opacity .15s ease;
+}
+.nav-group:hover > .nav-gear { opacity: 1; pointer-events: auto; transition: opacity .25s ease .9s; }
+.nav-gear[data-popup-open], .nav-gear:focus-visible { opacity: 1; pointer-events: auto; transition-delay: 0s; }
+.nav-gear:hover { color: var(--text); }
+@media (hover: none) { .nav-gear { opacity: .6; pointer-events: auto; } }
+.nav-home { display: inline-flex; color: var(--text-mut); }
+.nav-archive { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.nav-archive-head, .nav-archive-all {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 10px; border: 0; background: none;
+  color: var(--text-mut); font: inherit; font-size: calc(12px * var(--fs-scale)); cursor: pointer; text-align: left;
+}
+.nav-archive-head:hover, .nav-archive-all:hover { color: var(--text); }
+.nav-archive-row { position: relative; }
+.nav-archive-row .nav-item { opacity: .7; padding-right: 40px; }
+.nav-archive-back {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: 26px; height: 26px;
+  display: inline-grid; place-items: center; border: 0; border-radius: 6px; background: none; color: var(--text-mut); cursor: pointer;
+}
+.nav-archive-back:hover { color: var(--text); background: var(--hover); }
 .nav-item {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 9px 10px; border-radius: var(--radius-sm); cursor: pointer;
@@ -1553,46 +1582,7 @@
 .ai-quick .ui-btn { padding: 3px 8px; font-size: calc(12px * var(--fs-scale)); }
 .comment-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
 
-/* Настройка меню: перетаскивание пунктов и скрытие ненужных. */
-.nav-group-tuning { cursor: grab; border-radius: var(--radius-sm); }
-.nav-group-tuning:hover { background: var(--hover); }
-/* Спрятанный раздел в режиме настройки виден приглушённо — вернуть его иначе неоткуда. */
-.nav-group-hidden .nav-tune-row { opacity: .5; }
-.nav-tune-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: var(--fs-sm); }
-.nav-tune-eye {
-  margin-left: auto; display: inline-flex; border: none; background: none;
-  color: var(--text-mut); cursor: pointer; padding: 2px; border-radius: var(--radius-sm);
-}
-.nav-tune-eye:hover:not(:disabled) { color: var(--text); background: var(--bg-elev); }
-.nav-tune-eye:disabled { opacity: .35; cursor: default; }
-.nav-tune-bar { display: flex; gap: 8px; padding: 6px 10px; }
-.nav-tune-btn {
-  display: inline-flex; align-items: center; gap: 5px; border: none; background: none;
-  color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); cursor: pointer; padding: 2px;
-}
-.nav-tune-btn:hover { color: var(--text); }
-/*
-  Шапка режима настройки.
 
-  Липкая и с обычной кнопкой: в настройке разделы не открываются, и выход должен
-  быть виден в любой момент, а не только когда список пролистан до дна.
-*/
-.nav-tune-head {
-  position: sticky; top: 0; z-index: 2;
-  margin: -2px 6px 4px; padding: 8px 10px;
-  background: var(--bg-elev-2); border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-/*
-  Заголовок отдельной строкой, кнопки — своей.
-
-  Панель узкая: «Настройка меню» и две кнопки в один ряд не помещались и растягивали
-  её, отчего внизу появлялась горизонтальная прокрутка. Кнопки делят строку поровну.
-
-  «По умолчанию» — тоже своей строкой: с ней кнопок становится три, и вместе они
-  в ширину панели уже не влезают. Внизу остаётся пара «Готово» и «Выйти».
-*/
-.nav-tune-head-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /*
   Размер шрифта в кабинете — ряд цифр под выбором темы.
 
@@ -1609,9 +1599,6 @@
 .font-option:hover { color: var(--text); background: var(--hover); }
 .font-option.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
 .font-option:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-.nav-tune-title { flex: 1 0 100%; font-size: var(--fs-sm); font-weight: 600; }
-.nav-tune-head-row .ui-btn { flex: 1 1 auto; justify-content: center; white-space: nowrap; }
-.nav-tune-head-row .nav-tune-reset { flex: 1 0 100%; }
 
 /*
   Объединение похожих задач.
@@ -4097,7 +4084,7 @@
 .nav-org-select:focus-visible, .nav-open-btn:focus-visible,
 .focus-card:focus-visible, .focus-more:focus-visible, .focus-chip:focus-visible,
 .mine-filter-item:focus-visible, .mine-filter-reset:focus-visible, .people-chip-x:focus-visible,
-.nav-tune-eye:focus-visible, .nav-tune-btn:focus-visible,
+.nav-gear:focus-visible, .nav-archive-head:focus-visible, .nav-archive-back:focus-visible, .nav-archive-all:focus-visible,
 .reaction:focus-visible,
 .focus-plan-btn:focus-visible, .approval-task:focus-visible, .call-starter-row:focus-visible,
 .call-starter-ai:focus-visible,
