@@ -491,6 +491,12 @@ test('вставка из Word и с сайта: списки и абзацы д
   // перенос строки внутри абзаца не теряется и не удваивается
   assert.equal(mdToHtml('первая\nвторая'), '<p>первая<br>вторая</p>');
 
+  // #4609: в переписке пустые строки между абзацами остаются строками, по краям — нет
+  const gap = '<p class="md-gap"><br></p>';
+  assert.equal(mdToHtml('\nПривет\n\n\nссылка 1\n\nссылка 2\n\n', { keepBlank: true }), `<p>Привет</p>${gap}${gap}<p>ссылка 1</p>${gap}<p>ссылка 2</p>`);
+  assert.equal(mdToHtml('итог:\n\n- раз\n- два', { keepBlank: true }), `<p>итог:</p>${gap}<ul><li>раз</li><li>два</li></ul>`);
+  assert.equal(mdToHtml('Привет\n\nпока'), '<p>Привет</p><p>пока</p>', 'без keepBlank — как раньше');
+
   // #1559: буфер Google Таблиц — стиль ячейки не текст
   const sheets = el('body', [
     el('google-sheets-html-origin', [

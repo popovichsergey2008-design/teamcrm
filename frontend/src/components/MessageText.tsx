@@ -22,7 +22,7 @@ export function MessageText({ text, className, mark }: {
   mark?: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const html = mdToHtml(text);
+  const html = mdToHtml(text, { keepBlank: true });
 
   // картинки в сообщениях лежат за авторизацией: содержимое подставляем сами
   useEffect(() => {

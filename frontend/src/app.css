@@ -5290,6 +5290,9 @@ button.chat-pop-row:hover { background: var(--hover); }
 .msg-rich > :first-child { margin-top: 0; }
 .msg-rich > :last-child { margin-bottom: 0; }
 .msg-rich p { margin: 0 0 6px; }
+/* пустая строка, набранная в сообщении (#4609): ровно строка, без своего отступа */
+.msg-rich p:has(+ .md-gap) { margin-bottom: 0; }
+.msg-rich .md-gap { margin: 0; }
 .msg-rich ul, .msg-rich ol { margin: 4px 0 6px; padding-left: 22px; }
 .msg-rich li { margin: 2px 0; }
 .msg-rich h2 { font-size: calc(16px * var(--fs-scale)); margin: 6px 0 4px; }

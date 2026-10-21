@@ -83,29 +83,41 @@ const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
  *
  * Картинки отдаются БЕЗ src: файлы за авторизацией, и голый адрес отдал бы 401.
  * Тот, кто показывает, подставляет содержимое сам по `data-file-id`.
+ *
+ * `keepBlank` — для переписки (#4609): каждая пустая строка между блоками остаётся
+ * пустой строкой (`<p class="md-gap">`), как человек её набрал. Без этого две-три
+ * пустые строки схлопывались в отступ в 6 точек, и сообщение «слипалось». В описании
+ * задачи и редакторе пустые строки по-прежнему просто разделяют абзацы.
  */
-export function mdToHtml(md: string): string {
+export function mdToHtml(md: string, opts: { keepBlank?: boolean } = {}): string {
   const lines = String(md ?? '').replace(/\r\n?/g, '\n').split('\n');
   const out: string[] = [];
   let para: string[] = [];
   let list: { kind: 'ul' | 'ol'; items: string[] } | null = null;
+  let gaps = 0;
+  // пустые строки ставим только МЕЖДУ блоками: в начале и в конце сообщения они не нужны
+  const block = (html: string) => {
+    if (gaps && out.length) out.push('<p class="md-gap"><br></p>'.repeat(gaps));
+    gaps = 0;
+    out.push(html);
+  };
 
   const flushPara = () => {
-    if (para.length) { out.push(`<p>${para.map(inlineToHtml).join('<br>')}</p>`); para = []; }
+    if (para.length) { block(`<p>${para.map(inlineToHtml).join('<br>')}</p>`); para = []; }
   };
   const flushList = () => {
-    if (list) { out.push(`<${list.kind}>${list.items.map((i) => `<li>${inlineToHtml(i)}</li>`).join('')}</${list.kind}>`); list = null; }
+    if (list) { block(`<${list.kind}>${list.items.map((i) => `<li>${inlineToHtml(i)}</li>`).join('')}</${list.kind}>`); list = null; }
   };
 
   for (const raw of lines) {
     const line = raw.replace(/\s+$/, '');
-    if (!line.trim()) { flushPara(); flushList(); continue; }
+    if (!line.trim()) { flushPara(); flushList(); if (opts.keepBlank) gaps += 1; continue; }
 
     const h = HEADING.exec(line);
     if (h) {
       flushPara(); flushList();
       const level = Math.min(4, h[1].length + 1); // «#» — h2: h1 в карточке уже занят названием
-      out.push(`<h${level}>${inlineToHtml(h[2])}</h${level}>`);
+      block(`<h${level}>${inlineToHtml(h[2])}</h${level}>`);
       continue;
     }
     const b = BULLET.exec(line);
@@ -120,7 +132,7 @@ export function mdToHtml(md: string): string {
     // картинка отдельной строкой — отдельным блоком, а не внутри абзаца
     if (new RegExp(`^${IMG.source}$`).test(line.trim())) {
       flushPara(); flushList();
-      out.push(`<p>${inlineToHtml(line.trim())}</p>`);
+      block(`<p>${inlineToHtml(line.trim())}</p>`);
       continue;
     }
     flushList();
