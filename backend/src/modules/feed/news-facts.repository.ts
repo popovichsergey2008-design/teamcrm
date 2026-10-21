@@ -188,6 +188,49 @@ export class NewsFactsRepository {
     );
   }
 
+  /**
+   * Релиз-радар (#1526, блок 3): закрытые за окно задачи с тегом «изменения продукта»
+   * (программная, дизайнерская, релиз, веха…) — по проектам. Видимость проекта едет
+   * в пост: закрытый проект увидят только его участники (§56). Первая картинка или
+   * видео из вложений задачи — демонстрация к посту.
+   */
+  featureTasks(tenantId: string, from: Date, to: Date, tagPattern: string) {
+    return this.db.many<{
+      id: string; title: string; description: string | null; project_id: string; project_name: string;
+      visibility: string; assignee_name: string | null; media_file_id: string | null;
+    }>(
+      `SELECT t.id::text, t.title, left(t.description, 400) AS description, t.project_id::text, p.name AS project_name,
+              COALESCE(p.visibility, 'all') AS visibility, u.full_name AS assignee_name,
+              (SELECT f.id::text FROM task_attachments a JOIN files f ON f.id = a.file_id
+                WHERE a.task_id = t.id AND (f.content_type LIKE 'image/%' OR f.content_type LIKE 'video/%')
+                ORDER BY (f.content_type LIKE 'video/%') DESC, a.id LIMIT 1) AS media_file_id
+         FROM tasks t JOIN projects p ON p.id = t.project_id
+    LEFT JOIN users u ON u.id = t.assignee_id
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at >= $2 AND t.closed_at < $3 AND NOT p.is_demo
+          AND EXISTS (SELECT 1 FROM task_labels tl JOIN labels l ON l.id = tl.label_id
+                       WHERE tl.task_id = t.id AND l.name ~* $4)
+        ORDER BY t.project_id, CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, t.closed_at`,
+      [tenantId, from, to, tagPattern],
+    );
+  }
+
+  /**
+   * Итоги созвонов окна (#1526, блок 5): краткое содержание и решения — материал для
+   * выводов недели. Только встречи открытых проектов и без проекта.
+   */
+  meetingSummaries(tenantId: string, from: Date, to: Date) {
+    return this.db.many<{ id: string; title: string | null; summary: string; decisions: unknown }>(
+      `SELECT m.id::text, m.title, s.summary, s.decisions
+         FROM meetings m JOIN meeting_summaries s ON s.meeting_id = m.id
+    LEFT JOIN projects p ON p.id = m.project_id
+        WHERE m.tenant_id = $1 AND m.status = 'done'
+          AND COALESCE(m.happened_at, m.created_at) >= $2 AND COALESCE(m.happened_at, m.created_at) < $3
+          AND COALESCE(p.visibility, 'all') = 'all' AND length(s.summary) > 40
+        ORDER BY COALESCE(m.happened_at, m.created_at) DESC LIMIT 8`,
+      [tenantId, from, to],
+    );
+  }
+
   /** Задачи для «Объявить релиз»: закрытые задачи проекта за 30 дней — выбрать, что вошло. */
   recentClosed(tenantId: string, projectId: string) {
     return this.db.many<{ id: string; title: string; closed_at: Date; assignee_name: string | null }>(

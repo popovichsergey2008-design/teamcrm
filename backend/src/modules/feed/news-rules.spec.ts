@@ -1,6 +1,6 @@
 import {
   cleanPollOptions, DayFacts, highlightReason, highlightText, learningsText, pickHero, pollWinner,
-  sensitiveHint, weekTrend,
+  radarText, sensitiveHint, weekTrend,
 } from './news-rules';
 
 const base: DayFacts = {
@@ -16,19 +16,19 @@ describe('хайлайт дня', () => {
     const f = { ...base, completedTasks: 16, projectsAffected: 3, meetingsCount: 4, meetingsMinutes: 42 };
     expect(highlightReason(f)).toBe('tasks');
     const t = highlightText(f, null);
-    expect(t.title).toBe('AI-Хайлайты дня');
-    expect(t.body).toContain('закрыла 16 задач в 3 проектах');
-    expect(t.body).toContain('провела 4 созвона (42 мин)');
+    expect(t.title).toBe('AI-хайлайты дня');
+    expect(t.body).toContain('Вчера: закрыто 16 задач в 3 проектах.');
+    expect(t.body).toContain('Проведено 4 созвона общей длительностью 42 мин.');
   });
   it('релиз — повод даже при двух задачах, и ссылка на пост релиза', () => {
     const f = { ...base, completedTasks: 2, releases: [{ postId: '7', title: 'Гостевые ссылки' }] };
     expect(highlightReason(f)).toBe('release');
     const t = highlightText(f, null);
-    expect(t.body).toContain('Главный результат: «Гостевые ссылки»');
+    expect(t.body).toContain('Главный прорыв: «Гостевые ссылки»');
     expect(t.sources).toContainEqual({ label: 'Гостевые ссылки', path: '/news/7' });
   });
   it('рост скорости показываем только заметный, спад — нет', () => {
-    expect(weekTrend(23, 20)).toContain('15%');
+    expect(weekTrend(23, 20)).toBe('Команда работает на 15% быстрее, чем на прошлой неделе.');
     expect(weekTrend(18, 20)).toBeNull();
     expect(weekTrend(6, 3)).toBeNull(); // мало данных
   });
@@ -44,6 +44,29 @@ describe('герой дня', () => {
   });
   it('ничья — героя нет', () => {
     expect(pickHero({ ...base, kudos: [{ toUserId: '1', toName: 'А' }, { toUserId: '2', toName: 'Б' }] })).toBeNull();
+  });
+  it('#1526: явный лидер по закрытым задачам — герой', () => {
+    const h = pickHero({ ...base, closers: [
+      { userId: '1', name: 'Глеб', count: 5, topTitle: 'Вёрстка гостевой страницы' },
+      { userId: '2', name: 'Аня', count: 2, topTitle: 'x' },
+    ] });
+    expect(h?.name).toBe('Глеб');
+    expect(h?.why).toBe('закрыто 5 задач, в том числе «Вёрстка гостевой страницы»');
+  });
+  it('#1526: две задачи или равенство — не лидер', () => {
+    expect(pickHero({ ...base, closers: [{ userId: '1', name: 'Глеб', count: 2, topTitle: 'x' }] })).toBeNull();
+    expect(pickHero({ ...base, closers: [{ userId: '1', name: 'А', count: 4, topTitle: 'x' }, { userId: '2', name: 'Б', count: 4, topTitle: 'y' }] })).toBeNull();
+  });
+});
+
+describe('релиз-радар', () => {
+  it('пункты, «ещё N» и авторы', () => {
+    const tasks = Array.from({ length: 8 }, (_, i) => ({ id: String(i), title: `Задача ${i}`, description: null, assigneeName: null }));
+    const r = radarText('QEVO', tasks, ['Сергей Попович', 'Boris Chest']);
+    expect(r.title).toBe('Релиз-радар: «QEVO»');
+    expect(r.body).toContain('• Задача 0.');
+    expect(r.body).toContain('…и ещё 2 изменения.');
+    expect(r.body).toContain('Авторы: Сергей Попович, Boris Chest. Поздравляем!');
   });
 });
 

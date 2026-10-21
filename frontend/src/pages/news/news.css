@@ -197,6 +197,88 @@ h2.feed-title { font-size: 20px; }
 .feed-post.feed-release { border-color: var(--ok-line); }
 .feed-post.featured { border-color: var(--accent-line); background: linear-gradient(180deg, var(--accent-soft), var(--bg-elev) 70%); padding: 16px; }
 .feed-post.featured .feed-body { font-size: 15px; }
+
+/* ── AI-хайлайты дня (#1526, блок 1): неоновая карточка с плитками ── */
+.feed-post.feed-hl {
+  position: relative; border: 1px solid transparent; isolation: isolate;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--accent-soft) 85%, var(--bg-elev)), var(--bg-elev) 75%) padding-box,
+    linear-gradient(120deg, #7c4dff, #00d4ff, #00e5a0, #7c4dff) border-box;
+  background-size: 100% 100%, 300% 300%;
+  animation: feed-neon 8s linear infinite;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #7c4dff 18%, transparent), 0 8px 28px -10px color-mix(in srgb, #00d4ff 45%, transparent);
+}
+@keyframes feed-neon { 0% { background-position: 0 0, 0% 50%; } 100% { background-position: 0 0, 300% 50%; } }
+.feed-hl-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.feed-hl-title { display: flex; flex-direction: column; gap: 2px; }
+.feed-hl-title .feed-title { font-size: 18px; }
+.feed-hl-sub { font-size: var(--fs-sm); color: var(--text-dim); }
+.feed-hl-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.feed-hl-tile {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-elev) 70%, transparent); border: 1px solid var(--accent-line);
+}
+.feed-hl-tile b { font-size: 24px; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--accent); }
+.feed-hl-tile span { font-size: var(--fs-sm); color: var(--text-dim); }
+.feed-hl-extra { font-size: var(--fs-sm); }
+.feed-hl-main {
+  display: flex; align-items: flex-start; gap: 8px; text-align: left; padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); font: inherit; cursor: pointer;
+}
+.feed-hl-main:hover { border-color: var(--accent-line); }
+.feed-hl-main:focus-visible, .feed-kudos-face:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.feed-hl-main { min-width: 0; overflow-wrap: anywhere; }
+.feed-hl-main > svg { flex: none; margin-top: 2px; color: var(--accent); }
+.feed-hl-hero {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--warn-soft); border: 1px solid var(--warn-line); cursor: default;
+}
+.feed-hl-hero-text { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; }
+.feed-hl-hero-label { font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); }
+.feed-hl-trend { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; padding: 3px 10px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 600; background: var(--ok-soft); color: var(--ok); }
+
+/* ── «Сказать спасибо коллеге» в ленте (#1526, блок 2) ── */
+.feed-kudos-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; }
+.feed-kudos-bar-text { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--danger); }
+.feed-kudos-bar-people { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-left: auto; }
+.feed-kudos-face { border: none; background: none; padding: 2px; border-radius: 50%; cursor: pointer; transition: transform .15s ease; }
+.feed-kudos-face:hover { transform: translateY(-2px) scale(1.08); }
+
+/* благодарность: искры при наведении, бейдж с переливом */
+.feed-post.feed-kudos { position: relative; overflow: hidden; }
+.feed-post.feed-kudos::before, .feed-post.feed-kudos::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background:
+    radial-gradient(circle, #ff4fd8 0 2px, transparent 2.6px) 8% 30% / 8px 8px no-repeat,
+    radial-gradient(circle, #00e5ff 0 2px, transparent 2.6px) 22% 12% / 8px 8px no-repeat,
+    radial-gradient(circle, #ffd84f 0 2px, transparent 2.6px) 38% 70% / 8px 8px no-repeat,
+    radial-gradient(circle, #7cff6b 0 2px, transparent 2.6px) 55% 18% / 8px 8px no-repeat,
+    radial-gradient(circle, #ff4fd8 0 2px, transparent 2.6px) 70% 62% / 8px 8px no-repeat,
+    radial-gradient(circle, #00e5ff 0 2px, transparent 2.6px) 86% 26% / 8px 8px no-repeat,
+    radial-gradient(circle, #ffd84f 0 2px, transparent 2.6px) 93% 78% / 8px 8px no-repeat;
+}
+.feed-post.feed-kudos::after {
+  background:
+    radial-gradient(circle, #ffd84f 0 2px, transparent 2.6px) 14% 78% / 8px 8px no-repeat,
+    radial-gradient(circle, #ff4fd8 0 2px, transparent 2.6px) 30% 40% / 8px 8px no-repeat,
+    radial-gradient(circle, #7cff6b 0 2px, transparent 2.6px) 47% 88% / 8px 8px no-repeat,
+    radial-gradient(circle, #00e5ff 0 2px, transparent 2.6px) 63% 8% / 8px 8px no-repeat,
+    radial-gradient(circle, #ffd84f 0 2px, transparent 2.6px) 78% 44% / 8px 8px no-repeat,
+    radial-gradient(circle, #ff4fd8 0 2px, transparent 2.6px) 90% 56% / 8px 8px no-repeat;
+}
+.feed-post.feed-kudos:hover::before { animation: feed-sparks 1.1s ease-out; }
+.feed-post.feed-kudos:hover::after { animation: feed-sparks 1.1s ease-out .15s; }
+@keyframes feed-sparks { 0% { opacity: 0; transform: scale(.85); } 30% { opacity: .9; } 100% { opacity: 0; transform: scale(1.25) translateY(-10px); } }
+.feed-post.feed-kudos .feed-kudos-badge {
+  background: linear-gradient(90deg, #ff4fd8, #ff8a4f, #ffd84f, #ff4fd8); background-size: 200% 100%; color: #2a1020;
+  animation: feed-badge 4s linear infinite; box-shadow: 0 0 12px -2px #ff4fd8;
+}
+@keyframes feed-badge { to { background-position: 200% 0; } }
+.feed-fire { opacity: .75; }
+.feed-fire:hover { opacity: 1; }
+
+/* релиз-радар и вехи — праздничная подложка */
+.feed-post.feed-release { border-color: var(--ok-line); background: linear-gradient(180deg, var(--ok-soft), var(--bg-elev) 60%); }
 .feed-contributors { font-size: var(--fs-sm); }
 .feed-sources { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: var(--fs-xs); }
 .feed-source {
@@ -247,7 +329,8 @@ h2.feed-title { font-size: 20px; }
   border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-elev);
 }
 .feed-poll-result.mine { border-color: var(--accent-line); font-weight: 600; }
-.feed-poll-bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); transition: width .4s ease; }
+.feed-poll-bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); transition: width .6s cubic-bezier(.2,.8,.2,1); transform-origin: left; animation: feed-bar-in .7s cubic-bezier(.2,.8,.2,1); }
+@keyframes feed-bar-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .feed-poll-label, .feed-poll-pct { position: relative; }
 .feed-poll-pct { margin-left: auto; font-variant-numeric: tabular-nums; }
 .feed-poll-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--fs-sm); }
@@ -295,6 +378,7 @@ h2.feed-title { font-size: 20px; }
 @media (prefers-reduced-motion: reduce) {
   .feed-just-added > .feed-post { animation: none; }
   .feed-poll-bar, .reaction { transition: none; }
+  .feed-post.feed-hl, .feed-poll-bar, .feed-post.feed-kudos .feed-kudos-badge, .feed-post.feed-kudos:hover::before, .feed-post.feed-kudos:hover::after { animation: none; }
 }
 
 /* ── телефон (§76, волна 9) ── */

@@ -202,7 +202,13 @@ export function FeedPage({ postId }: { postId?: string }) {
             )}
 
             {highlight && (
-              <PostCard post={highlight} team={team} featured onOpen={() => setOpen(highlight)} onUpdated={replace} />
+              <PostCard
+                post={highlight} team={team} featured onOpen={() => setOpen(highlight)} onUpdated={replace}
+                onKudos={(id) => { setKudosFor(id); setDialog('kudos'); }}
+              />
+            )}
+            {(filter === 'all' || filter === 'kudos') && !query && (
+              <KudosBar team={team} meId={meId} onPick={(id) => { setKudosFor(id); setDialog('kudos'); }} />
             )}
             {pinned.map((p) => (
               <PostCard key={p.id} post={p} team={team} onOpen={() => setOpen(p)} onUpdated={replace} />
@@ -253,6 +259,28 @@ export function FeedPage({ postId }: { postId?: string }) {
       <PollDialog open={dialog === 'poll'} team={team} onClose={() => setDialog(null)} onPublished={added} />
       <ReleaseDialog open={dialog === 'release'} onClose={() => setDialog(null)} onPublished={added} />
       <SettingsDialog open={dialog === 'settings'} onClose={() => setDialog(null)} />
+    </div>
+  );
+}
+
+/**
+ * «Сказать спасибо коллеге» прямо в ленте (#1526, блок 2): лица коллег — нажал на
+ * человека, и окно благодарности уже открыто на нём. Пять секунд, а не поиск по меню.
+ */
+function KudosBar({ team, meId, onPick }: { team: MentionUser[]; meId: string; onPick: (userId?: string) => void }) {
+  const mates = team.filter((u) => u.id !== meId).slice(0, 8);
+  if (!mates.length) return null;
+  return (
+    <div className="card feed-kudos-bar">
+      <span className="feed-kudos-bar-text"><Icon name="heart" size={15} /> Сказать спасибо коллеге</span>
+      <span className="feed-kudos-bar-people">
+        {mates.map((u) => (
+          <button key={u.id} type="button" className="feed-kudos-face" onClick={() => onPick(u.id)} title={`Сказать спасибо: ${u.fullName}`} aria-label={`Сказать спасибо: ${u.fullName}`}>
+            <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
+          </button>
+        ))}
+        <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onPick(undefined)}>Выбрать</button>
+      </span>
     </div>
   );
 }

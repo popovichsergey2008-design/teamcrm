@@ -74,7 +74,16 @@ export interface DayFacts {
   prevWeekClosed: number;
   /** Закрывшие срочные/высокие задачи — кандидаты в герои наряду с Kudos. */
   criticalClosers: { userId: string; name: string; count: number }[];
+  /** Все закрывшие задачи за день (#1526): явный лидер дня — тоже герой. */
+  closers?: { userId: string; name: string; count: number; topTitle: string }[];
 }
+
+/** Название и подпись хайлайта (#1526, комментарии заказчика в ТЗ 21.10). */
+export const HIGHLIGHT_TITLE = 'AI-хайлайты дня';
+export const HIGHLIGHT_SUBTITLE = 'Самые яркие и важные моменты';
+
+/** Лидер дня по закрытым задачам: от трёх задач и с отрывом от второго. */
+export const HERO_MIN_CLOSED = 3;
 
 /** Порог повода (решение заказчика 11.10): без повода — честный пропуск, а не пустой пафос. */
 export const HIGHLIGHT_MIN_TASKS = 5;
@@ -112,13 +121,25 @@ export function pickHero(f: DayFacts): { userId: string; name: string; why: stri
     .map(([userId, s]) => ({ userId, name: s.name, kudos: s.kudos, critical: s.critical, total: s.kudos * 2 + s.critical }))
     .sort((a, b) => b.total - a.total);
   const top = ranked[0];
-  if (!top || top.total < 2) return null;
   // ничья — героя нет: делить «героя» на двоих значит устроить рейтинг
-  if (ranked[1] && ranked[1].total === top.total) return null;
-  const why = top.kudos && top.critical
-    ? `благодарностей: ${top.kudos}, закрыто критичных задач: ${top.critical}`
-    : top.kudos ? `благодарностей от коллег: ${top.kudos}` : `закрыто критичных задач: ${top.critical}`;
-  return { userId: top.userId, name: top.name, why };
+  if (top && top.total >= 2 && !(ranked[1] && ranked[1].total === top.total)) {
+    const why = top.kudos && top.critical
+      ? `благодарностей: ${top.kudos}, закрыто критичных задач: ${top.critical}`
+      : top.kudos ? `благодарностей от коллег: ${top.kudos}` : `закрыто критичных задач: ${top.critical}`;
+    return { userId: top.userId, name: top.name, why };
+  }
+  /*
+    #1526: благодарностей и критичных задач нет почти никогда — героя не было неделями.
+    Явный лидер дня по закрытым задачам (от трёх, с отрывом от второго) — тоже герой:
+    «закрыл 5 задач, в том числе «Вёрстка гостевой страницы»».
+  */
+  const byClosed = [...(f.closers ?? [])].sort((a, b) => b.count - a.count);
+  const lead = byClosed[0];
+  if (!lead || lead.count < HERO_MIN_CLOSED || (byClosed[1] && byClosed[1].count >= lead.count)) return null;
+  return {
+    userId: lead.userId, name: lead.name,
+    why: `закрыто ${lead.count} ${plural(lead.count, 'задача', 'задачи', 'задач')}, в том числе «${lead.topTitle}»`,
+  };
 }
 
 export function plural(n: number, one: string, few: string, many: string): string {
@@ -139,19 +160,18 @@ export interface Source { label: string; path: string }
 export function highlightText(f: DayFacts, hero: { name: string; why: string } | null, when = 'Вчера'): { title: string; body: string; sources: Source[] } {
   const lines: string[] = [];
   const sources: Source[] = [];
-  const parts: string[] = [];
+  // строки — как в ТЗ (#1526): «Закрыто 16 задач в 3 проектах», «Проведено 4 созвона…»
   if (f.completedTasks > 0) {
-    parts.push(`закрыла ${f.completedTasks} ${plural(f.completedTasks, 'задачу', 'задачи', 'задач')}`
-      + (f.projectsAffected > 1 ? ` в ${f.projectsAffected} ${plural(f.projectsAffected, 'проекте', 'проектах', 'проектах')}` : ''));
+    lines.push(`${when}: закрыто ${f.completedTasks} ${plural(f.completedTasks, 'задача', 'задачи', 'задач')}`
+      + (f.projectsAffected > 0 ? ` в ${f.projectsAffected} ${plural(f.projectsAffected, 'проекте', 'проектах', 'проектах')}` : '') + '.');
   }
   if (f.meetingsCount > 0) {
-    parts.push(`провела ${f.meetingsCount} ${plural(f.meetingsCount, 'созвон', 'созвона', 'созвонов')}`
-      + (f.meetingsMinutes > 0 ? ` (${f.meetingsMinutes} мин)` : ''));
+    lines.push(`Проведено ${f.meetingsCount} ${plural(f.meetingsCount, 'созвон', 'созвона', 'созвонов')}`
+      + (f.meetingsMinutes > 0 ? ` общей длительностью ${f.meetingsMinutes} мин` : '') + '.');
   }
-  if (parts.length) lines.push(`${when} команда ${parts.join(' и ')}.`);
 
   if (f.releases.length) {
-    lines.push(`Главный результат: ${f.releases.map((r) => `«${r.title}»`).join(', ')}.`);
+    lines.push(`Главный прорыв: ${f.releases.map((r) => `«${r.title}»`).join(', ')}.`);
     for (const r of f.releases) sources.push({ label: r.title, path: `/news/${r.postId}` });
   } else if (f.topTasks.length) {
     const t = f.topTasks[0];
@@ -167,15 +187,44 @@ export function highlightText(f: DayFacts, hero: { name: string; why: string } |
   if (trend) lines.push(trend);
   if (hero) lines.push(`Герой дня: ${hero.name} — ${hero.why}.`);
 
-  return { title: 'AI-Хайлайты дня', body: lines.join('\n'), sources };
+  return { title: HIGHLIGHT_TITLE, body: lines.join('\n'), sources };
 }
 
-/** «На 15% быстрее прошлой недели» — только при заметной разнице и достаточном объёме. */
-export function weekTrend(week: number, prev: number): string | null {
+/** Рост за 7 дней к предыдущим 7 в процентах — только при заметной разнице и достаточном объёме. */
+export function weekTrendPct(week: number, prev: number): number | null {
   if (prev < 5 || week < 5) return null;
   const pct = Math.round(((week - prev) / prev) * 100);
-  if (pct >= 10) return `Команда закрывает задачи на ${pct}% быстрее прошлой недели.`;
-  return null; // спад — тема «Пульса», а не новостей для всех (§5)
+  return pct >= 10 ? pct : null; // спад — тема «Пульса», а не новостей для всех (§5)
+}
+
+/** «Команда работает на 15% быстрее, чем на прошлой неделе» — по закрытым за 7 дней. */
+export function weekTrend(week: number, prev: number): string | null {
+  const pct = weekTrendPct(week, prev);
+  return pct == null ? null : `Команда работает на ${pct}% быстрее, чем на прошлой неделе.`;
+}
+
+// ───────────────────────── релиз-радар ─────────────────────────
+
+/** Задача, вошедшая в «Что нового»: закрытая программная/дизайнерская/релизная. */
+export interface RadarTask { id: string; title: string; description: string | null; assigneeName: string | null }
+
+/** Сколько закрытых «фич» за день нужно проекту, чтобы вышел пост «Что нового». */
+export const RADAR_MIN_TASKS = 2;
+
+/** Теги, по которым закрытая задача считается изменением продукта, а не рутиной. */
+export const RADAR_TAG = /программ|разработ|дизайн|релиз|веха|фич|feature|release|milestone/i;
+
+/**
+ * «Что нового» правилами (#1526, блок 3): пункты — названия задач, авторы — исполнители.
+ * Модель потом может переписать пункты человеческим языком — `items` она заменяет
+ * целиком, но только своими словами про те же задачи.
+ */
+export function radarText(projectName: string, tasks: RadarTask[], authors: string[], items?: string[]) {
+  const points = (items?.length ? items : tasks.map((t) => t.title)).slice(0, 6);
+  const lines = [`Что нового в «${projectName}»:`, ...points.map((p) => `• ${p.replace(/[.\s]+$/, '')}.`)];
+  if (tasks.length > points.length) lines.push(`…и ещё ${tasks.length - points.length} ${plural(tasks.length - points.length, 'изменение', 'изменения', 'изменений')}.`);
+  if (authors.length) lines.push('', `Авторы: ${authors.join(', ')}. Поздравляем!`);
+  return { title: `Релиз-радар: «${projectName}»`, body: lines.join('\n') };
 }
 
 // ───────────────────────── выводы недели ─────────────────────────
@@ -187,6 +236,10 @@ export interface WeekFacts {
   blockersResolved: number;
   kudosCount: number;
   closedTasks: number;
+  /** Выводы из итогов созвонов недели (#1526, блок 5) — каждый со своей встречей. */
+  insights?: { text: string; path: string; label: string }[];
+  /** Лучшее решение недели — из тех же итогов. */
+  best?: { text: string; path: string; label: string } | null;
 }
 
 /**
@@ -196,9 +249,15 @@ export interface WeekFacts {
 export function learningsText(w: WeekFacts): { title: string; body: string; sources: Source[] } | null {
   const lines: string[] = [];
   const sources: Source[] = [];
+  const dot = (t: string) => (/[.!?…]$/.test(t.trim()) ? t.trim() : `${t.trim()}.`);
   for (const r of w.releases.slice(0, 3)) { lines.push(`• Вышло: «${r.title}».`); sources.push({ label: r.title, path: r.path }); }
-  for (const d of w.decisions.slice(0, 4)) { lines.push(`• Решили: ${d.text}`); sources.push({ label: d.text.slice(0, 60), path: d.path }); }
-  if (w.meetings.length) {
+  // выводы со встреч — главное в этом блоке: созвоны недели, сжатые до сути
+  for (const i of (w.insights ?? []).slice(0, 4)) { lines.push(`• ${dot(i.text)}`); sources.push({ label: i.label, path: i.path }); }
+  if (w.best) { lines.push(`• Лучшее решение недели: ${dot(w.best.text)}`); sources.push({ label: w.best.label, path: w.best.path }); }
+  if (!(w.insights ?? []).length && !w.best) {
+    for (const d of w.decisions.slice(0, 4)) { lines.push(`• Решили: ${d.text}`); sources.push({ label: d.text.slice(0, 60), path: d.path }); }
+  }
+  if (w.meetings.length && !(w.insights ?? []).length) {
     lines.push(`• Итоги ${w.meetings.length} ${plural(w.meetings.length, 'встречи', 'встреч', 'встреч')} разобраны.`);
     for (const m of w.meetings.slice(0, 3)) sources.push({ label: m.title, path: m.path });
   }
@@ -208,9 +267,9 @@ export function learningsText(w: WeekFacts): { title: string; body: string; sour
   if (w.closedTasks > 0) tail.push(`за неделю закрыто ${w.closedTasks} ${plural(w.closedTasks, 'задача', 'задачи', 'задач')}`);
   if (w.kudosCount > 0) tail.push(`благодарностей: ${w.kudosCount}`);
   const summary = tail.join(', ');
-  const out = ['Главное за неделю', '', ...lines, ''];
+  const out = ['Главные инсайты и выводы недели:', '', ...lines, ''];
   if (summary) out.push(`${summary[0].toUpperCase()}${summary.slice(1)}.`);
-  out.push('Хороших выходных!');
+  out.push('Отличных всем выходных!');
   const body = out.join('\n');
   return { title: 'Выводы недели', body, sources };
 }

@@ -257,9 +257,12 @@ describe('Новости (e2e)', () => {
     expect(h.status).toBe('published');
     const post = (await http$.get(`/api/feed/${h.postId}`).set(H(O2)).expect(200)).body.data;
     expect(post.type).toBe('highlight');
-    expect(post.title).toBe('AI-Хайлайты дня');
+    expect(post.title).toBe('AI-хайлайты дня');
     expect(post.byAgent).toBe(true);
-    expect(post.body).toContain('закрыла 6 задач');
+    expect(post.body).toContain('закрыто 6 задач');
+    // #1526: цифры для плиток карточки
+    expect(post.highlight).toMatchObject({ tasks: 6, projects: 1, subtitle: 'Самые яркие и важные моменты' });
+    expect(post.highlight.main.title).toBe('Задача 0');
     expect(post.sources.length).toBeGreaterThan(0);
     expect((await feed(O2)).top.some((p: any) => p.id === h.postId)).toBe(true);
     const again = (await http$.post('/api/feed/highlights/generate').set(H(O2)).expect(201)).body.data;
@@ -305,7 +308,8 @@ describe('Новости (e2e)', () => {
     await http$.post('/api/feed/releases').set(H(O)).send({ projectId: String(project.id), title: 'Гостевые ссылки 1.0' }).expect(409);
     await http$.post('/api/feed/releases').set(H(gleb.token)).send({ projectId: String(project.id), title: 'Свой релиз' }).expect(403);
 
-    // все задачи проекта закрыты — кандидат на веху; публикуется по одобрению, один раз
+    // все задачи проекта закрыты — кандидат на веху; без автопубликации — по одобрению, один раз
+    await http$.patch('/api/feed/settings').set(H(O)).send({ highlightsAuto: false }).expect(200);
     const found = (await http$.post('/api/feed/candidates/detect').set(H(O)).expect(201)).body.data;
     expect(found.added).toBeGreaterThanOrEqual(1);
     expect((await http$.post('/api/feed/candidates/detect').set(H(O)).expect(201)).body.data.added).toBe(0);
@@ -319,6 +323,24 @@ describe('Новости (e2e)', () => {
     expect(ms.title).toBe('Веха: ссылки готовы');
     await http$.post(`/api/feed/candidates/${cand.id}/publish`).set(H(O)).send({}).expect(409);
     expect((await feed(O, '?filter=releases')).items.map((p: any) => p.type).sort()).toEqual(['milestone', 'release']);
+  });
+
+  it('#1526: при «Публиковать сами» веха выходит в ленту сама, один раз', async () => {
+    const owner = await org('Вехи сами');
+    const O = owner.accessToken;
+    const project = (await http$.post('/api/projects').set(H(O)).send({ name: 'Гостевые инвайты' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(H(O)).expect(200)).body.data;
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      ids.push(String((await http$.post('/api/tasks').set(H(O)).send({ projectId: project.id, columnId: board.columns[0].id, title: `Инвайт ${i}` }).expect(201)).body.data.id));
+    }
+    await db.query(`UPDATE tasks SET closed_at = now() - interval '1 hour' WHERE id = ANY($1::bigint[])`, [ids]);
+    expect((await http$.post('/api/feed/candidates/detect').set(H(O)).expect(201)).body.data.added).toBe(1);
+    expect((await http$.post('/api/feed/candidates/detect').set(H(O)).expect(201)).body.data.added).toBe(0);
+    const items = (await feed(O, '?filter=releases')).items;
+    expect(items.map((p: any) => p.type)).toEqual(['milestone']);
+    expect(items[0].title).toBe('Ура! Веха завершена: «Гостевые инвайты»');
+    expect(items[0].byAgent).toBe(true);
   });
 
   it('ноль системного шума: работа с задачами в ленту не пишет ничего', async () => {

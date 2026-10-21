@@ -14,8 +14,36 @@ import { FeedRepository, PostRow, Viewer } from './feed.repository';
 import { NewsFactsRepository } from './news-facts.repository';
 import {
   cleanPollOptions, FEED_FILTERS, KUDOS_BADGES, MAX_PINNED, pollWinner, POST_TYPES, RATE_LIMITS, REACTIONS,
-  sensitiveHint, VISIBILITIES,
+  sensitiveHint, VISIBILITIES, HIGHLIGHT_SUBTITLE, weekTrendPct,
 } from './news-rules';
+
+/**
+ * Цифры хайлайта для карточки (#1526, блок 1): плитки «задачи / проекты / созвоны /
+ * минуты», главный результат и герой дня — из фактов, по которым писался текст.
+ */
+function highlightView(meta: Record<string, unknown>) {
+  const f = (meta.facts ?? null) as Record<string, any> | null;
+  if (!f) return null;
+  const top = Array.isArray(f.topTasks) && f.topTasks[0] ? f.topTasks[0] : null;
+  const release = Array.isArray(f.releases) && f.releases[0] ? f.releases[0] : null;
+  const hero = (meta.hero ?? null) as { userId?: string; name?: string; why?: string } | null;
+  return {
+    subtitle: HIGHLIGHT_SUBTITLE,
+    date: String(f.date ?? ''),
+    tasks: Number(f.completedTasks ?? 0),
+    projects: Number(f.projectsAffected ?? 0),
+    meetings: Number(f.meetingsCount ?? 0),
+    minutes: Number(f.meetingsMinutes ?? 0),
+    decisions: Number(f.decisions ?? 0),
+    blockers: Number(f.blockersResolved ?? 0),
+    kudos: Array.isArray(f.kudos) ? f.kudos.length : 0,
+    main: release
+      ? { title: String(release.title), path: `/news/${release.postId}`, release: true }
+      : top ? { title: String(top.title), path: `/projects/${top.projectId}/task/${top.id}`, project: top.projectName ?? null, release: false } : null,
+    hero: hero?.userId ? { userId: String(hero.userId), name: String(hero.name ?? ''), why: String(hero.why ?? '') } : null,
+    trendPct: weekTrendPct(Number(f.weekClosed ?? 0), Number(f.prevWeekClosed ?? 0)),
+  };
+}
 
 /** Столько постов за раз: экран и ещё немного на прокрутку. */
 const PAGE_SIZE = 15;
@@ -620,11 +648,17 @@ export class FeedService {
    * created_by_agent); дубль за тот же день/неделю отсекает ключ (§70).
    * Возвращает null, если такой пост уже есть.
    */
-  async createSystem(tenantId: string, p: { type: 'highlight' | 'learnings'; title: string; body: string; status: 'published' | 'draft' | 'skipped'; meta: Record<string, unknown>; dedupKey: string }) {
+  async createSystem(tenantId: string, p: {
+    type: 'highlight' | 'learnings' | 'release' | 'milestone'; title: string; body: string;
+    status: 'published' | 'draft' | 'skipped'; meta: Record<string, unknown>; dedupKey: string;
+    /** релиз-радар и вехи (#1526): пост проекта — видимость проекта, демонстрация из задачи */
+    visibility?: 'all' | 'project'; projectId?: string | null; fileIds?: string[];
+  }) {
     const post = await this.repo.create({
       tenantId, authorId: null, type: p.type, title: p.title, body: p.body, status: p.status,
-      visibility: 'all', projectId: null, requiresAck: false, meta: p.meta, byAgent: true, dedupKey: p.dedupKey,
+      visibility: p.visibility ?? 'all', projectId: p.projectId ?? null, requiresAck: false, meta: p.meta, byAgent: true, dedupKey: p.dedupKey,
     });
+    if (post) for (const f of (p.fileIds ?? []).slice(0, 4)) await this.repo.addFile(tenantId, String(post.id), f).catch(() => undefined);
     if (post && p.status === 'published') {
       this.audit(tenantId, null, 'news.ai.published', String(post.id), { type: p.type });
       this.changed(tenantId, String(post.id), 'created');
@@ -835,6 +869,7 @@ export class FeedService {
         } : null,
         contributors: Array.isArray(meta.contributors) ? (meta.contributors as { userId: string; name: string }[]) : [],
         sources: Array.isArray(meta.sources) ? (meta.sources as { label: string; path: string }[]) : [],
+        highlight: r.type === 'highlight' ? highlightView(meta) : null,
         poll: poll ? {
           question: poll.question,
           deadlineAt: poll.deadline_at,

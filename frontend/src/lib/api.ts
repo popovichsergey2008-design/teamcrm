@@ -3308,6 +3308,14 @@ export interface NewsPost {
   kudos: { toUserId: string | null; toName: string; toAvatar: string | null; badge: { key: string; label: string } | null } | null;
   contributors: { userId: string; name: string }[];
   sources: { label: string; path: string }[];
+  /** Цифры хайлайта дня для плиток карточки (#1526). */
+  highlight?: {
+    subtitle: string; date: string; tasks: number; projects: number; meetings: number; minutes: number;
+    decisions: number; blockers: number; kudos: number;
+    main: { title: string; path: string; project?: string | null; release: boolean } | null;
+    hero: { userId: string; name: string; why: string } | null;
+    trendPct: number | null;
+  } | null;
   poll: {
     question: string; deadlineAt: string | null; anonymous: boolean; multiple: boolean; closed: boolean;
     voters: number; totalVotes: number; voted: boolean; result: string | null;

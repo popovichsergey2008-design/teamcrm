@@ -13,22 +13,26 @@ import { feedback } from '../../lib/feedback';
  * главное, не открывая окна: отреагировать, проголосовать, нажать «Ознакомился».
  * Обсуждение, файлы и список ознакомившихся — в окне по нажатию.
  */
-export function PostCard({ post, team, onOpen, onUpdated, featured }: {
+export function PostCard({ post, team, onOpen, onUpdated, featured, onKudos }: {
   post: NewsPost;
   team: MentionUser[];
   onOpen: () => void;
   onUpdated: (p: NewsPost) => void;
   /** Хайлайт дня наверху — крупнее остальных. */
   featured?: boolean;
+  /** «Сказать спасибо» герою дня прямо с карточки хайлайта. */
+  onKudos?: (userId: string) => void;
 }) {
   const meta = TYPE_META[post.type] ?? TYPE_META.manual;
   const media = post.files.filter(isMedia);
   const who = audienceLabel(post);
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  // хайлайт дня с цифрами — неоновой карточкой с плитками (#1526); старые посты — текстом
+  const hl = featured && post.type === 'highlight' && post.highlight ? post.highlight : null;
 
   return (
     <article
-      className={`card feed-post feed-post-card feed-${meta.tone}${post.isPinned ? ' pinned' : ''}${featured ? ' featured' : ''}${post.isNew ? ' is-new' : ''}`}
+      className={`card feed-post feed-post-card feed-${meta.tone}${post.isPinned ? ' pinned' : ''}${featured ? ' featured' : ''}${post.isNew ? ' is-new' : ''}${hl ? ' feed-hl' : ''}`}
       role="button"
       tabIndex={0}
       onClick={onOpen}
@@ -36,14 +40,17 @@ export function PostCard({ post, team, onOpen, onUpdated, featured }: {
       aria-label={`${meta.label}${post.title ? `: ${post.title}` : ''}`}
     >
       <header className="feed-post-head">
-        <span className={`feed-type feed-type-${meta.tone}`}><Icon name={meta.icon} size={13} /> {meta.label}</span>
+        {/* у хайлайта с плитками ярлык повторял бы заголовок карточки */}
+        {!hl && <span className={`feed-type feed-type-${meta.tone}`}><Icon name={meta.icon} size={13} /> {meta.label}</span>}
         {post.isPinned && <span className="feed-pin" title="Закреплено"><Icon name="pin" size={12} /></span>}
         {post.isNew && <span className="feed-new" title="Появилось с вашего прошлого визита">новое</span>}
         {who && <span className="dim feed-time">· {who}</span>}
         <span className="dim feed-time feed-when">{when(post.publishedAt)}</span>
       </header>
 
-      {post.type === 'kudos' && post.kudos ? (
+      {hl ? (
+        <HighlightBody hl={hl} team={team} onKudos={onKudos} />
+      ) : post.type === 'kudos' && post.kudos ? (
         <div className="feed-kudos">
           <div className="feed-kudos-people">
             <Avatar path={post.authorAvatar} fallback={initialsOf(post.authorName)} className="avatar-sm" />
@@ -127,12 +134,16 @@ export function Reactions({ post, onUpdated }: { post: NewsPost; onUpdated: (p: 
   return (
     <span className="feed-reactions">
       {post.reactions.map((r) => (
-        <button key={r.emoji} type="button" className={`reaction${r.mine ? ' mine' : ''}`} onClick={() => void react(r.emoji)} aria-pressed={r.mine}>
+        <button key={r.emoji} type="button" className={`reaction${r.mine ? ' mine' : ''}`} onClick={(e) => { if (r.emoji === '🔥' && !r.mine) feedback('task.checked', { el: e.currentTarget }); void react(r.emoji); }} aria-pressed={r.mine}>
           {r.emoji} {r.count}
         </button>
       ))}
+      {/* огонёк — в одно нажатие (#1526), без раскрытия списка */}
+      {!shown.has('🔥') && (
+        <button type="button" className="reaction feed-fire" onClick={(e) => { feedback('task.checked', { el: e.currentTarget }); void react('🔥'); }} aria-label="Огонёк" title="Огонёк">🔥</button>
+      )}
       {open
-        ? REACTIONS.filter((e) => !shown.has(e)).map((e) => (
+        ? REACTIONS.filter((e) => !shown.has(e) && e !== '🔥').map((e) => (
           <button key={e} type="button" className="reaction feed-reaction-pick" onClick={() => void react(e)} aria-label={`Реакция ${e}`}>{e}</button>
         ))
         : (
@@ -217,6 +228,71 @@ export function PollBlock({ post, onUpdated }: { post: NewsPost; onUpdated: (p: 
         </span>
         {err && <span className="error-text">{err}</span>}
       </div>
+    </div>
+  );
+}
+
+const pluralRu = (n: number, one: string, few: string, many: string) => {
+  const a = n % 10; const b = n % 100;
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many;
+};
+
+/**
+ * AI-хайлайты дня (#1526, блок 1): плитки с цифрами, главный результат, герой дня
+ * и рост к прошлой неделе. Цифры — те же факты, по которым писался текст поста.
+ */
+function HighlightBody({ hl, team, onKudos }: {
+  hl: NonNullable<NewsPost['highlight']>;
+  team: MentionUser[];
+  onKudos?: (userId: string) => void;
+}) {
+  const hero = hl.hero ? team.find((u) => u.id === hl.hero!.userId) : null;
+  const day = hl.date ? new Date(`${hl.date}T00:00:00`).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  const tiles = [
+    { n: hl.tasks, label: pluralRu(hl.tasks, 'задача закрыта', 'задачи закрыто', 'задач закрыто') },
+    { n: hl.projects, label: pluralRu(hl.projects, 'проект', 'проекта', 'проектов') },
+    { n: hl.meetings, label: pluralRu(hl.meetings, 'созвон', 'созвона', 'созвонов') },
+    { n: hl.minutes, label: pluralRu(hl.minutes, 'минута на созвонах', 'минуты на созвонах', 'минут на созвонах') },
+  ].filter((t) => t.n > 0);
+  const extra = [
+    hl.decisions > 0 && `${hl.decisions} ${pluralRu(hl.decisions, 'решение', 'решения', 'решений')}`,
+    hl.blockers > 0 && `${hl.blockers} ${pluralRu(hl.blockers, 'препятствие снято', 'препятствия снято', 'препятствий снято')}`,
+    hl.kudos > 0 && `${hl.kudos} ${pluralRu(hl.kudos, 'спасибо', 'спасибо', 'спасибо')} коллегам`,
+  ].filter(Boolean) as string[];
+  return (
+    <div className="feed-hl-body">
+      <div className="feed-hl-title">
+        <h3 className="feed-title">AI-хайлайты дня</h3>
+        <span className="feed-hl-sub">{hl.subtitle}{day ? ` · ${day}` : ''}</span>
+      </div>
+      {tiles.length > 0 && (
+        <div className="feed-hl-tiles">
+          {tiles.map((t) => (
+            <div key={t.label} className="feed-hl-tile"><b>{t.n}</b><span>{t.label}</span></div>
+          ))}
+        </div>
+      )}
+      {extra.length > 0 && <div className="feed-hl-extra dim">{extra.join(' · ')}</div>}
+      {hl.main && (
+        <button type="button" className="feed-hl-main" onClick={(e) => { e.stopPropagation(); navigate(parsePath(hl.main!.path)); }}>
+          <Icon name={hl.main.release ? 'rocket' : 'trophy'} size={15} />
+          <span><span className="dim">{hl.main.release ? 'Главный прорыв' : 'Главный результат'}:</span> «{hl.main.title}»{hl.main.project ? <span className="dim"> · {hl.main.project}</span> : null}</span>
+        </button>
+      )}
+      {hl.hero && (
+        <div className="feed-hl-hero" onClick={(e) => e.stopPropagation()}>
+          <Avatar path={hero?.avatarUrl ?? null} fallback={initialsOf(hl.hero.name)} className="avatar-sm" />
+          <span className="feed-hl-hero-text"><span className="feed-hl-hero-label">Герой дня</span> <b>{hl.hero.name}</b>{hl.hero.why ? <span className="dim"> — {hl.hero.why}</span> : null}</span>
+          {onKudos && (
+            <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => onKudos(hl.hero!.userId)}>
+              <Icon name="heart" size={13} /> Спасибо
+            </button>
+          )}
+        </div>
+      )}
+      {hl.trendPct != null && (
+        <div className="feed-hl-trend"><Icon name="arrow-up" size={13} /> Команда работает на {hl.trendPct}% быстрее, чем на прошлой неделе</div>
+      )}
     </div>
   );
 }
