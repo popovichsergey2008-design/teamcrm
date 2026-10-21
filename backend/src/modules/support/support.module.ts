@@ -13,6 +13,7 @@ import { SupportDeskController } from './support-desk.controller';
 import { SupportConciergeController } from './support-concierge.controller';
 import { SupportConciergeRepository } from './support-concierge.repository';
 import { SupportConciergeService } from './support-concierge.service';
+import { SupportPublicController } from './support-public.controller';
 import { SupportDeskRepository } from './support-desk.repository';
 import { SupportDeskService } from './support-desk.service';
 import { SupportRepository } from './support.repository';
@@ -35,7 +36,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AiModule,
   ],
   // консьерж (ТЗ-29) — ПЕРВЫМ: его «support/desk/concierge…» не должен уйти в «support/desk/:id»
-  controllers: [SupportConciergeController, SupportController, SupportDeskController],
+  controllers: [SupportConciergeController, SupportPublicController, SupportController, SupportDeskController],
   providers: [SupportService, SupportRepository, SupportDeskService, SupportDeskRepository, SupportConciergeService, SupportConciergeRepository],
   exports: [SupportDeskService],
 })

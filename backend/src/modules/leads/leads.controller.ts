@@ -9,11 +9,13 @@ export const MOVE_FROM = ['bitrix24', 'yougile', 'jira', 'trello', 'other'] as c
 export const TEAM_SIZES = ['1-5', '6-15', '16-50', '50+'] as const;
 
 class LeadDto {
-  @IsIn(['quiz', 'exit']) source!: 'quiz' | 'exit';
+  @IsIn(['quiz', 'exit', 'support']) source!: 'quiz' | 'exit' | 'support';
   @IsOptional() @IsIn(MOVE_FROM as unknown as string[]) from?: string;
   @IsOptional() @IsIn(TEAM_SIZES as unknown as string[]) team?: string;
   @IsString() @MinLength(3) @MaxLength(120) contact!: string;
   @IsOptional() @IsString() @MaxLength(300) page?: string;
+  /** Вопрос из «Проверьте нас за 30 секунд» (#4616) — уходит дежурным сразу. */
+  @IsOptional() @IsString() @MaxLength(1000) message?: string;
   /** Ловушка для ботов: поле спрятано на странице, человек его не заполнит. */
   @IsOptional() @IsString() @MaxLength(200) website?: string;
 }

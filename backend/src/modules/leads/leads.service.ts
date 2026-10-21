@@ -17,6 +17,7 @@ export interface NewLead {
   team?: string;
   contact: string;
   page?: string;
+  message?: string;
   ip: string;
 }
 
@@ -43,11 +44,15 @@ export class LeadsService {
   async create(l: NewLead) {
     const contact = l.contact.trim();
     await this.db.query(
-      `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip],
+      `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null],
     );
     if (!this.chatId) return;
-    const text = [
+    const text = l.source === 'support' ? [
+      'Вопрос с сайта — проверка «ответ за 30 секунд», ответьте сейчас!',
+      `Контакт: ${contact}`,
+      `Вопрос: ${l.message?.trim() || '—'}`,
+    ].join('\n') : [
       'Заявка с сайта: план переезда',
       `Откуда: ${l.from ? FROM_LABEL[l.from] ?? l.from : 'не указано'}`,
       `Команда: ${l.team ?? 'не указано'}`,

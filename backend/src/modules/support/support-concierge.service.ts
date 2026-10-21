@@ -101,6 +101,7 @@ export class SupportConciergeService implements OnModuleInit, OnModuleDestroy {
       engineers: engineers.slice(0, 6),
       estimate: waitEstimate({ available, online: reachable, queue, medianSec: median }),
       available,
+      medianSec: median,
     };
   }
 
