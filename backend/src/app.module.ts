@@ -13,6 +13,7 @@ import { JwtAuthGuard } from './common/auth/jwt-auth.guard';
 import { RolesGuard } from './common/auth/roles.guard';
 
 import { HealthModule } from './modules/health/health.module';
+import { LeadsModule } from './modules/leads/leads.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -100,6 +101,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     CacheModule,
     MessagingModule,
     HealthModule,
+    LeadsModule,
     AuthModule,
     UsersModule,
     TenantsModule,
