@@ -17,8 +17,8 @@ export class RegisterDto {
   @IsIn(['ru', 'eu'], { message: 'Регион данных должен быть ru или eu' })
   dataRegion?: 'ru' | 'eu';
 
-  @IsEmail({}, { message: 'Введите корректный e-mail' })
-  @MaxLength(255, { message: 'E-mail слишком длинный' })
+  @IsEmail({}, { message: 'Введите корректный email' })
+  @MaxLength(255, { message: 'Email слишком длинный' })
   email!: string;
 
   @IsString({ message: 'Укажите пароль' })
@@ -33,7 +33,7 @@ export class RegisterDto {
 }
 
 export class LoginDto {
-  @IsEmail({}, { message: 'Введите корректный e-mail' })
+  @IsEmail({}, { message: 'Введите корректный email' })
   email!: string;
 
   @IsString({ message: 'Укажите пароль' })

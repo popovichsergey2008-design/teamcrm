@@ -34,7 +34,7 @@ export function ClientsPanel({ onClose, embedded = false }: { onClose?: () => vo
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const inviteUser = async (cid: string, email: string) => {
-    if (!email?.trim()) return flash('Укажите e-mail');
+    if (!email?.trim()) return flash('Укажите email');
     try {
       const r = await api.portalInviteClient(cid, email.trim());
       setInvite({ email: r.email, link: `${window.location.origin}/?invite=${r.token}` });
@@ -103,7 +103,7 @@ function ClientRow({ client, onInvite }: { client: any; onInvite: (cid: string, 
         <span>{client.name} <span className="dim" style={{ fontSize: 12 }}>· проектов: {client.projects}, вход в портал: {client.portal_users}</span></span>
       </div>
       <div className="team-rate">
-        <input className="input" placeholder="e-mail для доступа в портал" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input className="input" placeholder="Email для доступа в портал" value={email} onChange={(e) => setEmail(e.target.value)} />
         <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { onInvite(client.id, email); setEmail(''); }}>Пригласить</button>
       </div>
     </div>

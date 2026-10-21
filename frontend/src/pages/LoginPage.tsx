@@ -54,7 +54,7 @@ export function LoginPage() {
         )}
 
         <div className="field">
-          <label>E-mail</label>
+          <label>Email</label>
           <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div className="field">

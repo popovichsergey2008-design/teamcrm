@@ -76,7 +76,7 @@ export class UsersService {
     const role = input.role ?? 'member';
     if (!isAssignableTeamRole(role)) throw AppException.validation('Роль client не назначается через команду');
     const exists = await this.repo.findByEmail(tenantId, input.email);
-    if (exists) throw AppException.conflict('Пользователь с таким e-mail уже есть в организации');
+    if (exists) throw AppException.conflict('Пользователь с таким email уже есть в организации');
     if (input.positionId && !(await this.positions.exists(tenantId, input.positionId))) {
       throw AppException.validation('Должность не найдена');
     }
@@ -106,7 +106,7 @@ export class UsersService {
     input: { email: string; password: string; fullName: string; clientId: string },
   ): Promise<CreateUserResult> {
     const exists = await this.repo.findByEmail(tenantId, input.email);
-    if (exists) throw AppException.conflict('Пользователь с таким e-mail уже есть в организации');
+    if (exists) throw AppException.conflict('Пользователь с таким email уже есть в организации');
     // пароль существующего аккаунта не трогаем — см. комментарий в createUser
     const existingAccount = await this.accounts.findByEmail(input.email);
     const account = existingAccount
@@ -168,7 +168,7 @@ export class UsersService {
         activeOwnerCount: activeOwners,
       })
     ) {
-      throw AppException.conflict('Нельзя понизить/деактивировать последнего owner');
+      throw AppException.conflict('Это единственный владелец компании: его нельзя понизить в роли или отключить. Сначала назначьте владельцем другого сотрудника.');
     }
     if (patch.positionId && !(await this.positions.exists(tenantId, patch.positionId))) {
       throw AppException.validation('Должность не найдена');

@@ -55,7 +55,7 @@ export function JoinOrgPage({ token }: { token: string }) {
               // можно было бы указать чужой e-mail и сменить чужой пароль
               <div className="pnl-good" style={{ marginBottom: 14 }}>
                 <Icon name="check-circle" size={15} /> Вы добавлены в организацию.<br />
-                У вас уже был аккаунт с этим e-mail, поэтому <b>введённый сейчас пароль не применён</b> — входите своим прежним.
+                У вас уже был аккаунт с этим email, поэтому <b>введённый сейчас пароль не применён</b> — входите своим прежним.
                 Забыли его — попросите владельца выдать ссылку на смену пароля.
               </div>
             ) : (
@@ -70,7 +70,7 @@ export function JoinOrgPage({ token }: { token: string }) {
               <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
             <div className="field">
-              <label>E-mail</label>
+              <label>Email</label>
               <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="field">

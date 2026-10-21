@@ -205,7 +205,7 @@ export class AiDemoService {
         const task = await this.tasks.create(a.tenantId, {
           projectId, title, managerId: a.userId, assigneeId: assignee ?? undefined,
           deadlineAt: it.deadlineAt !== undefined ? (it.deadlineAt || undefined) : (d.deadline_at ? new Date(d.deadline_at).toISOString() : undefined),
-          description: 'Создано голосом в демо «ИИ-созвон за 30 секунд».',
+          description: 'Создано голосом в демо «AI-созвон за 30 секунд».',
         } as any, a.userId);
         await this.repo.draftDone(d.id, String(task.id));
         created.push(String(task.id));

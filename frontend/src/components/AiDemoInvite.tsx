@@ -15,10 +15,10 @@ export default function AiDemoInvite() {
   useEffect(() => { api.aiDemoState().then((s) => setShow(s.invite)).catch(() => setShow(false)); }, []);
   if (!show) return null;
   return (
-    <section className="aid-welcome" aria-label="Попробовать ИИ-созвон">
+    <section className="aid-welcome" aria-label="Попробовать AI-созвон">
       <span className="aid-welcome-spark"><Icon name="sparkles" size={20} /></span>
       <span className="aid-welcome-text">
-        <b>Протестировать магию ИИ-созвона за 30 секунд</b>
+        <b>Протестировать магию AI-созвона за 30 секунд</b>
         <span className="dim">Скажите одну рабочую фразу — QEVO сам превратит её в задачи.</span>
       </span>
       <Button variant="primary" onClick={() => navigate('/onboarding/ai-call?from=welcome')}>

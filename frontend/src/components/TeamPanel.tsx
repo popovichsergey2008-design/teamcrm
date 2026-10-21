@@ -281,8 +281,8 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
 
                 <div className="drawer-section-title"><Icon name="mail" size={14} /> Приглашение одному</div>
                 <div className="add-user">
-                  <div className="dim" style={{ fontSize: 12 }}>Персональная ссылка на конкретный e-mail (одноразовая).</div>
-                  <input className="input add-user-input" placeholder="E-mail" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
+                  <div className="dim" style={{ fontSize: 12 }}>Персональная ссылка на конкретный email (одноразовая).</div>
+                  <input className="input add-user-input" placeholder="Email" value={inv.email} onChange={(e) => setInv({ ...inv, email: e.target.value })} />
                   <div className="drawer-grid2">
                     <OptionSelect className="input" value={inv.role} onChange={(e) => setInv({ ...inv, role: e.target.value })}>{roleOptions}</OptionSelect>
                     <OptionSelect className="input" value={inv.positionId} onChange={(e) => setInv({ ...inv, positionId: e.target.value })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</OptionSelect>
@@ -300,7 +300,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <div className="add-user">
                   <div className="dim" style={{ fontSize: 12 }}>Сразу задать пароль (без письма-приглашения).</div>
                   <input className="input add-user-input" placeholder="Имя" value={nu.fullName} onChange={(e) => setNu({ ...nu, fullName: e.target.value })} />
-                  <input className="input add-user-input" placeholder="E-mail" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
+                  <input className="input add-user-input" placeholder="Email" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
                   <input className="input add-user-input" type="password" placeholder="Пароль (≥8)" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} />
                   <div className="drawer-grid2">
                     <OptionSelect className="input" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>{roleOptions}</OptionSelect>

@@ -67,7 +67,7 @@ export class AuthService {
    */
   async register(dto: RegisterDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
     if (await this.accounts.findByEmail(dto.email)) {
-      throw AppException.conflict('Пользователь с таким e-mail уже зарегистрирован — войдите и создайте организацию в кабинете');
+      throw AppException.conflict('Пользователь с таким email уже зарегистрирован — войдите и создайте организацию в кабинете');
     }
     const passwordHash = await argon2.hash(dto.password);
     const region = dto.dataRegion ?? 'eu';
@@ -95,9 +95,9 @@ export class AuthService {
   /** Вход по ГЛОБАЛЬНОМУ аккаунту; активная организация — выбранная или первая. */
   async login(dto: LoginDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
     const account = await this.accounts.findByEmail(dto.email);
-    if (!account) throw AppException.unauthorized('Неверный e-mail или пароль');
+    if (!account) throw AppException.unauthorized('Неверный email или пароль');
     if (!(await argon2.verify(account.password_hash, dto.password))) {
-      throw AppException.unauthorized('Неверный e-mail или пароль');
+      throw AppException.unauthorized('Неверный email или пароль');
     }
 
     const memberships = await this.users.membershipsByAccount(account.id);
@@ -150,7 +150,7 @@ export class AuthService {
     meta?: SessionMeta,
   ): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
     if (await this.accounts.findByEmail(email)) {
-      throw AppException.conflict('Пользователь с таким e-mail уже зарегистрирован — войдите и привяжите вход в профиле');
+      throw AppException.conflict('Пользователь с таким email уже зарегистрирован — войдите и привяжите вход в профиле');
     }
     const passwordHash = await argon2.hash(randomUUID() + randomUUID());
 

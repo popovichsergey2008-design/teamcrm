@@ -201,7 +201,7 @@ function ImportBlock({ cid }: { cid: string }) {
       {showUnmatched && unmatched.total > 0 && (
         <div style={{ marginTop: 10 }}>
           <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
-            Не сопоставлены по e-mail: {unmatched.total}. Привязка <b>необязательна</b> — никого в вашу команду не добавляем, несопоставленные задачи просто останутся без исполнителя.
+            Не сопоставлены по email: {unmatched.total}. Привязка <b>необязательна</b> — никого в вашу команду не добавляем, несопоставленные задачи просто останутся без исполнителя.
             {unmatched.total > unmatched.items.length ? ` Показаны первые ${unmatched.items.length}.` : ''}
           </div>
           {unmatched.items.map((u) => (
@@ -551,7 +551,7 @@ function YougileImportBlock({ cid }: { cid: string }) {
       {unmatched && (
         <>
           <div className="dim" style={{ fontSize: 12 }}>
-            Юзеры YouGile без совпадения по e-mail. Пока человек не привязан, задачи, которые он ставил или делает,
+            Юзеры YouGile без совпадения по email. Пока человек не привязан, задачи, которые он ставил или делает,
             приезжают без руководителя и исполнителя — и не попадают во вкладки «Мои задачи» и «Порученные».
             Привяжите вручную и запустите импорт ещё раз.
           </div>

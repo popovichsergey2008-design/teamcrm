@@ -830,7 +830,7 @@ function AiDemoFunnel({ f }: { f: Awaited<ReturnType<typeof api.platformAiDemoFu
   const ttfv = f.median_ttfv_sec == null ? '—' : f.median_ttfv_sec < 3600 ? `${Math.max(1, Math.round(f.median_ttfv_sec / 60))} мин` : `${Math.round(f.median_ttfv_sec / 3600)} ч`;
   return (
     <>
-      <div className="drawer-section-title" style={{ marginTop: 14 }}>Демо ИИ-созвона · 30 дней</div>
+      <div className="drawer-section-title" style={{ marginTop: 14 }}>Демо AI-созвона · 30 дней</div>
       <div className="funnel-stats">
         <div><b>{ttfv}</b><span className="dim">от регистрации до первой задачи (медиана)</span></div>
         <div><b>{f.accepted}</b><span className="dim">активаций</span></div>

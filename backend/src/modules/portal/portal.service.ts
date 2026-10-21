@@ -35,7 +35,7 @@ export class PortalService {
 
   async inviteClientUser(tenantId: string, invitedBy: string, clientId: string, email: string) {
     if (!(await this.repo.clientExists(tenantId, clientId))) throw AppException.notFound('Клиент не найден');
-    if (!email?.trim()) throw AppException.validation('Укажите e-mail');
+    if (!email?.trim()) throw AppException.validation('Укажите email');
     return this.invites.create(tenantId, invitedBy, { email: email.trim(), role: 'client', clientId });
   }
 

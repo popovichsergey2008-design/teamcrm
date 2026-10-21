@@ -90,7 +90,7 @@ export function AiDemoPage() {
   };
 
   return (
-    <div className="aid" role="dialog" aria-label="Демо ИИ-созвона">
+    <div className="aid" role="dialog" aria-label="Демо AI-созвона">
       <div className="aid-shell">
         <button className="aid-close" onClick={() => (phase === 'intro' ? void skip() : close())} aria-label="Закрыть демо" title="Закрыть">
           <Icon name="close" size={18} />
@@ -99,7 +99,7 @@ export function AiDemoPage() {
         {phase === 'intro' && (
           <section className="aid-intro">
             <div className="aid-spark"><Icon name="sparkles" size={28} /></div>
-            <h1>Магия ИИ-созвона за 30 секунд</h1>
+            <h1>Магия AI-созвона за 30 секунд</h1>
             <p className="aid-lead">Скажите одну рабочую фразу — QEVO сам превратит её в задачи.</p>
             <ul className="aid-points">
               <li><Icon name="check" size={14} /> Без настройки</li>

@@ -244,7 +244,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               </div>
             )}
             <div className="field"><label>Имя</label><input className="input" value={me.fullName ?? ''} onChange={(e) => setMe({ ...me, fullName: e.target.value })} /></div>
-            <div className="field"><label>E-mail</label><input className="input" value={me.email} disabled /></div>
+            <div className="field"><label>Email</label><input className="input" value={me.email} disabled /></div>
             <div className="field"><label>Должность</label><input className="input" value={me.positionName ?? '—'} disabled /></div>
             <div className="field"><label>Телефон</label><input className="input" value={me.phone ?? ''} onChange={(e) => setMe({ ...me, phone: e.target.value })} /></div>
             {/* День рождения. Нужен одному месту — блоку «Дни рождения» в новостях,
