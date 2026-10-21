@@ -2,6 +2,7 @@ import { Controller, ForbiddenException, Get, Req } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Public } from '../../common/auth/decorators';
+import { backgroundCount } from '../../common/background-work';
 import { MediaService } from '../media/media.service';
 import { HealthService } from './health.service';
 
@@ -37,6 +38,7 @@ export class HealthController {
     const local = peer === '127.0.0.1' || peer === '::1' || peer === '::ffff:127.0.0.1';
     if (!local) throw new ForbiddenException('Только с самого сервера');
     const m = this.media.health();
-    return { calls: m.rooms, participants: m.participants };
+    // processing — разборы созвонов в этом процессе: их тоже нельзя гасить на середине
+    return { calls: m.rooms, participants: m.participants, processing: backgroundCount() };
   }
 }

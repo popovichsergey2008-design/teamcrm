@@ -174,6 +174,24 @@ export class MeetingsRepository {
     );
   }
 
+  /** Дорожка участника созвона: по ним «Повторить» расшифровывает с именами говорящих. */
+  async addTrack(t: {
+    tenantId: string; meetingId: string; fileId: string; userId: string | null; speaker: string; offsetSec: number;
+  }): Promise<void> {
+    await this.db.query(
+      `INSERT INTO meeting_tracks (tenant_id, meeting_id, file_id, user_id, speaker, offset_sec) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [t.tenantId, t.meetingId, t.fileId, t.userId, t.speaker.slice(0, 255), t.offsetSec.toFixed(2)],
+    );
+  }
+
+  tracks(tenantId: string, meetingId: string) {
+    return this.db.many<{ file_id: string; user_id: string | null; speaker: string; offset_sec: string }>(
+      `SELECT file_id::text, user_id::text, speaker, offset_sec FROM meeting_tracks
+        WHERE tenant_id = $1 AND meeting_id = $2 ORDER BY id`,
+      [tenantId, meetingId],
+    );
+  }
+
   /** Комната созвона: экран итогов находит по ней встречу, пока номера у него ещё нет (ТЗ-22). */
   async setRoom(id: string, roomId: string): Promise<void> {
     await this.db.query(`UPDATE meetings SET room_id = $2 WHERE id = $1`, [id, roomId]);

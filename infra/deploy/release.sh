@@ -91,7 +91,9 @@ http.get("http://127.0.0.1:3000/api/health/busy", (r) => {
   let d = "";
   r.on("data", (c) => { d += c; });
   r.on("end", () => {
-    try { console.log(Number(JSON.parse(d).data.participants) || 0); }
+    // 21.10: и разборы созвонов — погасили процесс через 38 с после конца мита,
+    // и стенограмма 37 минут разговора пропала. Разбор считается как «занято».
+    try { const b = JSON.parse(d).data; console.log((Number(b.participants) || 0) + (Number(b.processing) || 0)); }
     catch (e) { console.log(0); }
   });
 }).on("error", () => console.log(0));
@@ -172,7 +174,7 @@ while [ "$waited" -lt $(( SWITCH_MAX_MIN * 60 )) ]; do
   n="$(busy_in "$LIVE_API" | tr -dc '0-9')"
   n="${n:-0}"
   [ "$n" = "0" ] && break
-  say "в живом цвете $OLD идёт созвон (участников $n) — переключимся, когда он кончится; ждём ${STEP_SEC} с (не дольше ${SWITCH_MAX_MIN} мин)"
+  say "в живом цвете $OLD идёт созвон или его разбор (занято: $n) — переключимся, когда кончится; ждём ${STEP_SEC} с (не дольше ${SWITCH_MAX_MIN} мин)"
   sleep "$STEP_SEC"
   waited=$(( waited + STEP_SEC ))
 done
@@ -241,7 +243,7 @@ else
     dc stop "crm-api-$OLD"
   else
     # Доживание: фоновый наблюдатель, отвязанный от ssh-сессии выкладки.
-    say "в $OLD идёт созвон (участников $n) — он доживёт; гасим, когда созвоны кончатся (не дольше ${DRAIN_MAX_MIN} мин)"
+    say "в $OLD идёт созвон или его разбор (занято: $n) — он доживёт; гасим, когда созвоны кончатся (не дольше ${DRAIN_MAX_MIN} мин)"
     setsid nohup bash -c '
       c="$1"; color="$2"; max_min="$3"
       for _ in $(seq 1 $(( max_min * 2 ))); do

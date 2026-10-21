@@ -20,6 +20,7 @@ import { blocksOf, PostcallService } from './postcall.service';
 import { AudioProofService } from './audio-proof.service';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
+import { trackBackground } from '../../common/background-work';
 
 /** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
 const MAX_RECORDING_BYTES = 600 * 1024 * 1024;
@@ -251,7 +252,8 @@ export class MeetingsService {
       : input.tracks.map((t) => ({ userId: t.userId, name: t.displayName }));
     await this.postcall.start({ tenantId: input.tenantId, meetingId: meeting.id, startedBy: input.actorId, ai, attendees });
 
-    void (async () => {
+    // trackBackground: выкладка не погасит процесс, пока разбор не закончен (21.10)
+    void trackBackground((async () => {
       try {
         if (!ai) {
           await this.saveCallRecording(input, meeting.id);
@@ -263,33 +265,9 @@ export class MeetingsService {
         }
         await this.repo.setStatus(meeting.id, 'transcribing');
         await this.postcall.mark(input.tenantId, meeting.id, { transcript: 'running' });
-        const replies: (Reply & { speakerUserId: string | null })[] = [];
-        // Словарь встречи нужен и здесь: записи созвонов идут этим путём,
-        // а не тем, куда попадают загруженные вручную файлы.
-        const hint = await this.speechHint(input.tenantId);
         // запись сохраняется параллельно с расшифровкой: сведение ffmpeg не задерживает итоги
         const saved = this.saveCallRecording(input, meeting.id);
-
-        // Дорожки расшифровываются параллельно (ТЗ-22): итоги после звонка ждут самую
-        // длинную дорожку, а не сумму всех. Не больше трёх разом — у Whisper свои пределы.
-        await inPool(input.tracks, TRANSCRIBE_PARALLEL, async (track) => {
-          const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
-          for (const chunk of chunks) {
-            const segments = await this.ai.transcribeSegments(
-              input.tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint);
-            // Гость сотрудником не является: speaker_user_id ссылается на users(id),
-            // и запись туда «guest:<uuid>» уронила бы расшифровку всей встречи.
-            const guest = track.userId.startsWith('guest:');
-            for (const s of shiftSegments(segments, chunk.offsetSec + track.offsetSec)) {
-              replies.push({
-                ...s,
-                speaker: guest ? `${track.displayName} (гость)` : track.displayName,
-                speakerUserId: guest ? null : track.userId,
-              });
-            }
-          }
-        });
-
+        const replies = await this.transcribeTracks(input.tenantId, input.tracks);
         await saved;
         if (!replies.length) {
           await this.repo.setStatus(meeting.id, 'error', 'Речь не распознана — проверьте ключ OpenAI');
@@ -297,8 +275,6 @@ export class MeetingsService {
           return;
         }
 
-        // дорожки писались параллельно: сводим в одну ленту по времени, иначе диалог не читается
-        replies.sort((a, b) => a.start - b.start);
         await this.repo.replaceSegments(input.tenantId, meeting.id, replies);
         if (!input.durationSec) await this.repo.setDuration(meeting.id, Math.round(replies[replies.length - 1].end));
         await this.postcall.mark(input.tenantId, meeting.id, { transcript: 'ready' });
@@ -338,7 +314,7 @@ export class MeetingsService {
         await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
         await this.postcall.failRest(input.tenantId, meeting.id).catch(() => undefined);
       }
-    })();
+    })());
 
     return meeting.id;
   }
@@ -352,7 +328,10 @@ export class MeetingsService {
    * всё равно делаем: она ценнее исходных файлов. Ошибки не роняют разбор.
    */
   private async saveCallRecording(
-    input: { tenantId: string; actorId: string | null; tracks: { userId: string; buffer: Buffer; fileName: string; offsetSec: number }[] },
+    input: {
+      tenantId: string; actorId: string | null;
+      tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[];
+    },
     meetingId: string,
   ): Promise<void> {
     const owner = input.actorId ?? input.tracks.find((t) => !t.userId.startsWith('guest:'))?.userId ?? null;
@@ -365,7 +344,15 @@ export class MeetingsService {
         tenantId: input.tenantId, userId: owner, buffer: track.buffer,
         fileName: track.fileName, contentType: 'audio/ogg',
         ownerKind: 'meeting_recording', ownerId: meetingId, maxBytes: MAX_RECORDING_BYTES,
-      }).catch((e) => this.log.warn(`дорожка ${track.userId} не сохранена: ${(e as Error).message}`));
+      })
+        // кто и с какой секунды — чтобы «Повторить» после сбоя дал стенограмму с именами
+        .then((f) => this.repo.addTrack({
+          tenantId: input.tenantId, meetingId, fileId: String(f.id),
+          userId: track.userId.startsWith('guest:') ? null : track.userId,
+          speaker: track.userId.startsWith('guest:') ? `${track.displayName} (гость)` : track.displayName,
+          offsetSec: track.offsetSec,
+        }))
+        .catch((e) => this.log.warn(`дорожка ${track.userId} не сохранена: ${(e as Error).message}`));
     }
     await mixTracks(input.tracks)
       .then(async (mixed) => {
@@ -379,6 +366,41 @@ export class MeetingsService {
       .catch((e) => this.log.warn(`встреча ${meetingId}: запись не сведена — ${(e as Error).message}`));
   }
 
+  /**
+   * Дорожки созвона → одна стенограмма. Говорящий известен по дорожке, а не по
+   * догадке модели. Расшифровка параллельная (ТЗ-22): итоги ждут самую длинную
+   * дорожку, а не сумму всех; больше трёх разом — у Whisper свои пределы.
+   */
+  private async transcribeTracks(
+    tenantId: string,
+    tracks: { userId: string; displayName: string; buffer: Buffer; fileName: string; offsetSec: number }[],
+  ): Promise<(Reply & { speakerUserId: string | null })[]> {
+    const replies: (Reply & { speakerUserId: string | null })[] = [];
+    // Словарь встречи нужен и здесь: записи созвонов идут этим путём,
+    // а не тем, куда попадают загруженные вручную файлы.
+    const hint = await this.speechHint(tenantId);
+    await inPool(tracks, TRANSCRIBE_PARALLEL, async (track) => {
+      const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
+      for (const chunk of chunks) {
+        const segments = await this.ai.transcribeSegments(
+          tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint);
+        // Гость сотрудником не является: speaker_user_id ссылается на users(id),
+        // и запись туда «guest:<uuid>» уронила бы расшифровку всей встречи.
+        const guest = track.userId.startsWith('guest:');
+        for (const s of shiftSegments(segments, chunk.offsetSec + track.offsetSec)) {
+          replies.push({
+            ...s,
+            speaker: guest && !track.displayName.endsWith('(гость)') ? `${track.displayName} (гость)` : track.displayName,
+            speakerUserId: guest ? null : track.userId,
+          });
+        }
+      }
+    });
+    // дорожки писались параллельно: сводим в одну ленту по времени, иначе диалог не читается
+    replies.sort((a, b) => a.start - b.start);
+    return replies;
+  }
+
   /** Повторная обработка — после сбоя или когда появился ключ распознавания. */
   async retry(tenantId: string, id: string) {
     const meeting = await this.repo.get(tenantId, id);
@@ -390,19 +412,38 @@ export class MeetingsService {
   }
 
   /** Конвейер: стенограмма → разбор → черновики. Ошибки не роняют процесс, а видны в статусе. */
-  async process(tenantId: string, meetingId: string): Promise<void> {
+  process(tenantId: string, meetingId: string): Promise<void> {
+    return trackBackground(this.processNow(tenantId, meetingId));
+  }
+
+  private async processNow(tenantId: string, meetingId: string): Promise<void> {
     try {
       const meeting = await this.repo.get(tenantId, meetingId);
       if (!meeting?.file_id) return;
 
       await this.repo.setStatus(meetingId, 'transcribing');
       await this.postcall.mark(tenantId, meetingId, { transcript: 'running' });
-      const { stream } = await this.files.getForDownload(tenantId, meeting.file_id);
-      const source = await toBuffer(stream);
 
-      const replies = meeting.source === 'transcript'
-        ? parseSubtitles(source.toString('utf8'))
-        : await this.transcribeRecording(tenantId, meetingId, source, meeting.title);
+      // Созвон с сохранёнными дорожками — по дорожкам, как в первый раз: с именами говорящих.
+      const tracks = meeting.source === 'call' ? await this.repo.tracks(tenantId, meetingId) : [];
+      let replies: (Reply & { speakerUserId?: string | null })[];
+      if (tracks.length) {
+        const loaded = [];
+        for (const t of tracks) {
+          const { stream } = await this.files.getForDownload(tenantId, t.file_id);
+          loaded.push({
+            userId: t.user_id ?? 'guest:', displayName: t.speaker, buffer: await toBuffer(stream),
+            fileName: `track-${t.file_id}.ogg`, offsetSec: Number(t.offset_sec),
+          });
+        }
+        replies = await this.transcribeTracks(tenantId, loaded);
+      } else {
+        const { stream } = await this.files.getForDownload(tenantId, meeting.file_id);
+        const source = await toBuffer(stream);
+        replies = meeting.source === 'transcript'
+          ? parseSubtitles(source.toString('utf8'))
+          : await this.transcribeRecording(tenantId, meetingId, source, meeting.title);
+      }
 
       if (!replies.length) {
         await this.repo.setStatus(meetingId, 'error',
@@ -454,11 +495,11 @@ export class MeetingsService {
       start: Number(s.start_sec), end: Number(s.end_sec ?? s.start_sec), speaker: s.speaker, text: s.text,
     }));
     await this.repo.setStatus(id, 'analyzing', null);
-    void this.runAnalysis(tenantId, id, meeting.project_id, replies).catch(async (e) => {
+    void trackBackground(this.runAnalysis(tenantId, id, meeting.project_id, replies).catch(async (e) => {
       this.log.warn(`meeting ${id} reanalyze failed: ${(e as Error).message}`);
       await this.repo.setStatus(id, 'error', meetingError(e)).catch(() => undefined);
       await this.postcall.failRest(tenantId, id).catch(() => undefined);
-    });
+    }));
     return { restarted: true, mode: 'analysis' as const };
   }
 
