@@ -1,4 +1,5 @@
 import { ProjectResolverService } from '../nl/project-resolver.service';
+import { TagsService } from '../tags/tags.service';
 import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger } from '@nestjs/common';
 import { Readable } from 'stream';
@@ -74,6 +75,7 @@ export class MeetingsService {
     private readonly activity: TaskActivityRepository,
     /** ТЗ-31: проект черновика, если у встречи его нет. */
     private readonly projectResolver: ProjectResolverService,
+    private readonly tags: TagsService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -102,6 +104,8 @@ export class MeetingsService {
       // что из предложенного стало настоящими задачами — со ссылкой и текущим статусом
       this.repo.linkedTasks(tenantId, id),
     ]);
+    // старые черновики (до #4604) получают теги при первом открытии — фоном
+    if (drafts.some((d) => d.tag_ids == null && d.status === 'pending')) void this.suggestDraftTags(tenantId, id);
     return { meeting, segments, summary, drafts, tasks };
   }
 
@@ -656,8 +660,13 @@ export class MeetingsService {
       .filter((d) => d.status !== 'pending').map((d) => norm(String(d.title ?? ''))));
     if (decided.size) value.tasks = value.tasks.filter((t) => !decided.has(norm(t.title)));
 
+    /*
+      #4604: определитель — и когда у встречи есть свой проект. Встреча в чате QEVO
+      обсуждает и чужие проекты: уверенное совпадение по смыслу задачи (описание,
+      ключевые слова проекта) важнее проекта встречи, названный вслух — важнее всего.
+    */
     const resolvedFor = new Map<number, string>();
-    if (!projectId && meeting?.created_by) {
+    if (meeting?.created_by) {
       await Promise.all(value.tasks.map(async (t, i) => {
         if (matchNamed(projects, t.projectHint)) return;
         const r = await this.projectResolver.resolveAs(tenantId, String(meeting.created_by), {
@@ -680,7 +689,7 @@ export class MeetingsService {
         description: t.description,
         assigneeId,
         assigneeHint: t.assigneeHint,
-        projectId: project?.id ?? projectId ?? resolvedFor.get(i) ?? null,
+        projectId: project?.id ?? resolvedFor.get(i) ?? projectId ?? null,
         projectHint: t.projectHint,
         columnId: column?.id ?? null,
         columnHint: t.columnHint,
@@ -696,7 +705,33 @@ export class MeetingsService {
       };
     }));
 
+    // теги — до автосоздания: задачи, созданные сразу, должны родиться с ними
+    await this.suggestDraftTags(tenantId, meetingId);
     await this.afterMeeting(tenantId, meetingId, quickSummary ?? value.summary, value.decisions.length);
+  }
+
+  /**
+   * Теги черновикам (#4604): ИИ выбирает из тегов компании — «Программная задача»,
+   * «Контентная», «Дизайнерская» и т. п. Берём уверенные; если уверенных нет — один
+   * самый вероятный: задача без типа хуже, чем с типом, который поправят в строке.
+   * Модель недоступна — черновик остаётся без тегов, разбору встречи это не мешает.
+   */
+  async suggestDraftTags(tenantId: string, meetingId: string): Promise<void> {
+    const drafts = (await this.repo.drafts(tenantId, meetingId).catch(() => []))
+      .filter((d) => d.tag_ids == null && (d.status === 'pending' || d.status === 'failed'));
+    if (!drafts.length) return;
+    await inPool(drafts, TAG_PARALLEL, async (d) => {
+      try {
+        const r = await this.tags.suggest(tenantId, { title: d.title, description: d.description });
+        if (r.offline || !r.aiTagging) return; // попробуем при следующем открытии
+        const pick = r.suggestions.length
+          ? r.suggestions
+          : [...r.maybe].sort((a, b) => b.confidence - a.confidence).slice(0, 1);
+        await this.repo.setSuggestedTags(tenantId, String(d.id), pick.map((t) => String(t.tagId)).slice(0, 4));
+      } catch (e) {
+        this.log.warn(`теги черновика ${d.id}: ${(e as Error).message}`);
+      }
+    });
   }
 
   /**
@@ -793,6 +828,8 @@ export class MeetingsService {
     }
 
     await this.repo.markDraftApplied(draftId, task.id);
+    await this.applyDraftTags(tenantId, actorId, draft, String(task.id), String(projectId), patch?.tagIds)
+      .catch((e) => this.log.warn(`черновик ${draftId}: теги — ${(e as Error).message}`));
     await this.afterDraftApplied(tenantId, actorId, draft, String(task.id), String(projectId), patch?.audio, opts.deferCut === true)
       .catch((e) => this.log.warn(`черновик ${draftId}: источник задачи — ${(e as Error).message}`));
     void this.secretary.record({
@@ -800,6 +837,19 @@ export class MeetingsService {
       summary: `Задача со встречи: «${task.title}»`, subjectType: 'task', subjectId: task.id,
     });
     return task;
+  }
+
+  /** Теги задачи из черновика: выбранные человеком или подобранные ИИ — только живые теги компании. */
+  private async applyDraftTags(
+    tenantId: string, actorId: string, draft: DraftRow, taskId: string, projectId: string, chosen?: string[],
+  ): Promise<void> {
+    const wanted = (chosen ?? draft.tag_ids ?? []).map(String);
+    if (!wanted.length && !(draft.ai_tag_ids ?? []).length) return;
+    const alive = new Set((await this.tags.list(tenantId)).items.map((t) => String(t.id)));
+    await this.tags.applyToNewTask(tenantId, { userId: actorId }, taskId, projectId, {
+      tagIds: wanted.filter((id) => alive.has(id)),
+      suggestedTagIds: (draft.ai_tag_ids ?? []).map(String),
+    });
   }
 
   /**
@@ -937,6 +987,8 @@ export function matchTeamMember(team: { id: string; full_name: string }[], hint:
 export interface DraftPatch {
   title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
   deadlineAt?: string | null; priority?: string | null;
+  /** теги (#4604): набор целиком */
+  tagIds?: string[];
   /** фрагмент записи (ТЗ-25): разрешить показать тем, кто встречу не видит, или без аудио */
   audio?: 'allow' | 'none';
 }
@@ -948,6 +1000,7 @@ function editedFields(draft: DraftRow, patch: DraftPatch): string[] {
   if (patch.title !== undefined && !same(patch.title?.trim(), draft.title)) out.push('title');
   if (patch.assigneeId !== undefined && !same(patch.assigneeId, draft.assignee_id)) out.push('assignee');
   if (patch.projectId !== undefined && !same(patch.projectId, draft.project_id)) out.push('project');
+  if (patch.tagIds !== undefined && !same([...patch.tagIds].sort().join(','), [...(draft.tag_ids ?? [])].map(String).sort().join(','))) out.push('tags');
   if (patch.deadlineAt !== undefined) {
     const was = draft.deadline_at ? new Date(draft.deadline_at).toISOString().slice(0, 10) : '';
     const now = patch.deadlineAt ? new Date(patch.deadlineAt).toISOString().slice(0, 10) : '';
@@ -955,6 +1008,9 @@ function editedFields(draft: DraftRow, patch: DraftPatch): string[] {
   }
   return out;
 }
+
+/** Сколько черновиков отдавать модели на подбор тегов одновременно. */
+const TAG_PARALLEL = 4;
 
 /** Сколько дорожек созвона расшифровывать одновременно. */
 const TRANSCRIBE_PARALLEL = 3;

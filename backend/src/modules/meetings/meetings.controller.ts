@@ -32,6 +32,8 @@ class ApplyDraftDto {
   @IsOptional() @IsIn(['', 'low', 'normal', 'high', 'urgent']) priority?: string;
   /** фрагмент записи (ТЗ-25): «Разрешить фрагмент» или «Создать без аудио» */
   @IsOptional() @IsIn(['allow', 'none']) audio?: 'allow' | 'none';
+  /** теги задачи (#4604): набор целиком, [] — без тегов */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) tagIds?: string[];
 }
 
 class BatchItemDto extends ApplyDraftDto {

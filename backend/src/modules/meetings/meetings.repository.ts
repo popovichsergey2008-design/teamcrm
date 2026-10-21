@@ -20,6 +20,8 @@ export interface DraftRow {
   deadline_at: Date | null; quote: string | null; status: string; task_id: string | null;
   source_sec?: string | null; source_speaker?: string | null; confidence?: string | null;
   priority?: string | null; edited_fields?: string[]; error_message?: string | null;
+  /** теги черновика (#4604): null — ещё не подбирали */
+  tag_ids?: string[] | null; ai_tag_ids?: string[] | null;
 }
 
 @Injectable()
@@ -391,7 +393,7 @@ export class MeetingsRepository {
    */
   async updateDraft(tenantId: string, id: string, patch: {
     title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
-    deadlineAt?: string | null; priority?: string | null;
+    deadlineAt?: string | null; priority?: string | null; tagIds?: string[];
   }): Promise<DraftRow | null> {
     return this.db.one<DraftRow>(
       `UPDATE meeting_task_drafts
@@ -400,7 +402,8 @@ export class MeetingsRepository {
               assignee_id = CASE WHEN $5::text IS NULL THEN assignee_id ELSE NULLIF($5::text, '')::bigint END,
               project_id = CASE WHEN $6::text IS NULL THEN project_id ELSE NULLIF($6::text, '')::bigint END,
               deadline_at = CASE WHEN $7::text IS NULL THEN deadline_at ELSE NULLIF($7::text, '')::timestamptz END,
-              priority = CASE WHEN $8::text IS NULL THEN priority ELSE NULLIF($8::text, '') END
+              priority = CASE WHEN $8::text IS NULL THEN priority ELSE NULLIF($8::text, '') END,
+              tag_ids = COALESCE($9::bigint[], tag_ids)
         WHERE tenant_id=$1 AND id=$2 AND status IN ('pending','failed')
         RETURNING *`,
       [
@@ -411,7 +414,20 @@ export class MeetingsRepository {
         patch.projectId === undefined ? null : String(patch.projectId ?? ''),
         patch.deadlineAt === undefined ? null : String(patch.deadlineAt ?? ''),
         patch.priority === undefined ? null : String(patch.priority ?? ''),
+        patch.tagIds === undefined ? null : patch.tagIds,
       ],
+    );
+  }
+
+  /**
+   * Теги, подобранные ИИ (#4604). Только туда, где их ещё не подбирали: правку
+   * человека повторный подбор не перетирает.
+   */
+  async setSuggestedTags(tenantId: string, id: string, tagIds: string[]): Promise<void> {
+    await this.db.query(
+      `UPDATE meeting_task_drafts SET tag_ids=$3::bigint[], ai_tag_ids=$3::bigint[]
+        WHERE tenant_id=$1 AND id=$2 AND tag_ids IS NULL AND status IN ('pending','failed')`,
+      [tenantId, id, tagIds],
     );
   }
 

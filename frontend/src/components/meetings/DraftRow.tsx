@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { OptionSelect } from '../ui/option-select';
-import { api, ApiError, type DraftProof } from '../../lib/api';
+import { api, ApiError, type DraftProof, type TagItem } from '../../lib/api';
+import { labelTextColor } from '../../lib/labels';
 import { AudioClip } from './AudioClip';
 import { navigate } from '../../lib/router';
 import { toastSaved } from '../../lib/notifications';
@@ -14,6 +15,19 @@ export interface DraftChoice { assigneeId?: string; projectId?: string; deadline
 const dateOf = (iso: string | null | undefined) => (iso ? new Date(iso).toISOString().slice(0, 10) : '');
 /** Дата из поля → конец рабочего дня, как у сроков, названных на встрече. */
 const isoOf = (date: string) => (date ? new Date(`${date}T18:00:00`).toISOString() : '');
+/** Теги компании — один запрос на весь список черновиков, а не на каждую строку. */
+let companyTags: Promise<TagItem[]> | null = null;
+function useCompanyTags(): TagItem[] {
+  const [tags, setTags] = useState<TagItem[]>([]);
+  useEffect(() => {
+    companyTags ??= api.listTags().then((r) => r.items).catch(() => { companyTags = null; return []; });
+    let alive = true;
+    void companyTags.then((t) => { if (alive) setTags(t); });
+    return () => { alive = false; };
+  }, []);
+  return tags;
+}
+
 const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 /**
@@ -51,6 +65,10 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(draft.title ?? '');
   const [description, setDescription] = useState(draft.description ?? '');
+  /** теги (#4604): ИИ подобрал их из тегов компании, человек правит вместе с текстом */
+  const tagsOf = () => ((draft.tag_ids ?? []) as unknown[]).map(String);
+  const [tagIds, setTagIds] = useState<string[]>(tagsOf);
+  const allTags = useCompanyTags();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -72,6 +90,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
         assigneeId: assigneeId || null,
         projectId: projectId || null,
         deadlineAt: isoOf(deadline),
+        tagIds,
       });
       setEditing(false);
       onSaved(); // список перечитывается: человек видит уже исправленную версию
@@ -87,6 +106,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
     setAssigneeId(draft.assignee_id ?? '');
     setProjectId(draft.project_id ?? '');
     setDeadline(dateOf(draft.deadline_at));
+    setTagIds(tagsOf());
     setEditing(false);
     setErr('');
   };
@@ -114,17 +134,35 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
                 placeholder="Название задачи" aria-label="Название задачи" autoFocus
               />
               <textarea
-                className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)}
+                className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)}
                 placeholder="Описание (необязательно)" aria-label="Описание задачи" style={{ marginTop: 4 }}
               />
+              {allTags.length > 0 && (
+                <div className="draft-tags" role="group" aria-label="Теги задачи">
+                  {allTags.map((t) => {
+                    const on = tagIds.includes(String(t.id));
+                    return (
+                      <button
+                        key={t.id} type="button" aria-pressed={on}
+                        className={`label-chip${on ? '' : ' label-off'}`}
+                        style={on ? { background: t.color, color: labelTextColor(t.color) } : { borderColor: t.color }}
+                        onClick={() => setTagIds(on ? tagIds.filter((x) => x !== String(t.id)) : [...tagIds, String(t.id)])}
+                      >{t.name}</button>
+                    );
+                  })}
+                </div>
+              )}
             </>
           ) : (
             <>
               <div className="team-head">
-                <span>{draft.title}</span>
+                <button type="button" className="draft-title" onClick={() => setEditing(true)} title="Нажмите, чтобы исправить название и описание">
+                  {draft.title}
+                </button>
                 {draft.priority === 'urgent' && <span className="ui-badge ui-badge-danger draft-urgent">срочно</span>}
               </div>
               {draft.description && <div className="dim" style={{ fontSize: 12 }}>{draft.description}</div>}
+              <DraftTags ids={tagsOf()} ai={((draft.ai_tag_ids ?? []) as unknown[]).map(String)} all={allTags} />
             </>
           )}
         </div>
@@ -212,6 +250,24 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Теги черновика в строке: подобранные ИИ — со звёздочкой, пока человек их не трогал. */
+function DraftTags({ ids, ai, all }: { ids: string[]; ai: string[]; all: TagItem[] }) {
+  const chosen = ids.map((id) => all.find((t) => String(t.id) === id)).filter((t): t is TagItem => !!t);
+  if (!chosen.length) return null;
+  return (
+    <div className="draft-tags">
+      {chosen.map((t) => (
+        <span
+          key={t.id} className="label-chip label-chip-sm" style={{ background: t.color, color: labelTextColor(t.color) }}
+          title={ai.includes(String(t.id)) ? 'Подобрал ИИ — поправьте в «Редактировать», если не так' : undefined}
+        >
+          {ai.includes(String(t.id)) && <Icon name="sparkles" size={10} />} {t.name}
+        </span>
+      ))}
     </div>
   );
 }

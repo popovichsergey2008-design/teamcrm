@@ -2697,6 +2697,8 @@ export const api = {
     title?: string; description?: string | null; assigneeId?: string | null; projectId?: string | null;
     /** ISO или '' — убрать срок */
     deadlineAt?: string;
+    /** теги (#4604): набор целиком */
+    tagIds?: string[];
   }) => request<any>('POST', `/meetings/drafts/${draftId}`, b),
   rejectMeetingDraft: (draftId: string) => request<any>('POST', `/meetings/drafts/${draftId}/reject`),
 
