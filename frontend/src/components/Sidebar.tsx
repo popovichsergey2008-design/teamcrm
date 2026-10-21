@@ -171,7 +171,7 @@ function readFolded(): Set<string> {
 }
 
 export function Sidebar({
-  route, user, organizations, avatarPath, unread, counters, activeCalls, inCall,
+  route, user, organizations, avatarPath, unread, counters, activeCalls, inCall, currentCallId,
   onSwitchOrg, onSearch, onJoinCall, onOpenSecretary, onHoverSection, onLogout,
 }: {
   route: Route;
@@ -187,6 +187,8 @@ export function Sidebar({
   activeCalls: { id: string; startedAt?: number; wasIn: boolean; names: string[] }[];
   /** Я сам сейчас в разговоре: тогда «присоединиться» к нему незачем. */
   inCall: boolean;
+  /** Созвон, в котором я сейчас: его блок ведёт обратно в окно разговора. */
+  currentCallId?: string | null;
   onSwitchOrg: (tenantId: string) => void;
   /** voice — открыть окно поиска сразу со включённым микрофоном. */
   onSearch: (voice?: boolean) => void;
@@ -422,13 +424,19 @@ export function Sidebar({
   /*
     Созвон, в который можно войти (#1567). Яркий зелёный блок с тем, кто внутри и
     сколько идёт, — по нажатию сразу в разговор. Видят его только свои (сервер отдаёт
-    лишь созвоны, куда человека звали), а пока я сам в разговоре — он не нужен.
+    лишь созвоны, куда человека звали).
+    21.10 (заказчик): блок живёт, ПОКА ЖИВЁТ МИТ, — и когда я сам в нём: окно
+    разговора свёрнуто или убрано, а блок напоминает, что созвон идёт, и по нажатию
+    разворачивает его. Пока я в созвоне, чужие комнаты не показываем — нажатие
+    увело бы из текущего разговора.
   */
-  const callWidget = inCall ? null : activeCalls.map((c) => {
-    const who = c.names.length === 0 ? 'пока никого — вас ждут'
+  const visibleCalls = inCall ? activeCalls.filter((c) => c.id === currentCallId) : activeCalls;
+  const callWidget = visibleCalls.map((c) => {
+    const mine = inCall && c.id === currentCallId;
+    const who = c.names.length === 0 ? (mine ? 'пока вы одни' : 'пока никого — вас ждут')
       : c.names.length <= 2 ? c.names.join(', ')
       : `${c.names.slice(0, 2).join(', ')} и ещё ${c.names.length - 2}`;
-    const action = c.wasIn ? 'Вернуться в созвон' : 'Присоединиться';
+    const action = mine ? 'Открыть созвон' : c.wasIn ? 'Вернуться в созвон' : 'Присоединиться';
     const mins = c.startedAt ? Math.max(0, Math.floor((now - c.startedAt) / 60_000)) : null;
     const title = `${action}. В созвоне: ${c.names.join(', ') || 'никого'}`;
     return (
@@ -437,7 +445,7 @@ export function Sidebar({
         {!collapsed && (
           <span className="nav-call-text">
             <span className="nav-call-head">
-              {c.wasIn ? 'Вы вышли из созвона' : 'Идёт созвон'}{mins !== null ? ` · ${mins < 1 ? 'только начался' : `${mins} мин`}` : ''}
+              {mine ? 'Вы в созвоне' : c.wasIn ? 'Вы вышли из созвона' : 'Идёт созвон'}{mins !== null ? ` · ${mins < 1 ? 'только начался' : `${mins} мин`}` : ''}
             </span>
             <span className="nav-call-who">{who}</span>
             <span className="nav-call-go">{action} →</span>

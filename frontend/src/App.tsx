@@ -435,6 +435,8 @@ export function App() {
 
   /** Присоединиться к уже идущему созвону. */
   const joinActiveCall = (roomId?: string) => {
+    // уже в этом созвоне — развернуть окно разговора, а не входить заново
+    if (callId && (!roomId || roomId === callId)) { window.dispatchEvent(new Event('teamcrm:call-expand')); return; }
     const existing = activeCalls.find((c) => c.canJoin && (!roomId || c.id === roomId));
     if (!existing) return;
     setCallInvite([]);
@@ -639,6 +641,7 @@ export function App() {
           names: c.participants.filter((p) => String(p.userId ?? '') !== String(user.id)).map((p) => p.displayName),
         }))}
         inCall={!!callId}
+        currentCallId={callId}
         onSwitchOrg={onSwitchOrg}
         onSearch={(voice) => setPaletteOpen({ voice })}
         onHoverSection={(section) => {

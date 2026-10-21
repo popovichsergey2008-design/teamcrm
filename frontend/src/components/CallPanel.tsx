@@ -276,6 +276,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   /** Вернуться к полному окну: отдельное окно при этом закрывается. */
   const expand = useCallback(() => { dropPip(); setView('full'); }, [dropPip]);
 
+  // блок «Вы в созвоне» в меню разворачивает окно разговора (21.10)
+  useEffect(() => {
+    window.addEventListener('teamcrm:call-expand', expand);
+    return () => window.removeEventListener('teamcrm:call-expand', expand);
+  }, [expand]);
+
   /** Убрать созвон с глаз. Разговор продолжается, на экране остаётся кнопка возврата. */
   const hide = useCallback(() => { dropPip(); setView('hidden'); }, [dropPip]);
 
