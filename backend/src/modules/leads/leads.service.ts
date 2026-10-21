@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../../database/db.service';
+import { PlatformService } from '../platform/platform.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { TelegramSender } from '../telegram/telegram.sender';
 
 const FROM_LABEL: Record<string, string> = {
@@ -25,10 +27,16 @@ export interface NewLead {
 export class LeadsService {
   private readonly logger = new Logger('Leads');
   private readonly hits = new Map<string, number[]>();
-  /** Куда сообщать о заявке. Пусто — заявка только сохраняется в landing_leads. */
+  /** Куда сообщать о заявке. Пусто — пишем лично дежурным «Службы заботы» в их Telegram. */
   private readonly chatId: string | undefined;
 
-  constructor(private readonly db: DbService, private readonly tg: TelegramSender, config: ConfigService) {
+  constructor(
+    private readonly db: DbService,
+    private readonly tg: TelegramSender,
+    private readonly telegram: TelegramService,
+    private readonly platform: PlatformService,
+    config: ConfigService,
+  ) {
     this.chatId = config.get<string>('LEADS_TELEGRAM_CHAT_ID') || undefined;
   }
 
@@ -47,7 +55,6 @@ export class LeadsService {
       `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null],
     );
-    if (!this.chatId) return;
     const text = l.source === 'support' ? [
       'Вопрос с сайта — проверка «ответ за 30 секунд», ответьте сейчас!',
       `Контакт: ${contact}`,
@@ -58,6 +65,25 @@ export class LeadsService {
       `Команда: ${l.team ?? 'не указано'}`,
       `Контакт: ${contact}`,
     ].join('\n');
-    await this.tg.sendMessage(this.chatId, text).catch((e) => this.logger.warn(`notify failed: ${(e as Error).message}`));
+    await this.notify(text).catch((e) => this.logger.warn(`notify failed: ${(e as Error).message}`));
+  }
+
+  /**
+   * Куда сообщить. Общий чат заявок задан — туда. Нет — каждому дежурному «Службы
+   * заботы» с привязанным Telegram (#4616): вопрос «проверьте за 30 секунд» не должен
+   * лечь в базу, где его никто не увидит.
+   */
+  private async notify(text: string): Promise<void> {
+    if (this.chatId) { await this.tg.sendMessage(this.chatId, text); return; }
+    const vendor = await this.platform.tenantId();
+    if (!vendor) return;
+    let sent = 0;
+    for (const s of await this.platform.onDuty()) {
+      const chat = await this.telegram.chatIdOf(vendor, String(s.user_id)).catch(() => null);
+      if (!chat) continue;
+      await this.tg.sendMessage(chat, text);
+      sent++;
+    }
+    if (!sent) this.logger.warn('заявку с сайта некому показать: нет LEADS_TELEGRAM_CHAT_ID и у дежурных не привязан Telegram');
   }
 }
