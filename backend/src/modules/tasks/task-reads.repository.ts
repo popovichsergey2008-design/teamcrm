@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { stageSql } from './responsibility';
 
 /**
  * Непрочитанное по задачам.
@@ -14,6 +15,10 @@ import { DbService } from '../../database/db.service';
  *    наблюдатель или постановщик. Решение заказчика, и оно правильное: в YouGile
  *    краснеет всё подряд на доске, и на большом проекте половина карточек горит
  *    постоянно — смотреть на это перестают.
+ * 3. Задача в «Готово» (закрыта или лежит в колонке типа «готово») и удалённая — не
+ *    горят (заказчик 21.10): «перенёс в Готово», «срок прошёл» по сделанной работе —
+ *    не новость, а у разработчика из-за этого висело «99+». Задачу вернули из
+ *    «Готово» — её непрочитанное снова видно.
  */
 
 /** «Моя задача» — одним условием, чтобы определение не разъехалось по запросам. */
@@ -23,6 +28,9 @@ const MINE = `(
    OR EXISTS (SELECT 1 FROM task_participants p
                WHERE p.tenant_id = t.tenant_id AND p.task_id = t.id AND p.user_id = $2)
 )`;
+
+/** Живая задача: не удалена и не в «Готово». */
+const ALIVE = `(t.deleted_at IS NULL AND ${stageSql('t')} <> 'done')`;
 
 /** Новое событие: чужое и позже моей отметки (её нет — значит всё ново). */
 const FRESH = `(
@@ -56,7 +64,7 @@ export class TaskReadsRepository {
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
-        WHERE a.tenant_id = $1 AND t.project_id = $3 AND ${MINE} AND ${FRESH}
+        WHERE a.tenant_id = $1 AND t.project_id = $3 AND ${MINE} AND ${ALIVE} AND ${FRESH}
         GROUP BY a.task_id`,
       [tenantId, userId, projectId],
     );
@@ -76,7 +84,7 @@ export class TaskReadsRepository {
          JOIN tasks t ON t.id = a.task_id
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
-        WHERE a.tenant_id = $1 AND ${MINE} AND ${FRESH}
+        WHERE a.tenant_id = $1 AND ${MINE} AND ${ALIVE} AND ${FRESH}
         GROUP BY t.project_id`,
       [tenantId, userId],
     );
@@ -95,7 +103,7 @@ export class TaskReadsRepository {
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
-        WHERE a.tenant_id = $1 AND a.task_id = ANY($3::bigint[]) AND ${MINE} AND ${FRESH}
+        WHERE a.tenant_id = $1 AND a.task_id = ANY($3::bigint[]) AND ${MINE} AND ${ALIVE} AND ${FRESH}
         GROUP BY a.task_id`,
       [tenantId, userId, taskIds],
     );
@@ -115,7 +123,7 @@ export class TaskReadsRepository {
          JOIN tasks t ON t.id = a.task_id
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
-        WHERE a.tenant_id = $1 AND ${MINE} AND ${FRESH}`,
+        WHERE a.tenant_id = $1 AND ${MINE} AND ${ALIVE} AND ${FRESH}`,
       [tenantId, userId],
     );
     return Number(row?.n ?? 0);

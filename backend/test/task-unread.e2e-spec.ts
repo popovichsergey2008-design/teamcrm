@@ -112,4 +112,28 @@ describe('непрочитанное в задачах (e2e)', () => {
 
     expect(await unreadOf(member.accessToken, proj.id, alien.id)).toBeGreaterThan(0);
   }, 40000);
+
+  it('21.10: задача в «Готово» не горит, вернули из «Готово» — снова новое', async () => {
+    const { owner, member } = await team();
+    const proj = (await http.post('/api/projects').set(H(owner.accessToken))
+      .send({ name: 'Готово не горит' }).expect(201)).body.data;
+    const task = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: proj.id, title: 'Вёрстка', assigneeId: member.user.id }).expect(201)).body.data;
+    await http.post(`/api/tasks/${task.id}/read`).set(H(member.accessToken)).expect(201);
+
+    const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(owner.accessToken)).expect(200)).body.data;
+    const done = board.columns.find((c: any) => c.stage_type === 'done') ?? board.columns[board.columns.length - 1];
+    const first = board.columns[0];
+
+    // постановщик принял работу — разработчику это не новость, счётчик молчит
+    await http.post(`/api/tasks/${task.id}/move`).set(H(owner.accessToken)).send({ columnId: done.id, position: 0 }).expect(201);
+    await http.post(`/api/tasks/${task.id}/comments`).set(H(owner.accessToken)).send({ body: 'Принято' }).expect(201);
+    expect(await unreadOf(member.accessToken, proj.id, task.id)).toBe(0);
+    const projects = (await http.get('/api/projects').set(H(member.accessToken)).expect(200)).body.data;
+    expect(Number(projects.find((p: any) => String(p.id) === String(proj.id)).unread)).toBe(0);
+
+    // вернули на доработку — всё непрочитанное снова видно
+    await http.post(`/api/tasks/${task.id}/move`).set(H(owner.accessToken)).send({ columnId: first.id, position: 0 }).expect(201);
+    expect(await unreadOf(member.accessToken, proj.id, task.id)).toBeGreaterThan(0);
+  }, 40000);
 });
