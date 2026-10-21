@@ -9,7 +9,7 @@ export const TYPE_META: Record<NewsType, { label: string; icon: IconName; tone: 
   announcement: { label: 'Важное объявление', icon: 'megaphone', tone: 'announcement' },
   kudos: { label: 'Спасибо', icon: 'heart', tone: 'kudos' },
   poll: { label: 'Опрос', icon: 'chart', tone: 'poll' },
-  highlight: { label: 'AI-Хайлайты дня', icon: 'sparkles', tone: 'highlight' },
+  highlight: { label: 'AI-хайлайты дня', icon: 'sparkles', tone: 'highlight' },
   learnings: { label: 'Выводы недели', icon: 'bulb', tone: 'highlight' },
   milestone: { label: 'Веха завершена', icon: 'party', tone: 'release' },
   release: { label: 'Релиз', icon: 'rocket', tone: 'release' },

@@ -525,7 +525,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
             {review?.newsWorthy && (
               newsDone
                 ? <span className="dim pc-note"><Icon name="check" size={12} /> Пост предложен в «Новости»</span>
-                : <Button variant="outline" size="sm" onClick={() => void toNews()}><Icon name="megaphone" size={14} /> Подготовить пост в Новости</Button>
+                : <Button variant="outline" size="sm" onClick={() => void toNews()}><Icon name="megaphone" size={14} /> Подготовить пост в «Новости»</Button>
             )}
             {staffOthers > 0 && blockState('summary') === 'ready' && (review?.recapSentAt
               ? <span className="dim pc-note"><Icon name="check" size={12} /> Итоги отправлены участникам</span>

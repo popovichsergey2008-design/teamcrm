@@ -69,7 +69,7 @@ export function AnthillResponses() {
               </OptionSelect>
             </label>
           </div>
-          <label className="anthill-ctx" title="Иначе ответ приходит только когда бота позвали через @">
+          <label className="anthill-ctx" title="Иначе ответ приходит, только когда бота позвали через @">
             <input type="checkbox" checked={draft.auto} onChange={(e) => setDraft({ ...draft, auto: e.target.checked })} />
             Отвечать без упоминания бота
           </label>

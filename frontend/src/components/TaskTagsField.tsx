@@ -185,7 +185,7 @@ export function TaskTagsField({ task, value, onChange, compact, mode = 'create' 
       {/* Неуверенные подсказки — отдельно и невыбранными: «возможно подходит» (ТЗ, п. 28). */}
       {maybe.length > 0 && !value.confirmed && (
         <div className="tags-maybe">
-          <span className="dim">Возможно подходит:</span>
+          <span className="dim">Возможно, подходит:</span>
           {maybe.filter((m) => !value.tagIds.includes(m.tagId)).map((m) => (
             <button
               key={m.tagId}

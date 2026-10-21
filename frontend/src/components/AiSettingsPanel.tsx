@@ -56,7 +56,7 @@ export function AiSettingsSection() {
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
           Статус: {s.kimiKeySet ? 'задан (свой)' : s.globalKimi ? 'используется общий' : '— не задан —'}.
           {' '}С ключом Kimi через него идёт вся текстовая работа ИИ: QEVO Bot, разбор встреч и чатов, черновики задач,
-          сводки, секретарь. Расшифровка речи, озвучка и поиск по базе знаний у Kimi нет — для них остаётся ключ OpenAI.
+          сводки, секретарь. Расшифровки речи, озвучки и поиска по базе знаний у Kimi нет — для них остаётся ключ OpenAI.
           Ключ — на <span className="dim">platform.kimi.ai</span>.
         </div>
         <input className="input add-user-input" type="password" placeholder="sk-... (ключ Kimi)" value={kimiKey} onChange={(e) => setKimiKey(e.target.value)} />

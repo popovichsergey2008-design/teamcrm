@@ -46,7 +46,7 @@ type Day = Extract<FocusToday, { enabled: true }>;
  */
 
 const REASONS: { id: FocusChangeReason; label: string }[] = [
-  { id: 'not_relevant', label: 'Не актуально' },
+  { id: 'not_relevant', label: 'Неактуально' },
   { id: 'wrong_priority', label: 'Неверный приоритет' },
   { id: 'done', label: 'Уже сделано' },
   { id: 'blocked', label: 'Заблокировано' },
@@ -187,7 +187,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     if (!item.approvalId) return;
     let note: string | undefined;
     if (!approve) {
-      const text = await promptText({ title: 'Почему отказываете?', placeholder: 'Причина увидит автор', confirmLabel: 'Отказать', minLength: 3 });
+      const text = await promptText({ title: 'Почему отказываете?', placeholder: 'Причину увидит автор', confirmLabel: 'Отказать', minLength: 3 });
       if (!text) return;
       note = text;
     }

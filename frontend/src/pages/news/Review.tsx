@@ -124,7 +124,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       footer={<button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={onClose}>Готово</button>}>
       {!s ? <div className="dim">{err || 'Загружаю…'}</div> : (
         <div className="feed-form">
-          <Checkbox checked={s.highlightsEnabled} onCheckedChange={(v) => void save({ highlightsEnabled: v })} label="AI-Хайлайты дня — по рабочим дням, только когда есть повод" />
+          <Checkbox checked={s.highlightsEnabled} onCheckedChange={(v) => void save({ highlightsEnabled: v })} label="AI-хайлайты дня — по рабочим дням, только когда есть повод" />
           <label className="feed-inline-field"><span className="dim">Во сколько</span>
             <OptionSelect className="input" value={s.highlightHour} onChange={(e) => void save({ highlightHour: Number(e.target.value) })} aria-label="Час хайлайта">
               {hours.map((h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}

@@ -82,7 +82,7 @@ export function ClientPortal() {
                           <div className="task-meta">
                             {t.is_blocked && <span className="ui-badge ui-badge-neutral badge-blocked">В ожидании</span>}
                             {t.deadline_at && <span className="ui-badge ui-badge-neutral" title="Срок">до {new Date(t.deadline_at).toLocaleDateString('ru-RU')}</span>}
-                            {!!t.checklistTotal && <span className="ui-badge ui-badge-neutral" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
+                            {!!t.checklistTotal && <span className="ui-badge ui-badge-neutral" title="чек-лист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
                           </div>
                         </div>
                       ))}

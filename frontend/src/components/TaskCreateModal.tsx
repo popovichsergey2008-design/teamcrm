@@ -296,7 +296,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         catch { failed.push(f.name); }
       }
       if (lostItems.length) {
-        setErr(`Задача создана (#${created.id}), но не добавились пункты чек-листа: ${lostItems.join('; ')}. Допишите их в карточке, на вкладке «Чеклист».`);
+        setErr(`Задача создана (#${created.id}), но не добавились пункты чек-листа: ${lostItems.join('; ')}. Допишите их в карточке, на вкладке «Чек-лист».`);
         setBusy(false);
         return;
       }
@@ -382,7 +382,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
               label="Из шаблона"
               hint={chosenTpl ? (
                 <>
-                  Поля заполнены по шаблону — поправьте что нужно.
+                  Поля заполнены по шаблону — поправьте, что нужно.
                   {chosenTpl.checklist.length > 0 && ` Чек-лист (${chosenTpl.checklist.length}) добавится после создания.`}
                   {chosenTpl.created_by_name ? ` Шаблон завёл ${chosenTpl.created_by_name}.` : ''}
                 </>

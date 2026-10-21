@@ -1546,7 +1546,7 @@ function AgentTab({ taskId, assigned, onRefresh }: { taskId: string; assigned: b
           </Button>
         )}
         <div className="dim" style={{ fontSize: 12, marginTop: 6 }}>
-          «Передать агенту» — назначить ИИ исполнителем и сразу выполнить (текстовые задачи). Задача пойдёт на «На тестировании» вам на проверку.
+          «Передать агенту» — назначить ИИ исполнителем и сразу выполнить (текстовые задачи). Задача пойдёт в «На тестировании» вам на проверку.
         </div>
       </div>
       <div className="dim" style={{ fontSize: 12 }}>

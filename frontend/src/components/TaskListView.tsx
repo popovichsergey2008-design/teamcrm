@@ -56,7 +56,7 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                   {due && <span className={due.cls} title={due.title}>{due.text}</span>}
                   {!!t.commentsCount && <span className="ui-badge ui-badge-neutral" title="комментарии"><Icon name="chat" size={12} /> {t.commentsCount}</span>}
                   {!!t.attachmentsCount && <span className="ui-badge ui-badge-neutral" title="вложения"><Icon name="paperclip" size={12} /> {t.attachmentsCount}</span>}
-                  {!!t.checklistTotal && <span className="ui-badge ui-badge-neutral" title="чеклист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
+                  {!!t.checklistTotal && <span className="ui-badge ui-badge-neutral" title="чек-лист"><Icon name="check" size={12} /> {t.checklistDone}/{t.checklistTotal}</span>}
                   {MONETIZATION_ENABLED && cost !== null && (
                     <span className="ui-badge ui-badge-neutral" title="Себестоимость">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>
                   )}

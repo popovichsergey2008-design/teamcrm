@@ -434,8 +434,8 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
             {/* Несколько поручений (§9): разные исполнители и сроки — отдельные задачи */}
             {(draft.split?.length ?? 0) >= 2 && (
               <div className="field mtt-split">
-                <label>В сообщении {draft.split!.length} поручения</label>
-                <label className="notify-row"><input type="radio" checked={mode === 'split'} onChange={() => setMode('split')} /> Создать {draft.split!.length} отдельные задачи</label>
+                <label>В сообщении {draft.split!.length} {draft.split!.length < 5 ? 'поручения' : 'поручений'}</label>
+                <label className="notify-row"><input type="radio" checked={mode === 'split'} onChange={() => setMode('split')} /> Создать {draft.split!.length} {draft.split!.length < 5 ? 'отдельные задачи' : 'отдельных задач'}</label>
                 <label className="notify-row"><input type="radio" checked={mode === 'single'} onChange={() => setMode('single')} /> Создать одну задачу с чек-листом</label>
                 {mode === 'split' && (
                   <ol className="mtt-split-list">
@@ -486,7 +486,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                 disabled={busy || !tagsReady(tagSettings, tags)}
                 title={tagsReady(tagSettings, tags) ? undefined : 'Подтвердите теги задачи'}
               >
-                {busy ? 'Создаю…' : mode === 'split' && (draft.split?.length ?? 0) >= 2 ? `Создать ${draft.split!.length} задачи` : 'Создать задачу'}
+                {busy ? 'Создаю…' : mode === 'split' && (draft.split?.length ?? 0) >= 2 ? `Создать ${draft.split!.length} ${draft.split!.length < 5 ? 'задачи' : 'задач'}` : 'Создать задачу'}
               </button>
               {/* Отказ — явным действием: закрытое окно черновик не отменяет, он может ждать ответа. */}
               <button className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => void cancel()} disabled={busy} title="Не создавать задачу по этому сообщению">
@@ -517,5 +517,5 @@ function ProjectHint({ draft }: { draft: { projectId: string | null; analysis: R
   if (!r.projectId || String(r.projectId) !== String(draft.projectId ?? '')) return null;
   return r.level === 'HIGH'
     ? <span className="dim nl-hint"><Icon name="sparkles" size={11} /> Определено: {r.hint}</span>
-    : <span className="nl-hint mtt-project-warn"><Icon name="sparkles" size={11} /> Скорее всего этот — {r.hint}. Проверьте проект.</span>;
+    : <span className="nl-hint mtt-project-warn"><Icon name="sparkles" size={11} /> Скорее всего, этот — {r.hint}. Проверьте проект.</span>;
 }
