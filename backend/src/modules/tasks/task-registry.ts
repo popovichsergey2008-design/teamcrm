@@ -1,3 +1,4 @@
+import { assigneeOwesSql } from './responsibility';
 /**
  * Реестр задач: сборка условий выборки по всем проектам сразу.
  *
@@ -254,7 +255,8 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
 
   // Границы дня считаем от присланного конца суток: начало «сегодня» — минус день,
   // конец недели — плюс семь. Второй параметр под это заводить незачем.
-  if (due === 'overdue') where.push(`t.deadline_at IS NOT NULL AND t.deadline_at < $3::timestamptz - interval '1 day'`);
+  // просрочено — только то, что в работе: сданное на тестирование/проверку не просрочено (21.10)
+  if (due === 'overdue') where.push(`t.deadline_at IS NOT NULL AND t.deadline_at < $3::timestamptz - interval '1 day' AND ${assigneeOwesSql('t')}`);
   else if (due === 'today') {
     where.push(`t.deadline_at IS NOT NULL
       AND t.deadline_at >= $3::timestamptz - interval '1 day' AND t.deadline_at <= $3::timestamptz`);

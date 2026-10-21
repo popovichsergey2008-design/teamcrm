@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { stageSql } from '../tasks/responsibility';
+import { activeOverdueSql, stageSql } from '../tasks/responsibility';
 import { DbService } from '../../database/db.service';
 
 /** Кто смотрит и в каком охвате: `own` — только свои клиенты (п. 46, scope assigned). */
@@ -123,7 +123,7 @@ export class ClientsRepository {
          LEFT JOIN users ou ON ou.id = c.owner_user_id
          LEFT JOIN LATERAL (
            SELECT count(*) FILTER (WHERE t.closed_at IS NULL)::int AS open,
-                  count(*) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now())::int AS overdue,
+                  count(*) FILTER (WHERE ${activeOverdueSql('t')})::int AS overdue,
                   max(t.updated_at) AS touched
              ${TASKS_OF('c')}
          ) tk ON TRUE
@@ -155,7 +155,7 @@ export class ClientsRepository {
     return this.db.one<{ mine: number; no_owner: number; overdue: number; total: number }>(
       `SELECT count(*) FILTER (WHERE ${OWN('c', '$2')})::int AS mine,
               count(*) FILTER (WHERE c.owner_user_id IS NULL)::int AS no_owner,
-              count(*) FILTER (WHERE EXISTS (SELECT 1 ${TASKS_OF('c')} AND t.closed_at IS NULL AND t.deadline_at < now()))::int AS overdue,
+              count(*) FILTER (WHERE EXISTS (SELECT 1 ${TASKS_OF('c')} AND ${activeOverdueSql('t')}))::int AS overdue,
               count(*)::int AS total
          FROM clients c WHERE c.tenant_id = $1 AND c.archived_at IS NULL ${own}`,
       [tenantId, scope.userId],
@@ -444,8 +444,8 @@ export class ClientsRepository {
   }
 
   tasks(tenantId: string, clientId: string, filter: string) {
-    // просрочка здесь — задачи клиента как проекта (ТЗ-30, п. 4); «на согласовании» — по этапу
-    const extra = filter === 'overdue' ? 'AND t.closed_at IS NULL AND t.deadline_at < now()'
+    // просрочка — только то, что в работе (21.10): сданное на проверку не просрочено; «на согласовании» — по этапу
+    const extra = filter === 'overdue' ? `AND ${activeOverdueSql('t')}`
       : filter === 'approval' ? `AND t.closed_at IS NULL AND ${stageSql('t')} IN ('testing', 'review', 'approval', 'waiting_external')`
       : filter === 'all' ? '' : 'AND t.closed_at IS NULL';
     return this.db.many<any>(

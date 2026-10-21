@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { assigneeOwesSql } from '../tasks/responsibility';
 
 @Injectable()
 export class VelocityRepository {
@@ -45,12 +46,15 @@ export class VelocityRepository {
     return this.db.one(`SELECT weekly_capacity_hours FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId]);
   }
 
-  /** Текущая загрузка: суммарная оценка открытых задач исполнителя. */
+  /**
+   * Текущая загрузка: суммарная оценка задач, которые исполнитель ещё делает. Сданное
+   * на тестирование, проверку или согласование — уже не его очередь (21.10).
+   */
   async openQueueHours(tenantId: string, userId: string, excludeTaskId?: string): Promise<number> {
     const r = await this.db.one<{ h: string }>(
-      `SELECT COALESCE(SUM(estimate_hours), 0) AS h FROM tasks
-        WHERE tenant_id=$1 AND assignee_id=$2 AND closed_at IS NULL
-          AND ($3::bigint IS NULL OR id <> $3)`,
+      `SELECT COALESCE(SUM(estimate_hours), 0) AS h FROM tasks t
+        WHERE t.tenant_id=$1 AND t.assignee_id=$2 AND t.closed_at IS NULL AND ${assigneeOwesSql('t')}
+          AND ($3::bigint IS NULL OR t.id <> $3)`,
       [tenantId, userId, excludeTaskId ?? null],
     );
     return Math.round(Number(r?.h ?? 0) * 100) / 100;

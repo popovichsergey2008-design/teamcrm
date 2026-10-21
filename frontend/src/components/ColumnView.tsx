@@ -318,7 +318,8 @@ function TaskCard({
         </div>
       )}
       <div className="task-title">
-        {task.risk_level && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
+        {/* сданная на тестирование/проверку задача риска срыва не несёт (21.10) */}
+        {task.risk_level && !paused && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
         {task.title}
         {/* Сколько по задаче нового ЛИЧНО ДЛЯ МЕНЯ: чужие изменения после того, как
             я последний раз открывал карточку. Стоит у заголовка, а не среди значков

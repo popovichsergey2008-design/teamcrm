@@ -822,7 +822,7 @@ export class TasksRepository {
               ua.full_name AS assignee_name, um.full_name AS manager_name,
               (t.assignee_id = $2) AS is_mine,
               (t.closed_at IS NULL AND t.deadline_at IS NOT NULL
-               AND t.deadline_at < $3::timestamptz - interval '1 day') AS overdue,
+               AND t.deadline_at < $3::timestamptz - interval '1 day' AND ${stageSql('t')} = 'work') AS overdue,
               ${stageSql('t')} AS stage,
               COUNT(*) OVER () AS total
          FROM tasks t

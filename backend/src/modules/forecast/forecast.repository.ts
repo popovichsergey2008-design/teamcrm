@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { stageSql } from '../tasks/responsibility';
 
 export interface ForecastTaskRow {
   id: string;
@@ -10,6 +11,8 @@ export interface ForecastTaskRow {
   predicted_finish_at: Date | null;
   risk_pct: string | null;
   risk_level: string | null;
+  /** этап (ТЗ-30): не «работа» — риска срыва у исполнителя нет */
+  stage?: string | null;
 }
 
 @Injectable()
@@ -22,7 +25,7 @@ export class ForecastRepository {
   getTask(tenantId: string, taskId: string): Promise<ForecastTaskRow | null> {
     return this.db.one<ForecastTaskRow>(
       `SELECT id, project_id, assignee_id, estimate_hours, deadline_at,
-              predicted_finish_at, risk_pct, risk_level
+              predicted_finish_at, risk_pct, risk_level, ${stageSql('tasks')} AS stage
          FROM tasks WHERE tenant_id=$1 AND id=$2`,
       [tenantId, taskId],
     );

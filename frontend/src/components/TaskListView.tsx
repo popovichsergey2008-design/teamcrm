@@ -10,6 +10,9 @@ interface Props {
   onOpenTask: (task: Task) => void;
 }
 
+/** Этапы, на которых работа сдана: срок прошёл — но это не просрочка исполнителя (ТЗ-30). */
+const PAUSED_STAGES = ['testing', 'review', 'approval', 'waiting_external'];
+
 /** Списочный вид доски: задачи сгруппированы по колонкам, компактные строки. */
 export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Props) {
   const nameOf = (t: Task) => t.assignee_name ?? users.find((u) => u.id === t.assignee_id)?.fullName ?? null;
@@ -29,14 +32,16 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
             const manager = managerOf(t);
             const cost = t.cost_current !== undefined ? Number(t.cost_current) : null;
             const prio = priorityBadge(t.priority);
-            const due = deadlineBadge(t.deadline_at, !!t.closed_at);
+            const paused = PAUSED_STAGES.includes(col.stage_type ?? 'work') || t.approval_state === 'pending';
+            // в «Готово» задача сделана, даже если её ещё не закрыли — срок не подсвечиваем
+            const due = deadlineBadge(t.deadline_at, !!t.closed_at || col.stage_type === 'done', paused);
             return (
               <div key={t.id} className={`list-row ${activeTimerTask === t.id ? 'task-tracking' : ''}`}
                    role="button" tabIndex={0}
                    onClick={() => onOpenTask(t)}
                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenTask(t); } }}>
                 <div className="list-main">
-                  {t.risk_level && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
+                  {t.risk_level && !paused && col.stage_type !== 'done' && <span className={`risk-dot risk-${t.risk_level}`} title={`Риск срока: ${t.risk_level}`} />}
                   {/* Номер — как в реестре: задачу называют цифрой, а не заголовком */}
                   <span className="registry-id" title="Номер задачи">#{t.id}</span>
                   <span className="list-title">{t.title}</span>

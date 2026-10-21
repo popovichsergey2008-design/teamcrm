@@ -1,6 +1,7 @@
 import { meetingVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { activeOverdueSql } from '../tasks/responsibility';
 
 export interface SessionRow {
   id: string; tenant_id: string; user_id: string; title: string | null;
@@ -668,7 +669,7 @@ export class AnthillRepository {
     return this.db.one<{ id: string; name: string; status: string; owner: string | null; client: string | null; open_tasks: number; overdue: number }>(
       `SELECT p.id, p.name, p.status, ow.full_name AS owner, cl.name AS client,
               (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.closed_at IS NULL) AS open_tasks,
-              (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND t.closed_at IS NULL AND t.deadline_at < now()) AS overdue
+              (SELECT COUNT(*)::int FROM tasks t WHERE t.project_id = p.id AND ${activeOverdueSql('t')}) AS overdue
          FROM projects p LEFT JOIN users ow ON ow.id = p.owner_user_id LEFT JOIN clients cl ON cl.id = p.client_id
         WHERE p.tenant_id=$1 AND p.id=$2`,
       [tenantId, projectId],

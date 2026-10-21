@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { assigneeOwesSql, personalDeadlineSql, personalOverdueSql } from '../tasks/responsibility';
+import { activeOverdueSql, assigneeOwesSql, personalDeadlineSql, personalOverdueSql } from '../tasks/responsibility';
 import { SecretaryService } from '../secretary/secretary.service';
 import {
   classifyAsk, hotAnswer, loadAnswer, projectAnswer, unknownAnswer,
@@ -52,7 +52,7 @@ export class AskService {
         `SELECT p.name,
                 COUNT(*) FILTER (WHERE t.closed_at IS NULL) AS open,
                 COUNT(*) FILTER (WHERE t.closed_at > now() - interval '7 days') AS closed_week,
-                COUNT(*) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now()) AS overdue,
+                COUNT(*) FILTER (WHERE ${activeOverdueSql('t')}) AS overdue,
                 COALESCE((SELECT SUM(EXTRACT(EPOCH FROM (COALESCE(tl.timestamp_end, now()) - tl.timestamp_start)) / 3600)
                             FROM time_logs tl JOIN tasks tt ON tt.id = tl.task_id
                            WHERE tt.project_id = p.id), 0) AS hours

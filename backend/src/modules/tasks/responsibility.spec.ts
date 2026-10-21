@@ -1,4 +1,4 @@
-import { assigneeDelaySeconds, personalOverdue, responsibleOf, stageOfColumnName, taskStage } from './responsibility';
+import { activeOverdueSql, assigneeDelaySeconds, personalOverdue, responsibleOf, stageOfColumnName, taskStage } from './responsibility';
 
 const at = (s: string) => new Date(s);
 
@@ -53,5 +53,14 @@ describe('ответственность за срок (ТЗ-30)', () => {
     expect(responsibleOf({ stage: 'approval', assigneeId: '1', creatorId: '2' })).toEqual({ type: 'approver', userId: '2' });
     expect(responsibleOf({ stage: 'waiting_external', assigneeId: '1', creatorId: '2' }).type).toBe('client');
     expect(responsibleOf({ stage: 'work', assigneeId: '1', creatorId: '2' })).toEqual({ type: 'assignee', userId: '1' });
+  });
+});
+
+describe('просрочка в счётчиках (21.10)', () => {
+  it('сданное на тестирование и готовое не считается: только этап «работа»', () => {
+    const sql = activeOverdueSql('t');
+    expect(sql).toContain('t.deadline_at < now()');
+    expect(sql).toContain("(task_stage(t.column_id, t.approval_state, t.closed_at) = 'work')");
+    expect(sql).toContain('t.closed_at IS NULL');
   });
 });

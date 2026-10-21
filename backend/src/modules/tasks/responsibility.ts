@@ -37,6 +37,14 @@ export const personalDeadlineSql = (t = 't') => `COALESCE(${t}.fix_deadline_at, 
 export const personalOverdueSql = (t = 't', now = 'now()') =>
   `(${assigneeOwesSql(t)} AND ${personalDeadlineSql(t)} IS NOT NULL AND ${personalDeadlineSql(t)} < ${now})`;
 
+/**
+ * Просрочка, которую видят люди в счётчиках проекта, клиента, команды (21.10, заказчик):
+ * задача на тестировании, проверке, согласовании или у клиента — НЕ просрочена,
+ * её сдали; в «Готово» — тем более. Просрочено только то, что сейчас в работе.
+ */
+export const activeOverdueSql = (t = 't', now = 'now()') =>
+  `(${t}.closed_at IS NULL AND ${t}.deadline_at IS NOT NULL AND ${t}.deadline_at < ${now} AND ${assigneeOwesSql(t)})`;
+
 /** Просрочка ЗАДАЧИ (проекта) — как была: открыта и срок прошёл. */
 export const taskOverdueSql = (t = 't', now = 'now()') =>
   `(${t}.closed_at IS NULL AND ${t}.deadline_at IS NOT NULL AND ${t}.deadline_at < ${now})`;

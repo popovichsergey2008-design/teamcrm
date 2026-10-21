@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { personalDeadlineSql, stageSql } from '../tasks/responsibility';
+import { activeOverdueSql, personalDeadlineSql, stageSql } from '../tasks/responsibility';
 
 export type ProjectHealth = {
   id: string;
@@ -42,7 +42,7 @@ export class RadarRepository {
       `SELECT p.id, p.name,
               COUNT(t.id)::int AS total,
               COUNT(t.id) FILTER (WHERE t.closed_at IS NOT NULL)::int AS closed,
-              COUNT(t.id) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now())::int AS overdue,
+              COUNT(t.id) FILTER (WHERE ${activeOverdueSql('t')})::int AS overdue,
               MIN(t.deadline_at) FILTER (WHERE t.closed_at IS NULL) AS next_deadline
          FROM projects p
          LEFT JOIN tasks t ON t.project_id = p.id AND t.tenant_id = p.tenant_id AND t.deleted_at IS NULL

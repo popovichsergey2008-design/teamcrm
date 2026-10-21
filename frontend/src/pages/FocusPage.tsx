@@ -85,7 +85,8 @@ function FocusCard({ task, side, onOpen, onPlan }: {
   onPlan?: (date: string | null) => void;
 }) {
   const prio = priorityBadge(task.priority);
-  const due = deadlineBadge(task.deadline_at, !!task.closed_at);
+  const stage = (task as { stage?: string }).stage;
+  const due = deadlineBadge(task.deadline_at, !!task.closed_at || stage === 'done', !!stage && stage !== 'work' && stage !== 'done');
   const who = side === 'manager' ? task.manager_name : side === 'assignee' ? task.assignee_name : null;
   const checklist = task.checklistTotal
     ? `${task.checklistDone ?? 0} из ${task.checklistTotal}`

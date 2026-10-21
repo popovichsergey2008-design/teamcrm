@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { DbService } from '../../database/db.service';
+import { activeOverdueSql } from '../tasks/responsibility';
 
 export interface ProjectRow {
   id: string;
@@ -85,7 +86,7 @@ export class ProjectsRepository {
          LEFT JOIN LATERAL (
            SELECT COUNT(*) AS total,
                   COUNT(*) FILTER (WHERE t.closed_at IS NULL) AS open,
-                  COUNT(*) FILTER (WHERE t.closed_at IS NULL AND t.deadline_at < now()) AS overdue,
+                  COUNT(*) FILTER (WHERE ${activeOverdueSql('t')}) AS overdue,
                   MIN(t.deadline_at) FILTER (WHERE t.closed_at IS NULL) AS next_deadline
              FROM tasks t WHERE t.project_id = p.id
          ) st ON TRUE

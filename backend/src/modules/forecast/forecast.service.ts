@@ -23,7 +23,8 @@ export class ForecastService {
     const task = await this.repo.getTask(tenantId, taskId);
     if (!task) return null;
 
-    if (!task.assignee_id) {
+    // без исполнителя или работа уже сдана (тестирование, проверка, готово) — риска срыва нет (21.10)
+    if (!task.assignee_id || (task.stage && task.stage !== 'work')) {
       await this.repo.writeForecast(tenantId, taskId, null, null, 'green');
       return { taskId, predictedFinish: null, riskPct: null, level: 'green' as const };
     }

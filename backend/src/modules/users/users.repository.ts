@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { RoleCode } from '../../common/auth/jwt.types';
+import { assigneeOwesSql } from '../tasks/responsibility';
 
 export interface UserRow {
   id: string;
@@ -120,7 +121,8 @@ export class UsersRepository {
               u.auto_assignment_weight::text AS weight,
               u.weekly_capacity_hours::text AS capacity,
               (SELECT count(*) FROM tasks t
-                WHERE t.assignee_id = u.id AND t.tenant_id = u.tenant_id AND t.closed_at IS NULL)::text AS open_tasks
+                WHERE t.assignee_id = u.id AND t.tenant_id = u.tenant_id AND t.closed_at IS NULL
+                  AND ${assigneeOwesSql('t')})::text AS open_tasks
          FROM users u
         WHERE u.tenant_id=$1 AND u.is_active = true AND u.can_receive_auto_tasks = true
         ORDER BY u.full_name`,
