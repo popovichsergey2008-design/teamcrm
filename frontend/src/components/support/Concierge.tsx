@@ -6,6 +6,7 @@ import { navigate } from '../../lib/router';
 import { getSocket } from '../../lib/socket';
 import { feedback } from '../../lib/feedback';
 import { useAuth } from '../../state/auth';
+import { careHeadline } from '../../lib/care-rules';
 import type { SupportConversation, Project } from '../../types';
 
 const DOT: Record<string, string> = { available: 'cg-ok', busy: 'cg-busy', in_huddle: 'cg-busy', away: 'cg-off', offline: 'cg-off' };
@@ -17,7 +18,11 @@ const hm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('ru-R
  * ожидание; все заняты — «встать в очередь», «продолжить в чате», «позвать, когда
  * освободится». Никакого «онлайн», если никого нет.
  */
-export function ConciergeHead({ onHelpNow, hasConversation }: { onHelpNow: () => void; hasConversation: boolean }) {
+export function ConciergeHead({ onHelpNow, compact = false }: {
+  onHelpNow: () => void; hasConversation: boolean;
+  /** Разговор уже идёт: шапка в одну строку, без слогана — ленте нужно место. */
+  compact?: boolean;
+}) {
   const [d, setD] = useState<Data | null>(null);
   const [cb, setCb] = useState<{ waiting: boolean; since: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,28 +48,42 @@ export function ConciergeHead({ onHelpNow, hasConversation }: { onHelpNow: () =>
     finally { setBusy(false); }
   };
 
+  /*
+    Шапка Care Hub (ТЗ-34, п. 2.1): живые фото до пяти дежурных с именами, зелёный пульс,
+    «на связи 24/7 • среднее время ответа сейчас» и слоган — дословно по документу.
+  */
+  const faces = d.engineers.slice(0, 5);
+  const live = d.estimate.kind !== 'offline';
   return (
-    <div className="cg-head" aria-label="Кто на связи">
-      {top ? (
+    <div className={`cg-head${compact ? ' cg-head-compact' : ''}`} aria-label="Кто на связи">
+      {faces.length > 0 && (
+        <div className="cg-faces">
+          {faces.map((e) => (
+            <span key={e.userId} className="cg-face" title={`${e.name} · ${e.statusText}`}>
+              <span className="cg-ava">
+                {e.avatarUrl ? <img src={e.avatarUrl} alt="" /> : initials(e.name)}
+                <span className={`cg-dot ${DOT[e.status]}`} aria-hidden="true" />
+              </span>
+              {!compact && <span className="cg-face-name">{e.name.split(/\s+/)[0]}</span>}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="cg-line">
+        <span className={`cg-pulse${live ? ' live' : ''}`} aria-hidden="true" />
+        <span>{careHeadline(d.estimate, d.medianSec)}</span>
+      </div>
+      {!compact && <p className="cg-slogan">Вы занимаетесь делами и командой — мы берем всю настройку и рутину на себя. Чем помочь прямо сейчас?</p>}
+      {compact && top && (
         <div className="cg-engineer">
-          <span className="cg-ava">
-            {top.avatarUrl ? <img src={top.avatarUrl} alt="" /> : initials(top.name)}
-            <span className={`cg-dot ${DOT[top.status]}`} aria-hidden="true" />
-          </span>
           <span className="cg-who">
-            <b>{top.name}</b>
             <span className="dim">
-              {top.role}{top.verified && <> · <Icon name="check-circle" size={11} /> сотрудник QEVO</>} · {top.statusText}
+              <b>{top.name}</b> · {top.role}{top.verified && <> · <Icon name="check-circle" size={11} /> сотрудник QEVO</>} · {top.statusText}
             </span>
           </span>
         </div>
-      ) : (
-        <div className="dim">Служба заботы QEVO</div>
       )}
-      <div className="cg-eta dim">{d.estimate.text}</div>
-      {!hasConversation && d.estimate.kind === 'now' && (
-        <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={onHelpNow}>Нужна помощь сейчас</button>
-      )}
+      {/* без разговора «Нужна помощь сейчас» заменили три кнопки над вводом (ТЗ-34, п. 2.2) */}
       {d.estimate.kind !== 'now' && (
         <div className="cg-busy-box">
           {d.estimate.kind === 'queue' && top && (

@@ -206,7 +206,7 @@ export class PushService {
    */
   async supportEvent(m: {
     tenantId: string; userId: string; conversationId: string;
-    kind: 'reply' | 'agent_joined' | 'call' | 'resolved' | 'fix';
+    kind: 'reply' | 'agent_joined' | 'call' | 'resolved' | 'fix' | 'done';
     title: string; body: string;
   }): Promise<void> {
     try {
@@ -232,6 +232,8 @@ export class PushService {
       for (const t of targets) {
         const outcome = await this.fcm.send(t.push_token, {
           title, body, badge,
+          // «Готово» по прогрессу инженера — тихо: человек сам просил не дёргать его (ТЗ-34, 4.3)
+          silent: m.kind === 'done',
           data: { type: 'support', path, inboxId: String(item.id), eventKey: item.event_key, conversationId: m.conversationId },
         });
         if (outcome === 'invalid_token') await this.inbox.dropPushToken(t.id);

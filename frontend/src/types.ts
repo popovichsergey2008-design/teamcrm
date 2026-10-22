@@ -594,7 +594,11 @@ export interface SupportConversation extends SupportAiState {
   actions: {
     id: string; action: string; preview: string;
     status: 'proposed' | 'done' | 'declined' | 'undone'; approved: boolean; createdAt: string;
+    /** ТЗ-34: подпись единственной кнопки карточки и можно ли вернуть */
+    button?: string; undoable?: boolean;
   }[];
+  /** ТЗ-34: живой прогресс инженера — полоса в окне и на кружке */
+  progress?: { text: string; percent: number; minutesLeft: number | null; engineer: string; line: string; at: string } | null;
   messages: SupportMessage[];
 }
 
@@ -742,4 +746,6 @@ export interface SupportContextInput {
   device?: string;
   /** ТЗ-29: последние неудачные запросы — метод, путь без параметров, код, номер */
   failedRequests?: { method: string; path: string; status: number; requestId: string | null; at: string }[];
+  /** ТЗ-34: экран, окно, ориентация, название открытой карточки */
+  telemetry?: { screen?: string; viewport?: string; orientation?: 'portrait' | 'landscape'; dpr?: number; entityTitle?: string };
 }

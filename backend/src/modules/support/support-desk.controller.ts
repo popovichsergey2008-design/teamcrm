@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, Ip, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors,
+  Body, Controller, Get, Ip, Param, Patch, Post, Query, Req, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -35,6 +35,8 @@ class ContextDto {
   @IsOptional() @IsIn(['web', 'mobile-web', 'capacitor']) platform?: 'web' | 'mobile-web' | 'capacitor';
   @IsOptional() @IsString() @MaxLength(40) nativeVersion?: string;
   @IsOptional() @IsString() @MaxLength(80) device?: string;
+  /** ТЗ-34 (3.5): размер экрана и окна, ориентация, название открытой карточки — сервер чистит сам */
+  @IsOptional() telemetry?: Record<string, unknown>;
 }
 
 class SendDto {
@@ -108,12 +110,26 @@ class AcceptCallDto {
 
 class ActionDto {
   @IsString() @MaxLength(32) kind!: string;
+  /** Над чем: задача, проект, файл из разговора; для автопротокола — что угодно (берём того, кто обратился). */
   @IsString() @MaxLength(32) entityId!: string;
   @IsOptional() @IsString() @MaxLength(64) value?: string | null;
 }
 
 class DecideActionDto {
   @IsBoolean() allow!: boolean;
+}
+
+/** ТЗ-34 (3.6): что делает инженер, проценты, сколько минут осталось. Пустой текст — снять. */
+class ProgressDto {
+  @IsOptional() @IsString() @MaxLength(160) text?: string;
+  @IsOptional() @IsInt() @Min(0) @Max(100) percent?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1440) minutesLeft?: number | null;
+}
+
+/** ТЗ-34 (3.3): разрешение нажимать на экране и сами нажатия — журналом в разговор. */
+class ScreenTapDto {
+  @IsIn(['allow', 'deny', 'tap']) event!: 'allow' | 'deny' | 'tap';
+  @IsOptional() @IsString() @MaxLength(120) label?: string;
 }
 
 class KnownIssueDto {
@@ -445,6 +461,18 @@ export class SupportDeskController {
       await this.desk.deskTenant(u, id), u, id, actionId, dto.allow,
       { ip, userAgent: String(req.headers['user-agent'] ?? '') },
     );
+  }
+
+  /** Живой прогресс инженера (ТЗ-34, 3.6): ставит только тот, кто работает с разговором. */
+  @Patch(':id/progress')
+  async progress(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ProgressDto) {
+    return this.desk.setProgress(await this.desk.deskTenant(u, id), u, id, dto);
+  }
+
+  /** Указка инженера (ТЗ-34, 3.3): «можно нажимать», «нельзя», «нажал» — в ленту разговора. */
+  @Post(':id/screen-tap')
+  async screenTap(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ScreenTapDto) {
+    return this.desk.screenTap(await this.desk.deskTenant(u, id), u, id, dto.event, dto.label ?? null);
   }
 
   /** Вернуть как было — там, где это осмысленно. */

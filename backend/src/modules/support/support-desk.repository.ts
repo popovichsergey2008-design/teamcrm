@@ -82,6 +82,8 @@ export interface ContextInput {
   device?: string | null;
   /** ТЗ-29: последние неудачные запросы (метод, путь без параметров, код, номер) — уже очищены */
   failedRequests?: unknown[] | null;
+  /** ТЗ-34: размер экрана и окна, ориентация, название открытой карточки — уже очищены */
+  telemetry?: Record<string, unknown> | null;
 }
 
 /**
@@ -527,7 +529,10 @@ export class SupportDeskRepository {
         c.browser ?? null, c.os ?? null, c.appVersion ?? null, c.buildId ?? null,
         c.lastError ?? null, c.requestId ?? null, c.network ?? null,
         c.platform ?? null, c.nativeVersion ?? null, c.device ?? null,
-        JSON.stringify(c.failedRequests?.length ? { failedRequests: c.failedRequests } : {}),
+        JSON.stringify({
+          ...(c.failedRequests?.length ? { failedRequests: c.failedRequests } : {}),
+          ...(c.telemetry ? { telemetry: c.telemetry } : {}),
+        }),
       ],
     );
   }
@@ -556,6 +561,56 @@ export class SupportDeskRepository {
     );
   }
 
+  /**
+   * Живой прогресс инженера по обращению (ТЗ-34, 3.6). NULL в тексте — прогресса нет.
+   */
+  async setProgress(conversationId: string, p: { text: string; percent: number; minutesLeft: number | null } | null, byUserId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE support_conversations
+          SET progress_text=$2, progress_percent=$3, progress_minutes=$4,
+              progress_by=$5, progress_at=now()
+        WHERE id=$1`,
+      [conversationId, p?.text ?? null, p?.percent ?? null, p?.minutesLeft ?? null, p ? byUserId : null],
+    );
+  }
+
+  progress(conversationId: string) {
+    return this.db.one<{ progress_text: string | null; progress_percent: number | null; progress_minutes: number | null; progress_at: Date | null; by_name: string | null }>(
+      `SELECT c.progress_text, c.progress_percent, c.progress_minutes, c.progress_at, u.full_name AS by_name
+         FROM support_conversations c LEFT JOIN users u ON u.id = c.progress_by
+        WHERE c.id=$1`,
+      [conversationId],
+    );
+  }
+
+  /** Автопротокол созвонов человека (ТЗ-34, 3.4): ключ в его ui_prefs, как прочие личные настройки. */
+  async autoProtocol(tenantId: string, userId: string): Promise<boolean> {
+    const r = await this.db.one<{ on: boolean | null }>(
+      `SELECT (ui_prefs->>'autoProtocol') = 'true' AS on FROM users WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, userId],
+    );
+    return !!r?.on;
+  }
+
+  async setAutoProtocol(tenantId: string, userId: string, on: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE users SET ui_prefs = COALESCE(ui_prefs, '{}'::jsonb) || jsonb_build_object('autoProtocol', $3::boolean)
+        WHERE tenant_id=$1 AND id=$2`,
+      [tenantId, userId, on],
+    );
+  }
+
+  /** Файл из разговора — имя и тип: импорт предлагают только по приложенной таблице. */
+  conversationFile(conversationId: string, fileId: string) {
+    return this.db.one<{ file_name: string; content_type: string }>(
+      `SELECT f.file_name, f.content_type
+         FROM support_messages m JOIN files f ON f.id = m.file_id
+        WHERE m.conversation_id=$1 AND m.file_id=$2
+        LIMIT 1`,
+      [conversationId, fileId],
+    );
+  }
+
   action(id: string) {
     return this.db.one<{
       id: string; conversation_id: string; actor_id: string | null; action: string;
@@ -574,9 +629,10 @@ export class SupportDeskRepository {
     return this.db.many<{
       id: string; action: string; preview: string; status: string; entity_type: string | null;
       entity_id: string | null; approved_by_user: boolean; created_at: Date; decided_at: Date | null;
+      params_json: Record<string, unknown> | null;
     }>(
       `SELECT id::text, action, preview, status, entity_type, entity_id, approved_by_user,
-              created_at, decided_at
+              created_at, decided_at, params_json
          FROM support_actions WHERE conversation_id=$1 ORDER BY created_at`,
       [conversationId],
     );

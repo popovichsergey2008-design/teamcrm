@@ -1,4 +1,4 @@
-import { describeAction, isUndoable, validAction } from './support-actions';
+import { actionButton, describeAction, isUndoable, normalizeProgress, progressLine, tasksWord, validAction } from './support-actions';
 
 /**
  * Подпись действия — то, что человек читает перед кнопкой «Разрешить».
@@ -36,5 +36,31 @@ describe('служба заботы: действия с разрешения ч
     expect(validAction({ kind: 'task.project', entityId: '7' })).toBe(false);
     expect(validAction({ kind: 'сделай хорошо' as never, entityId: '7' })).toBe(false);
     expect(validAction({ kind: 'task.deadline', entityId: '7', value: null })).toBe(true);
+  });
+
+  it('ТЗ-34: на кнопке — само действие, как в документе', () => {
+    expect(actionButton({ kind: 'meetings.autoprotocol' })).toBe('Включить автопротокол созвонов в 1 тап');
+    expect(actionButton({ kind: 'import.confirm', params: { total: 450, project: 'Trello' } }))
+      .toBe('Подтвердить импорт 450 задач в проект «Trello»');
+    expect(actionButton({ kind: 'import.confirm', params: { total: 21, project: 'X' } }))
+      .toBe('Подтвердить импорт 21 задачи в проект «X»');
+    expect(describeAction({ kind: 'import.confirm', entityId: 'f1', params: { total: 3, fileName: 'план.xlsx', project: 'план' } }))
+      .toContain('Перенесу 3 задачи из файла «план.xlsx» в новый проект «план»');
+    expect(tasksWord(1)).toBe('1 задачу');
+    expect(tasksWord(12)).toBe('12 задач');
+    // импорт и колонки не отменяются одной кнопкой; автопротокол — выключается
+    expect(isUndoable('import.confirm')).toBe(false);
+    expect(isUndoable('meetings.autoprotocol')).toBe(true);
+    expect(validAction({ kind: 'meetings.autoprotocol', entityId: 'me' })).toBe(true);
+  });
+
+  it('ТЗ-34: живой прогресс — в границах и дословной строкой', () => {
+    expect(normalizeProgress({ text: '  ', percent: 50 })).toBeNull();
+    expect(normalizeProgress({ text: 'переносит задачи', percent: 140, minutesLeft: 5 }))
+      .toEqual({ text: 'переносит задачи', percent: 100, minutesLeft: 0 });
+    expect(normalizeProgress({ text: 'x', percent: -3, minutesLeft: '' })).toEqual({ text: 'x', percent: 0, minutesLeft: null });
+    const p = normalizeProgress({ text: 'переносит ваши 120 задач и создает папки проектов', percent: 85, minutesLeft: 2 })!;
+    expect(progressLine('Максим Петров', p))
+      .toBe('Инженер Максим переносит ваши 120 задач и создает папки проектов: готово 85% (осталось 2 мин). Пришлем тихий пуш по готовности');
   });
 });

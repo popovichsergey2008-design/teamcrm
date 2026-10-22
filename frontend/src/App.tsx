@@ -409,6 +409,13 @@ export function App() {
     }
   }, [user, route.section, route.tab]);
 
+  // свайп вниз от верха экрана на телефоне открывает поиск (ТЗ-34, п. 2.3) — событие из Отдела заботы
+  useEffect(() => {
+    const on = () => setPaletteOpen({});
+    window.addEventListener('qevo:palette-open', on);
+    return () => window.removeEventListener('qevo:palette-open', on);
+  }, []);
+
   useShortcuts(crmAlive, {
     newTask: () => setNl({}),
     palette: () => setPaletteOpen({}),

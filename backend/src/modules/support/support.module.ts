@@ -19,6 +19,7 @@ import { SupportDeskService } from './support-desk.service';
 import { SupportRepository } from './support.repository';
 import { SupportService } from './support.service';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { FileImportModule } from '../integrations/file/file-import.module';
 
 /**
  * Служба заботы (ТЗ-8) и старая кнопка «Поддержка».
@@ -34,6 +35,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
     // Записка специалисту о том, что уже пробовали, — короткий вызов модели напрямую.
     AiModule,
+    // «Подтвердить импорт N задач» в 1 тап (ТЗ-34, 3.4)
+    FileImportModule,
   ],
   // консьерж (ТЗ-29) — ПЕРВЫМ: его «support/desk/concierge…» не должен уйти в «support/desk/:id»
   controllers: [SupportConciergeController, SupportPublicController, SupportController, SupportDeskController],

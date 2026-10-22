@@ -37,6 +37,26 @@ export function pointerWhere(x: number, y: number): string {
   return v === 'посередине' && h === 'по центру' ? 'в центре экрана' : `${v} ${h}`;
 }
 
+/**
+ * Нажать за показывающего (ТЗ-34, 3.3): точка в долях окна → элемент под ней → click.
+ *
+ * Только с разрешения показывающего и только по ЭТОЙ вкладке (проверяет вызывающий).
+ * Не нажимаем окно созвона (инженер не должен иметь возможности выключить показ или
+ * повесить трубку), поля паролей и чувствительные страницы. Возвращает подпись нажатого
+ * для журнала или null, если нажимать было нечего или нельзя.
+ */
+export function tapAt(x: number, y: number): string | null {
+  if (sensitiveRoute(window.location.pathname)) return null;
+  const at = document.elementFromPoint(x * window.innerWidth, y * window.innerHeight) as HTMLElement | null;
+  if (!at || at.closest('.call-window, .call-overlay, .call-mini, .ptr-layer')) return null;
+  const el = (at.closest('button, a[href], [role="button"], input, select, textarea, label, summary, [tabindex]') as HTMLElement | null) ?? at;
+  if (el instanceof HTMLInputElement && el.type === 'password') return null;
+  el.focus?.({ preventScroll: true });
+  el.click();
+  return (el.getAttribute('aria-label') || el.textContent || el.getAttribute('title') || el.tagName.toLowerCase())
+    .replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
 /** Страницы, где на экране бывают ключи, пароли, оплата и личные данные (п. 30). */
 export function sensitiveRoute(path: string): boolean {
   return /^\/(settings\/(security|integrations|ai-usage|mail|account|team)|profile|console|billing)/.test(path);

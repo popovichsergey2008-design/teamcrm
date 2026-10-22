@@ -1,0 +1,128 @@
+/*
+  Отдел заботы поверх приложения (ТЗ-34, #4620): островок, свёрнутый кружок, шторка
+  «встряхнули» и карточка заминки. Свой кусок — в стартовую сборку не едет.
+*/
+
+/* ── Островок заботы (п. 2.2, 4.1): на ПК — в правом нижнем углу, с фото дежурных ── */
+.care-pill {
+  position: fixed; right: calc(56px + 14px); bottom: 18px; z-index: 48;
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px 0 6px;
+  border: 1px solid var(--border-2); border-radius: 999px; background: var(--bg-elev); color: var(--text);
+  box-shadow: var(--shadow-lg); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.care-pill:hover { border-color: var(--accent-line); }
+.care-pill:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.care-pill-faces { display: inline-flex; }
+.care-pill-faces:empty { display: none; }
+.care-pill-faces .care-face + .care-face { margin-left: -6px; }
+.care-pill-shield { display: none; color: var(--accent); }
+.care-pill-text { white-space: nowrap; }
+
+.care-face {
+  width: 28px; height: 28px; flex: 0 0 auto; border-radius: 50%; overflow: hidden;
+  display: grid; place-items: center; font-size: 10px; font-weight: 700; letter-spacing: -.02em;
+  /* мягкая подложка поверх сплошной — соседний кружок не просвечивает */
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)) var(--bg-elev); color: var(--text); border: 2px solid var(--bg-elev);
+}
+.care-face img { width: 100%; height: 100%; object-fit: cover; }
+.care-face-lg { width: 44px; height: 44px; font-size: 14px; }
+
+/* Зелёная точка: пульсирует, только когда кто-то правда на связи */
+.care-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--text-dim); }
+.care-dot.live { background: var(--ok); animation: care-pulse 1.8s ease-out infinite; }
+@keyframes care-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); }
+  100% { box-shadow: 0 0 0 7px transparent; }
+}
+
+.care-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; font-size: 10.5px; line-height: 18px; font-weight: 700; text-align: center;
+  background: var(--fill-danger); color: var(--on-fill);
+}
+
+/* Подсказка — при наведении, фокусе или касании (п. 4.1), текст документа */
+.care-tip {
+  position: absolute; right: 0; bottom: calc(100% + 8px); width: 300px; padding: 9px 11px;
+  border: 1px solid var(--border-2); border-radius: 12px; background: var(--bg-elev); color: var(--text);
+  box-shadow: var(--shadow-lg); font-size: var(--fs-xs); font-weight: 400; line-height: 1.4; text-align: left; white-space: normal;
+  opacity: 0; visibility: hidden; transform: translateY(4px); transition: opacity .15s, transform .15s, visibility .15s;
+  pointer-events: none;
+}
+.care-pill:hover .care-tip, .care-pill:focus-visible .care-tip, .care-pill.tip .care-tip { opacity: 1; visibility: visible; transform: none; }
+
+/*
+  Где внизу справа стоит поле ввода (переписка, чат задачи) — островка нет: кружок в
+  этом углу уже мешал печатать, его убирали по просьбе заказчика. Помощь остаётся в
+  меню, в Ctrl+K и жестами.
+*/
+@media (min-width: 721px) {
+  body:has(.chat-input, .comment-input, .chat-overlay) .care-pill { display: none; }
+}
+
+/* На телефоне — сверху, в шапке (п. 4.1): щит, точка и время ответа */
+@media (max-width: 720px) {
+  .care-pill {
+    top: calc(var(--safe-top) + 3px); bottom: auto; right: auto; left: 50%; transform: translateX(-50%);
+    height: 28px; gap: 5px; padding: 0 10px 0 8px; font-size: 12px; box-shadow: var(--shadow-md, var(--shadow-lg));
+  }
+  .care-pill-faces { display: none; }
+  .care-pill-shield { display: inline-grid; }
+  .care-tip { right: auto; left: 50%; bottom: auto; top: calc(100% + 8px); width: min(300px, 92vw); transform: translate(-50%, -4px); }
+  .care-pill:hover .care-tip, .care-pill:focus-visible .care-tip, .care-pill.tip .care-tip { transform: translate(-50%, 0); }
+  /* созвон и экраны поверх всего — островок им не мешает */
+  body:has(.call-overlay, .call-window, .lock-screen) .care-pill { display: none; }
+}
+
+/* ── Свёрнутое окно — плавающий кружок с аватаром инженера (п. 3.1) ── */
+.care-bubble {
+  position: fixed; right: calc(56px + 14px); bottom: 18px; z-index: 57;
+  width: 60px; height: 60px; padding: 0; border: none; border-radius: 50%; background: none;
+  cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+.care-bubble:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.care-bubble-ring {
+  position: absolute; inset: 0; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-2); box-shadow: var(--shadow-lg);
+}
+/* прогресс инженера — кольцом вокруг аватара */
+.care-bubble-ring.on { background: conic-gradient(var(--ok) var(--p, 0%), var(--border-2) 0); }
+.care-bubble-face {
+  width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)) var(--bg-elev); color: var(--text); font-size: 16px; font-weight: 700;
+}
+.care-bubble-face img { width: 100%; height: 100%; object-fit: cover; }
+.care-bubble-pct {
+  position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); padding: 1px 6px;
+  border: 1px solid var(--border-2); border-radius: 999px; background: var(--bg-elev); color: var(--text);
+  font-size: 10.5px; font-weight: 700; white-space: nowrap;
+}
+@media (max-width: 720px) {
+  .care-bubble { right: 12px; bottom: calc(var(--bottom-nav-h) + 12px); }
+}
+
+/* ── Шторка «встряхнули / зажали помощь» и карточка заминки — снизу, мягко ── */
+.care-sheet, .care-stall {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 58;
+  width: min(440px, calc(100vw - 24px)); padding: 12px 14px;
+  border: 1px solid var(--border-2); border-radius: 16px; background: var(--bg-elev); color: var(--text);
+  box-shadow: var(--shadow-lg); animation: care-up .18s ease-out;
+}
+@keyframes care-up { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.care-sheet-head { display: flex; align-items: center; gap: 8px; }
+.care-sheet-head svg { color: var(--accent); }
+.care-sheet-head .msg-icon { margin-left: auto; }
+.care-sheet-text { margin: 8px 0 10px; font-size: var(--fs-sm); line-height: 1.45; }
+.care-sheet-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.care-sheet-note { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: var(--fs-xs); }
+.care-stall { display: flex; gap: 12px; align-items: flex-start; }
+.care-stall-body { min-width: 0; }
+.care-stall-body p { margin: 0 0 10px; font-size: var(--fs-sm); line-height: 1.45; }
+@media (max-width: 720px) {
+  .care-sheet, .care-stall { bottom: calc(var(--bottom-nav-h) + 10px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .care-dot.live, .care-sheet, .care-stall { animation: none; }
+  .care-tip { transition: none; }
+}

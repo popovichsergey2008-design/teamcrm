@@ -233,6 +233,7 @@ export interface SupportConcierge {
   engineers: { userId: string; name: string; role: string; verified: boolean; avatarUrl: string | null; status: 'available' | 'busy' | 'in_huddle' | 'away' | 'offline'; statusText: string }[];
   estimate: { kind: 'now' | 'queue' | 'offline'; text: string; minutes: [number, number] | null };
   available: number;
+  medianSec?: number | null;
 }
 export interface SupportAccessGrant {
   id: string; engineer: string | null; projectId: string | null; projectName: string | null; reason: string | null;
@@ -2099,6 +2100,11 @@ export const api = {
   /** Предложить действие человеку (право дежурного). */
   supportProposeAction: (id: string, kind: string, entityId: string, value?: string | null) =>
     request<SupportConversation>('POST', `/support/desk/${id}/actions`, { kind, entityId, value }),
+  /** ТЗ-34: прогресс инженера и журнал нажатий на экране клиента */
+  supportSetProgress: (id: string, p: { text: string; percent: number; minutesLeft: number | null }) =>
+    request<SupportConversation>('PATCH', `/support/desk/${id}/progress`, p),
+  supportScreenTap: (id: string, event: 'allow' | 'deny' | 'tap', label?: string) =>
+    request<{ ok: boolean }>('POST', `/support/desk/${id}/screen-tap`, { event, label }),
   /** Слово человека: разрешить или отклонить. Без него не происходит ничего. */
   supportDecideAction: (id: string, actionId: string, allow: boolean) =>
     request<SupportConversation>('POST', `/support/desk/${id}/actions/${actionId}`, { allow }),

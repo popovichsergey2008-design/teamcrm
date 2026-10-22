@@ -16,10 +16,9 @@ export type CareKind = 'tasks' | 'board' | 'rescue' | 'secretary' | 'chats' | 't
 export const CARE_REQUEST = 'qevo:care-request';
 
 export function askCare(text: string, source: string): void {
-  // Окно, которое умеет принять просьбу, гасит событие (preventDefault). Не погасило —
-  // значит, слушателя ещё нет: хотя бы открываем окно заботы, чтобы тап не пропал.
-  const handled = !window.dispatchEvent(new CustomEvent(CARE_REQUEST, { detail: { text, source }, cancelable: true }));
-  if (!handled) openSupport();
+  // Окно заботы само отправит текст в разговор и откроется; событие — для тех, кому важен источник.
+  window.dispatchEvent(new CustomEvent(CARE_REQUEST, { detail: { text, source } }));
+  openSupport(undefined, { text });
 }
 
 const TASKS = {

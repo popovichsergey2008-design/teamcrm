@@ -1510,6 +1510,81 @@ test('первая задача от Qevo-бота: срок с часом и н
   assert.equal(nameSuggestions('personal')[0], 'Мои задачи на неделю');
 });
 
+// ── ТЗ-34 (#4620): Отдел заботы ────────────────────────────────────────────────
+test('забота: время ответа живое, без данных — норма документа 25 сек', async () => {
+  const { careShort, careLong, careTooltip, careHeadline } = await load('lib/care-rules.ts');
+  const now = { kind: 'now', minutes: null };
+  assert.equal(careShort(now, null), '25 сек', 'медианы нет — норма из документа');
+  assert.equal(careShort(now, 24), '24 сек');
+  assert.equal(careShort(now, 200), '3 мин');
+  assert.equal(careShort({ kind: 'queue', minutes: [4, 6] }, 30), '4–6 мин', 'очередь — честные минуты');
+  assert.equal(careShort({ kind: 'offline', minutes: null }, 30), '', 'никого нет — времени не обещаем');
+  assert.equal(careLong(21), '21 секунду');
+  assert.equal(careLong(null), '25 секунд');
+  assert.equal(careTooltip(null), 'Qevo: Помощь быстрее мысли. Живой инженер ответит за 25 секунд и решит любой вопрос по задачам, проектам и команде');
+  assert.equal(careHeadline(now, 24), 'Отдел заботы Qevo на связи 24/7 • Среднее время ответа сейчас: 24 сек');
+});
+
+test('забота: строка прогресса дословно, на экране — задача с номером', async () => {
+  const { progressLine, screenPhrase } = await load('lib/care-rules.ts');
+  assert.equal(
+    progressLine({ engineer: 'Максим Петров', text: 'переносит ваши 120 задач и создает папки проектов', percent: 85, minutesLeft: 2 }),
+    'Инженер Максим переносит ваши 120 задач и создает папки проектов: готово 85% (осталось 2 мин). Пришлем тихий пуш по готовности',
+  );
+  assert.equal(progressLine({ engineer: 'Анна', text: 'переносит задачи', percent: 100, minutesLeft: 0 }), 'Инженер Анна переносит задачи: готово 100%.');
+  assert.equal(screenPhrase('task', '402', undefined, 'projects'), 'Видим открытую задачу №402.');
+  assert.equal(screenPhrase('project', '5', 'Наём', 'projects'), 'Видим открытый проект «Наём».');
+  assert.equal(screenPhrase(undefined, undefined, undefined, 'calendar'), 'Видим ваш экран «Календарь».');
+});
+
+test('забота: заминка — три нажатия впустую или две неудачные записи, не чаще раза в 10 минут', async () => {
+  const { createStallDetector, stallText, STALL_COOLDOWN_MS } = await load('lib/care-rules.ts');
+  const d = createStallDetector();
+  assert.equal(d.tap('b1', 'Сохранить', true, 0), null);
+  assert.equal(d.tap('b1', 'Сохранить', true, 300), null);
+  const s = d.tap('b1', 'Сохранить', true, 600);
+  assert.equal(s?.kind, 'rage');
+  assert.equal(stallText(s, 'Максим Петров'), 'Привет! Я Максим из Отдела заботы Qevo. Вижу, кнопка «Сохранить» не срабатывает. Давай я сделаю это за тебя за 30 секунд?');
+  // сразу снова — пауза 10 минут
+  d.tap('b2', 'x', true, 700); d.tap('b2', 'x', true, 800);
+  assert.equal(d.tap('b2', 'x', true, 900), null, 'не чаще раза в 10 минут');
+  // нажатия, после которых экран менялся, — не заминка
+  const e = createStallDetector();
+  e.tap('b', 'x', true, 0); e.tap('b', 'x', false, 100);
+  assert.equal(e.tap('b', 'x', true, 200), null);
+  // медленные нажатия — не «ярость»
+  const f = createStallDetector();
+  f.tap('b', 'x', true, 0); f.tap('b', 'x', true, 1000);
+  assert.equal(f.tap('b', 'x', true, 2000), null);
+  // две неудачные записи по одному адресу за две минуты
+  const g = createStallDetector();
+  assert.equal(g.fail('PATCH', '/api/tasks/12', 500, 0), null);
+  assert.equal(g.fail('GET', '/api/tasks/12', 500, 10), null, 'чтение — не попытка сохранить');
+  const save = g.fail('PATCH', '/api/tasks/13', 422, 60_000);
+  assert.equal(save?.kind, 'save');
+  assert.match(stallText(save, null), /^Привет! Я из Отдела заботы Qevo\. Вижу, задача не сохраняется\./);
+  // файл к задаче — свой текст; «из-за формата» — только когда сервер так ответил
+  const h = createStallDetector();
+  const file = h.fail('POST', '/api/tasks/5/files', 415, 0);
+  assert.equal(stallText(file, 'Максим'), 'Привет! Я Максим из Отдела заботы Qevo. Вижу, файл не прикрепляется к задаче из-за формата. Давай я сконвертирую и прикреплю его за тебя за 30 секунд?');
+  assert.equal(h.fail('POST', '/api/tasks/5/files', 500, STALL_COOLDOWN_MS - 1), null);
+  assert.equal(h.fail('POST', '/api/tasks/5/files', 500, STALL_COOLDOWN_MS + 1)?.format, false);
+});
+
+test('забота: встряхивание — три сильных рывка подряд, а не шаг и не одно падение', async () => {
+  const { createShakeDetector } = await load('lib/care-rules.ts');
+  const d = createShakeDetector();
+  assert.equal(d.sample(3, 2, 1, false, 0), false, 'ходьба');
+  assert.equal(d.sample(20, 0, 0, false, 0), false);
+  assert.equal(d.sample(20, 0, 0, false, 50), false, 'один рывок — один пик');
+  assert.equal(d.sample(-20, 0, 0, false, 300), false);
+  assert.equal(d.sample(20, 0, 0, false, 600), true, 'встряхнули');
+  assert.equal(d.sample(20, 0, 0, false, 700), false, 'сразу второй раз — нет');
+  const g = createShakeDetector();
+  // с тяжестью: в покое 9.8 — не рывок
+  assert.equal(g.sample(0, 0, 9.81, true, 0), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
