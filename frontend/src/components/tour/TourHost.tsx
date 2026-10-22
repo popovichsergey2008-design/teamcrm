@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Route } from '../../lib/router';
 import { markTourDone, stopTourAuto, takeManualTour, tourDone, tourPrefs, TOUR_START_EVENT, TourKey } from '../../lib/tour';
+import { askBot } from '../../lib/bot-ask';
 import { TOURS, TourStep } from './steps';
+import { Icon } from '../Icon';
 import './tour.css';
 
 /**
@@ -18,7 +20,13 @@ import './tour.css';
 
 const NARROW = '(max-width: 720px)';
 /** Открыто что-то поверх — обучение подождёт, а не ляжет сверху. */
-const BUSY = '.ui-backdrop, .modal-overlay, .drawer-overlay, .call-panel, .incoming-call';
+const BUSY = '.ui-backdrop, .modal-overlay, .drawer-overlay, .call-panel, .incoming-call, .support-dock:not(.support-dock-embedded)';
+/**
+ * Первый запуск (#4620): пока Qevo-бот ведёт к первой задаче, обучение на паузе —
+ * два окна наперебой на экране быть не должно. Сколько бы бот ни шёл, паузу не
+ * считаем в попытки: обучение начнётся после него, а не потеряется.
+ */
+const HOLD = '[data-tour-hold]';
 const PAD = 6;
 const GAP = 12;
 
@@ -77,6 +85,7 @@ export default function TourHost({ route }: { route: Route }) {
   const whenFree = useCallback((key: TourKey, ok: () => boolean) => {
     let tries = 0;
     const t = window.setInterval(() => {
+      if (document.querySelector(HOLD)) return;
       tries += 1;
       if (running.current || tries > 120 || !ok()) { if (running.current || tries > 120) window.clearInterval(t); return; }
       if (document.querySelector(BUSY) || !document.querySelector(READY[key])) return;
@@ -119,6 +128,12 @@ export default function TourHost({ route }: { route: Route }) {
   if (!run) return null;
   return (
     <Spotlight
+      onAsk={() => {
+        // показ ставим на паузу, а не «пройден»: в разделе подсказки придут снова
+        const s = run.steps[run.i];
+        setRun(null);
+        askBot(`Расскажи подробнее про «${s.title}» в QEVO: что это, как этим пользоваться и можешь ли настроить за меня? Из подсказки: ${s.text}`);
+      }}
       key={`${run.key}-${run.i}`}
       step={run.steps[run.i]}
       index={run.i}
@@ -138,9 +153,9 @@ export default function TourHost({ route }: { route: Route }) {
   );
 }
 
-function Spotlight({ step, index, total, dir, onNext, onClose, onStopAll }: {
+function Spotlight({ step, index, total, dir, onNext, onClose, onStopAll, onAsk }: {
   step: TourStep; index: number; total: number; dir: 1 | -1;
-  onNext: (dir: 1 | -1) => void; onClose: () => void; onStopAll: () => void;
+  onNext: (dir: 1 | -1) => void; onClose: () => void; onStopAll: () => void; onAsk: () => void;
 }) {
   const narrow = window.matchMedia(NARROW).matches;
   const selector = step.center ? undefined : narrow ? step.mobile : step.desktop;
@@ -256,6 +271,8 @@ function Spotlight({ step, index, total, dir, onNext, onClose, onStopAll }: {
             </button>
           </span>
         </div>
+        {/* #4620: в каждой подсказке — к Qevo-боту с вопросом именно про это место */}
+        <button className="tour-ask" onClick={onAsk}><Icon name="robot" size={14} /> Спросить подробнее у Qevo-бота</button>
         {!last && <button className="tour-off" onClick={onStopAll}>Больше не показывать обучение</button>}
         <div className="tour-bar" aria-hidden="true"><span style={{ width: `${((index + 1) / total) * 100}%` }} /></div>
       </div>

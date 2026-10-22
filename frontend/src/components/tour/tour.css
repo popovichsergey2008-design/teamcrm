@@ -28,6 +28,13 @@
   color: var(--text-mut); font-size: calc(12px * var(--fs-scale, 1)); text-decoration: underline; text-underline-offset: 2px;
 }
 .tour-off:hover { color: var(--text); }
+/* #4620: мини-кнопка внизу каждой подсказки — к Qevo-боту про это место */
+.tour-ask {
+  display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 0; padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 999px; background: transparent; cursor: pointer;
+  color: var(--text); font: inherit; font-size: calc(12.5px * var(--fs-scale, 1));
+}
+.tour-ask:hover { background: var(--hover); border-color: var(--accent); }
 .tour-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--bg-elev-2); }
 .tour-bar span { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
 @keyframes tour-fade { from { opacity: 0; } to { opacity: 1; } }

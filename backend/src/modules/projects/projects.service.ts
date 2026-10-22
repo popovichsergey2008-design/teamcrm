@@ -182,7 +182,8 @@ export class ProjectsService {
     return this.list(tenantId, role, false, userId);
   }
 
-  async create(tenantId: string, dto: CreateProjectDto) {
+  /** `columns` — свой набор этапов доски (первый проект от Qevo-бота, #4620); нет — по умолчанию. */
+  async create(tenantId: string, dto: CreateProjectDto, opts: { columns?: string[] } = {}) {
     return this.repo.create({
       tenantId,
       name: dto.name,
@@ -192,6 +193,7 @@ export class ProjectsService {
       // импорт и прочие пути создают проект и без них)
       description: dto.description?.trim() ?? '',
       aliases: cleanAliases(dto.aliases ?? [], dto.name),
+      columns: opts.columns,
     });
   }
 

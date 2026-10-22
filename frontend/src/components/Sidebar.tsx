@@ -22,7 +22,7 @@ import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
 import { OptionSelect } from './ui/option-select';
 import { initialsOf } from '../lib/initials';
-import { restartTour } from '../lib/tour';
+import { restartTour, restartWelcome } from '../lib/tour';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -588,6 +588,10 @@ export function Sidebar({
                   onClick={() => { setMenuOpen(false); setOpen(false); restartTour(); }}
                 >
                   <Icon name="book" size={15} /> Обучение
+                </button>
+                {/* #4620: первый запуск заново — слайды, выбор и Qevo-бот */}
+                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setOpen(false); restartWelcome(); }}>
+                  <Icon name="rocket" size={15} /> Быстрый старт
                 </button>
                 {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
                 <div className="menu-theme">

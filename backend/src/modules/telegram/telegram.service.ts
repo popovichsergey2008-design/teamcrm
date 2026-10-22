@@ -40,7 +40,9 @@ export class TelegramService {
 
   /** Привязка по коду; код одноразовый и истекающий. */
   async tryLink(telegramUserId: string | number, codeText: string): Promise<TgAccount | null> {
-    const code = codeText.trim().toUpperCase();
+    // Ссылка t.me/бот?start=КОД (Qevo-бот, #4620) приходит сообщением «/start КОД»:
+    // привязка в один клик, без переписывания кода руками.
+    const code = codeText.trim().replace(/^\/start\s+/i, '').trim().toUpperCase();
     const found = await this.repo.findValidCode(code);
     if (!found) return null;
     await this.repo.linkAccount(found.tenant_id, found.user_id, String(telegramUserId), found.id);

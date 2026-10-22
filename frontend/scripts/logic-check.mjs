@@ -1487,6 +1487,29 @@ test('обновление по воздуху: какой бандл качат
   assert.equal(compareVersionKeys('2026.10.22.1430-abc1234', '2026.10.22.1430-9999999'), 0, 'хеш в сравнение не входит');
 });
 
+// ── первый запуск: Qevo-бот (#4620) ───────────────────────────────────────────
+test('первая задача от Qevo-бота: срок с часом и название без срока', async () => {
+  const { phraseDeadline, phraseTitle, nameSuggestions } = await load('components/welcome/phrase.ts');
+  const now = new Date(2026, 9, 22, 10, 0); // чт 22.10, 10:00
+  const at = (iso) => { const d = new Date(iso); return [d.getDate(), d.getHours(), d.getMinutes()]; };
+  // пример из документа: день дал разбор команды («завтра»), час — фраза
+  assert.deepEqual(at(phraseDeadline('Подготовить план встречи завтра к 15:00', '2026-10-23', now)), [23, 15, 0]);
+  assert.deepEqual(at(phraseDeadline('Позвонить поставщику к 9', null, now)), [23, 9, 0], 'час прошёл — завтра');
+  assert.deepEqual(at(phraseDeadline('Отчёт в 16 часов', null, now)), [22, 16, 0]);
+  assert.deepEqual(at(phraseDeadline('Сдать отчёт', '2026-10-24', now)), [24, 18, 0], 'без часа — 18:00');
+  assert.equal(phraseDeadline('Разбить работу в 3 этапа', null, now), null, '«в 3 этапа» — не время');
+  assert.equal(phraseDeadline('Купить бумагу', null, now), null);
+  assert.equal(phraseTitle('Подготовить план встречи завтра к 15:00'), 'Подготовить план встречи');
+  assert.equal(phraseTitle('сдать отчёт до пятницы'), 'Сдать отчёт');
+  assert.equal(phraseTitle('Разбить работу в 3 этапа'), 'Разбить работу в 3 этапа');
+  assert.equal(phraseTitle('завтра'), 'Завтра', 'от названия ничего не осталось — оставляем как сказано');
+  // кнопки второго вопроса: всегда все четыре из документа, первой — подходящая сфере
+  for (const s of ['business', 'it', 'services', 'personal', 'custom']) {
+    assert.deepEqual([...nameSuggestions(s)].sort(), ['Запуск нового проекта', 'Маркетинг и клиенты', 'Мои задачи на неделю', 'Текущие задачи команды']);
+  }
+  assert.equal(nameSuggestions('personal')[0], 'Мои задачи на неделю');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

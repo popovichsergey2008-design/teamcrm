@@ -732,7 +732,8 @@ async function upload<T>(path: string, fields: Record<string, string | Blob>): P
   return env.data as T;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, extra?: RequestExtra): Promise<T> {
+/** Наружу — для редких ленивых кусков (первый запуск, #4620): их ручки не утяжеляют `api` первого экрана. */
+export async function request<T>(method: string, path: string, body?: unknown, extra?: RequestExtra): Promise<T> {
   // запоминаем, с каким токеном шли: по нему видно, обновил ли его кто-то параллельно
   const access = tokens.access;
   const retries = method === 'GET' ? 2 : 0;
@@ -1123,7 +1124,7 @@ export const api = {
 
   /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
   /** Настройки интерфейса сливаются на сервере: присылайте только свой кусок. */
-  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; home?: string; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean }; checks?: Record<string, boolean>; effects?: EffectsPrefs; tour?: { auto?: boolean; done?: string[] } }) =>
+  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; home?: string; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean }; checks?: Record<string, boolean>; effects?: EffectsPrefs; tour?: { auto?: boolean; done?: string[] }; welcome?: { done?: boolean } }) =>
     request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),
   /** Присутствие людей компании — для Chat Bar: в сети, когда видели, что о себе поставили. */
   presence: () => request<{ userId: string; online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }[]>('GET', '/presence'),

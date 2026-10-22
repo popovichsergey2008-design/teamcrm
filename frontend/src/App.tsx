@@ -54,7 +54,7 @@ import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 import { useSeedStickyChecks } from './lib/sticky-checks';
 import { setEffectsPrefs } from './lib/feedback';
-import { seedTour, useTourWanted } from './lib/tour';
+import { seedTour, useTourWanted, useWelcome } from './lib/tour';
 import { promptText } from './components/ui/dialog';
 
 /*
@@ -92,6 +92,8 @@ const MeetingPage = lazy(() => import('./pages/MeetingPage').then((m) => ({ defa
 const CallPanel = lazy(() => import('./components/CallPanel').then((m) => ({ default: m.CallPanel })));
 // обучение новичка (#4605): грузится, только когда есть что показать
 const TourHost = lazy(() => import('./components/tour/TourHost'));
+// первый запуск (#4620): слайды, выбор и Qevo-бот — один раз, своим куском
+const WelcomeHost = lazy(() => import('./components/welcome/WelcomeHost'));
 
 // Окна по нажатию — тоже по требованию: на первом экране их нет.
 const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
@@ -503,6 +505,7 @@ export function App() {
   // обучение (#4605): что пройдено — из аккаунта, общее на все устройства
   seedTour(user?.id ? String(user.id) : null, user?.uiPrefs?.tour);
   const tourWanted = useTourWanted();
+  const welcome = useWelcome(user?.uiPrefs?.welcome?.done);
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе
@@ -890,6 +893,8 @@ export function App() {
         «Ещё» открывает ту же панель разделов, что и раньше, — второго меню нет.
       */}
       {tourWanted && <Suspense fallback={null}><TourHost route={route} /></Suspense>}
+      {/* пока кусок первого запуска грузится, обучение ждёт (data-tour-hold) */}
+      {welcome > 0 && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} /></Suspense>}
 
       <BottomNav
         route={route}

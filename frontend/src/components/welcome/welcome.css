@@ -1,0 +1,253 @@
+/* Первый запуск (#4620): слайды, карточка выбора, окно заботы, Qevo-бот, подсветка мест. */
+
+.wl-layer {
+  position: fixed; inset: 0; z-index: 1900; display: flex; align-items: center; justify-content: center;
+  padding: 16px; box-sizing: border-box; background: rgba(10, 14, 28, .58); overflow-y: auto;
+  animation: wl-fade .2s ease-out;
+}
+.wl-x {
+  position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; display: inline-flex;
+  align-items: center; justify-content: center; border: 0; border-radius: 10px; background: transparent;
+  color: var(--text-mut); cursor: pointer;
+}
+.wl-x:hover { background: var(--hover); color: var(--text); }
+
+/* ── слайды ── */
+.wl-slides {
+  position: relative; width: min(520px, 100%); box-sizing: border-box; padding: 26px 24px 20px;
+  background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(10, 14, 28, .35); touch-action: pan-y;
+}
+.wl-bars { display: flex; gap: 6px; margin: 0 92px 18px 0; }
+.wl-bars > span { flex: 1; height: 4px; border-radius: 4px; background: var(--bg-elev-2); overflow: hidden; }
+.wl-bars > span > i { display: block; height: 100%; width: 0; background: var(--accent); }
+.wl-bars > .wl-bar-done > i { width: 100%; }
+.wl-bars > .wl-bar-now > i { animation: wl-bar linear forwards; }
+.wl-skip {
+  position: absolute; top: 14px; right: 14px; padding: 6px 10px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; font-size: calc(13px * var(--fs-scale, 1)); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.wl-skip:hover { background: var(--hover); }
+.wl-slide { min-height: 210px; animation: wl-in .25s ease-out; }
+.wl-slide-mark {
+  display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center;
+  border-radius: 18px; background: var(--accent-soft); color: var(--accent); margin-bottom: 16px;
+}
+.wl-slide h2 { margin: 0 0 8px; font-size: calc(22px * var(--fs-scale, 1)); line-height: 1.25; }
+.wl-slide p { margin: 0; font-size: calc(16px * var(--fs-scale, 1)); line-height: 1.55; color: var(--text); }
+.wl-slide-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; }
+.wl-count { color: var(--text-mut); font-variant-numeric: tabular-nums; font-size: calc(13px * var(--fs-scale, 1)); }
+.wl-slide-acts { display: flex; gap: 8px; }
+
+/* ── карточка выбора ── */
+.wl-choice {
+  position: relative; width: min(880px, 100%); box-sizing: border-box; padding: 28px 24px 24px; margin: auto;
+  background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(10, 14, 28, .35); animation: wl-in .25s ease-out;
+}
+.wl-choice h2 { margin: 0 40px 20px 0; font-size: calc(22px * var(--fs-scale, 1)); line-height: 1.3; }
+.wl-cards { display: grid; grid-template-columns: 1fr 1.35fr; gap: 14px; align-items: stretch; }
+.wl-card {
+  display: flex; flex-direction: column; gap: 10px; text-align: left; padding: 18px; border-radius: 14px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; cursor: pointer;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.wl-card:hover { border-color: var(--accent); }
+.wl-card:focus-visible { outline: 2px solid var(--ring, var(--accent)); outline-offset: 2px; }
+.wl-card-mark {
+  display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center;
+  border-radius: 12px; background: var(--accent-soft); color: var(--accent);
+}
+.wl-card-title { font-size: calc(16px * var(--fs-scale, 1)); line-height: 1.35; }
+.wl-card-text { font-size: calc(14px * var(--fs-scale, 1)); line-height: 1.5; color: var(--text); }
+/* Кнопка 2 — крупная и яркая */
+.wl-card-care {
+  background: var(--accent); color: var(--on-accent); border-color: var(--accent); padding: 22px;
+  box-shadow: 0 10px 30px rgba(10, 14, 28, .22);
+}
+.wl-card-care:hover { transform: translateY(-1px); border-color: var(--accent); }
+.wl-card-care .wl-card-title { font-size: calc(19px * var(--fs-scale, 1)); color: var(--on-accent); }
+.wl-card-care .wl-card-text { color: var(--on-accent); }
+.wl-care-top { display: flex; align-items: center; gap: 10px; }
+
+/* лица дежурных и пульс «на связи» */
+.wl-faces { display: inline-flex; }
+.wl-face {
+  width: 38px; height: 38px; border-radius: 50%; object-fit: cover; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 13px; font-weight: 600;
+  border: 2px solid var(--bg-elev); margin-left: -8px; box-sizing: border-box;
+}
+.wl-face:first-child { margin-left: 0; }
+.wl-face-ph { background: var(--bg-elev-2); color: var(--text-mut); }
+.wl-pulse {
+  position: relative; display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--ok); flex: none;
+}
+.wl-pulse::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--ok);
+  animation: wl-pulse 1.6s ease-out infinite;
+}
+.wl-card-care .wl-pulse { box-shadow: 0 0 0 2px var(--on-accent); }
+
+/* ── окно Отдела заботы (Кнопка 2) ── */
+.wl-care {
+  position: relative; width: min(560px, 100%); box-sizing: border-box; padding: 24px; margin: auto;
+  background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(10, 14, 28, .35); animation: wl-in .25s ease-out;
+}
+.wl-care-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-right: 36px; }
+.wl-care-live { display: inline-flex; align-items: center; gap: 8px; font-size: calc(13px * var(--fs-scale, 1)); color: var(--text); }
+.wl-care h2 { margin: 16px 0 12px; font-size: calc(19px * var(--fs-scale, 1)); }
+.wl-sources { display: grid; gap: 8px; }
+.wl-source {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; text-align: left;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text);
+  font: inherit; font-size: calc(15px * var(--fs-scale, 1)); cursor: pointer;
+}
+.wl-source:hover:not(:disabled) { border-color: var(--accent); background: var(--hover); }
+.wl-source:disabled { opacity: .6; cursor: default; }
+.wl-source svg { color: var(--accent); flex: none; }
+.wl-source-voice { border-style: dashed; }
+.wl-source-voice.is-rec { border-color: var(--danger); border-style: solid; }
+.wl-care-extra { display: flex; gap: 8px; margin-top: 12px; }
+.wl-care-extra .input { flex: 1; min-width: 0; }
+.wl-care-extra .ui-btn { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Qevo-бот ── */
+.wl-bot {
+  position: fixed; z-index: 1850; right: 20px; bottom: 20px; width: 400px;
+  max-height: min(680px, calc(100vh - 40px)); display: flex; flex-direction: column;
+  background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(10, 14, 28, .3); animation: wl-in .2s ease-out; overflow: hidden;
+}
+.wl-bot-head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--border); }
+.wl-bot-head b { flex: 1; font-size: calc(15px * var(--fs-scale, 1)); }
+.wl-bot-mark {
+  display: inline-flex; width: 30px; height: 30px; align-items: center; justify-content: center; flex: none;
+  border-radius: 50%; background: var(--accent); color: var(--on-accent);
+}
+.wl-icon-btn {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text-mut); cursor: pointer;
+}
+.wl-icon-btn:hover { background: var(--hover); color: var(--text); }
+.wl-feed { flex: 1; min-height: 120px; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.wl-msg {
+  max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: calc(14px * var(--fs-scale, 1)); line-height: 1.5;
+  animation: wl-in .2s ease-out; overflow-wrap: anywhere;
+}
+.wl-msg-bot { align-self: flex-start; background: var(--bg-elev-2); color: var(--text); border-bottom-left-radius: 4px; }
+.wl-msg-me { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 4px; }
+.wl-typing { display: inline-flex; gap: 4px; padding: 12px 14px; }
+.wl-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-mut); animation: wl-dot 1s ease-in-out infinite; }
+.wl-typing i:nth-child(2) { animation-delay: .15s; }
+.wl-typing i:nth-child(3) { animation-delay: .3s; }
+.wl-linkrow { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.wl-linkrow .input { flex: 1; min-width: 160px; font-size: calc(13px * var(--fs-scale, 1)); }
+.wl-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px; }
+.wl-chips:empty { display: none; }
+.wl-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px;
+  border: 1px solid var(--accent-line, var(--border)); background: var(--bg); color: var(--text);
+  font: inherit; font-size: calc(13px * var(--fs-scale, 1)); cursor: pointer; text-align: left;
+}
+.wl-chip:hover:not(:disabled) { background: var(--hover); border-color: var(--accent); }
+.wl-chip svg { color: var(--accent); flex: none; }
+.wl-chip-col { flex-direction: column; align-items: flex-start; gap: 2px; border-radius: 12px; width: 100%; }
+.wl-chip-col span { color: var(--text); font-size: calc(12.5px * var(--fs-scale, 1)); }
+.wl-err { padding: 6px 16px 0; }
+.wl-bot .voice-status, .wl-spot .voice-status { margin: 6px 16px 0; }
+.wl-compose { display: flex; gap: 6px; padding: 10px 12px 0 16px; }
+.wl-compose .input { flex: 1; min-width: 0; }
+.wl-mic, .wl-send {
+  width: 40px; height: 40px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 0; cursor: pointer; touch-action: none;
+}
+.wl-mic { background: var(--accent); color: var(--on-accent); }
+.wl-mic.is-rec { background: var(--danger); color: var(--on-danger); animation: wl-rec 1.2s ease-in-out infinite; }
+.wl-send { background: var(--bg-elev-2); color: var(--text); }
+.wl-mic:disabled, .wl-send:disabled { opacity: .5; cursor: default; animation: none; }
+.wl-engineer {
+  display: flex; align-items: center; gap: 10px; margin: 12px; padding: 11px 14px; border-radius: 12px;
+  border: 1px solid var(--ok-line, var(--border)); background: var(--ok-soft, var(--bg)); color: var(--text);
+  font: inherit; font-size: calc(13.5px * var(--fs-scale, 1)); font-weight: 600; text-align: left; cursor: pointer;
+}
+.wl-engineer:hover { border-color: var(--ok); }
+
+.wl-mini {
+  position: fixed; z-index: 1850; right: 20px; bottom: 20px; display: inline-flex; align-items: center;
+  border-radius: 999px; background: var(--accent); color: var(--on-accent); box-shadow: 0 10px 30px rgba(10, 14, 28, .3);
+}
+.wl-mini-open {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 6px 10px 16px; border: 0; background: transparent;
+  color: var(--on-accent); font: inherit; font-weight: 600; cursor: pointer;
+}
+.wl-mini-x {
+  width: 34px; height: 34px; margin-right: 4px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: transparent; color: var(--on-accent); cursor: pointer;
+}
+.wl-mini-x:hover, .wl-mini-open:hover { background: rgba(255, 255, 255, .14); }
+
+/* ── подсветка места с подсказкой ── */
+.wl-spot-layer { position: fixed; inset: 0; z-index: 1900; }
+.wl-pass { pointer-events: none; }
+.wl-pass .wl-spot { pointer-events: auto; }
+.wl-dim { position: fixed; inset: 0; background: rgba(10, 14, 28, .58); }
+.wl-hole {
+  position: fixed; border-radius: 10px; pointer-events: none;
+  box-shadow: 0 0 0 3px var(--ok), 0 0 0 9999px rgba(10, 14, 28, .58);
+  transition: top .25s ease, left .25s ease, width .25s ease, height .25s ease;
+  animation: wl-glow 1.6s ease-in-out infinite;
+}
+.wl-spot {
+  position: fixed; box-sizing: border-box; padding: 14px 16px 16px; background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 18px 50px rgba(10, 14, 28, .35);
+  animation: wl-in .2s ease-out;
+}
+.wl-spot-who { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: calc(13px * var(--fs-scale, 1)); margin-bottom: 8px; }
+.wl-spot-who .wl-bot-mark { width: 24px; height: 24px; }
+.wl-spot-text { margin: 0 0 12px; font-size: calc(14px * var(--fs-scale, 1)); line-height: 1.5; }
+.wl-phrase { display: flex; gap: 6px; }
+.wl-phrase .input { flex: 1; min-width: 0; }
+.wl-spot .voice-status { margin: 8px 0 0; }
+.wl-spot .error-text { margin-top: 8px; }
+.wl-tips { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 10px; }
+.wl-tips li {
+  display: flex; gap: 10px; align-items: flex-start; font-size: calc(14px * var(--fs-scale, 1)); line-height: 1.45;
+  animation: wl-in .3s ease-out both;
+}
+.wl-tips svg { color: var(--accent); flex: none; margin-top: 2px; }
+.wl-spot-acts { display: flex; justify-content: flex-end; gap: 6px; }
+
+@keyframes wl-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes wl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes wl-bar { from { width: 0; } to { width: 100%; } }
+@keyframes wl-pulse { from { transform: scale(1); opacity: .7; } to { transform: scale(2.6); opacity: 0; } }
+@keyframes wl-dot { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+@keyframes wl-rec { 0%, 100% { box-shadow: 0 0 0 0 var(--danger-soft, transparent); } 50% { box-shadow: 0 0 0 6px var(--danger-soft, transparent); } }
+@keyframes wl-glow { 0%, 100% { box-shadow: 0 0 0 3px var(--ok), 0 0 0 9999px rgba(10, 14, 28, .58); } 50% { box-shadow: 0 0 0 6px var(--ok), 0 0 0 9999px rgba(10, 14, 28, .58); } }
+
+@media (max-width: 720px) {
+  .wl-layer { align-items: flex-end; padding: 0; }
+  .wl-slides, .wl-choice, .wl-care { margin: auto 0 0; border-radius: 18px 18px 0 0; border-bottom: 0; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .wl-choice { max-height: 100%; overflow-y: auto; padding: 22px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .wl-choice h2 { font-size: calc(19px * var(--fs-scale, 1)); }
+  .wl-cards { grid-template-columns: 1fr; }
+  .wl-card { padding: 14px; }
+  .wl-card-care { padding: 16px; }
+  .wl-card-care .wl-card-title { font-size: calc(17px * var(--fs-scale, 1)); }
+  .wl-slide { min-height: 0; }
+  .wl-care { max-height: 100%; overflow-y: auto; padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .wl-bot {
+    left: 0; right: 0; bottom: 0; width: auto; max-height: 82vh; border-radius: 16px 16px 0 0; border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .wl-mini { right: auto; left: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-layer, .wl-slide, .wl-choice, .wl-care, .wl-bot, .wl-msg, .wl-spot, .wl-tips li { animation: none; }
+  .wl-pulse::after, .wl-hole, .wl-typing i, .wl-mic.is-rec { animation: none; }
+  .wl-bars > .wl-bar-now > i { animation: none; width: 100%; }
+}
