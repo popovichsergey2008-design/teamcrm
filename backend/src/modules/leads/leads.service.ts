@@ -51,19 +51,23 @@ export class LeadsService {
 
   async create(l: NewLead) {
     const contact = l.contact.trim();
+    // номер с сайта — это WhatsApp (#4628): дежурному сразу ссылка, чтобы написать в один тап
+    const digits = contact.replace(/\D/g, '');
+    const phone = !contact.startsWith('@') && digits.length >= 10 && digits.length <= 15;
+    const contactLine = phone ? `WhatsApp: ${contact} — https://wa.me/${digits.length === 11 && digits.startsWith('8') ? `7${digits.slice(1)}` : digits}` : `Telegram: ${contact}`;
     await this.db.query(
       `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null],
     );
     const text = l.source === 'support' ? [
       'Вопрос с сайта — проверка «ответ за 30 секунд», ответьте сейчас!',
-      `Контакт: ${contact}`,
+      contactLine,
       `Вопрос: ${l.message?.trim() || '—'}`,
     ].join('\n') : [
       'Заявка с сайта: план переезда',
       `Откуда: ${l.from ? FROM_LABEL[l.from] ?? l.from : 'не указано'}`,
       `Команда: ${l.team ?? 'не указано'}`,
-      `Контакт: ${contact}`,
+      contactLine,
     ].join('\n');
     await this.notify(text).catch((e) => this.logger.warn(`notify failed: ${(e as Error).message}`));
   }
