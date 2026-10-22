@@ -250,6 +250,16 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
             <li><Icon name="clock" size={13} /> Формируем задачу</li>
           </ol>
         )}
+        {/* Разбор ещё идёт или оборвался (выкладка посреди запроса к модели): не пустые поля молча, а понятное состояние */}
+        {draft?.status === 'analyzing' && (
+          <div className="task-draft-ask">
+            <Icon name="refresh" size={14} />
+            <div><b>ИИ ещё разбирает сообщение</b>
+              <div className="dim">Обычно это несколько секунд. Если поля так и не заполнились — повторите или заполните задачу вручную.</div>
+            </div>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => void retry()} disabled={busy}>Повторить</button>
+          </div>
+        )}
         {draft?.status === 'failed' && voice?.error === 'no_stt' && (
           <div className="task-draft-ask">
             <Icon name="mic" size={14} />

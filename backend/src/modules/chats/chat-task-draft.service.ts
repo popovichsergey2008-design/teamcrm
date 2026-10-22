@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { trackBackground } from '../../common/background-work';
 import { AppException } from '../../common/http/app-exception';
 import { DbService } from '../../database/db.service';
 import { projectVisibleSql } from '../../common/access/project-visibility';
@@ -159,7 +160,13 @@ export class ChatTaskDraftService {
     const msg = await this.chats.messageBody(tenantId, messageId);
     if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
 
-    const open = await this.repo.openByMessage(tenantId, messageId);
+    let open = await this.repo.openByMessage(tenantId, messageId);
+    /*
+      Разбор оборвался (выкладка остановила сервер посреди запроса к модели) — черновик
+      так и висел «разбирается» с пустыми полями, и каждое нажатие палочки отдавало его же.
+      Застрявший дольше полутора минут разбираем заново.
+    */
+    if (open && stuck(open)) open = await this.reanalyze(tenantId, user, open, chat);
     // открытый черновик — со списками того, кто смотрит: закрытые проекты чужого черновика не светим
     if (open) return { draft: this.view(open), context: await this.context(tenantId, user, open), already: null, voice: await this.voiceInfo(tenantId, open) };
 
@@ -181,19 +188,34 @@ export class ChatTaskDraftService {
     if (voice) {
       const t = await this.repo.transcript(tenantId, messageId);
       if (t?.transcript_status === 'ready' && t.transcript) {
-        const filled = await this.analyze(tenantId, user, draft, { ...src, text: t.transcript });
+        const filled = await trackBackground(this.analyze(tenantId, user, draft, { ...src, text: t.transcript }));
         void this.announce(tenantId, chatId, filled);
         return { draft: this.view(filled), context: await this.context(tenantId, user, filled), already, voice: await this.voiceInfo(tenantId, filled) };
       }
       const waiting = (await this.repo.patch(tenantId, String(draft.id), { status: 'transcribing' })) ?? draft;
-      void this.transcribeAndAnalyze(tenantId, user, waiting, voice, src);
+      void trackBackground(this.transcribeAndAnalyze(tenantId, user, waiting, voice, src));
       void this.announce(tenantId, chatId, waiting);
       return { draft: this.view(waiting), context: await this.context(tenantId, user, waiting), already, voice: await this.voiceInfo(tenantId, waiting) };
     }
 
-    const filled = await this.analyze(tenantId, user, draft, { ...src, text: String(msg.body ?? '') });
+    const filled = await trackBackground(this.analyze(tenantId, user, draft, { ...src, text: String(msg.body ?? '') }));
     void this.announce(tenantId, chatId, filled);
     return { draft: this.view(filled), context: await this.context(tenantId, user, filled), already, voice: null };
+  }
+
+  /** Заново разобрать застрявший черновик — тем же путём, что и при первом нажатии. */
+  private async reanalyze(tenantId: string, user: Viewer, draft: DraftRow, chat: Parameters<typeof chatProject>[0]): Promise<DraftRow> {
+    const msg = await this.chats.messageBody(tenantId, String(draft.message_id));
+    const src = { fileNameFallback: msg?.file_name ?? null, projectHint: chatProject(chat) };
+    const voice = String(msg?.body ?? '').trim().length < 3 ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
+    if (voice) {
+      const waiting = (await this.repo.patch(tenantId, String(draft.id), { status: 'transcribing' })) ?? draft;
+      void trackBackground(this.transcribeAndAnalyze(tenantId, user, waiting, voice, src));
+      return waiting;
+    }
+    const filled = await trackBackground(this.analyze(tenantId, user, draft, { ...src, text: String(msg?.body ?? '') }));
+    void this.announce(tenantId, String(draft.chat_id), filled);
+    return filled;
   }
 
   /** Аудиофайл голосового сообщения, если это оно. */
@@ -258,18 +280,17 @@ export class ChatTaskDraftService {
    */
   async retry(tenantId: string, user: Viewer, draftId: string) {
     const draft = await this.mine(tenantId, user, draftId);
-    const stale = draft.status === 'transcribing' && Date.now() - new Date(draft.updated_at).getTime() > 120_000;
-    if (draft.status !== 'failed' && !stale) throw AppException.conflict('Черновик не в ошибке — повторять нечего');
+    if (draft.status !== 'failed' && !stuck(draft)) throw AppException.conflict('Черновик не в ошибке — повторять нечего');
     const chat = await this.chats.get(tenantId, String(draft.chat_id));
     const msg = await this.chats.messageBody(tenantId, String(draft.message_id));
     const src = { fileNameFallback: msg?.file_name ?? null, projectHint: chat ? chatProject(chat) : null };
     const voice = String(msg?.body ?? '').trim().length < 3 ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
     if (voice) {
       const waiting = (await this.repo.patch(tenantId, draftId, { status: 'transcribing' })) ?? draft;
-      void this.transcribeAndAnalyze(tenantId, user, waiting, voice, src);
+      void trackBackground(this.transcribeAndAnalyze(tenantId, user, waiting, voice, src));
       return { draft: this.view(waiting), context: await this.context(tenantId, user, waiting), already: null, voice: await this.voiceInfo(tenantId, waiting) };
     }
-    const filled = await this.analyze(tenantId, user, draft, { ...src, text: String(msg?.body ?? '') });
+    const filled = await trackBackground(this.analyze(tenantId, user, draft, { ...src, text: String(msg?.body ?? '') }));
     void this.announce(tenantId, String(draft.chat_id), filled);
     return { draft: this.view(filled), context: await this.context(tenantId, user, filled), already: null, voice: null };
   }
@@ -918,4 +939,9 @@ export class ChatTaskDraftService {
     void this.announce(tenantId, String(draft.chat_id), updated);
     return { ok: true };
   }
+}
+
+/** Разбор или расшифровка не закончились за полторы минуты — значит, оборвались. */
+function stuck(d: { status: string; updated_at: Date | string }): boolean {
+  return (d.status === 'analyzing' || d.status === 'transcribing') && Date.now() - new Date(d.updated_at).getTime() > 90_000;
 }
