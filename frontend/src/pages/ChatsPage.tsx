@@ -6,6 +6,8 @@ import { feedback } from '../lib/feedback';
 import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { getSocket } from '../lib/socket';
+import { mergeTail } from '../lib/chat-sync';
+import { useChatResync } from '../hooks/useChatResync';
 import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
 import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
@@ -792,6 +794,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     loadSaved();
   }, [reload, loadThreads, loadInbox, loadSaved]);
 
+  const resyncRef = useChatResync();
   // Новые сообщения приходят по тому же сокету, что и события досок.
   useEffect(() => {
     const socket = getSocket();
@@ -964,7 +967,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       void loadThreads();
       loadInbox();
       if (activeId) {
-        api.chatMessages(activeId).then(setMessages).catch(() => undefined);
+        // хвост поверх экрана без дублей; ответ про уже закрытый чат — мимо (#4634)
+        api.chatMessages(activeId).then((list) => {
+          if (resyncRef.current === onReconnect && !hasNewerRef.current) setMessages((prev) => mergeTail(prev, list));
+        }).catch(() => undefined);
         // через ссылку, а не через замыкание: ветку могли открыть уже после того,
         // как этот обработчик повесили, и тогда в замыкании лежит пустота
         const open = threadRef.current;
@@ -972,6 +978,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       }
     };
     socket.on('connect', onReconnect);
+    resyncRef.current = onReconnect;
     // Догнали пропущенное после разрыва (delta-sync) или ушла офлайн-очередь —
     // перечитываем открытую переписку, только если изменения касаются её.
     const onSync = (e: Event) => {

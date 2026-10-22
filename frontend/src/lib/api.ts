@@ -687,6 +687,9 @@ async function tryRefresh(previousAccess: string | null): Promise<void> {
   return refreshing;
 }
 
+/** Обновить access-токен сейчас (сокет перед подключением, #4634). */
+export const refreshAccess = () => tryRefresh(tokens.access);
+
 function signOut(): never {
   tokens.clear();
   window.dispatchEvent(new Event(SIGNED_OUT_EVENT));

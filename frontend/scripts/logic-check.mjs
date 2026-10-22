@@ -1604,6 +1604,39 @@ test('автопостановка #4615: чипы срока — сегодня
   assert.equal(effectiveDeadline(null, null, false), null);
 });
 
+// ── чаты после обрыва связи (#4634) ─────────────────────────────────────────────
+test('догрузка хвоста чата: без дублей, без дыр, правки с сервера главнее', async () => {
+  const { mergeTail } = await load('lib/chat-sync.ts');
+  const m = (id, min, body = '') => ({ id, created_at: `2026-10-22T10:${String(min).padStart(2, '0')}:00.000Z`, body });
+  const ids = (l) => l.map((x) => String(x.id));
+  // на экране 1..3, сервер отдаёт 2..5 (id числом — с экрана строки): 1 сохраняется, дублей нет
+  const prev = [m('1', 1), m('2', 2), m('3', 3, 'старое')];
+  const out = mergeTail(prev, [m(2, 2), m(3, 3, 'правка'), m(4, 4), m(5, 5)]);
+  assert.deepEqual(ids(out), ['1', '2', '3', '4', '5']);
+  assert.equal(out[2].body, 'правка');
+  // удалённое за обрыв пропадает, пришедшее по сокету позже хвоста — остаётся
+  assert.deepEqual(ids(mergeTail([m('1', 1), m('2', 2), m('3', 3), m('9', 9)], [m('1', 1), m('3', 3)])), ['1', '3', '9']);
+  // пропущено больше страницы: хвост не пересёкся с экраном — только хвост, без дыры
+  assert.deepEqual(ids(mergeTail([m('1', 1), m('2', 2)], [m('7', 7), m('8', 8)])), ['7', '8']);
+  // пустые случаи
+  assert.deepEqual(ids(mergeTail([], [m('1', 1)])), ['1']);
+  assert.deepEqual(ids(mergeTail([m('1', 1)], [])), ['1']);
+  // повторная догрузка тем же хвостом ничего не меняет
+  const twice = mergeTail(out, [m(2, 2), m(3, 3, 'правка'), m(4, 4), m(5, 5)]);
+  assert.deepEqual(ids(twice), ids(out));
+});
+
+test('сокет: просроченный access-токен видно до подключения', async () => {
+  const { tokenStale } = await load('lib/token-exp.ts');
+  const jwt = (exp) => `h.${Buffer.from(JSON.stringify({ sub: '1', exp })).toString('base64url')}.s`;
+  const now = Date.UTC(2026, 9, 22, 12, 0, 0);
+  assert.equal(tokenStale(jwt(now / 1000 - 60), now), true);   // истёк минуту назад
+  assert.equal(tokenStale(jwt(now / 1000 + 10), now), true);   // истекает через 10 с — тоже обновить
+  assert.equal(tokenStale(jwt(now / 1000 + 600), now), false);
+  assert.equal(tokenStale(null, now), false);
+  assert.equal(tokenStale('мусор', now), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
