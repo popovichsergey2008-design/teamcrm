@@ -237,6 +237,16 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     setLive(null);
     loadSessions();
   };
+  // #4620: вопрос из подсказки обучения или Qevo-бота первого запуска (lib/bot-ask) — сразу в работу
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    const w = window as { qevoAsk?: string };
+    const take = () => { const q = w.qevoAsk; w.qevoAsk = ''; if (q) void sendRef.current(q); };
+    take();
+    window.addEventListener('qevo:bot-ask', take);
+    return () => window.removeEventListener('qevo:bot-ask', take);
+  }, []);
 
   const voice = useVoiceInput((text) => {
     setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text));

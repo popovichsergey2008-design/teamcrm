@@ -35,6 +35,8 @@ export interface User {
     effects?: { haptics?: boolean; ai?: boolean; celebration?: boolean; minimal?: boolean };
     /** Обучение новичка (#4605): что пройдено и запускать ли самому. */
     tour?: { auto?: boolean; done?: string[] };
+    /** Первый запуск (#4620): слайды, выбор и Qevo-бот уже показаны. */
+    welcome?: { done?: boolean };
   };
 }
 

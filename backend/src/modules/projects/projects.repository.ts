@@ -264,6 +264,8 @@ export class ProjectsRepository {
     budget?: number | null;
     description?: string;
     aliases?: string[];
+    /** Этапы доски; пусто — DEFAULT_COLUMNS. */
+    columns?: string[];
   }): Promise<ProjectRow> {
     return this.db.withTransaction(async (client) => {
       const proj = await client.query<ProjectRow>(
@@ -272,17 +274,17 @@ export class ProjectsRepository {
         [input.tenantId, input.name, input.clientId ?? null, input.budget ?? null, input.description ?? '', input.aliases ?? []],
       );
       const project = proj.rows[0];
-      await this.seedColumns(client, input.tenantId, project.id);
+      await this.seedColumns(client, input.tenantId, project.id, input.columns?.length ? input.columns : DEFAULT_COLUMNS);
       return project;
     });
   }
 
-  private async seedColumns(client: PoolClient, tenantId: string, projectId: string) {
-    for (let i = 0; i < DEFAULT_COLUMNS.length; i++) {
+  private async seedColumns(client: PoolClient, tenantId: string, projectId: string, names: string[]) {
+    for (let i = 0; i < names.length; i++) {
       await client.query(
         `INSERT INTO board_columns (tenant_id, project_id, name, position)
          VALUES ($1, $2, $3, $4)`,
-        [tenantId, projectId, DEFAULT_COLUMNS[i], i],
+        [tenantId, projectId, names[i], i],
       );
     }
   }

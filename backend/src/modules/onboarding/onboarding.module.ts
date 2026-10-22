@@ -8,6 +8,8 @@ import { AiDemoService } from './ai-demo.service';
 import { OnboardingController } from './onboarding.controller';
 import { OnboardingRepository } from './onboarding.repository';
 import { OnboardingService } from './onboarding.service';
+import { StarterController } from './starter.controller';
+import { StarterService } from './starter.service';
 
 /**
  * Путь владельца от регистрации до первой задачи (ТЗ-11).
@@ -17,8 +19,8 @@ import { OnboardingService } from './onboarding.service';
  */
 @Module({
   imports: [AiModule, ProjectsModule, TasksModule],
-  controllers: [OnboardingController, AiDemoController],
-  providers: [OnboardingService, OnboardingRepository, AiDemoService, AiDemoRepository],
+  controllers: [OnboardingController, AiDemoController, StarterController],
+  providers: [OnboardingService, OnboardingRepository, AiDemoService, AiDemoRepository, StarterService],
   exports: [OnboardingService, AiDemoService],
 })
 export class OnboardingModule {}

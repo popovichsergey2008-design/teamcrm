@@ -77,3 +77,21 @@ export function useTourWanted(): boolean {
 }
 
 export const TOUR_START_EVENT = START;
+
+/*
+  Первый запуск (#4620): слайды, «Как запустим ваше рабочее пространство?», Qevo-бот.
+  Один раз — у кого нет ui_prefs.welcome.done (старым людям его поставила миграция
+  0197); заново — «Быстрый старт» в меню профиля. Сам показ — отдельным куском.
+  0 — не показывать, иначе ключ показа: новый ключ — показ с начала.
+*/
+const WELCOME = 'qevo:welcome';
+export const restartWelcome = () => window.dispatchEvent(new Event(WELCOME));
+export function useWelcome(done?: boolean): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const on = () => setN((v) => v + 1);
+    window.addEventListener(WELCOME, on);
+    return () => window.removeEventListener(WELCOME, on);
+  }, []);
+  return n ? n + 1 : done ? 0 : 1;
+}
