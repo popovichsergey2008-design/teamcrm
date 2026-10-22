@@ -17,7 +17,7 @@ import { AssigneeCandidate, pickAssignee, SURE_CONFIDENCE } from './assignee-pic
 import { Department, departmentOf, isDepartment, isSkill, Skill, SKILL_LABEL, skillsCatalog } from '../team/skills';
 import { directionsFromText, listItemsCount, MAX_AUTO_DIRECTIONS, TASK_DIRECTIONS } from '../team/direction-rules';
 import {
-  cleanTitle, pickApproval, pickDeadline, pickPriority,
+  cleanTitle, pickApproval, pickDeadline, pickEstimate, pickPriority,
   taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
@@ -50,6 +50,8 @@ export interface NlDraft {
     requiresApproval: boolean;
     /** Шаги выполнения: ИИ разбивает работу, человек правит перед созданием. */
     checklist: string[];
+    /** Оценка трудозатрат в часах — только если названа в речи. */
+    estimateHours?: number | null;
     /** Направления задачи (отметки в карточке): по словам и классификации, правятся в предпросмотре. */
     directions?: Skill[];
   };
@@ -105,9 +107,10 @@ const FALLBACK_SYSTEM = [
   'deadline — срок выполнения задачи, а не любая дата в тексте: если дата часть содержания, ставь null.',
   'Относительные сроки переводи в YYYY-MM-DD относительно today. priority: low|normal|high|urgent.',
   'requiresApproval — завершать ли задачу только с согласия постановщика. По умолчанию true.',
+  'estimateHours — оценка трудозатрат в часах, ТОЛЬКО если человек её назвал («займёт 3 часа», «два дня работы» = 16); иначе null.',
   'false ставь, если сказано «можно закрывать без меня», «без согласования», «проверять не надо».',
   'Верни СТРОГО JSON: {"intent":"","confidence":0,"task":{"title":"","description":null,"projectId":null,',
-  '"assigneeId":null,"priority":"normal","deadline":null,"requiresApproval":true,"checklist":[]},',
+  '"assigneeId":null,"priority":"normal","deadline":null,"requiresApproval":true,"estimateHours":null,"checklist":[]},',
   '"deal":{"title":"","amount":null,"plannedMargin":null,"clientId":null,"stage":"new"},"note":""}',
 ].join(' ');
 
@@ -338,6 +341,10 @@ export class NlService {
       const checklist = Array.isArray(t.checklist)
         ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean).slice(0, 12)
         : [];
+      // Оценку сначала берём правилами: модель охотно «оценивает» сама, а нам нужна только названная
+      const said = pickEstimate(clean) ?? (around ? pickEstimate(around) : null);
+      const modelEst = Number(t.estimateHours);
+      const estimateHours = said ?? (Number.isFinite(modelEst) && modelEst > 0 && modelEst <= 80 ? Math.round(modelEst * 2) / 2 : null);
       base.task = {
         // Последняя защита от «Задача на Сергея» в заголовке: модель иногда всё
         // равно берёт первую фразу, а список задач из адресатов нечитаем.
@@ -351,7 +358,7 @@ export class NlService {
           candidates, notFoundName: resolved.notFoundName,
         } : undefined,
         assigneeId, assigneeName: assigneeId ? userSet.get(assigneeId)! : null,
-        priority, deadline, requiresApproval, checklist,
+        priority, deadline, requiresApproval, checklist, estimateHours,
       };
     } else if (intent === 'create_deal') {
       const d = parsed.deal ?? {};

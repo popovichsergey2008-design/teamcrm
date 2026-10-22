@@ -1,5 +1,5 @@
 import {
-  chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickPriority, taskTitleFrom,
+  chooseProject, cleanTitle, matchProjectInText, pickApproval, pickDeadline, pickEstimate, pickPriority, taskTitleFrom,
 } from './task-draft';
 
 const PROJECTS = [
@@ -162,5 +162,24 @@ describe('заголовок задачи — название работы, а 
   it('если резать нечего — возвращает исходное, а не пустоту', () => {
     expect(cleanTitle('Задача на Сергея', null)).toBe('Задача на Сергея');
     expect(cleanTitle('', null)).toBe('');
+  });
+});
+
+describe('оценка трудозатрат', () => {
+  it('берётся, когда сказано про объём работы', () => {
+    expect(pickEstimate('сверстать форму, оценка 3 часа')).toBe(3);
+    expect(pickEstimate('займёт полтора часа')).toBe(1.5);
+    expect(pickEstimate('там работы на два дня')).toBe(16);
+    expect(pickEstimate('примерно 4 часа работы')).toBe(4);
+    expect(pickEstimate('оценка 2,5 ч')).toBe(2.5);
+    expect(pickEstimate('уйдёт минут 40, нет — займёт 40 минут')).toBe(0.5);
+    expect(pickEstimate('полчаса работы')).toBe(0.5);
+  });
+
+  it('срок со словом «час» оценкой не считается', () => {
+    expect(pickEstimate('подготовить отчёт к 15 часам')).toBeNull();
+    expect(pickEstimate('перезвонить через 3 часа')).toBeNull();
+    expect(pickEstimate('созвон в 10 часов')).toBeNull();
+    expect(pickEstimate('сделать отчёт до пятницы')).toBeNull();
   });
 });

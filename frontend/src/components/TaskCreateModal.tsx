@@ -4,7 +4,7 @@ import { Icon } from './Icon';
 import { api, ApiError, TagSettings } from '../lib/api';
 import type { TaskTemplate, User } from '../types';
 import { TaskTagsField } from './TaskTagsField';
-import { EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
+import { confirmTags, EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
 import { clearDraft, draftHasContent, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
@@ -23,6 +23,7 @@ import { Field, Textarea } from './ui/field';
 import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { feedback } from '../lib/feedback';
+import { useVoiceInput } from '../hooks/useVoiceInput';
 
 interface Props {
   projectId: string;
@@ -109,6 +110,12 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   */
   const [tags, setTags] = useState<TagsValue>(EMPTY_TAGS);
   const [tagSettings, setTagSettings] = useState<TagSettings | null>(null);
+  /** После голоса теги подтверждаются сами: человек наговорил задачу и не должен ничего дожимать (#4618). */
+  const autoTags = useRef(false);
+  const onTags = (next: TagsValue) => {
+    if (autoTags.current && next.suggested.length) { autoTags.current = false; setTags(confirmTags(next)); }
+    else setTags(next);
+  };
   /**
    * «Не завершать без согласования» — по умолчанию включено.
    *
@@ -243,6 +250,54 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
   const chosenTpl = templates.find((t) => String(t.id) === tplId) ?? null;
 
+  /*
+    Задача голосом прямо в форме (#4618). Человек открыл «Новую задачу» и наговорил её
+    одной фразой — поля заполняются сами: название, описание, исполнитель, срок,
+    срочность, оценка, согласование, чек-лист, направления; теги подтверждаются сами.
+    Разбор тот же, что у быстрой команды, — одни правила на все места постановки.
+  */
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceNote, setVoiceNote] = useState('');
+  const fillFromSpeech = async (text: string) => {
+    setVoiceBusy(true);
+    setVoiceNote('');
+    try {
+      const d = await api.nlParse(text, projectId, 'board');
+      const t = d?.intent === 'create_task' ? d.task : null;
+      if (!t) {
+        setTitle(text.slice(0, 255));
+        setVoiceNote('Не разобрал задачу целиком — записал сказанное в название. Поправьте или наговорите ещё раз.');
+        return;
+      }
+      setTitle(t.title);
+      setDescription(t.description ?? '');
+      if (t.assigneeId) { setAssigneeId(String(t.assigneeId)); setAssigneeTouched(true); setAutoNote(''); }
+      if (t.deadline) setDeadline(/^\d{4}-\d{2}-\d{2}$/.test(t.deadline) ? `${t.deadline}T18:00` : localInput(t.deadline));
+      setPriority(t.priority || 'normal');
+      if (t.estimateHours) setEstimate(String(t.estimateHours));
+      setRequiresApproval(!!t.requiresApproval);
+      if (t.directions?.length) { setDirections(t.directions); setDirsTouched(true); }
+      if (!tplId) setTplChecklist(Array.isArray(t.checklist) ? t.checklist : []);
+      // теги подбираются по новому названию: первую подборку принимаем сами, не нашлось — «без тегов»
+      autoTags.current = true;
+      setTags(EMPTY_TAGS);
+      window.setTimeout(() => {
+        if (!autoTags.current) return;
+        autoTags.current = false;
+        setTags((v) => (v.confirmed || v.confirmedWithoutTags ? v : confirmTags(v)));
+      }, 6000);
+      setVoiceNote(`Заполнено по голосу: «${text}». Проверьте и нажмите «Создать задачу».`);
+      feedback('ai.completed');
+    } catch (e) {
+      setTitle((cur) => cur || text.slice(0, 255));
+      setVoiceNote(e instanceof ApiError ? e.message : 'Не получилось разобрать фразу — записал её в название');
+    } finally {
+      setVoiceBusy(false);
+    }
+  };
+  const voice = useVoiceInput((text) => { void fillFromSpeech(text); });
+  const voiceState = voice.recording ? 'rec' : voice.transcribing || voiceBusy ? 'busy' : 'idle';
+
   /** Страж нагрузки (ТЗ-21): сервер предупредил о перегрузе — человек выбирает вариант. */
   const [workload, setWorkload] = useState<WorkloadInfo | null>(null);
 
@@ -373,6 +428,25 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         </header>
 
         <div className="ui-modal-body">
+          <div className={`tc-voice tc-voice-${voiceState}`}>
+            <button
+              type="button"
+              className="tc-voice-btn"
+              onClick={voice.toggle}
+              disabled={busy || voiceState === 'busy'}
+              aria-pressed={voice.recording}
+              aria-label={voice.recording ? 'Закончить и заполнить поля' : 'Наговорить задачу голосом'}
+            >
+              <Icon name={voiceState === 'busy' ? 'sparkles' : 'mic'} size={20} />
+            </button>
+            <div className="tc-voice-text">
+              <b>{voiceState === 'rec' ? 'Слушаю… нажмите ещё раз, когда закончите' : voiceState === 'busy' ? 'Заполняю поля…' : 'Наговорите задачу голосом'}</b>
+              <span>
+                {voice.error || voiceNote || 'Одной фразой: что сделать, кому, к какому сроку, насколько срочно и сколько займёт — все поля заполнятся сами.'}
+              </span>
+            </div>
+          </div>
+
           {/*
             Шаблон — ПЕРВЫМ полем: выбирать его после того, как форма заполнена руками,
             поздно — он всё перезапишет. Список появляется, только когда шаблоны есть.
@@ -510,8 +584,24 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           <TaskTagsField
             task={{ title, description, projectName: null }}
             value={tags}
-            onChange={setTags}
+            onChange={onTags}
           />
+
+          {!chosenTpl && tplChecklist.length > 0 && (
+            <Field label={`Чек-лист (${tplChecklist.length})`} hint="Добавится после создания. Лишний пункт уберите крестиком">
+              <ul className="tc-checklist">
+                {tplChecklist.map((item, i) => (
+                  <li key={`${i}-${item}`}>
+                    <Icon name="check" size={13} />
+                    <span>{item}</span>
+                    <Button variant="ghost" size="icon-sm" aria-label={`Убрать пункт «${item}»`} onClick={() => setTplChecklist((l) => l.filter((_, j) => j !== i))}>
+                      <Icon name="close" size={13} />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Field>
+          )}
 
           <Checkbox
             checked={requiresApproval}

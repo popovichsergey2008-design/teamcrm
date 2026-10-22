@@ -520,6 +520,19 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .tc-dupe { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 400; }
 .tc-dupe-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-drop { border-radius: var(--radius); }
+/* голосом прямо в форме (#4618): крупная кнопка первой строкой — фишку должно быть видно */
+.tc-voice { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); }
+.tc-voice-btn { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--accent-2); color: var(--on-accent); cursor: pointer; }
+.tc-voice-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tc-voice-btn:disabled { opacity: .6; cursor: default; }
+.tc-voice-rec .tc-voice-btn { background: var(--danger); animation: tc-voice-pulse 1.2s ease-in-out infinite; }
+.tc-voice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; color: var(--text-dim); }
+.tc-voice-text b { font-size: 14px; color: var(--text); }
+@keyframes tc-voice-pulse { 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .tc-voice-rec .tc-voice-btn { animation: none; } }
+.tc-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.tc-checklist li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.tc-checklist li span { flex: 1; min-width: 0; }
 
 @media (max-width: 720px) {
   .ui-modal { width: 100%; max-height: calc(var(--app-h, 100dvh) - 16px - var(--safe-bottom)); border-radius: var(--radius-lg) var(--radius-lg) var(--radius) var(--radius); }

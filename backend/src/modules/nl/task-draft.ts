@@ -255,3 +255,39 @@ export function pickApproval(text: string): boolean {
   if (NO_APPROVAL.test(t)) return false;
   return true;
 }
+
+/**
+ * Оценка трудозатрат из фразы: «оценка 3 часа», «займёт полтора часа», «два дня работы».
+ *
+ * Только при слове про объём работы: «к 15 часам» и «через 3 часа» — это срок, а не
+ * оценка, их не трогаем. День работы — 8 часов. Ничего не сказано — null, не выдумываем.
+ */
+const NUM_WORDS: Record<string, number> = {
+  пол: 0.5, полтора: 1.5, полторы: 1.5, один: 1, одна: 1, одного: 1, два: 2, две: 2, двух: 2, три: 3, трех: 3,
+  четыре: 4, четырех: 4, пять: 5, пяти: 5, шесть: 6, шести: 6, семь: 7, восемь: 8, восьми: 8, десять: 10,
+};
+const NUM = String.raw`(\d+(?:[.,]\d+)?|полтора|полторы|один|одна|одного|два|две|двух|три|трех|четыре|четырех|пять|пяти|шесть|шести|семь|восемь|восьми|десять)`;
+// \b не видит кириллицу — конец слова проверяем сами
+const UNIT = String.raw`(час|ч(?![а-я])|дн|день|мин)`;
+const ESTIMATE = [
+  new RegExp(String.raw`(?:оценк\S*|займет|займут|потребует\S*|трудоемкост\S*|уйдет|уйдут)\s*(?:[-—:]\s*|примерно\s+|около\s+|в\s+|на\s+)?${NUM}\s*${UNIT}`),
+  new RegExp(String.raw`(?:работы|работа)\s+(?:примерно\s+|около\s+)?на\s+${NUM}\s*${UNIT}`),
+  new RegExp(String.raw`(?<![а-я])${NUM}\s*${UNIT}\S*\s+работы`),
+];
+const HALF_HOUR = /(?:оценк\S*|займет|уйдет|работы\s+на|работа\s+на)\s*(?:[-—:]\s*|примерно\s+|около\s+|на\s+)?полчаса|полчаса\s+работы/;
+
+export function pickEstimate(text: string): number | null {
+  const t = String(text ?? '').toLowerCase().replace(/ё/g, 'е');
+  if (HALF_HOUR.test(t)) return 0.5;
+  for (const re of ESTIMATE) {
+    const m = re.exec(t);
+    if (!m) continue;
+    const n = NUM_WORDS[m[1]] ?? Number(m[1].replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) continue;
+    const hours = m[2].startsWith('д') ? n * 8 : m[2] === 'мин' ? n / 60 : n;
+    // поле оценки шагает по полчаса; больше двух недель работы — уже не оценка задачи
+    const rounded = Math.max(0.5, Math.round(hours * 2) / 2);
+    return rounded <= 80 ? rounded : null;
+  }
+  return null;
+}
