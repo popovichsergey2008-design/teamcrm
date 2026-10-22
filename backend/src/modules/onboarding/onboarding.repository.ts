@@ -54,7 +54,7 @@ export class OnboardingRepository {
    */
   async facts(tenantId: string, ownerUserId: string): Promise<Omit<OnboardingFacts, 'companyConfirmed'>> {
     const row = await this.db.one<{
-      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null; ai_plan: boolean;
+      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null; ai_plan: boolean; project_info: boolean;
     }>(
       `SELECT
          (SELECT COUNT(*)::int FROM groups g
@@ -72,7 +72,13 @@ export class OnboardingRepository {
          (SELECT CASE WHEN bool_or(d.created_task_count > 0 OR d.status = 'completed') THEN 'done'
                       WHEN bool_or(d.status = 'skipped') THEN 'skipped' END
             FROM onboarding_ai_demos d WHERE d.tenant_id = $1 AND d.user_id = $2) AS ai_demo,
-         EXISTS (SELECT 1 FROM tenant_ai_plans ap WHERE ap.tenant_id = $1) AS ai_plan`,
+         EXISTS (SELECT 1 FROM tenant_ai_plans ap WHERE ap.tenant_id = $1) AS ai_plan,
+         -- #4632: о проекте рассказано; описание от Qevo-бота — не в счёт
+         EXISTS (SELECT 1 FROM projects p
+                  WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo
+                    AND (cardinality(COALESCE(p.aliases, '{}')) > 0 OR p.owner_user_id IS NOT NULL OR p.client_id IS NOT NULL
+                         OR (length(trim(COALESCE(p.description, ''))) > 0
+                             AND p.description NOT LIKE 'Первый проект, собранный Qevo-ботом%'))) AS project_info`,
       [tenantId, ownerUserId],
     );
     return {
@@ -83,6 +89,7 @@ export class OnboardingRepository {
       tasks: row?.tasks ?? 0,
       aiDemo: row?.ai_demo === 'done' || row?.ai_demo === 'skipped' ? row.ai_demo : null,
       aiPlan: !!row?.ai_plan,
+      projectInfo: !!row?.project_info,
     };
   }
 

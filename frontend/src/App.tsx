@@ -523,7 +523,8 @@ export function App() {
   // обучение (#4605): что пройдено — из аккаунта, общее на все устройства
   seedTour(user?.id ? String(user.id) : null, user?.uiPrefs?.tour);
   const tourWanted = useTourWanted();
-  const welcome = useWelcome(user?.uiPrefs?.welcome?.done);
+  // #4632: бот начат и не закрыт — продолжаем его и после перезагрузки
+  const welcome = useWelcome(user?.uiPrefs?.welcome?.done && !user.uiPrefs.welcome.bot);
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе
@@ -912,7 +913,7 @@ export function App() {
       */}
       {tourWanted && <Suspense fallback={null}><TourHost route={route} /></Suspense>}
       {/* пока кусок первого запуска грузится, обучение ждёт (data-tour-hold) */}
-      {welcome > 0 && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} /></Suspense>}
+      {welcome > 0 && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} resume={welcome < 2} /></Suspense>}
       {followupId && <Suspense fallback={null}><FollowupPopup key={followupId} id={followupId} onClose={() => setFollowupId('')} /></Suspense>}
 
       <BottomNav

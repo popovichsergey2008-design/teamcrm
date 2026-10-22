@@ -42,11 +42,11 @@ describe('онбординг владельца (e2e)', () => {
   };
   const step = (view: any, key: string) => view.steps.find((s: any) => s.key === key);
 
-  it('сразу после регистрации пройден один шаг из восьми, первым зовём выбрать тариф ИИ', async () => {
+  it('сразу после регистрации пройден один шаг из девяти, первым зовём выбрать тариф ИИ', async () => {
     const O = await owner('ob1');
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
 
-    expect(view.total).toBe(8);
+    expect(view.total).toBe(9);
     expect(view.done).toBe(1);
     expect(step(view, 'workspace').done).toBe(true);
     expect(view.completed).toBe(false);
@@ -75,6 +75,9 @@ describe('онбординг владельца (e2e)', () => {
     const O = await owner('ob2');
     await http.post('/api/ai/plan/select').set(O).send({ plan_code: 'AI_BASIC' }).expect(201);
     const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;
+    // #4632: без данных о проекте путь не закрыт — шаг «Данные о проекте» напоминает
+    expect((await http.get('/api/onboarding').set(O).expect(200)).body.data.steps.find((s: any) => s.key === 'project_info').done).toBe(false);
+    await http.patch(`/api/projects/${proj.id}`).set(O).send({ description: 'Сайт для клиента Альфа' }).expect(200);
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(O).expect(200)).body.data;
     await http.post('/api/tasks').set(O)
       .send({ projectId: proj.id, columnId: board.columns[0].id, title: 'Первая' }).expect(201);
@@ -82,6 +85,7 @@ describe('онбординг владельца (e2e)', () => {
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
     expect(step(view, 'project').done).toBe(true);
     expect(step(view, 'task').done).toBe(true);
+    expect(step(view, 'project_info').done).toBe(true);
     // владелец-одиночка: ни отделов, ни приглашений — а путь пройден
     expect(step(view, 'team').done).toBe(false);
     expect(view.completed).toBe(true);

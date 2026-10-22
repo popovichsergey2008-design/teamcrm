@@ -12,7 +12,7 @@
  * есть значение по умолчанию, и «не трогал» от «оставил как есть» по данным не отличить.
  */
 
-export type StepKey = 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
+export type StepKey = 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'project_info' | 'task';
 
 /** Что известно про организацию на самом деле. */
 export interface OnboardingFacts {
@@ -29,6 +29,11 @@ export interface OnboardingFacts {
   aiDemo?: 'done' | 'skipped' | null;
   /** Тариф ИИ выбран (ТЗ-33): без него путь не завершается. */
   aiPlan?: boolean;
+  /**
+   * #4632: о проекте рассказано — ключевые слова, своё описание, ответственный или
+   * клиент хотя бы у одного проекта. Описание, которое собрал Qevo-бот, не считается.
+   */
+  projectInfo?: boolean;
 }
 
 export interface OnboardingStep {
@@ -85,6 +90,12 @@ const TITLES: Record<StepKey, { title: string; hint: string; required: boolean }
     hint: 'Проект — это доска с колонками, по которым движется работа.',
     required: true,
   },
+  // #4632: Qevo-бот зовёт сюда после создания проекта; «Сделаю потом» — шаг остаётся напоминанием
+  project_info: {
+    title: 'Данные о проекте',
+    hint: 'Описание, ключевые слова, ответственный, клиент и его контакты. Чем полнее — тем точнее QEVO сам ставит задачи из встреч и чатов.',
+    required: false,
+  },
   task: {
     title: 'Поставить первую задачу',
     hint: 'Вручную, голосом или командой — как удобнее.',
@@ -110,6 +121,7 @@ export function buildSteps(facts: OnboardingFacts, skipped: readonly string[] = 
     // своё действие сделал, а придёт коллега или нет, от владельца уже не зависит.
     team: facts.teammates > 0 || facts.invites > 0,
     project: facts.projects > 0,
+    project_info: !!facts.projectInfo,
     task: facts.tasks > 0,
   };
 
@@ -132,6 +144,17 @@ export function buildSteps(facts: OnboardingFacts, skipped: readonly string[] = 
  * онбординг никогда, а подсказка будет висеть у него вечно.
  */
 export function isComplete(steps: readonly OnboardingStep[]): boolean {
+  return requiredDone(steps) && steps.every((s) => s.key !== 'project_info' || s.done || s.skipped);
+}
+
+/**
+ * Обязательное сделано.
+ *
+ * «Данные о проекте» (#4632) путь тоже держат — пока не заполнены или не отложены
+ * кнопкой «Позже», подсказка напоминает о них. Но только тем, кто путь ещё не прошёл:
+ * у работающих компаний, прошедших его раньше, список не должен вернуться.
+ */
+export function requiredDone(steps: readonly OnboardingStep[]): boolean {
   return steps.filter((s) => s.required).every((s) => s.done);
 }
 

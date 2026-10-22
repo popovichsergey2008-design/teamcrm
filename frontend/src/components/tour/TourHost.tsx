@@ -53,8 +53,17 @@ function stepsFor(key: TourKey, narrow: boolean): TourStep[] {
 /** Какой раздел открыт — для подсказки при первом заходе. */
 function sectionTour(route: Route): TourKey | null {
   if (route.section === 'projects' && route.projectId) return 'board';
-  if (route.section === 'chat' && !route.view && route.chatId !== 'anthill') return 'chats';
+  if (route.section === 'projects') return 'projects';
+  if (route.section === 'chat' && route.chatId === 'anthill') return 'secretary';
+  if (route.section === 'chat' && !route.view) return 'chats';
   if (route.section === 'focus') return 'focus';
+  // #4632: остальные разделы меню — свои короткие подсказки
+  if (route.section === 'calendar') return 'calendar';
+  if (route.section === 'news') return 'news';
+  if (route.section === 'radar') return 'pulse';
+  if (route.section === 'support') return 'support';
+  if (route.section === 'settings' && !route.tab) return 'settings';
+  if (route.section === 'profile') return 'profile';
   return null;
 }
 const READY: Record<TourKey, string> = {
@@ -62,6 +71,14 @@ const READY: Record<TourKey, string> = {
   board: '[data-tour="board-new"], .board-header',
   chats: '.chat-list',
   focus: '.fd-page',
+  calendar: '.cal-head',
+  projects: '.projects-tools',
+  news: '.feed-head',
+  pulse: '.pulse-grid, .pulse-verdict',
+  support: '.support-page',
+  settings: '.settings-grid',
+  profile: '.profile-nav',
+  secretary: '.anthill-compose',
 };
 
 export default function TourHost({ route }: { route: Route }) {

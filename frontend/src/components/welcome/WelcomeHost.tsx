@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../state/auth';
 import { Icon } from '../Icon';
 import { GuideBot } from './GuideBot';
+import { restore, type BotState } from './flow';
 import { CareStart, Faces } from './CareStart';
 import './welcome.css';
 
@@ -28,12 +29,17 @@ const SLIDES: { icon: 'support' | 'mic' | 'zap'; title: string; text: string }[]
 /** «Три коротких слайда (10 секунд)» — по трети на слайд. */
 const SLIDE_MS = 3400;
 
-export default function WelcomeHost() {
+export default function WelcomeHost({ resume = false }: {
+  /** Первый показ за сеанс, а не «Быстрый старт» из меню: бот, начатый раньше, — продолжаем с того же шага. */
+  resume?: boolean;
+}) {
   const { user } = useAuth();
-  const [phase, setPhase] = useState<Phase>('slides');
+  // #4632: бот, начатый раньше (свернул, ушёл, перезагрузил), — сразу он, без слайдов
+  const [start] = useState<BotState | null>(() => (resume ? restore(user?.uiPrefs?.welcome?.bot) : null));
+  const [phase, setPhase] = useState<Phase>(start ? 'bot' : 'slides');
   /** Бот уже начат: уходим к инженеру и возвращаемся — разговор на месте. */
-  const [botOn, setBotOn] = useState(false);
-  const saved = useRef(false);
+  const [botOn, setBotOn] = useState(!!start);
+  const saved = useRef(!!start);
 
   if (!user || user.role === 'client' || user.platformStaff) return null;
 
@@ -41,6 +47,10 @@ export default function WelcomeHost() {
     if (saved.current) return;
     saved.current = true;
     void api.saveUiPrefs({ welcome: { done: true } }).catch(() => undefined);
+  };
+  /** Где бот остановился — ключ welcome целиком: сервер сливает ui_prefs только верхним уровнем. */
+  const keep = (bot: BotState | null) => {
+    void api.saveUiPrefs({ welcome: bot ? { done: true, bot } : { done: true } }).catch(() => undefined);
   };
 
   return (
@@ -57,14 +67,16 @@ export default function WelcomeHost() {
       {botOn && (
         <GuideBot
           hidden={phase !== 'bot'}
+          start={start}
+          onSave={keep}
           onEngineer={() => setPhase('care')}
-          onClose={() => { setBotOn(false); setPhase('off'); }}
+          onClose={() => { keep(null); setBotOn(false); setPhase('off'); }}
         />
       )}
       {phase === 'care' && (
         <CareStart
           onClose={() => setPhase(botOn ? 'bot' : 'off')}
-          onSent={() => { setBotOn(false); setPhase('off'); }}
+          onSent={() => { if (botOn) keep(null); setBotOn(false); setPhase('off'); }}
         />
       )}
     </>

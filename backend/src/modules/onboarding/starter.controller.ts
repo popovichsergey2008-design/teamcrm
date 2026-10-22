@@ -17,6 +17,8 @@ class StarterDto {
   @IsOptional() @IsString() @MaxLength(500) sphereText?: string;
   @IsString() @MaxLength(120) name!: string;
   @IsBoolean() team!: boolean;
+  /** #4632: проект уже создан, человек вернулся «Назад» и поменял ответ — правим его, второй не заводим. */
+  @IsOptional() @IsString() @MaxLength(40) projectId?: string;
 }
 
 /**
@@ -40,6 +42,6 @@ export class StarterController {
 
   @Post()
   create(@CurrentUser() u: AuthUser, @Body() dto: StarterDto) {
-    return this.starter.create({ tenantId: u.tenantId, userId: u.userId }, dto);
+    return this.starter.create({ tenantId: u.tenantId, userId: u.userId, role: u.role }, dto);
   }
 }

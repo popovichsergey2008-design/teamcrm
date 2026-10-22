@@ -1510,6 +1510,50 @@ test('первая задача от Qevo-бота: срок с часом и н
   assert.equal(nameSuggestions('personal')[0], 'Мои задачи на неделю');
 });
 
+test('Qevo-бот #4632: «Назад»/«Вперёд» по шагам, проект один — правится, а не создаётся второй', async () => {
+  const f = await load('components/welcome/flow.ts');
+  assert.equal(f.TOTAL, 6);
+  let s = f.initial();
+  assert.equal(f.canBack(s), false, 'с первого шага назад некуда');
+  assert.equal(f.canForward(s), false, 'вперёд — только по отвеченному');
+  s = { ...s, sphere: 'business', step: 2 };
+  s = { ...s, name: 'Альфа', step: 3 };
+  s = { ...s, team: false };
+  assert.equal(f.sync(s), 'create', 'проекта нет — создаём');
+  assert.equal('projectId' in f.starterBody(s), false);
+  const p = { projectId: '7', name: 'Альфа', columns: [{ id: 'c1', name: 'Сделать' }], taskIds: ['t1', 't2'] };
+  s = f.built(s, p);
+  assert.equal(s.step, 4);
+  assert.equal(f.keyOf(s), 'info');
+  assert.equal(f.sync(s), null, 'ответы те же — запрос не нужен');
+  // назад к названию, новое имя — вперёд через третий шаг
+  s = f.back(f.back(s));
+  assert.equal(f.keyOf(s), 'name');
+  assert.equal(f.canForward(s), true, 'ответ уже есть — можно вперёд, не отвечая заново');
+  s = { ...s, name: 'Альфабет', step: 3 };
+  assert.equal(f.sync(s), 'update', 'поменял название — правим тот же проект');
+  assert.equal(f.starterBody(s).projectId, '7', 'в запросе id проекта: сервер переименует, а не создаст');
+  s = f.built(s, { ...p, name: 'Альфабет', taskIds: [] });
+  assert.equal(s.project.projectId, '7');
+  assert.deepEqual(s.project.taskIds, ['t1', 't2'], 'примеры — от первого создания');
+  assert.equal(f.sync(s), null);
+  // передумал «один → с командой»
+  assert.equal(f.sync({ ...s, team: true }), 'update');
+  // шаг задачи: вперёд — только когда задача поставлена
+  s = { ...s, step: 5 };
+  assert.equal(f.canForward(s), false);
+  s = { ...s, task: '99' };
+  assert.equal(f.canForward(s), true);
+  s = { ...s, step: 6 };
+  assert.equal(f.canForward(s), false, 'последний шаг');
+  // сохранённое место: чужое — с начала; без проекта дальше третьего — не пускаем
+  assert.equal(f.restore(null), null);
+  assert.equal(f.restore({ v: 2, step: 3 }), null);
+  assert.equal(f.restore({ v: 1, step: 9 }), null);
+  assert.equal(f.restore({ v: 1, step: 5, name: 'X', sphere: 'it', team: true, project: null }).step, 3);
+  assert.equal(f.restore({ ...s, mini: true }).mini, true);
+});
+
 // ── ТЗ-34 (#4620): Отдел заботы ────────────────────────────────────────────────
 test('забота: время ответа живое, без данных — норма документа 25 сек', async () => {
   const { careShort, careLong, careTooltip, careHeadline } = await load('lib/care-rules.ts');

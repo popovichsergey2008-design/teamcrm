@@ -220,6 +220,36 @@
 .wl-tips svg { color: var(--accent); flex: none; margin-top: 2px; }
 .wl-spot-acts { display: flex; justify-content: flex-end; gap: 6px; }
 
+/* ── #4632: шаги бота — «Назад» · «шаг N из M» · «Вперёд», перечень, подтверждение закрытия ── */
+.wl-nav { display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.wl-spot .wl-nav { padding: 0 0 8px; margin-bottom: 8px; }
+.wl-nav-btn {
+  display: inline-flex; align-items: center; gap: 2px; padding: 6px 8px; border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); font: inherit; font-size: calc(13px * var(--fs-scale, 1)); cursor: pointer;
+}
+.wl-nav-btn:hover:not(:disabled) { background: var(--hover); }
+.wl-nav-btn:disabled { color: var(--text-mut); opacity: .55; cursor: default; }
+.wl-stepno { flex: 1; text-align: center; color: var(--text-mut); font-size: calc(12.5px * var(--fs-scale, 1)); font-variant-numeric: tabular-nums; }
+.wl-chip.is-on { background: var(--accent-soft); border-color: var(--accent); }
+.wl-check { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 8px; }
+.wl-check li { display: flex; gap: 8px; align-items: flex-start; }
+.wl-check svg { color: var(--accent); flex: none; margin-top: 2px; }
+.wl-where { color: var(--text-mut); }
+.wl-mini-go {
+  padding: 6px 12px; margin: 0 2px; border: 0; border-radius: 999px; background: var(--bg-elev); color: var(--text);
+  font: inherit; font-size: calc(13px * var(--fs-scale, 1)); font-weight: 600; cursor: pointer;
+}
+.wl-mini-go:hover { background: var(--hover); }
+.wl-confirm {
+  position: fixed; z-index: 1950; right: 20px; bottom: 20px; width: min(360px, calc(100vw - 32px)); box-sizing: border-box;
+  padding: 16px; background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(10, 14, 28, .35); animation: wl-in .2s ease-out;
+}
+.wl-confirm p { margin: 0 0 12px; font-size: calc(14px * var(--fs-scale, 1)); line-height: 1.5; }
+/* поля «Настроек проекта», которые просит заполнить бот */
+.wl-glow { border-radius: 10px; box-shadow: 0 0 0 2px var(--ok); animation: wl-glow-in 1.6s ease-in-out infinite; }
+@keyframes wl-glow-in { 0%, 100% { box-shadow: 0 0 0 2px var(--ok); } 50% { box-shadow: 0 0 0 5px var(--ok); } }
+
 @keyframes wl-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes wl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes wl-bar { from { width: 0; } to { width: 100%; } }
@@ -243,11 +273,12 @@
     left: 0; right: 0; bottom: 0; width: auto; max-height: 82vh; border-radius: 16px 16px 0 0; border-bottom: 0;
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .wl-mini { right: auto; left: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .wl-mini { right: auto; left: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); max-width: calc(100vw - 32px); }
+  .wl-confirm { right: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .wl-layer, .wl-slide, .wl-choice, .wl-care, .wl-bot, .wl-msg, .wl-spot, .wl-tips li { animation: none; }
-  .wl-pulse::after, .wl-hole, .wl-typing i, .wl-mic.is-rec { animation: none; }
+  .wl-pulse::after, .wl-hole, .wl-typing i, .wl-mic.is-rec, .wl-glow, .wl-confirm { animation: none; }
   .wl-bars > .wl-bar-now > i { animation: none; width: 100%; }
 }

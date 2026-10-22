@@ -57,4 +57,23 @@ describe('Первый проект от Qevo-бота (e2e)', () => {
       .toEqual({ team: false });
     await http$.post('/api/onboarding/starter').set(O).send({ sphere: 'nope', name: 'X', team: false }).expect(400);
   });
+
+  it('#4632: «Назад» и новое название — тот же проект переименован, второго нет', async () => {
+    const { O } = await owner();
+    const first = (await http$.post('/api/onboarding/starter').set(O)
+      .send({ sphere: 'business', name: 'Альфа', team: false }).expect(201)).body.data;
+    const again = (await http$.post('/api/onboarding/starter').set(O)
+      .send({ sphere: 'business', name: 'Альфабет', team: true, projectId: first.projectId }).expect(201)).body.data;
+    expect(again.projectId).toBe(first.projectId);
+    expect(again.name).toBe('Альфабет');
+    expect(again.columns.map((c: any) => c.name)).toEqual(['Бэклог', 'В работе', 'На проверке', 'Готово']);
+    const list = (await http$.get('/api/projects').set(O).expect(200)).body.data;
+    const mine = (Array.isArray(list) ? list : list.items ?? []).filter((p: any) => /Альфа/.test(p.name));
+    expect(mine).toHaveLength(1);
+    const board = (await http$.get(`/api/projects/${first.projectId}/board`).set(O).expect(200)).body.data;
+    // примеры не задвоились
+    expect(board.columns.reduce((n: number, c: any) => n + c.tasks.length, 0)).toBe(2);
+    // чужой или несуществующий проект — 404, а не новый
+    await http$.post('/api/onboarding/starter').set(O).send({ sphere: 'it', name: 'X', team: false, projectId: '999999999' }).expect(404);
+  });
 });
