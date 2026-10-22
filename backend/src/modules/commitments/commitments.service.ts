@@ -9,10 +9,11 @@ import { TelegramMirror } from '../notifications/telegram-mirror.service';
 import { Actor, ProactiveService } from '../proactive/proactive.service';
 import { ProactiveRepository } from '../proactive/proactive.repository';
 import { ProactiveScheduler } from '../proactive/proactive.scheduler';
-import { fingerprint } from '../proactive/proactive-rules';
+import { fingerprint, snoozeTarget } from '../proactive/proactive-rules';
+import { actionInfinitive, firstName, guessGender, pastVerb, whenSaid } from '../../common/text/ru-grammar';
 import type { ProposalRow } from '../proactive/proactive.repository';
 import { TasksService } from '../tasks/tasks.service';
-import { detectCommitment, DeadlineHint, looksCancelled, looksFulfilled, normalizeAction, similarity } from './commitment-rules';
+import { commitmentCardText, detectCommitment, DeadlineHint, looksCancelled, looksFulfilled, normalizeAction, similarity } from './commitment-rules';
 import { CommitmentRow, CommitmentsRepository, MessageRow } from './commitments.repository';
 
 const dateRu = (d: Date | string, tz: string) => new Date(d).toLocaleString('ru-RU', { timeZone: tz, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
@@ -86,7 +87,8 @@ export class CommitmentsService implements OnModuleInit {
     const open = await this.repo.openIn(tenantId, type, m.container_id);
     for (const c of open) {
       if (new Date(m.created_at).getTime() <= new Date(c.source_at).getTime()) continue;
-      if (String(c.speaker_user_id) === String(m.author_id) && looksFulfilled({ body: m.body, hasFile: m.has_file })) {
+      const repliesToPromise = !!m.reply_to_id && (c.source_message_ids ?? []).map(String).includes(String(m.reply_to_id));
+      if (String(c.speaker_user_id) === String(m.author_id) && looksFulfilled({ body: m.body, hasFile: m.has_file, repliesToPromise })) {
         await this.close(c, 'fulfilled', 'message');
       } else if (looksCancelled(m.body) && (String(m.author_id) === String(c.assigner_user_id) || String(m.author_id) === String(c.speaker_user_id))) {
         await this.close(c, 'cancelled', null);
@@ -172,24 +174,47 @@ export class CommitmentsService implements OnModuleInit {
   private async check(c: CommitmentRow) {
     const settings = await this.proactiveRepo.tenantSettings(String(c.tenant_id));
     if (c.linked_task_id && (await this.repo.taskClosed(String(c.linked_task_id)))) return this.close(c, 'fulfilled', 'task');
+    // «Напомнить мне завтра» (#1525): личное напоминание обещавшему, своим сроком
+    if (c.self_remind_at && new Date(c.self_remind_at).getTime() <= Date.now()) {
+      await this.remindSpeaker(c, String(c.tenant_id));
+      await this.repo.update(String(c.id), { self_remind_at: null });
+      if (new Date(c.check_at).getTime() > Date.now()) return;
+    }
     if (c.status === 'tracked') {
       // задача есть и открыта — обещание живёт её жизнью; заглянем ещё раз через сутки
       return this.repo.update(String(c.id), { check_at: new Date(Date.now() + 24 * 3600_000) });
     }
+    // «если через 24 часа задача не создана» — задачу могли поставить руками уже после обещания
+    if (!c.linked_task_id) {
+      const later = await this.findTask(String(c.tenant_id), String(c.speaker_user_id), c.action_text,
+        c.source_type === 'chat' && c.source_message_ids?.[0] ? String(c.source_message_ids[0]) : null);
+      if (later) {
+        await this.repo.update(String(c.id), { status: 'tracked', linked_task_id: later.id, check_at: new Date(Date.now() + 24 * 3600_000) });
+        if (later.closed) return this.close({ ...c, linked_task_id: later.id }, 'fulfilled', 'task');
+        return this.proactive.resolveBySource(String(c.tenant_id), 'commitment', c.source_type, String(c.source_id), `Задача #${later.id} уже есть`).catch(() => undefined);
+      }
+    }
     if (c.status === 'detected') {
-      await this.proposeTo(c, String(c.speaker_user_id), 'self');
+      /*
+        #1525, документ: «через 24 часа … тихо и деликатно присылает карточку исполнителю
+        и руководителю» — обе сразу. Руководитель — тот, кто просил (ответ, собеседник,
+        автор встречи или задачи); не нашли — ответственный за проект, иначе владелец.
+      */
+      const manager = c.assigner_user_id && String(c.assigner_user_id) !== String(c.speaker_user_id)
+        ? { id: String(c.assigner_user_id), byRole: false }
+        : await this.repo.managerFor(String(c.tenant_id), c.project_id ? String(c.project_id) : null, String(c.speaker_user_id))
+          .then((id) => (id ? { id, byRole: true } : null));
+      await this.proposeTo(c, String(c.speaker_user_id), 'self', settings.commitmentCheckHours);
+      if (manager) await this.proposeTo(c, manager.id, manager.byRole ? 'manager' : 'assigner', settings.commitmentCheckHours);
       return this.repo.update(String(c.id), {
         status: 'needs_followup', reminded_at: new Date(), remind_count: (c.remind_count ?? 0) + 1,
-        check_at: new Date(Date.now() + settings.commitmentEscalateHours * 3600_000),
+        ...(manager ? { escalated_at: new Date() } : {}),
+        check_at: new Date(Date.now() + 24 * 3600_000),
       });
     }
-    // needs_followup: обещавший промолчал — сообщаем тому, кто просил (§24), один раз
-    if (!c.escalated_at && c.assigner_user_id && String(c.assigner_user_id) !== String(c.speaker_user_id)) {
-      await this.proposeTo(c, String(c.assigner_user_id), 'assigner');
-      return this.repo.update(String(c.id), { escalated_at: new Date(), check_at: new Date(Date.now() + 7 * 24 * 3600_000) });
-    }
-    // дальше не дёргаем: карточки в ящиках остаются, пока их не решат
-    return this.repo.update(String(c.id), { check_at: new Date(Date.now() + 30 * 24 * 3600_000) });
+    // needs_followup: карточки уже у обоих; две недели раз в сутки смотрим, не появилась ли задача
+    const age = Date.now() - new Date(c.source_at).getTime();
+    return this.repo.update(String(c.id), { check_at: new Date(Date.now() + (age < 14 * 24 * 3600_000 ? 24 : 30 * 24) * 3600_000) });
   }
 
   private sourceOf(c: CommitmentRow): { label: string; link: string } {
@@ -200,42 +225,67 @@ export class CommitmentsService implements OnModuleInit {
     return { label: `Встреча ${title}`.trim(), link: `/meetings/${c.source_id}${t}` };
   }
 
-  /** Карточка в ящик: обещавшему — мягко, тому, кто просил, — с «напомнить» (§22–23). */
-  private async proposeTo(c: CommitmentRow, userId: string, role: 'self' | 'assigner') {
-    const tz = await this.proactiveRepo.timezoneOf(String(c.tenant_id), userId);
-    const src = this.sourceOf(c);
+  /**
+   * Карточка в ящик (#1525, текст — дословно по документу). Обещавшему — о нём самом и
+   * «Напомнить мне завтра»; руководителю — «Напомнить Глебу». Руководитель «по должности»
+   * (не участник разговора) цитату и ссылку на источник видит, только если сам может его
+   * открыть: личную переписку — никогда, там только «в личной переписке».
+   */
+  private async proposeTo(c: CommitmentRow, userId: string, role: 'self' | 'assigner' | 'manager', checkHours: number) {
+    const tenantId = String(c.tenant_id);
+    const tz = await this.proactiveRepo.timezoneOf(tenantId, userId);
+    const sees = role !== 'manager' || (await this.repo.canSeeSource(tenantId, c, userId).catch(() => false));
+    const src: { label: string; link: string | null } = sees ? this.sourceOf(c)
+      : { label: c.source_type === 'chat' ? (c.chat_kind === 'dm' ? 'Личная переписка' : 'Чат') : c.source_type === 'task' ? 'Задача' : 'Встреча', link: null };
     const when = dateRu(c.source_at, tz);
-    const overdue = c.deadline_at && new Date(c.deadline_at).getTime() < Date.now();
-    const waited = overdue ? `Срок «${c.deadline_text}» прошёл` : 'Прошли сутки';
-    const noTask = c.linked_task_id ? '' : ' Задачи по этому обещанию в QEVO нет.';
+    const overdue = !!c.deadline_at && new Date(c.deadline_at).getTime() < Date.now();
     const self = role === 'self';
+    const card = commitmentCardText({
+      self, speakerFullName: c.speaker_name ?? '', sourceType: c.source_type, chatKind: c.chat_kind ?? null,
+      taskTitle: sees && c.source_type === 'task' ? c.source_title ?? null : null,
+      saidWhen: whenSaid(localParts(new Date(c.source_at), tz).date, localParts(new Date(), tz).date),
+      action: c.action_text,
+      overdueText: overdue ? c.deadline_text ?? 'срок' : null,
+      hoursPassed: overdue ? checkHours : (Date.now() - new Date(c.source_at).getTime()) / 3600_000,
+    });
+    const name = firstName(c.speaker_name) || c.speaker_name || '';
     const actions = [
-      ...(c.linked_task_id ? [] : [{ key: 'create_task', label: 'Создать задачу', risk: 'high_write', primary: true }]),
-      ...(self ? [] : [{ key: 'remind', label: `Напомнить ${c.speaker_name?.split(' ')[0] ?? ''}`.trim(), risk: 'low_write' }]),
+      ...(c.linked_task_id ? [] : [{ key: 'create_task', label: 'Создать задачу в проект', risk: 'high_write', primary: true }]),
+      self ? { key: 'remind_me', label: card.remindLabel, risk: 'low_write' } : { key: 'remind', label: card.remindLabel, risk: 'low_write' },
       // своё обещание — сразу в тройку дня (ТЗ-21, этап 8)
       ...(self ? [{ key: 'focus', label: 'В мой Фокус', risk: 'low_write' }] : []),
       { key: 'done', label: 'Уже выполнено', risk: 'low_write' },
       { key: 'untrack', label: 'Не отслеживать', risk: 'low_write' },
     ];
     await this.proactive.propose({
-      tenantId: String(c.tenant_id), userId, skill: 'commitment',
+      tenantId, userId, skill: 'commitment',
       kind: `${c.source_type}:${c.source_id}`,
       sourceType: c.source_type, sourceId: String(c.source_id), sourceAt: c.source_at,
       sourceLabel: `${src.label}, ${when}`, sourceLink: src.link,
-      title: self ? `Вы обещали: ${c.action_text}` : `${c.speaker_name} обещал(а): ${c.action_text}`,
-      summary: `«${c.quote.slice(0, 280)}»`,
-      why: `${waited}.${noTask} Результата в переписке не видно.`,
+      title: card.text,
+      summary: sees ? `«${c.quote.slice(0, 280)}»` : '',
+      why: `${c.linked_task_id ? '' : 'Задачи по этому обещанию в QEVO нет. '}Ответа в переписке не видно.`,
       recommend: self ? 'Отметьте, если уже сделано, или поставьте задачу — так обещание не потеряется.'
-        : 'Поставьте задачу или напомните — сам обещавший пока не отреагировал.',
+        : `Поставьте задачу или напомните — ${name} пока не ${pastVerb('отреагировал', guessGender(c.speaker_name))}.`,
       effect: self ? 'Задача появится на вас со сроком из обещания и ссылкой на разговор.'
-        : `Задача появится на ${c.speaker_name} со сроком из обещания; «Напомнить» — личное уведомление ему.`,
+        : `Задача появится на ${c.speaker_name} со сроком из обещания; «${card.remindLabel}» — личное уведомление.`,
+      // тихо (документ): без пуша, кроме просроченного срока
       priority: overdue ? 1 : 2,
       confidence: Number(c.confidence),
       actions,
       payload: { commitmentId: String(c.id), dueAt: c.deadline_at, role },
-      fingerprint: fingerprint({ skill: 'commitment', sourceType: 'commitment', sourceId: String(c.id), entity: role }),
+      fingerprint: fingerprint({ skill: 'commitment', sourceType: 'commitment', sourceId: String(c.id), entity: self ? 'self' : 'assigner' }),
       expiresAt: new Date(Date.now() + 14 * 24 * 3600_000),
     });
+  }
+
+  /** Личное напоминание обещавшему: пуш + Telegram. */
+  private async remindSpeaker(c: CommitmentRow, tenantId: string) {
+    const tz = await this.proactiveRepo.timezoneOf(tenantId, String(c.speaker_user_id));
+    const src = this.sourceOf(c);
+    const text = `Напоминание: вы обещали ${actionInfinitive(c.action_text)} (${src.label}, ${dateRu(c.source_at, tz)}).`;
+    await this.push.personal({ tenantId, userId: String(c.speaker_user_id), eventKey: 'assistant.commitment', title: 'Вы обещали', body: text, path: src.link });
+    await this.telegram.push(tenantId, String(c.speaker_user_id), text).catch(() => false);
   }
 
   private async close(c: CommitmentRow, status: 'fulfilled' | 'cancelled' | 'dismissed', by: string | null) {
@@ -251,7 +301,9 @@ export class CommitmentsService implements OnModuleInit {
   private async execute(a: Actor, p: ProposalRow, action: string, params: Record<string, unknown> = {}) {
     const c = await this.repo.get(a.tenantId, String(p.payload.commitmentId));
     if (!c) throw AppException.notFound('Обещание не найдено');
-    const isParty = [c.speaker_user_id, c.assigner_user_id].map(String).includes(String(a.userId));
+    // карточка руководителя (#1525) — его собственная: ящик выдал её только ему
+    const ownCard = !!p.user_id && String(p.user_id) === String(a.userId) && p.payload?.role === 'manager';
+    const isParty = ownCard || [c.speaker_user_id, c.assigner_user_id].map(String).includes(String(a.userId));
     if (!isParty) throw AppException.forbidden('Это обещание касается других людей');
     if (action === 'done') {
       await this.close(c, 'fulfilled', 'user');
@@ -262,13 +314,20 @@ export class CommitmentsService implements OnModuleInit {
       return { text: 'Больше не отслеживаю это обещание' };
     }
     if (action === 'remind') {
-      const author = await this.proactiveRepo.timezoneOf(a.tenantId, String(c.speaker_user_id));
-      const src = this.sourceOf(c);
-      const text = `Напоминание: вы обещали «${c.action_text}» (${src.label}, ${dateRu(c.source_at, author)}).`;
-      await this.push.personal({ tenantId: a.tenantId, userId: String(c.speaker_user_id), eventKey: 'assistant.commitment', title: 'Вы обещали', body: text, path: src.link });
-      await this.telegram.push(a.tenantId, String(c.speaker_user_id), text).catch(() => false);
+      await this.remindSpeaker(c, a.tenantId);
       await this.repo.update(String(c.id), { reminded_at: new Date(), remind_count: (c.remind_count ?? 0) + 1 });
       return { text: `Напомнил: ${c.speaker_name}` };
+    }
+    if (action === 'remind_me') {
+      // «Напомнить мне завтра» — в 9:00 следующего рабочего дня по поясу обещавшего
+      if (String(c.speaker_user_id) !== String(a.userId)) throw AppException.forbidden('Напомнить себе — только о своём обещании');
+      const tz = await this.proactiveRepo.timezoneOf(a.tenantId, a.userId);
+      const l = localParts(new Date(), tz);
+      const t = snoozeTarget('tomorrow', { date: l.date, hour: l.hour, minute: l.minute, isoDow: l.dow === 0 ? 7 : l.dow });
+      const at = t.kind === 'local' ? zonedTime(t.date, t.time, tz) : new Date(Date.now() + 24 * 3600_000);
+      await this.repo.update(String(c.id), { self_remind_at: at });
+      const day = l.dow === 5 || l.dow === 6 ? 'в понедельник' : 'завтра';
+      return { text: `Напомню ${day} в 9:00` };
     }
     if (action === 'create_task') {
       if (c.linked_task_id) return { text: `Задача #${c.linked_task_id} уже есть` };

@@ -72,6 +72,14 @@ describe('Проактивный секретарь (e2e)', () => {
     expect((await http$.get('/api/assistant/proposals/summary').set(gleb.H).expect(200)).body.data.total).toBe(1);
     // чужую карточку не видно и не выполнить
     await http$.get(`/api/assistant/proposals/${inbox[0].id}`).set(O).expect(404);
+    // #1525: текст дословно по документу; у обещавшего — о нём самом и «Напомнить мне завтра»
+    expect(inbox[0].title).toBe('Вы в личной переписке сегодня обещали отправить смету для банка завтра. Прошёл 1 час. Создать задачу в проект или напомнить себе в 1 клик?');
+    expect(inbox[0].actions.map((a: any) => a.label)).toEqual(expect.arrayContaining(['Создать задачу в проект', 'Напомнить мне завтра']));
+    // и сразу же — руководителю (тому, кто просил), не через 48 часов
+    const boss = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items.filter((p: any) => p.skill === 'commitment');
+    expect(boss).toHaveLength(1);
+    expect(boss[0].title).toBe('Глеб в личной переписке сегодня обещал отправить смету для банка завтра. Прошёл 1 час. Создать задачу в проект или напомнить Глебу в 1 клик?');
+    expect(boss[0].actions.map((a: any) => a.label)).toEqual(expect.arrayContaining(['Создать задачу в проект', 'Напомнить Глебу']));
 
     // ТЗ-31: обещание из лички, проектов несколько — задача не уезжает молча в «основной»,
     // а просит выбрать проект; карточка остаётся открытой

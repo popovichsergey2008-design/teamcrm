@@ -63,6 +63,8 @@ export interface ProactivePrefs {
   dailyLimit: number;
   smartReply: boolean;
   morningAudio: boolean;
+  /** #1525: время утреннего аудио-кофе (HH:MM), null — выключен; по умолчанию 09:00 */
+  briefAt: string | null;
 }
 
 @Injectable()
@@ -180,6 +182,11 @@ export class ProactiveRepository {
     );
   }
 
+  /** Обновить данные карточки (черновики планерки: какой уже стал задачей). */
+  async setPayload(id: string, payload: Record<string, unknown>): Promise<void> {
+    await this.db.query(`UPDATE assistant_proposals SET payload = $2::jsonb, updated_at = now() WHERE id = $1`, [id, JSON.stringify(payload)]);
+  }
+
   async dismiss(tenantId: string, userId: string, id: string): Promise<boolean> {
     const r = await this.db.query(
       `UPDATE assistant_proposals SET status='dismissed', resolved_action='dismiss', resolved_at=now(), updated_at=now()
@@ -272,8 +279,9 @@ export class ProactiveRepository {
   // ── настройки ──
 
   async prefs(tenantId: string, userId: string): Promise<ProactivePrefs> {
-    const row = await this.db.one<{ proactive_level: string; proactive_daily_limit: number; smart_reply: boolean; morning_audio: boolean }>(
-      `SELECT proactive_level, proactive_daily_limit, smart_reply, morning_audio FROM secretary_prefs WHERE user_id=$1 AND tenant_id=$2`,
+    const row = await this.db.one<{ proactive_level: string; proactive_daily_limit: number; smart_reply: boolean; morning_audio: boolean; brief_at: string | null }>(
+      `SELECT proactive_level, proactive_daily_limit, smart_reply, morning_audio, to_char(brief_at, 'HH24:MI') AS brief_at
+         FROM secretary_prefs WHERE user_id=$1 AND tenant_id=$2`,
       [userId, tenantId],
     );
     return {
@@ -281,6 +289,7 @@ export class ProactiveRepository {
       dailyLimit: Number(row?.proactive_daily_limit ?? 12),
       smartReply: row?.smart_reply ?? true,
       morningAudio: row?.morning_audio ?? true,
+      briefAt: row ? row.brief_at : '09:00',
     };
   }
 
@@ -296,6 +305,10 @@ export class ProactiveRepository {
          updated_at = now()`,
       [userId, tenantId, p.level ?? null, p.dailyLimit ?? null, p.smartReply ?? null, p.morningAudio ?? null],
     );
+    // время аудио-кофе: undefined — не трогаем, null — выключить, 'HH:MM' — поставить
+    if (p.briefAt !== undefined) {
+      await this.db.query(`UPDATE secretary_prefs SET brief_at = $2::time, updated_at = now() WHERE user_id = $1`, [userId, p.briefAt]);
+    }
   }
 
   async tenantSettings(tenantId: string) {

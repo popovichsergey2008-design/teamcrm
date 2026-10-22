@@ -218,13 +218,17 @@ export class ProactiveService {
 
   async prefs(a: Actor) {
     const [prefs, mutes] = await Promise.all([this.repo.prefs(a.tenantId, a.userId), this.repo.mutes(a.tenantId, a.userId)]);
-    return { ...prefs, mutes: mutes.map((m) => ({ skill: m.skill, kind: m.kind })) };
+    // утренний аудио-кофе (#1525) — владельцу и руководителям; остальным поле не показываем
+    const briefAvailable = a.role === 'owner' || a.role === 'manager';
+    return { ...prefs, briefAvailable, mutes: mutes.map((m) => ({ skill: m.skill, kind: m.kind })) };
   }
 
-  async savePrefs(a: Actor, p: { level?: string; dailyLimit?: number; smartReply?: boolean; morningAudio?: boolean }) {
+  async savePrefs(a: Actor, p: { level?: string; dailyLimit?: number; smartReply?: boolean; morningAudio?: boolean; briefAt?: string }) {
     const level = p.level && ['normal', 'quiet', 'off'].includes(p.level) ? p.level : undefined;
     const dailyLimit = p.dailyLimit != null ? Math.max(1, Math.min(50, Math.round(p.dailyLimit))) : undefined;
-    await this.repo.savePrefs(a.tenantId, a.userId, { level, dailyLimit, smartReply: p.smartReply, morningAudio: p.morningAudio });
+    // '' — выключить утренний аудио-кофе (#1525)
+    const briefAt = p.briefAt === undefined ? undefined : /^([01]\d|2[0-3]):[0-5]\d$/.test(p.briefAt) ? p.briefAt : null;
+    await this.repo.savePrefs(a.tenantId, a.userId, { level, dailyLimit, smartReply: p.smartReply, morningAudio: p.morningAudio, briefAt });
     return this.prefs(a);
   }
 

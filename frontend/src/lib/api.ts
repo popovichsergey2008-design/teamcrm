@@ -3370,6 +3370,10 @@ export interface ProposalSummary {
 }
 export interface ProactivePrefs {
   level: 'normal' | 'quiet' | 'off'; dailyLimit: number; smartReply: boolean; morningAudio: boolean;
+  /** #1525: время утреннего аудио-кофе HH:MM; null — выключен; при сохранении '' — выключить */
+  briefAt?: string | null;
+  /** поле времени брифа показывать (владелец и руководители) */
+  briefAvailable?: boolean;
   mutes: { skill: string; kind: string }[];
 }
 export interface ProactiveSettings {

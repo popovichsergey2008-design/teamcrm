@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { meetingVisibleSql, projectVisibleSql } from '../../common/access/project-visibility';
 
 export interface CommitmentRow {
   id: string;
@@ -24,7 +25,10 @@ export interface CommitmentRow {
   reminded_at: Date | null;
   remind_count: number;
   escalated_at: Date | null;
+  self_remind_at?: Date | null;
   speaker_name?: string;
+  /** вид чата-источника (dm, group, project…) — для «в личной переписке» */
+  chat_kind?: string | null;
   assigner_name?: string | null;
   source_title?: string | null;
 }
@@ -39,6 +43,8 @@ export interface MessageRow {
   created_at: Date;
   tz: string;
   reply_author_id: string | null;
+  /** на какое сообщение ответили (reply) — #1525: ответ на обещание закрывает его */
+  reply_to_id: string | null;
   prev_author_id: string | null;
   project_id: string | null;
   kind: string | null;           // вид чата
@@ -95,7 +101,7 @@ export class CommitmentsRepository {
     return this.db.many<MessageRow>(
       `SELECT m.id::text, m.chat_id::text AS container_id, m.author_id::text, m.body, (m.file_id IS NOT NULL) AS has_file,
               m.created_at, COALESCE(u.timezone, t.timezone, 'Europe/Moscow') AS tz,
-              (SELECT r.author_id::text FROM chat_messages r WHERE r.id = m.reply_to_id) AS reply_author_id,
+              (SELECT r.author_id::text FROM chat_messages r WHERE r.id = m.reply_to_id) AS reply_author_id, m.reply_to_id::text,
               (SELECT p.author_id::text FROM chat_messages p
                 WHERE p.chat_id = m.chat_id AND p.id < m.id AND p.deleted_at IS NULL AND p.author_id IS NOT NULL AND NOT p.is_ai
                   AND p.created_at > m.created_at - interval '2 hours'
@@ -117,7 +123,7 @@ export class CommitmentsRepository {
     return this.db.many<MessageRow>(
       `SELECT c.id::text, c.task_id::text AS container_id, c.author_id::text, c.body, (c.file_id IS NOT NULL) AS has_file,
               c.created_at, COALESCE(u.timezone, tn.timezone, 'Europe/Moscow') AS tz,
-              (SELECT r.author_id::text FROM task_comments r WHERE r.id = c.reply_to_id) AS reply_author_id,
+              (SELECT r.author_id::text FROM task_comments r WHERE r.id = c.reply_to_id) AS reply_author_id, c.reply_to_id::text,
               tk.created_by::text AS prev_author_id,
               tk.project_id::text, 'task' AS kind, tk.title
          FROM task_comments c
@@ -207,14 +213,15 @@ export class CommitmentsRepository {
   due(limit = 200) {
     return this.db.many<CommitmentRow>(
       `SELECT c.*, su.full_name AS speaker_name, au.full_name AS assigner_name,
-              COALESCE(ch.title, tk.title, mt.title) AS source_title
+              COALESCE(ch.title, tk.title, mt.title) AS source_title, ch.kind AS chat_kind
          FROM commitments c
          JOIN users su ON su.id = c.speaker_user_id AND su.is_active
     LEFT JOIN users au ON au.id = c.assigner_user_id
     LEFT JOIN chats ch ON c.source_type = 'chat' AND ch.id = c.source_id
     LEFT JOIN tasks tk ON c.source_type = 'task' AND tk.id = c.source_id
     LEFT JOIN meetings mt ON c.source_type = 'meeting' AND mt.id = c.source_id
-        WHERE c.status IN ('detected','tracked','needs_followup') AND c.check_at <= now()
+        WHERE c.status IN ('detected','tracked','needs_followup')
+          AND (c.check_at <= now() OR c.self_remind_at <= now())
         ORDER BY c.check_at LIMIT $1`,
       [limit],
     );
@@ -223,7 +230,7 @@ export class CommitmentsRepository {
   get(tenantId: string, id: string) {
     return this.db.one<CommitmentRow>(
       `SELECT c.*, su.full_name AS speaker_name, au.full_name AS assigner_name,
-              COALESCE(ch.title, tk.title, mt.title) AS source_title
+              COALESCE(ch.title, tk.title, mt.title) AS source_title, ch.kind AS chat_kind
          FROM commitments c JOIN users su ON su.id = c.speaker_user_id
     LEFT JOIN users au ON au.id = c.assigner_user_id
     LEFT JOIN chats ch ON c.source_type = 'chat' AND ch.id = c.source_id
@@ -240,11 +247,70 @@ export class CommitmentsRepository {
   }
 
   async update(id: string, patch: Partial<{ status: string; linked_task_id: string | null; check_at: Date; reminded_at: Date; remind_count: number;
-    escalated_at: Date; fulfilled_at: Date; fulfilled_by: string; cancelled_at: Date }>): Promise<void> {
+    escalated_at: Date; fulfilled_at: Date; fulfilled_by: string; cancelled_at: Date; self_remind_at: Date | null }>): Promise<void> {
     const keys = Object.keys(patch);
     if (!keys.length) return;
     const sets = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
     await this.db.query(`UPDATE commitments SET ${sets}, updated_at = now() WHERE id = $1`, [id, ...keys.map((k) => (patch as Record<string, unknown>)[k])]);
+  }
+
+  /**
+   * Руководитель, которому идёт вторая карточка (#1525), если поручивший не найден:
+   * ответственный за проект источника, иначе владелец (затем руководитель) организации.
+   * Никогда — сам обещавший; владельцу «над ним» сообщать некому.
+   */
+  async managerFor(tenantId: string, projectId: string | null, speakerId: string): Promise<string | null> {
+    if (projectId) {
+      const p = await this.db.one<{ id: string }>(
+        `SELECT u.id::text FROM projects p JOIN users u ON u.id = p.owner_user_id AND u.is_active IS NOT FALSE
+          WHERE p.tenant_id = $1 AND p.id = $2 AND u.id <> $3::bigint`,
+        [tenantId, projectId, speakerId],
+      );
+      if (p) return p.id;
+    }
+    const row = await this.db.one<{ id: string }>(
+      `SELECT u.id::text FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.is_active IS NOT FALSE AND r.code IN ('owner', 'manager') AND u.id <> $2::bigint
+          AND NOT EXISTS (SELECT 1 FROM users s JOIN roles sr ON sr.id = s.role_id WHERE s.id = $2::bigint AND sr.code = 'owner')
+        ORDER BY (r.code = 'owner') DESC, u.id LIMIT 1`,
+      [tenantId, speakerId],
+    );
+    return row?.id ?? null;
+  }
+
+  /**
+   * Видно ли получателю то, где прозвучало обещание (#1525): цитату и ссылку показываем
+   * только тому, кто сам может открыть источник. Чат — участнику (или чат проекта,
+   * который ему виден); задача — по видимости её проекта; встреча — по правилу встреч.
+   * Личную переписку руководитель «по должности» не видит никогда.
+   */
+  async canSeeSource(tenantId: string, c: CommitmentRow, userId: string): Promise<boolean> {
+    const role = await this.db.one<{ code: string }>(
+      `SELECT r.code FROM users u JOIN roles r ON r.id = u.role_id WHERE u.tenant_id = $1 AND u.id = $2`, [tenantId, userId],
+    );
+    const params = [String(userId), role?.code === 'owner' || role?.code === 'manager', role?.code === 'client'];
+    if (c.source_type === 'chat') {
+      const r = await this.db.one<{ ok: boolean }>(
+        `SELECT (EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = ch.id AND cm.user_id = $3::bigint)
+                 OR (ch.kind = 'project' AND ch.project_id IS NOT NULL AND ${projectVisibleSql('ch.project_id', { user: '$3', all: '$4', client: '$5' })})) AS ok
+           FROM chats ch WHERE ch.tenant_id = $1 AND ch.id = $2`,
+        [tenantId, c.source_id, ...params],
+      );
+      return !!r?.ok;
+    }
+    if (c.source_type === 'task') {
+      const r = await this.db.one<{ ok: boolean }>(
+        `SELECT ${projectVisibleSql('t.project_id', { user: '$3', all: '$4', client: '$5' })} AS ok
+           FROM tasks t WHERE t.tenant_id = $1 AND t.id = $2 AND t.deleted_at IS NULL`,
+        [tenantId, c.source_id, ...params],
+      );
+      return !!r?.ok;
+    }
+    const r = await this.db.one<{ ok: boolean }>(
+      `SELECT ${meetingVisibleSql('m', { user: '$3', all: '$4', client: '$5' })} AS ok FROM meetings m WHERE m.tenant_id = $1 AND m.id = $2`,
+      [tenantId, c.source_id, ...params],
+    );
+    return !!r?.ok;
   }
 
   /** Обещания человека — для экрана «Обещания» (§10): мои и данные мне. */
