@@ -290,7 +290,9 @@ export class ClientFollowupService implements OnModuleInit {
     }
     const bot = await this.tg.username();
     if (!bot) throw AppException.conflict('Telegram-бот QEVO сейчас недоступен — отправьте итоги во внешний чат или письмом');
-    const url = startLink(bot, await this.issueCode(a, p, pay, message, typeof params.code === 'string' ? params.code : null));
+    // поправленный текст пришёл — обновляем им сообщение по ссылке; не пришёл (ту же ссылку шлют в чат или письмом) — не трогаем
+    const edited = typeof params.body === 'string' && !!params.body.trim();
+    const url = startLink(bot, await this.issueCode(a, p, pay, message, typeof params.code === 'string' ? params.code : null, edited));
     let how = '';
     if (via === 'chat') {
       if (!pay.chatId) throw AppException.conflict('У клиента нет внешнего чата');
@@ -317,12 +319,14 @@ export class ClientFollowupService implements OnModuleInit {
    * уходит в чат и письмом, но текст обновляем на поправленный. Чужой, использованный
    * или истёкший код не принимаем — выдаём новый.
    */
-  private async issueCode(a: Actor, p: ProposalRow, pay: FollowupPayload, message: string, given: string | null): Promise<string> {
+  private async issueCode(
+    a: Actor, p: ProposalRow, pay: FollowupPayload, message: string, given: string | null, edited: boolean,
+  ): Promise<string> {
     if (given && /^c_[A-Za-z0-9_-]{16,60}$/.test(given)) {
       const r = await this.db.query(
-        `UPDATE client_telegram_codes SET message = $3
+        `UPDATE client_telegram_codes SET message = CASE WHEN $5 THEN $3 ELSE message END
           WHERE code_hash = $1 AND proposal_id = $2 AND created_by = $4 AND used_at IS NULL AND expires_at > now()`,
-        [hashClientCode(given), p.id, message, a.userId],
+        [hashClientCode(given), p.id, message, a.userId, edited],
       );
       if (r.rowCount) return given;
     }

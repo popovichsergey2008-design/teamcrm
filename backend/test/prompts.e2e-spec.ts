@@ -44,16 +44,17 @@ describe('PromptOps (e2e)', () => {
     expect(keys).toContain('standup.parse');
     const brain = list.find((t: any) => t.key === 'brain.system');
     expect(brain.customized).toBe(false);
-    expect(brain.activeVersion).toBe(1);
+    // глобальный дефолт brain.system — v2 (0201: ответ формой «14 августа на 12-й минуте созвона…»)
+    expect(brain.activeVersion).toBe(2);
   });
 
   it('создать версию (клон-он-райт) → активировать → откат меняют активную версию без релиза', async () => {
     const tok = await register();
 
-    // изначально одна глобальная версия
+    // изначально глобальные версии: v1 (устарела) и v2 (действует, 0201)
     let v = (await http.get('/api/prompts/brain.system/versions').set(H(tok)).expect(200)).body.data;
     expect(v.customized).toBe(false);
-    expect(v.versions.length).toBe(1);
+    expect(v.versions.length).toBe(2);
 
     // новая версия → клон глобального в override арендатора: v1(active, из дефолта) + v2(draft)
     const created = (await http.post('/api/prompts/brain.system/versions').set(H(tok))
@@ -86,8 +87,8 @@ describe('PromptOps (e2e)', () => {
     const b = await register();
     const vb = (await http.get('/api/prompts/brain.system/versions').set(H(b)).expect(200)).body.data;
     expect(vb.customized).toBe(false);
-    expect(vb.versions.length).toBe(1);
-    expect(vb.versions[0].body).not.toContain('секретный промпт A');
+    expect(vb.versions.length).toBe(2);
+    expect(vb.versions.map((x: any) => x.body).join(' ')).not.toContain('секретный промпт A');
   });
 
   it('ответ Brain метерится по версии активного промпта (ai_usage.prompt_version_id)', async () => {
@@ -175,7 +176,7 @@ describe('PromptOps (e2e)', () => {
   it('P4: авто-оптимизация возвращает текущий промпт+метрики и метерит мета-промпт (деградирует без LLM)', async () => {
     const tok = await register();
     const r = (await http.post('/api/prompts/brain.system/optimize').set(H(tok)).expect(201)).body.data;
-    expect(r.currentVersion).toBe(1);
+    expect(r.currentVersion).toBe(2);
     expect(typeof r.current).toBe('string');
     expect(r.current.length).toBeGreaterThan(0);
     expect(typeof r.metrics).toBe('string');
