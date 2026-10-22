@@ -20,6 +20,7 @@ import { shrinkImage } from '../lib/image-shrink';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { sendTimed } from '../hooks/useClipRecorder';
 import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useAuth } from '../state/auth';
 import { getSocket } from '../lib/socket';
@@ -204,6 +205,10 @@ export function TaskChat({
     if (note) requestAnimationFrame(() => noteRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }, [note]);
   const [noteBusy, setNoteBusy] = useState(false);
+  /** Отправка голосового не удалась: текст прямо в плашке, там же «Повторить» и «Удалить» (#4635). */
+  const [noteErr, setNoteErr] = useState('');
+  /** Идущая отправка голосового: «Отменить» её обрывает, таймаут — тоже. */
+  const noteCtrl = useRef<AbortController | null>(null);
   /** Кто докуда дочитал: из этого собирается строка «Просмотрено» под своим сообщением. */
   const [readers, setReaders] = useState<{ userId: string; name: string; lastReadId: string }[]>([]);
   /** Уже поднимаем старое — второй раз на ту же прокрутку не идём. */
@@ -653,6 +658,23 @@ export function TaskChat({
   });
 
   /**
+   * Шаг с голосовым под таймаутом и с отменой (#4635): раньше запрос шёл без сигнала,
+   * на замершей сети «Отправляю…» висело до перезагрузки, а «Удалить» было выключено.
+   */
+  const noteStep = async (blob: Blob, step: (signal: AbortSignal) => Promise<void>) => {
+    setNoteBusy(true); setNoteErr(''); setErr('');
+    const msg = await sendTimed(noteCtrl, blob.size, step);
+    setNoteBusy(false); setNoteErr(msg);
+  };
+  /** «Отменить» во время отправки: запрос обрывается, запись выбрасывается, поле свободно. */
+  const cancelNote = () => {
+    noteCtrl.current?.abort();
+    noteCtrl.current = null;
+    setNoteBusy(false); setNoteErr('');
+    dropNote();
+  };
+
+  /**
    * Отправить голосовое.
    *
    * Сначала расшифровываем, потом отправляем одним сообщением: текст идёт подписью к
@@ -661,16 +683,14 @@ export function TaskChat({
    */
   const sendNote = async () => {
     if (!note) return;
-    setNoteBusy(true); setErr('');
-    try {
+    await noteStep(note.blob, async (signal) => {
       const stamp = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       const file = new File([note.blob], `Голосовое ${stamp}.webm`, { type: note.blob.type || 'audio/webm' });
       let caption = '';
-      try { caption = (await api.nlTranscribe(note.blob)).text ?? ''; } catch { caption = ''; }
-      await api.addCommentFile(taskId, file, caption);
+      try { caption = (await api.nlTranscribe(note.blob, signal)).text ?? ''; } catch { if (signal.aborted) throw new Error('aborted'); }
+      await api.addCommentFile(taskId, file, caption, undefined, undefined, undefined, signal);
       dropNote(); reload(); onRefresh();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Голосовое не отправилось'); }
-    finally { setNoteBusy(false); }
+    });
   };
 
   /**
@@ -682,14 +702,12 @@ export function TaskChat({
    */
   const noteToText = async () => {
     if (!note) return;
-    setNoteBusy(true); setErr('');
-    try {
-      const { text } = await api.nlTranscribe(note.blob);
+    await noteStep(note.blob, async (signal) => {
+      const { text } = await api.nlTranscribe(note.blob, signal);
       if (!text) setErr('Речь не распознана. Для голоса нужен ключ OpenAI (Whisper) в «Интеграции → ИИ».');
       else setBody((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
       if (text) dropNote();
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось распознать'); }
-    finally { setNoteBusy(false); }
+    });
   };
 
   const remove = async (id: string) => {
@@ -1667,15 +1685,17 @@ export function TaskChat({
             стояли ПОСЛЕ плеера и в узкой карточке переносились вниз, к самому краю:
             человек останавливал запись и не понимал, что дальше.
           */}
-          <span className="voice-note-label"><Icon name="mic" size={14} /> Голосовое записано — что с ним сделать?</span>
+          <span className={noteErr ? 'voice-note-label error-text' : 'voice-note-label'} role="status">
+            <Icon name="mic" size={14} /> {noteErr || 'Голосовое записано — что с ним сделать?'}
+          </span>
           <span className="voice-note-actions">
             <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void sendNote(); }} disabled={noteBusy}>
-              {noteBusy ? 'Отправляю…' : 'Отправить'}
+              {noteBusy ? 'Отправляю…' : noteErr ? 'Повторить' : 'Отправить'}
             </button>
             <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void noteToText(); }} disabled={noteBusy} title="Распознать и положить текстом в поле ввода">
               В текст
             </button>
-            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={dropNote} disabled={noteBusy}>Удалить</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={cancelNote}>{noteBusy ? 'Отменить' : 'Удалить'}</button>
           </span>
           <audio className="voice-note-player" src={note.url} controls preload="metadata" />
         </div>

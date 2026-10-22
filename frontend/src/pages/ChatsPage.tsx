@@ -459,7 +459,6 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
   const [mentioned, setMentioned] = useState<string[]>([]);
   /** Клип ушёл на сервер: там его ещё расшифровывают, и это занимает секунды. */
-  const [clipBusy, setClipBusy] = useState(false);
   /** Витрина «Все каналы»: публичные каналы компании. */
   const [channelList, setChannelList] = useState<{
     id: string; title: string | null; description: string | null;
@@ -694,20 +693,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    */
   /**
    * Запись не пропадает из-за упавшей отправки (ТЗ-9): в лифте сеть уходит ровно
-   * когда нажали «отправить». Неотправленная запись остаётся в панели с кнопками
-   * «Повторить» и «Удалить» — повторить можно, когда сеть вернётся.
+   * когда нажали «отправить». Неотправленная запись остаётся в панели с «Повторить»
+   * и «Отменить»; таймаут, отмена и повтор живут в хуке (#4635). Чат — тот, где начали запись.
    */
-  const [failedClip, setFailedClip] = useState<{ blob: Blob; kind: 'voice' | 'screen'; chatId: string } | null>(null);
-  const sendClip = async (blob: Blob, kind: 'voice' | 'screen', chatId: string) => {
-    setClipBusy(true);
-    try { await api.sendChatClip(chatId, blob, kind); setFailedClip(null); }
-    catch (e) { setFailedClip({ blob, kind, chatId }); setErr(e instanceof ApiError ? e.message : 'Запись не отправлена'); }
-    finally { setClipBusy(false); }
-  };
-  const clip = useClipRecorder(async (blob, kind) => {
-    if (!activeId) return;
-    await sendClip(blob, kind, activeId);
-  });
+  const clip = useClipRecorder((blob, kind, chatId, signal) => api.sendChatClip(chatId, blob, kind, signal));
+  const clipBusy = clip.sending || !!clip.failed;
 
   /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
   const star = async (c: Chat) => {
@@ -3123,24 +3113,24 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
             {/* Идёт запись — это должно быть видно без сомнений: человек говорит вслух,
                 и «пишется или нет» он обязан понимать сразу. */}
-            {(clip.recording || clipBusy || clip.error || failedClip) && (
-              <div className="chat-clip-state">
+            {(clip.recording || clipBusy || clip.error) && (
+              <div className="chat-clip-state" role="status">
                 {clip.recording && (
                   <>
                     <span className="chat-clip-dot" aria-hidden="true" />
                     {clip.recording === 'voice' ? 'Говорите…' : 'Идёт запись экрана…'}
-                    <button className="msg-act" onClick={clip.stop}>Остановить и отправить</button>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={clip.stop}>Отправить</button>
                   </>
                 )}
-                {clipBusy && <span className="dim">Отправляю и расшифровываю…</span>}
+                {clip.sending && <span className="dim">Отправляю и расшифровываю…</span>}
                 {clip.error && <span className="error-text">{clip.error}</span>}
-                {failedClip && !clipBusy && (
+                {clip.failed && (
                   <>
-                    <span className="error-text">Запись не отправлена — она сохранена.</span>
-                    <button className="msg-act" onClick={() => void sendClip(failedClip.blob, failedClip.kind, failedClip.chatId)}>Повторить</button>
-                    <button className="msg-act" onClick={() => setFailedClip(null)}>Удалить</button>
+                    <span className="error-text">{clip.failed}</span>
+                    <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => void clip.retry()}>Повторить</button>
                   </>
                 )}
+                {(clip.recording || clipBusy) && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={clip.cancel}>Отменить</button>}
               </div>
             )}
 
@@ -3299,7 +3289,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   потом можно найти. Расшифровка приходит с сервера в тело сообщения. */}
               <button
                 className={clip.recording === 'voice' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
-                onClick={() => (clip.recording ? clip.stop() : clip.start('voice'))}
+                onClick={() => (clip.recording ? clip.stop() : activeId && clip.start('voice', activeId))}
                 disabled={clipBusy}
                 title={clip.recording === 'voice' ? 'Остановить и отправить' : 'Голосовое сообщение'}
                 aria-label="Голосовое сообщение"
@@ -3320,7 +3310,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   чем описать словами. Из такого сообщения потом делают задачу. */}
               <button
                 className={clip.recording === 'screen' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
-                onClick={() => (clip.recording ? clip.stop() : clip.start('screen'))}
+                onClick={() => (clip.recording ? clip.stop() : activeId && clip.start('screen', activeId))}
                 disabled={clipBusy}
                 title={clip.recording === 'screen' ? 'Остановить и отправить' : 'Записать экран с голосом'}
                 aria-label="Записать экран"

@@ -16,6 +16,18 @@ import { ScheduledRepository, ScheduledRow } from './scheduled.repository';
 const PAGE = 50;
 
 /**
+ * Дольше этого расшифровку клипа не ждём (#4635): человек смотрит на «Отправляю…»,
+ * а провайдер речи может думать минутами. Не успели — клип уходит с подписью без текста.
+ */
+const CLIP_TEXT_BUDGET_MS = 40_000;
+/** Обещание с потолком по времени: не успело — `fallback`, само оно доживает в фоне. */
+function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  const late = new Promise<T>((r) => { t = setTimeout(() => r(fallback), Math.max(0, ms)); });
+  return Promise.race([p, late]).finally(() => clearTimeout(t));
+}
+
+/**
  * Мессенджер команды: личные диалоги, группы и чаты проектов.
  *
  * Доступ: у dm и group — по членству; у чата проекта — у всей команды, потому что
@@ -1002,6 +1014,8 @@ export class ChatsService {
     tenantId: string, chatId: string, user: { userId: string; role: string },
     file: { buffer: Buffer; originalname: string; mimetype: string },
     kind: 'voice' | 'screen',
+    /** Человек нажал «Отменить» и соединение оборвалось — сообщение не создаём. */
+    gone: () => boolean = () => false,
   ) {
     const chat = await this.access(tenantId, chatId, user);
     const stored = await this.files.upload({
@@ -1011,13 +1025,16 @@ export class ChatsService {
 
     // Расшифровка своих ошибок наружу не поднимает: клип уходит и без текста —
     // запись ценнее расшифровки, и терять её из-за отсутствия ключа нельзя.
-    const heard = (await this.chatAi.transcribe(tenantId, file.buffer, file.originalname)).trim();
+    const until = Date.now() + CLIP_TEXT_BUDGET_MS;
+    const heard = (await within(this.chatAi.transcribe(tenantId, file.buffer, file.originalname), CLIP_TEXT_BUDGET_MS, '')).trim();
     /*
       И причёсываем: Whisper отдаёт поток слов без знаков препинания, читать такое
       невозможно. Модель только расставляет знаки и чинит ослышки — не пересказывает.
       Автор всё равно может поправить сообщение, как любое своё (просьба заказчика).
     */
-    const text = heard ? await this.chatAi.tidyTranscript(tenantId, heard) : '';
+    const text = heard ? await within(this.chatAi.tidyTranscript(tenantId, heard), Math.max(5_000, until - Date.now()), heard) : '';
+    // Отменённая отправка не должна всплыть в чате через полминуты расшифровки
+    if (gone()) { await this.files.removeInternal(tenantId, String(stored.id)).catch(() => undefined); return null; }
     // Подпись нужна и без расшифровки: в ленте «вложение» без слова не отличить
     // от документа, а голосовое от записи экрана — тем более.
     const body = text || (kind === 'voice' ? 'Голосовое сообщение' : 'Запись экрана');

@@ -1660,10 +1660,10 @@ export const api = {
   voiceRetry: (id: string, currentProjectId?: string | null) =>
     request<VoiceJob>('POST', `/nl/voice/${id}/retry`, currentProjectId ? { currentProjectId } : {}),
 
-  nlTranscribe: async (blob: Blob): Promise<{ text: string }> => {
+  nlTranscribe: async (blob: Blob, signal?: AbortSignal): Promise<{ text: string }> => {
     const fd = new FormData();
     fd.append('audio', blob, 'command.webm');
-    const res = await fetch(`${BASE}/nl/transcribe`, { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
+    const res = await fetch(`${BASE}/nl/transcribe`, { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd, signal });
     const env = await res.json().catch(() => ({ ok: false }));
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Ошибка распознавания речи');
     return env.data;
@@ -1867,15 +1867,15 @@ export const api = {
    * Расшифровка делается на сервере и ложится в тело сообщения — иначе аудио и видео
    * становятся чёрной дырой: их не найдёт поиск и не разберёт помощник.
    */
-  sendChatClip: async (chatId: string, blob: Blob, kind: 'voice' | 'screen') => {
+  sendChatClip: async (chatId: string, blob: Blob, kind: 'voice' | 'screen', signal?: AbortSignal) => {
     const fd = new FormData();
     const ext = kind === 'voice' ? 'webm' : 'webm';
     fd.append('file', blob, `${kind === 'voice' ? 'Голосовое' : 'Запись экрана'} ${new Date().toLocaleString('ru-RU')}.${ext}`);
     fd.append('kind', kind);
     const res = await fetch(apiUrl(`/api/chats/${chatId}/clip`), {
-      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd, signal,
     });
-    const env = await res.json();
+    const env = await res.json().catch(() => ({ ok: false }));
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Запись не отправлена');
     return env.data;
   },
@@ -2977,7 +2977,7 @@ export const api = {
   /** Файлы сообщением в обсуждение задачи: можно несколько сразу, как в переписке. */
   addCommentFile: async (
     taskId: string, file: File | File[], body: string, replyToId?: string, replyExcerpt?: string,
-    threadRootId?: string | null,
+    threadRootId?: string | null, signal?: AbortSignal,
   ) => {
     const fd = new FormData();
     for (const f of Array.isArray(file) ? file : [file]) fd.append('files', f);
@@ -2986,7 +2986,7 @@ export const api = {
     if (replyExcerpt) fd.append('replyExcerpt', replyExcerpt);
     if (threadRootId) fd.append('threadRootId', threadRootId);
     const res = await fetch(apiUrl(`/api/tasks/${taskId}/comments/file`), {
-      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd,
+      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd, signal,
     });
     const env = await res.json();
     if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Файл не отправлен');
