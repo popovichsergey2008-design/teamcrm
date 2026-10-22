@@ -3397,18 +3397,44 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .call-head-actions .ui-btn.call-head-close:hover { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
 
 /* Сцена созвона. Обычно — сетка равных плиток; когда кто-то показывает экран,
-   он занимает почти всё, а люди уезжают в полосу снизу: читать чужой код
-   в плитке 240px невозможно. */
+   он занимает почти всё, а люди уезжают в сторону (см. .call-stage-share ниже):
+   читать чужой код в плитке 240px невозможно. */
 .call-stage { flex: 1; min-height: 260px; display: flex; flex-direction: column; gap: 8px; padding: 12px; overflow: hidden; }
 .call-grid {
   flex: 1; display: grid; gap: 8px; overflow: auto; align-content: center;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
-.call-spotlight { flex: 1; min-height: 0; display: flex; background: var(--video-bg); border-radius: var(--radius-sm); overflow: hidden; }
-.call-spotlight video { width: 100%; height: 100%; object-fit: contain; display: block; }
-/* полоса участников под демонстрацией: маленькая, но лица видно */
-.call-strip { display: flex; gap: 8px; overflow-x: auto; flex: 0 0 auto; padding-bottom: 2px; }
-.call-strip .call-tile { width: 150px; flex: 0 0 auto; }
+/*
+  Показ экрана (#4622): экран виден ВЕСЬ при любой ширине окна. Видео лежит поверх
+  своей рамки (absolute) и вписывается в неё — его собственный размер больше не
+  раздвигает окно, а значит, низ и края показа не уезжают под overflow: hidden.
+  Окну на это время даём твёрдую высоту — без неё рамке не во что вписываться.
+*/
+.call-window-share { width: min(1400px, 100%); }
+@media (min-width: 721px) { .call-window-share { height: 90vh; } }
+.call-stage-share { flex-direction: row; }
+.call-spotlight {
+  position: relative; flex: 1 1 auto; min-width: 0; min-height: 0;
+  background: var(--video-bg); border-radius: var(--radius-sm); overflow: hidden;
+}
+.call-spotlight video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+/* Участники — сбоку от экрана, а не поверх: колонка справа, прокручивается сама */
+.call-side { flex: 0 0 168px; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; }
+.call-people-hidden .call-side { flex-basis: auto; }
+.call-people-hidden .call-side-label { display: none; }
+.call-side-toggle { justify-content: center; gap: 4px; color: #e5e7eb; } /* на тёмной сцене — светлым в любой теме */
+.call-side .call-side-toggle:hover { background: var(--overlay); color: #fff; }
+.call-strip { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden auto; }
+.call-strip .call-tile { width: 100%; flex: 0 0 auto; }
+/* узкое или вертикальное окно: колонка съела бы ширину экрана — люди уходят полосой вниз */
+@media (max-width: 720px), (orientation: portrait) {
+  .call-stage-share { flex-direction: column; }
+  .call-side { flex: 0 0 auto; flex-direction: row; align-items: stretch; }
+  .call-side-label { display: none; }
+  .call-side .call-side-toggle { flex: 0 0 auto; height: auto; min-height: 40px; padding: 0 8px; }
+  .call-strip { flex-direction: row; overflow: auto hidden; padding-bottom: 2px; }
+  .call-strip .call-tile { width: 112px; }
+}
 
 .call-tile {
   position: relative; background: var(--video-bg); border-radius: var(--radius-sm);

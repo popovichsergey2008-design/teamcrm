@@ -201,6 +201,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const [shift, setShift] = useState({ x: 0, y: 0 });
   const [pill, setPill] = useState(() => ({ right: 16, bottom: window.innerWidth <= 1100 ? 80 : 16 }));
   const narrow = useMediaQuery('(max-width: 640px)');
+  /*
+    Участники при показе экрана (#4622): на широком окне — колонкой справа, на узком
+    и вертикальном — полосой под экраном. Ту же границу держит CSS (.call-stage-share).
+    Полосу можно спрятать совсем: на ноутбуке каждый сантиметр нужен показанному экрану.
+  */
+  const stackedStage = useMediaQuery('(max-width: 720px), (orientation: portrait)');
+  const [peopleHidden, setPeopleHidden] = useState(false);
   /**
    * Размер плашки: человек тянет за угол, браузер меняет размеры сам (CSS resize),
    * а мы только запоминаем результат — иначе после каждого сворачивания окно
@@ -726,6 +733,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const camByUser = new Map(tracks.filter((t) => t.kind === 'video' && !t.screen).map((t) => [String(t.userId), t]));
   const me = String(guest?.userId ?? user?.id ?? '');
   const tiles = peers.map((p) => ({ peer: p, track: camByUser.get(String(p.userId)) ?? null }));
+  const peopleTiles = tiles.map(({ peer, track }) => (
+    <ParticipantTile
+      key={peer.userId}
+      peer={peer}
+      track={track?.track ?? null}
+      self={String(peer.userId) === me}
+      selfTrack={String(peer.userId) === me ? selfVideo : null}
+      selfMicOn={micOn}
+    />
+  ));
 
   const people: MiniPerson[] = tiles.map(({ peer, track }) => ({
     id: String(peer.userId),
@@ -848,7 +865,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     {pageMarks}
     <div className={`call-overlay${narrow ? '' : ' call-overlay-floating'}`}>
       <div
-        className="call-window"
+        className={`call-window${screenTrack && guestState === 'in' ? ' call-window-share' : ''}`}
         ref={windowRef}
         style={full || narrow ? undefined : { transform: `translate(${shift.x}px, ${shift.y}px)` }}
       >
@@ -995,10 +1012,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
         {pointerNote && screenOn && (
           <div className="call-pointer-note" role="status"><Icon name="target" size={13} /> {pointerNote}</div>
         )}
-        {/* Показ экрана занимает сцену целиком, люди уезжают в полосу снизу:
-            в общей сетке демонстрация выходила мелкой и нечитаемой. */}
+        {/* Показ экрана занимает сцену целиком и всегда виден весь (вписан, не обрезан),
+            люди уезжают в сторону — сбоку или под экран, но никогда не поверх него:
+            в общей сетке демонстрация выходила мелкой, а плитки закрывали её края (#4622). */}
         {guestState === 'in' && (
-        <div className="call-stage">
+        <div className={`call-stage${screenTrack ? ' call-stage-share' : ''}${screenTrack && peopleHidden ? ' call-people-hidden' : ''}`}>
           {screenTrack && (
             <div
               className="call-spotlight call-pointable"
@@ -1013,18 +1031,30 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
               ))}
             </div>
           )}
-          <div className={screenTrack ? 'call-strip' : 'call-grid'}>
-            {tiles.map(({ peer, track }) => (
-              <ParticipantTile
-                key={peer.userId}
-                peer={peer}
-                track={track?.track ?? null}
-                self={String(peer.userId) === me}
-                selfTrack={String(peer.userId) === me ? selfVideo : null}
-                selfMicOn={micOn}
-              />
-            ))}
-          </div>
+          {screenTrack ? (
+            <div className="call-side">
+              <button
+                type="button"
+                className="ui-btn ui-btn-ghost ui-btn-sm call-side-toggle"
+                onClick={() => setPeopleHidden((h) => !h)}
+                aria-expanded={!peopleHidden}
+                title={peopleHidden ? 'Показать участников' : 'Спрятать участников — показанному экрану достанется всё место'}
+              >
+                <Icon name="users" size={15} />
+                <span>{tiles.length}</span>
+                <span className="call-side-label">{peopleHidden ? 'Показать' : 'Спрятать'}</span>
+                <Icon
+                  name={stackedStage
+                    ? (peopleHidden ? 'chevron-up' : 'chevron-down')
+                    : (peopleHidden ? 'chevron-left' : 'chevron-right')}
+                  size={15}
+                />
+              </button>
+              {!peopleHidden && <div className="call-strip">{peopleTiles}</div>}
+            </div>
+          ) : (
+            <div className="call-grid">{peopleTiles}</div>
+          )}
         </div>
         )}
 
