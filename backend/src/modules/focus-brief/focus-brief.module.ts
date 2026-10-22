@@ -6,6 +6,7 @@ import { FocusBriefController } from './focus-brief.controller';
 import { FocusBriefRepository } from './focus-brief.repository';
 import { FocusBriefScheduler } from './focus-brief.scheduler';
 import { FocusBriefService } from './focus-brief.service';
+import { StandupService } from './standup.service';
 
 /**
  * Персональный брифинг «Фокуса дня» (ТЗ-27). Отдельным модулем: ему нужны задачи,
@@ -14,7 +15,7 @@ import { FocusBriefService } from './focus-brief.service';
 @Module({
   imports: [FocusModule, TasksModule, ProjectsModule],
   controllers: [FocusBriefController],
-  providers: [FocusBriefService, FocusBriefRepository, FocusBriefScheduler],
-  exports: [FocusBriefService],
+  providers: [FocusBriefService, FocusBriefRepository, FocusBriefScheduler, StandupService],
+  exports: [FocusBriefService, StandupService],
 })
 export class FocusBriefModule {}

@@ -221,8 +221,12 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
       feedback('action.confirmed');
       setResult({ text: r.text, link: r.link });
       window.dispatchEvent(new Event('teamcrm:tasks-changed'));
-      // карточка остаётся на экране с результатом, пока человек не уйдёт с вкладки
-      setTimeout(() => onDone(r.proposal), 2500);
+      // карточка остаётся на экране с результатом, пока человек не уйдёт с вкладки;
+      // осталась открытой (черновики планерки) — через миг снова доступны кнопки
+      setTimeout(() => {
+        onDone(r.proposal);
+        if (r.proposal && ['new', 'seen'].includes(r.proposal.status)) setResult(null);
+      }, 2500);
     } catch (e) {
       const d = e instanceof ApiError ? (e.details as { code?: string; candidates?: { id: string; name: string }[]; projects?: { id: string; name: string }[] } | undefined) : undefined;
       if (d?.code === 'PROJECT_REQUIRED' && d.projects?.length) {
@@ -250,7 +254,9 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
     await api.proposalFeedback(p.id, useful, reason).catch(() => undefined);
   };
 
-  const actions = [...p.actions].sort((a, b) => Number(!!b.primary) - Number(!!a.primary));
+  // «Поставить задачей» у брифа — кнопка у каждого черновика планерки, не в общем ряду
+  const actions = [...p.actions].filter((a) => !(p.skill === 'brief' && a.key === 'task')).sort((a, b) => Number(!!b.primary) - Number(!!a.primary));
+  const taskAction = p.actions.find((a) => a.key === 'task');
 
   return (
     <article id={`proposal-${p.id}`} className={`sp-card sp-p${p.priority}${focused ? ' sp-focus' : ''}`}>
@@ -264,7 +270,7 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
         <span className="sp-time">{when(p.source.at ?? p.createdAt)}</span>
       </div>
       <div className="sp-title">{p.title}</div>
-      {p.skill === 'brief' ? <Brief p={p} onGo={go} /> : editable && open && !result ? (
+      {p.skill === 'brief' ? <Brief p={p} onGo={go} busy={busy} onTask={open && taskAction ? (ref) => void act(taskAction, { ref }) : null} /> : editable && open && !result ? (
         <div className="sp-letter">
           {p.payload.email ? <input className="input" value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Тема письма" /> : null}
           <textarea className="input" rows={8} value={body} onChange={(e) => setBody(e.target.value)} aria-label="Текст для клиента" />
@@ -336,11 +342,17 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
 }
 
 /**
- * Утренний бриф (ТЗ-21, этап 7): пункты, голос — если есть, и переходы. Голос грузим по
- * нажатию: файл личный и весит сотни килобайт.
+ * Утренний бриф (ТЗ-21, этап 7; #1525): «Доброе утро, …! Вот главное на сегодня:»,
+ * пункты, голос — если есть, и черновики утренней планерки — каждый ставится задачей
+ * в 1 клик. Голос грузим по нажатию: файл личный и весит сотни килобайт.
  */
-function Brief({ p, onGo }: { p: AssistantProposal; onGo: (link: string | null) => void }) {
+type StandupDraft = { ref: string; title: string; projectId: string; link: string | null; taskId: string | null };
+
+function Brief({ p, onGo, busy, onTask }: { p: AssistantProposal; onGo: (link: string | null) => void; busy: boolean; onTask: ((ref: string) => void) | null }) {
   const lines = (p.payload.lines as string[] | undefined) ?? (p.summary ?? '').split('\n');
+  const intro = p.payload.intro as string | undefined;
+  const outro = p.payload.outro as string | undefined;
+  const drafts = (p.payload.drafts as StandupDraft[] | undefined) ?? [];
   const audioId = p.payload.audioFileId as string | null | undefined;
   const links = (p.payload.links as { label: string; path: string }[] | undefined) ?? [];
   const [url, setUrl] = useState<string | null>(null);
@@ -353,12 +365,27 @@ function Brief({ p, onGo }: { p: AssistantProposal; onGo: (link: string | null) 
   };
   return (
     <div className="sp-brief">
+      {intro && <p>{intro}</p>}
       <ul>{lines.filter(Boolean).map((l, i) => <li key={i}>{l}</li>)}</ul>
+      {outro && <p>{outro}</p>}
       {audioId && (url
         ? <audio src={url} controls autoPlay />
         : <Button size="sm" variant="outline" disabled={state === 'loading'} onClick={() => void listen()}>
             <Icon name="play" size={14} /> {state === 'loading' ? 'Загружаю…' : state === 'failed' ? 'Не загрузилось — ещё раз' : 'Слушать'}
           </Button>)}
+      {drafts.length > 0 && (
+        <div className="sp-standup" role="group" aria-label="Черновики для утренней планерки">
+          <div className="sp-pick-q">Черновики для утренней планерки</div>
+          {drafts.map((d) => (
+            <div key={d.ref} className="sp-draft">
+              <span>{d.title}</span>
+              {d.taskId
+                ? <Button size="sm" variant="ghost" onClick={() => onGo(`/projects/${d.projectId}/task/${d.taskId}`)}><Icon name="check" size={13} /> Задача #{d.taskId}</Button>
+                : onTask && <Button size="sm" variant="outline" disabled={busy} onClick={() => onTask(d.ref)}>Поставить задачей</Button>}
+            </div>
+          ))}
+        </div>
+      )}
       {links.length > 0 && (
         <div className="sp-actions">
           {links.map((l) => <Button key={l.path + l.label} size="sm" variant="ghost" onClick={() => onGo(l.path)}>{l.label}</Button>)}
@@ -498,6 +525,19 @@ function Settings() {
         />
       </label>
       <Checkbox checked={prefs.morningAudio} onCheckedChange={(v) => void savePrefs({ morningAudio: !!v })} label="Утренняя сводка голосом" />
+      {prefs.briefAvailable && (
+        <>
+          <Checkbox checked={!!prefs.briefAt} onCheckedChange={(v) => void savePrefs({ briefAt: v ? '09:00' : '' })} label="Утренний бриф руководителя с черновиками планерки" />
+          {prefs.briefAt && (
+            <label className="sp-field sp-inline">
+              <span>Присылать в</span>
+              <input className="input sp-num" type="time" value={prefs.briefAt}
+                     onChange={(e) => setPrefs({ ...prefs, briefAt: e.target.value })}
+                     onBlur={(e) => { if (e.target.value) void savePrefs({ briefAt: e.target.value }); }} />
+            </label>
+          )}
+        </>
+      )}
       {prefs.mutes.length > 0 && (
         <div className="sp-mutes">
           <div className="dim">Больше не предлагать:</div>
@@ -523,16 +563,10 @@ function Settings() {
             <Checkbox checked={company.secondBrain} onCheckedChange={(v) => void saveCompany({ secondBrain: !!v })} label="Память компании: поиск по чатам и встречам" />
             <Checkbox checked={company.telegramDelivery} onCheckedChange={(v) => void saveCompany({ telegramDelivery: !!v })} label="Дублировать срочное в Telegram" />
             <label className="sp-field">
-              <span>Напомнить о просроченном обещании через, ч</span>
+              <span>Карточка обещавшему и руководителю через, ч</span>
               <input className="input sp-num" type="number" min={2} max={168} value={company.commitmentCheckHours}
                      onChange={(e) => setCompany({ ...company, commitmentCheckHours: Number(e.target.value) || 24 })}
                      onBlur={() => void saveCompany({ commitmentCheckHours: company.commitmentCheckHours })} />
-            </label>
-            <label className="sp-field">
-              <span>Сказать постановщику через, ч</span>
-              <input className="input sp-num" type="number" min={4} max={336} value={company.commitmentEscalateHours}
-                     onChange={(e) => setCompany({ ...company, commitmentEscalateHours: Number(e.target.value) || 48 })}
-                     onBlur={() => void saveCompany({ commitmentEscalateHours: company.commitmentEscalateHours })} />
             </label>
             <label className="sp-field">
               <span>Порог уверенности для обещаний: {Math.round(company.commitmentMinConfidence * 100)}% — выше порог, меньше лишнего</span>

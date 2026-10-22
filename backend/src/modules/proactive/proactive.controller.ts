@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { ProactiveService } from './proactive.service';
@@ -28,6 +28,8 @@ class PrefsDto {
   @IsOptional() @IsInt() @Min(1) @Max(50) dailyLimit?: number;
   @IsOptional() @IsBoolean() smartReply?: boolean;
   @IsOptional() @IsBoolean() morningAudio?: boolean;
+  /** #1525: время утреннего аудио-кофе HH:MM; пустая строка — выключить */
+  @IsOptional() @IsString() @Matches(/^(|([01]\d|2[0-3]):[0-5]\d)$/) briefAt?: string;
 }
 class TenantSettingsDto {
   @IsOptional() @IsBoolean() enabled?: boolean;

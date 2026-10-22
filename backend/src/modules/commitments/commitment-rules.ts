@@ -1,3 +1,5 @@
+import { actionInfinitiveStrict, declineName, firstName, guessGender, pastVerb, plural } from '../../common/text/ru-grammar';
+
 /**
  * Обещания (ТЗ-21, §13–25) — распознавание правилами, без модели.
  *
@@ -145,10 +147,11 @@ const URL_RE = /https?:\/\/\S+/iu;
 
 /**
  * Похоже ли сообщение автора обещания на «выполнил» (§21): файл, ссылка или «отправил /
- * готово / держи». Чужие сообщения выполнением не считаем.
+ * готово / держи». Чужие сообщения выполнением не считаем. #1525: ответ обещавшего
+ * в том же чате прямо на сообщение с обещанием (reply) — тоже «ответ в чате есть».
  */
-export function looksFulfilled(msg: { body: string; hasFile: boolean }): boolean {
-  if (msg.hasFile) return true;
+export function looksFulfilled(msg: { body: string; hasFile: boolean; repliesToPromise?: boolean }): boolean {
+  if (msg.hasFile || msg.repliesToPromise) return true;
   const body = String(msg.body ?? '');
   return URL_RE.test(body) || DONE_RE.test(body);
 }
@@ -171,4 +174,48 @@ export function similarity(a: string, b: string): number {
   let common = 0;
   for (const w of x) if (y.has(w)) common++;
   return common / Math.min(x.size, y.size);
+}
+
+// ───────────────────── текст карточки (#1525, документ заказчика) ─────────────────────
+
+export interface CardTextInput {
+  /** кому карточка: самому обещавшему или руководителю (поручившему) */
+  self: boolean;
+  speakerFullName: string;
+  sourceType: 'chat' | 'task' | 'meeting';
+  chatKind?: string | null;
+  /** название задачи — только если получателю её видно */
+  taskTitle?: string | null;
+  /** «во вторник», «сегодня», «12 октября» — из whenSaid */
+  saidWhen: string;
+  action: string;
+  /** срок прошёл — его слова («завтра», «к 18:00»); иначе null */
+  overdueText: string | null;
+  hoursPassed: number;
+}
+
+/**
+ * «Глеб на созвоне во вторник обещал прислать смету. Прошло 24 часа. Создать задачу в
+ * проект или напомнить Глебу в 1 клик?» — дословно по документу. Обещавшему — то же о
+ * нём самом: «Вы на созвоне во вторник обещали … напомнить себе в 1 клик?».
+ */
+export function commitmentCardText(p: CardTextInput): { text: string; remindLabel: string } {
+  const name = firstName(p.speakerFullName) || p.speakerFullName || 'Коллега';
+  const g = guessGender(p.speakerFullName);
+  const where = p.sourceType === 'meeting' ? 'на созвоне'
+    : p.sourceType === 'task' ? (p.taskTitle ? `в комментарии к задаче «${p.taskTitle}»` : 'в комментарии к задаче')
+      : p.chatKind === 'dm' ? 'в личной переписке' : 'в чате';
+  const inf = actionInfinitiveStrict(p.action);
+  const verb = p.self ? 'обещали' : pastVerb('обещал', g);
+  const who = p.self ? 'Вы' : name;
+  const first = inf ? `${who} ${where} ${p.saidWhen} ${verb} ${inf}.` : `${who} ${where} ${p.saidWhen} ${verb}: «${String(p.action).trim()}».`;
+  const h = Math.max(1, Math.round(p.hoursPassed));
+  const waited = p.overdueText
+    ? `Срок «${p.overdueText}» прошёл.`
+    : `${plural(h, 'Прошёл', 'Прошло', 'Прошло')} ${h} ${plural(h, 'час', 'часа', 'часов')}.`;
+  const whom = p.self ? 'себе' : declineName(name, 'dat', g);
+  return {
+    text: `${first} ${waited} Создать задачу в проект или напомнить ${whom} в 1 клик?`,
+    remindLabel: p.self ? 'Напомнить мне завтра' : `Напомнить ${whom}`,
+  };
 }

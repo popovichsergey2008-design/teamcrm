@@ -1,24 +1,30 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { meetingVisibleSql } from '../../common/access/project-visibility';
 import { localParts } from '../assistant/ping-rules';
 import { tomorrowOf, zonedTime } from '../focus/close-day';
 import { AiService } from '../ai/ai.service';
 import { FilesService } from '../files/files.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 import { Actor, ProactiveService } from '../proactive/proactive.service';
-import { ProactiveRepository } from '../proactive/proactive.repository';
+import { ProactiveRepository, ProposalRow } from '../proactive/proactive.repository';
 import { ProactiveScheduler } from '../proactive/proactive.scheduler';
 import { WorkloadGuardService } from '../workload/workload.service';
-import { BriefFacts, briefLines, speakable } from './skills-rules';
-import { assigneeOwesSql, stageSql } from '../tasks/responsibility';
-import { FocusBriefService } from '../focus-brief/focus-brief.service';
+import { assigneeOwesSql } from '../tasks/responsibility';
+import { StandupService } from '../focus-brief/standup.service';
+import { briefDue, CoffeeFacts, morningCoffee, StandupDraft, standupDrafts, StandupInput } from './morning-rules';
+
+const DEFAULT_AT = '09:00';
 
 /**
- * Утренний бриф руководителя (ТЗ-21, этап 7). Приходит следом за обычной утренней
- * сводкой (ТЗ-18): 3–7 пунктов — вчера, горит сегодня, ждут решения, встречи, кто
- * перегружен, что подготовлено. С ключом OpenAI — ещё и голосом: файл в ящике
- * секретаря, в Telegram — голосовым, только если приватность push «полностью».
- * Сотрудникам — их личная сводка, как раньше (П8).
+ * Утренний аудио-кофе руководителя (ТЗ-21, этап 7; #1525 — слово в слово по документу).
+ *
+ * В 9:00 по поясу человека (своё время или «выключено» — в настройках секретаря)
+ * владельцу и руководителям: «Доброе утро, Борис! На связи ваш ассистент QEVO. Вот
+ * главное на сегодня: …» — вчерашние решения созвонов, горящие дедлайны команды,
+ * служба заботы — и черновики утренней планерки в той же карточке, каждый — задача в
+ * 1 клик. С ключом ИИ — голосом: плеер в карточке, в Telegram — голосовое (при
+ * приватности push «полностью»). Сотрудникам — их личная сводка, как раньше (П8).
  */
 @Injectable()
 export class MorningVoiceService implements OnModuleInit {
@@ -33,29 +39,41 @@ export class MorningVoiceService implements OnModuleInit {
     private readonly settings: ProactiveRepository,
     private readonly scheduler: ProactiveScheduler,
     private readonly workload: WorkloadGuardService,
-    private readonly focusBrief: FocusBriefService,
+    private readonly standup: StandupService,
   ) {}
 
   onModuleInit(): void {
-    // карточка брифа — сведения со ссылками, кнопок-действий в базе у неё нет
-    this.proactive.register({ skill: 'brief', execute: async (_a: Actor, _p, action) => ({ text: action === 'done' ? 'Прочитано' : 'Готово' }) });
+    // «Прочитано» — сведения; «Поставить задачей» — черновик планерки становится задачей
+    this.proactive.register({
+      skill: 'brief',
+      execute: async (a: Actor, p: ProposalRow, action, params) => (action === 'task'
+        ? this.standup.execute(a, p, params ?? {})
+        : { text: action === 'done' ? 'Прочитано' : 'Готово' }),
+    });
     this.scheduler.add('утренний бриф руководителя', () => this.tick());
   }
 
-  /** Тем, кому сегодня уже ушла утренняя сводка, а брифа ещё нет. */
+  /**
+   * Владельцы и руководители, у кого подошло время брифа. Строки настроек может не быть
+   * вовсе — тогда 9:00 (документ: «без всякой настройки»); NULL в brief_at — выключил.
+   */
   async tick(now = new Date()): Promise<void> {
-    const rows = await this.db.many<{ tenant_id: string; user_id: string; tz: string | null; last_morning: string; name: string }>(
-      `SELECT sp.tenant_id::text, sp.user_id::text, COALESCE(u.timezone, t.timezone) AS tz, sp.last_morning::text, u.full_name AS name
-         FROM secretary_prefs sp
-         JOIN users u ON u.id = sp.user_id AND u.is_active IS NOT FALSE
+    const rows = await this.db.many<{ tenant_id: string; user_id: string; tz: string | null; name: string; brief_at: string; weekdays_only: boolean }>(
+      `SELECT u.tenant_id::text, u.id::text AS user_id, COALESCE(u.timezone, t.timezone) AS tz, u.full_name AS name,
+              CASE WHEN sp.user_id IS NULL THEN '${DEFAULT_AT}' ELSE to_char(sp.brief_at, 'HH24:MI') END AS brief_at,
+              COALESCE(sp.weekdays_only, TRUE) AS weekdays_only
+         FROM users u
          JOIN roles r ON r.id = u.role_id AND r.code IN ('owner', 'manager')
-         JOIN tenants t ON t.id = sp.tenant_id
-        WHERE sp.last_morning >= current_date - 1`,
+         JOIN tenants t ON t.id = u.tenant_id
+    LEFT JOIN secretary_prefs sp ON sp.user_id = u.id
+        WHERE u.is_active IS NOT FALSE AND (sp.user_id IS NULL OR sp.brief_at IS NOT NULL)
+          AND NOT EXISTS (SELECT 1 FROM secretary_sent x WHERE x.user_id = u.id AND x.kind = 'morning_coffee'
+                             AND x.ref >= to_char(current_date - 1, 'YYYY-MM-DD'))`,
     );
     for (const r of rows) {
       const tz = r.tz || 'Europe/Moscow';
-      const today = localParts(now, tz).date;
-      if (r.last_morning !== today) continue;
+      const l = localParts(now, tz);
+      if (!briefDue(r.brief_at, { hour: l.hour, minute: l.minute, dow: l.dow }, r.weekdays_only)) continue;
       await this.forUser(r.tenant_id, r.user_id, r.name, tz, now).catch((e) => this.log.warn(`бриф ${r.user_id}: ${(e as Error).message}`));
     }
   }
@@ -66,24 +84,32 @@ export class MorningVoiceService implements OnModuleInit {
     const done = await this.db.one(`SELECT 1 FROM assistant_proposals WHERE tenant_id = $1 AND user_id = $2 AND fingerprint = $3`, [tenantId, userId, fp]);
     if (done) return null;
     const s = await this.settings.tenantSettings(tenantId);
-    if (!s.enabled) return null;
+    if (!s.enabled || !s.morningAudio) return null;
     const prefs = await this.settings.prefs(tenantId, userId);
     if (prefs.level === 'off') return null;
+    // один бриф на день даже при двух экземплярах во время выкладки: синтез — один раз
+    const claimed = await this.db.query(
+      `INSERT INTO secretary_sent (user_id, kind, ref) VALUES ($1, 'morning_coffee', $2) ON CONFLICT DO NOTHING`, [userId, today],
+    );
+    if (!claimed.rowCount) return null;
+    try {
+      return await this.compose(tenantId, userId, name, tz, now, today, fp, prefs.morningAudio);
+    } catch (e) {
+      // не получилось — освобождаем день: следующий тик попробует снова
+      await this.db.query(`DELETE FROM secretary_sent WHERE user_id = $1 AND kind = 'morning_coffee' AND ref = $2`, [userId, today]).catch(() => undefined);
+      throw e;
+    }
+  }
 
-    /*
-      Один снимок на всё (ТЗ-27, решение 12.10): если у человека есть брифинг «Фокуса
-      дня», бриф в ящике и в Telegram — тот же текст и тот же голос, синтез один раз.
-      Брифинг выключен или «Фокус дня» у организации выключен — прежние строки ТЗ-21.
-    */
-    const shared = await this.focusBrief.forMorning(tenantId, userId, 'manager', now)
-      .catch((e) => { this.log.warn(`снимок брифинга: ${(e as Error).message}`); return null; });
-    const facts = await this.facts(tenantId, userId, tz, now);
-    const lines = shared ? shared.lines : briefLines(facts);
-    const voiceOn = s.morningAudio && prefs.morningAudio;
-    let audioFileId: string | null = shared && voiceOn ? shared.audioFileId : null;
-    let audio: Buffer | null = shared && voiceOn ? shared.audio : null;
-    if (!shared && s.morningAudio && prefs.morningAudio && (await this.settings.withinDailyLimit(tenantId, 'morning_voice'))) {
-      audio = await this.ai.speak(tenantId, speakable(name, lines)).catch((e) => { this.log.warn(`голос: ${(e as Error).message}`); return null; });
+  private async compose(tenantId: string, userId: string, name: string | null, tz: string, now: Date, today: string, fp: string, voice: boolean) {
+    const { facts, standup, firstMeeting } = await this.facts(tenantId, userId, tz, now);
+    const drafts: StandupDraft[] = standupDrafts(standup);
+    const coffee = morningCoffee({ ...facts, name, drafts: drafts.length });
+
+    let audioFileId: string | null = null;
+    let audio: Buffer | null = null;
+    if (voice && (await this.settings.withinDailyLimit(tenantId, 'morning_voice'))) {
+      audio = await this.ai.speak(tenantId, coffee.speech).catch((e) => { this.log.warn(`голос: ${(e as Error).message}`); return null; });
       if (audio) {
         const f = await this.files.upload({
           tenantId, userId, buffer: audio, fileName: `brief-${today}.mp3`, contentType: 'audio/mpeg', ownerKind: 'assistant_brief',
@@ -95,16 +121,21 @@ export class MorningVoiceService implements OnModuleInit {
       tenantId, userId, skill: 'brief', kind: 'morning', sourceType: 'brief', sourceId: today, sourceAt: now,
       sourceLabel: 'Утренний бриф', sourceLink: '/focus',
       title: 'Утро: главное на сегодня',
-      summary: lines.join('\n'),
+      summary: [coffee.intro, ...coffee.items, coffee.outro].join('\n'),
       why: 'Сводка по команде на начало дня — чтобы не открывать пять разделов.',
+      recommend: drafts.length ? 'Поставьте задачей то, что берёте на планерку, — в 1 клик.' : '',
+      effect: drafts.length ? 'Задача появится на вас в проекте пункта, со сроком сегодня к 18:00.' : '',
       priority: 3, confidence: 1,
-      actions: [{ key: 'done', label: 'Прочитано', risk: 'read', primary: true }],
+      actions: [
+        { key: 'done', label: 'Прочитано', risk: 'read', primary: true },
+        ...(drafts.length ? [{ key: 'task', label: 'Поставить задачей', risk: 'low_write' }] : []),
+      ],
       payload: {
-        lines, audioFileId,
+        intro: coffee.intro, lines: coffee.items, outro: coffee.outro, audioFileId, drafts,
         links: [
           { label: 'Открыть Фокус', path: '/focus' },
-          ...(facts.decisionsWaiting ? [{ label: 'Разобрать решения', path: '/secretary' }] : []),
-          ...(facts.firstMeeting ? [{ label: 'К первой встрече', path: '/calendar' }] : []),
+          ...(facts.waiting.proposals ? [{ label: 'Разобрать решения', path: '/secretary' }] : []),
+          ...(firstMeeting ? [{ label: 'К первой встрече', path: '/calendar' }] : []),
         ],
       },
       fingerprint: fp,
@@ -114,32 +145,68 @@ export class MorningVoiceService implements OnModuleInit {
     return row ? String(row.id) : null;
   }
 
-  private async facts(tenantId: string, userId: string, tz: string, now: Date): Promise<BriefFacts> {
+  /**
+   * Факты брифа. Руководитель видит все проекты; встречи — по общему правилу видимости
+   * (созвон из чужого личного чата ему не виден). Служба заботы — обращения своей
+   * организации за вчера; у вендора (организации-платформы) — все обращения.
+   */
+  private async facts(tenantId: string, userId: string, tz: string, now: Date): Promise<{
+    facts: Omit<CoffeeFacts, 'name' | 'drafts'>; standup: StandupInput; firstMeeting: { title: string; time: string } | null;
+  }> {
     const today = localParts(now, tz).date;
     const dayStart = zonedTime(today, '00:00', tz);
     const dayEnd = zonedTime(tomorrowOf(now, tz), '00:00', tz);
     const yStart = new Date(dayStart.getTime() - 86400_000);
-    const [c, hot, waiting, meetings, first, prepared, overloaded] = await Promise.all([
-      this.db.one<{ closed: number; created: number; overdue: number; due: number; o_work: number; o_review: number; o_approval: number; o_client: number }>(
-        `SELECT count(*) FILTER (WHERE closed_at >= $2 AND closed_at < $3)::int AS closed,
-                count(*) FILTER (WHERE created_at >= $2 AND created_at < $3)::int AS created,
-                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3)::int AS overdue,
-                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} = 'work')::int AS o_work,
-                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} IN ('testing', 'review'))::int AS o_review,
-                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} = 'approval')::int AS o_approval,
-                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at < $3 AND ${stageSql('tasks')} = 'waiting_external')::int AS o_client,
-                count(*) FILTER (WHERE closed_at IS NULL AND deadline_at >= $3 AND deadline_at < $4)::int AS due
-           FROM tasks WHERE tenant_id = $1 AND deleted_at IS NULL`,
-        [tenantId, yStart, dayStart, dayEnd],
+    const OPEN = `t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL
+      AND EXISTS (SELECT 1 FROM projects p WHERE p.id = t.project_id AND p.status <> 'archived')`;
+    const [decisions, hot, hotCount, overdue, overdueCount, blocked, support, waiting, meetings, first, overloaded] = await Promise.all([
+      this.db.many<{ id: string; text: string; project_id: string | null; meeting_id: string; title: string | null; peer: string | null }>(
+        `SELECT d.id::text, d.text, COALESCE(d.project_id, m.project_id)::text AS project_id, m.id::text AS meeting_id, m.title,
+                COALESCE(
+                  (SELECT u.full_name FROM meeting_segments s JOIN users u ON u.id = s.speaker_user_id
+                    WHERE s.meeting_id = m.id AND s.speaker_user_id <> $2::bigint
+                    GROUP BY u.id, u.full_name ORDER BY count(*) DESC LIMIT 1),
+                  (SELECT u.full_name FROM users u WHERE u.id = m.created_by AND u.id <> $2::bigint)) AS peer
+           FROM decisions d JOIN meetings m ON m.id = d.meeting_id
+          WHERE d.tenant_id = $1 AND d.revoked_at IS NULL AND d.superseded_at IS NULL
+            AND COALESCE(m.happened_at, m.created_at) >= $3 AND COALESCE(m.happened_at, m.created_at) < $4
+            AND ${meetingVisibleSql('m', { user: '$2', all: 'TRUE', client: 'FALSE' })}
+          ORDER BY d.id LIMIT 4`,
+        [tenantId, userId, yStart, dayStart],
       ),
-      this.db.one<{ title: string; who: string | null }>(
-        `SELECT t.title, u.full_name AS who FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
-          WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND t.deadline_at < $2
-            -- «горит у такого-то» — только если задача сейчас у исполнителя (ТЗ-30)
-            AND ${assigneeOwesSql('t')}
-          ORDER BY (t.priority = 'urgent') DESC, (t.priority = 'high') DESC, t.deadline_at LIMIT 1`,
-        [tenantId, dayEnd],
+      // горит сегодня — только то, что сейчас у исполнителя (ТЗ-30)
+      this.db.many<{ id: string; project_id: string; title: string; who: string | null }>(
+        `SELECT t.id::text, t.project_id::text, t.title, u.full_name AS who FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
+          WHERE ${OPEN} AND ${assigneeOwesSql('t')} AND t.deadline_at >= $2 AND t.deadline_at < $3
+          ORDER BY (t.priority = 'urgent') DESC, (t.priority = 'high') DESC, t.deadline_at LIMIT 4`,
+        [tenantId, dayStart, dayEnd],
       ),
+      this.db.one<{ n: number }>(
+        `SELECT count(*)::int AS n FROM tasks t WHERE ${OPEN} AND ${assigneeOwesSql('t')} AND t.deadline_at >= $2 AND t.deadline_at < $3`,
+        [tenantId, dayStart, dayEnd],
+      ),
+      this.db.many<{ id: string; project_id: string; title: string; who: string | null }>(
+        `SELECT t.id::text, t.project_id::text, t.title, u.full_name AS who FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
+          WHERE ${OPEN} AND ${assigneeOwesSql('t')} AND t.deadline_at < $2
+          ORDER BY (t.priority = 'urgent') DESC, (t.priority = 'high') DESC, t.deadline_at DESC LIMIT 4`,
+        [tenantId, dayStart],
+      ),
+      this.db.one<{ n: number }>(
+        `SELECT count(*)::int AS n FROM tasks t WHERE ${OPEN} AND ${assigneeOwesSql('t')} AND t.deadline_at < $2`,
+        [tenantId, dayStart],
+      ),
+      this.db.many<{ id: string; project_id: string; title: string; who: string | null }>(
+        `SELECT t.id::text, t.project_id::text, t.title, u.full_name AS who FROM tasks t LEFT JOIN users u ON u.id = t.assignee_id
+          WHERE ${OPEN} AND t.is_blocked ORDER BY t.updated_at DESC LIMIT 2`,
+        [tenantId],
+      ),
+      this.db.one<{ total: number; closed: number }>(
+        `SELECT count(*)::int AS total, count(*) FILTER (WHERE c.status IN ('resolved', 'closed'))::int AS closed
+           FROM support_conversations c
+          WHERE (c.tenant_id = $1 OR EXISTS (SELECT 1 FROM tenants pt WHERE pt.id = $1 AND pt.is_platform))
+            AND c.created_at >= $2 AND c.created_at < $3`,
+        [tenantId, yStart, dayStart],
+      ).catch(() => null),
       this.db.one<{ proposals: number; approvals: number }>(
         `SELECT (SELECT count(*) FROM assistant_proposals WHERE tenant_id = $1 AND user_id = $2 AND status IN ('new','seen') AND skill <> 'brief')::int AS proposals,
                 (SELECT count(*) FROM approvals WHERE tenant_id = $1 AND approver_id = $2 AND status = 'pending')::int AS approvals`,
@@ -155,25 +222,31 @@ export class MorningVoiceService implements OnModuleInit {
           WHERE e.tenant_id = $1 AND e.starts_at >= $3 AND e.starts_at < $4 AND p.status <> 'declined' ORDER BY e.starts_at LIMIT 1`,
         [tenantId, userId, now, dayEnd],
       ),
-      this.db.one<{ letters: number; drafts: number; replies: number }>(
-        `SELECT (SELECT count(*) FROM assistant_proposals WHERE tenant_id = $1 AND user_id = $2 AND skill = 'followup' AND status IN ('new','seen'))::int AS letters,
-                (SELECT count(*) FROM meeting_task_drafts d JOIN meetings m ON m.id = d.meeting_id
-                  WHERE d.tenant_id = $1 AND d.status = 'pending' AND m.created_by = $2)::int AS drafts,
-                (SELECT count(*) FROM smart_reply_drafts WHERE user_id = $2 AND outcome IS NULL AND created_at > now() - interval '1 day')::int AS replies`,
-        [tenantId, userId],
-      ),
       this.workload.overloaded(tenantId).catch(() => [] as string[]),
     ]);
     const time = first ? localParts(new Date(first.starts_at), tz) : null;
+    const firstMeeting = first && time ? { title: first.title, time: `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}` } : null;
     return {
-      closedYesterday: c?.closed ?? 0, createdYesterday: c?.created ?? 0, overdue: c?.overdue ?? 0, dueToday: c?.due ?? 0,
-      overdueBy: { work: c?.o_work ?? 0, review: c?.o_review ?? 0, approval: c?.o_approval ?? 0, client: c?.o_client ?? 0 },
-      hottest: hot ?? null,
-      decisionsWaiting: waiting?.proposals ?? 0, approvalsWaiting: waiting?.approvals ?? 0,
-      meetingsToday: meetings?.n ?? 0,
-      firstMeeting: first && time ? { title: first.title, time: `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}` } : null,
-      prepared: { replies: prepared?.replies ?? 0, letters: prepared?.letters ?? 0, meetingDrafts: prepared?.drafts ?? 0 },
-      overloaded,
+      facts: {
+        decisions: decisions.map((d) => ({ text: d.text, peer: d.peer, meetingTitle: d.title })),
+        hot: hot.map((h) => ({ title: h.title, who: h.who })),
+        hotTotal: hotCount?.n ?? hot.length,
+        overdue: overdueCount?.n ?? 0,
+        support: support && support.total ? { total: support.total, closed: support.closed } : null,
+        waiting: { proposals: waiting?.proposals ?? 0, approvals: waiting?.approvals ?? 0 },
+        meetingsToday: meetings?.n ?? 0,
+        firstMeeting,
+        overloaded,
+      },
+      standup: {
+        tasks: [
+          ...overdue.map((t) => ({ id: t.id, projectId: t.project_id, title: t.title, who: t.who, overdue: true })),
+          ...hot.map((t) => ({ id: t.id, projectId: t.project_id, title: t.title, who: t.who, overdue: false })),
+        ],
+        blocked: blocked.map((t) => ({ id: t.id, projectId: t.project_id, title: t.title, who: t.who })),
+        decisions: decisions.map((d) => ({ id: d.id, projectId: d.project_id, text: d.text, meetingId: d.meeting_id, meetingTitle: d.title })),
+      },
+      firstMeeting,
     };
   }
 }
