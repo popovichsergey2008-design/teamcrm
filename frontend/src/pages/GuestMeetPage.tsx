@@ -257,6 +257,7 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
       <CallPanel
         meetingId={admission.roomId}
         guest={{ token: admission.token, iceServers: admission.iceServers, userId: admission.userId }}
+        supportGuest={/^Служба заботы/.test(info?.label ?? '')}
         // Выход из созвона возвращает в переписку, а не выбрасывает со страницы:
         // разговор продолжается словами, даже когда созвон закончился. Без переписки —
         // не «звонок завершён», а «спасибо за встречу» и итоги (ТЗ-28, п. 28).

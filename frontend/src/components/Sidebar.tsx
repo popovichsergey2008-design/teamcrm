@@ -851,7 +851,8 @@ export function Sidebar({
             >
               <Icon name="robot" size={20} />
             </button>
-            <button className="nav-support-fab" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
+            {/* удержание 1 с — шторка «голосом, созвон или написать» (ТЗ-34, п. 2.1) */}
+            <button className="nav-support-fab" data-care-hold="" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
               <Icon name="support" size={20} />
             </button>
           </div>

@@ -18,7 +18,7 @@ import { clampTo, useDragMove } from '../hooks/useDragMove';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import { savedDevices } from './DeviceCheck';
 import { confirmAction } from './ui/dialog';
-import { PointerMark, pointerWhere, sensitiveRoute, videoPoint } from '../lib/screen-pointer';
+import { PointerMark, pointerWhere, sensitiveRoute, tapAt, videoPoint } from '../lib/screen-pointer';
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -63,7 +63,7 @@ const STATE_LABEL: Record<string, string> = {
  */
 export interface CallEnd { roomId: string; recorded: boolean; last: boolean }
 
-export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = false, onClose }: {
+export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest = false, withCamera = false, onClose }: {
   meetingId: string;
   inviteUserIds?: string[];
   /**
@@ -79,6 +79,8 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
    * у гостя нет. Внутри окна он отличается только урезанными правами.
    */
   guest?: { token: string; iceServers: RTCIceServer[]; userId: string };
+  /** Гость пришёл в созвон Отдела заботы (ссылка «Служба заботы · …»): показ — только вкладки QEVO (ТЗ-34). */
+  supportGuest?: boolean;
   /** Чем кончился звонок: по этому решают, открыть ли итоги встречи (ТЗ-22). */
   onClose: (end?: CallEnd) => void;
 }) {
@@ -126,7 +128,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const [screenPaused, setScreenPaused] = useState(false);
   const [marks, setMarks] = useState<PointerMark[]>([]);
   const [pointerNote, setPointerNote] = useState('');
-  const [support, setSupport] = useState<{ support: boolean; requester?: boolean; recordingConsent?: boolean | null } | null>(null);
+  const [support, setSupport] = useState<{ support: boolean; conversationId?: string; requester?: boolean; recordingConsent?: boolean | null } | null>(null);
+  const supportRef = useRef(support);
+  supportRef.current = support;
   const [hand, setHand] = useState(false);
   const [recording, setRecording] = useState(false);
   // запись могли выключить посреди разговора — итоги всё равно будут
@@ -137,6 +141,15 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
   const peersRef = useRef<Peer[]>([]);
   useEffect(() => { peersRef.current = peers; }, [peers]);
   const [aiInvited, setAiInvited] = useState(false);
+  /*
+    Указка «в 1 тап нажать её сам» (ТЗ-34, 3.3): показывающий разрешает инженеру нажимать
+    на своей вкладке, инженер включает режим «нажать». Без разрешения нажатие остаётся
+    подсветкой — как раньше.
+  */
+  const [tapAllowed, setTapAllowed] = useState(false);
+  const tapAllowedRef = useRef(false);
+  tapAllowedRef.current = tapAllowed;
+  const [tapMode, setTapMode] = useState(false);
   const [err, setErr] = useState('');
   /** Гости, стучащиеся в дверь (видит только сотрудник). */
   const [knocks, setKnocks] = useState<Knock[]>([]);
@@ -378,6 +391,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             const mark: PointerMark = { id: `${Date.now()}-${Math.random()}`, x: p.x, y: p.y, kind: p.kind, name: p.name, page: surface === 'browser' && document.visibilityState === 'visible' };
             setMarks((m) => [...m.slice(-4), mark]);
             if (!mark.page) setPointerNote(`${p.name || 'Собеседник'} показывает: ${pointerWhere(p.x, p.y)}`);
+            // нажатие за меня — только с моего разрешения и только по показанной вкладке
+            if (p.kind === 'tap' && mark.page && tapAllowedRef.current) {
+              const label = tapAt(p.x, p.y);
+              if (label !== null && supportRef.current?.conversationId) {
+                void api.supportScreenTap(supportRef.current.conversationId, 'tap', label).catch(() => undefined);
+              }
+            }
             window.setTimeout(() => setMarks((m) => m.filter((x) => x.id !== mark.id)), 2600);
           },
           onKnocks: (list) => {
@@ -579,11 +599,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     if (!v) return;
     const pt = videoPoint(v, e.clientX, e.clientY);
     if (!pt) return;
-    client.current?.point(pt.x, pt.y, 'pulse', target);
+    client.current?.point(pt.x, pt.y, tapMode ? 'tap' : 'pulse', target);
     const mark: PointerMark = { id: `${Date.now()}`, x: pt.x, y: pt.y, kind: 'pulse', name: '', page: false, local: true };
     setMarks((m) => [...m.slice(-4), mark]);
     window.setTimeout(() => setMarks((m) => m.filter((x) => x.id !== mark.id)), 1200);
-  }, []);
+  }, [tapMode]);
 
   const toggleScreen = useCallback(async () => {
     const c = client.current;
@@ -608,7 +628,15 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
     }
     let display: MediaStream | null = null;
     try {
-      display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      /*
+        Звонок Отдела заботы — только окно QEVO (ТЗ-34, 3.3): браузер первой предлагает эту
+        вкладку, экраны целиком скрыты, переключиться на другую вкладку на лету нельзя.
+        Личные фото, уведомления мессенджеров и СМС инженер не увидит.
+      */
+      const privateTab = !!support?.support || !!supportGuest;
+      display = await navigator.mediaDevices.getDisplayMedia(privateTab
+        ? { video: true, preferCurrentTab: true, selfBrowserSurface: 'include', monitorTypeSurfaces: 'exclude', surfaceSwitching: 'exclude' } as DisplayMediaStreamOptions
+        : { video: true });
       screenStream.current = display;
       const track = display.getVideoTracks()[0];
       if (!track) throw new Error('Браузер не дал картинку экрана');
@@ -628,7 +656,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
       diag('meet', 'screen.cancelled', meetingId, { error: (e as Error)?.name ?? (e as Error)?.message });
       setErr('Демонстрация экрана отменена');
     }
-  }, [screenOn, meetingId, stopScreen, support?.support]);
+  }, [screenOn, meetingId, stopScreen, support?.support, supportGuest]);
 
   /*
     Звук к уху, как в Телеграме (задача #1464). Chromium в приложении при звонке сам
@@ -1020,7 +1048,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
           {screenTrack && (
             <div
               className="call-spotlight call-pointable"
-              title="Щёлкните, чтобы подсветить это место у показывающего"
+              title={tapMode ? 'Щёлкните — нажмём это место за показывающего (если он разрешил)' : 'Щёлкните, чтобы подсветить это место у показывающего'}
               onClick={(e) => pointAt(e, screenTrack.userId)}
             >
               {/* ключ по потоку: сменился показывающий — элемент пересоздаётся целиком,
@@ -1089,6 +1117,34 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, withCamera = f
             <Icon name="screen" size={15} /><span className="call-btn-label">{screenOn ? 'Показ идёт' : 'Показать экран'}</span>
             <span className="call-btn-cap">Экран</span>
           </button>
+          )}
+          {/* ТЗ-34 (3.3): разрешить инженеру нажимать на показанной вкладке — журнал в разговор */}
+          {screenOn && (support?.support || supportGuest) && (
+            <button
+              className={`ui-btn ui-btn-outline ui-btn-sm ${tapAllowed ? 'call-rec-on' : 'call-off'}`}
+              aria-pressed={tapAllowed}
+              onClick={() => {
+                const next = !tapAllowed;
+                setTapAllowed(next);
+                if (support?.conversationId) void api.supportScreenTap(support.conversationId, next ? 'allow' : 'deny').catch(() => undefined);
+              }}
+              title={tapAllowed ? 'Запретить инженеру нажимать на экране' : 'Разрешить инженеру нажимать кнопки на показанной вкладке QEVO'}
+            >
+              <Icon name="target" size={15} /><span className="call-btn-label">{tapAllowed ? 'Инженер может нажимать' : 'Разрешить нажимать'}</span>
+              <span className="call-btn-cap">Нажатия</span>
+            </button>
+          )}
+          {/* У инженера: режим «нажать за собеседника» поверх указки */}
+          {screenTrack && String(screenTrack.userId) !== String(guest?.userId ?? user?.id ?? '') && (isGuest || support?.support) && (
+            <button
+              className={`ui-btn ui-btn-outline ui-btn-sm ${tapMode ? 'call-rec-on' : 'call-off'}`}
+              aria-pressed={tapMode}
+              onClick={() => setTapMode((v) => !v)}
+              title="Щелчок по показу нажмёт это место у собеседника — только если он разрешил"
+            >
+              <Icon name="zap" size={15} /><span className="call-btn-label">{tapMode ? 'Режим: нажать' : 'Режим: подсветить'}</span>
+              <span className="call-btn-cap">Указка</span>
+            </button>
           )}
           {screenOn && (
             <button className={`ui-btn ui-btn-outline ui-btn-sm ${screenPaused ? 'call-rec-on' : ''}`} onClick={togglePause} title={screenPaused ? 'Продолжить показ' : 'Поставить показ на паузу'}>

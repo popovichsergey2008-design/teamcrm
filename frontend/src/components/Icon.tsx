@@ -16,7 +16,7 @@ import {
   Flag, Star, Tag, Pencil, Trash2, Copy, Link, RefreshCw, Send, ChevronLeft, ChevronRight,
   ChevronDown, ChevronUp, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, Reply, LifeBuoy, TriangleAlert,
   Info, CircleHelp, Lock, Eye, EyeOff, LogOut, BookOpen, Inbox, Plug, Handshake, Sparkles,
-  ChartColumn, Wallet, Sun, Moon, Monitor, Play, Pause, Mail, Building2, Target, Zap,
+  ChartColumn, Wallet, Sun, Moon, Monitor, Play, Pause, Mail, Building2, Target, Zap, ShieldCheck,
   Pin, ThumbsUp, ThumbsDown, Heart, Rocket, Megaphone, PartyPopper, Trophy, Lightbulb, WandSparkles,
   Funnel, CheckCheck, SquarePen, House,
 } from 'lucide-react';
@@ -37,7 +37,7 @@ const ICONS = {
   alert: TriangleAlert, info: Info, help: CircleHelp, lock: Lock, eye: Eye, 'eye-off': EyeOff, logout: LogOut,
   book: BookOpen, inbox: Inbox, plug: Plug, handshake: Handshake, sparkles: Sparkles, chart: ChartColumn,
   money: Wallet, sun: Sun, moon: Moon, monitor: Monitor,
-  play: Play, pause: Pause, mail: Mail, building: Building2, target: Target, zap: Zap,
+  play: Play, pause: Pause, mail: Mail, building: Building2, target: Target, zap: Zap, shield: ShieldCheck,
   pin: Pin, 'thumbs-up': ThumbsUp, 'thumbs-down': ThumbsDown,
   // «Новости» (ТЗ-20): спасибо, релиз, объявление, веха, победа, выводы недели
   heart: Heart, rocket: Rocket, megaphone: Megaphone, party: PartyPopper, trophy: Trophy, bulb: Lightbulb,

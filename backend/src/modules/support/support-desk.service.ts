@@ -14,7 +14,9 @@ import { ForecastService } from '../forecast/forecast.service';
 import { HandbookService } from '../knowledge/handbook.service';
 import { PlatformService } from '../platform/platform.service';
 import { AiService } from '../ai/ai.service';
-import { ActionRequest, describeAction, isUndoable, validAction } from './support-actions';
+import {
+  ActionRequest, actionButton, describeAction, isUndoable, normalizeProgress, progressLine, SupportActionKind, validAction,
+} from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
 import { MAYBE_SUFFIX, META_RULES, NO_ANSWER_PHRASE, parseAnswer } from './support-ai';
 import { Candidate, pickAgent } from './support-routing';
@@ -25,7 +27,8 @@ import { Q_SUPPORT_ROUTING, RabbitMQService } from '../../messaging/rabbitmq.ser
 import { PushService } from '../notifications/push.service';
 import { SecurityService } from '../security/security.service';
 import { SupportConciergeRepository } from './support-concierge.repository';
-import { sanitizeFailedRequests } from './support-concierge';
+import { sanitizeFailedRequests, sanitizeTelemetry } from './support-concierge';
+import { FileImportService } from '../integrations/file/file-import.service';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -83,6 +86,7 @@ export class SupportDeskService implements OnModuleInit {
     private readonly push: PushService,
     private readonly concierge: SupportConciergeRepository,
     private readonly security: SecurityService,
+    private readonly fileImport: FileImportService,
   ) {}
 
   /** Подписчики «созвон поддержки завершён» (ТЗ-29: итог помощи) — без кольца модулей. */
@@ -238,7 +242,7 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   private async view(tenantId: string, conv: ConversationRow) {
-    const [messages, participants, context, actions, call, orgName, persona, extras] = await Promise.all([
+    const [messages, participants, context, actions, call, orgName, persona, extras, progress] = await Promise.all([
       this.repo.messages(String(conv.id)),
       this.repo.participants(String(conv.id)),
       this.repo.context(String(conv.id)),
@@ -247,6 +251,7 @@ export class SupportDeskService implements OnModuleInit {
       this.repo.tenantName(String(conv.tenant_id)),
       this.platform.persona(),
       this.concierge.extras(String(conv.id)),
+      this.repo.progress(String(conv.id)),
     ]);
     return {
       id: String(conv.id),
@@ -294,7 +299,22 @@ export class SupportDeskService implements OnModuleInit {
       actions: actions.map((a) => ({
         id: a.id, action: a.action, preview: a.preview, status: a.status,
         approved: a.approved_by_user, createdAt: a.created_at,
+        // ТЗ-34 (3.4): подпись единственной кнопки карточки и можно ли вернуть
+        button: actionButton({ kind: a.action as SupportActionKind, params: (a.params_json?.extra ?? {}) as Record<string, unknown> }),
+        undoable: isUndoable(a.action as SupportActionKind),
       })),
+      /** ТЗ-34 (3.6): что делает инженер прямо сейчас — полоса у клиента. */
+      progress: progress?.progress_text ? {
+        text: progress.progress_text,
+        percent: Number(progress.progress_percent ?? 0),
+        minutesLeft: progress.progress_minutes === null ? null : Number(progress.progress_minutes),
+        engineer: progress.by_name ?? 'Инженер',
+        line: progressLine(progress.by_name ?? 'Инженер', {
+          text: progress.progress_text, percent: Number(progress.progress_percent ?? 0),
+          minutesLeft: progress.progress_minutes === null ? null : Number(progress.progress_minutes),
+        }),
+        at: progress.progress_at,
+      } : null,
       messages: messages.map((m) => ({
         id: String(m.id),
         kind: m.author_kind,
@@ -344,7 +364,13 @@ export class SupportDeskService implements OnModuleInit {
       // Справочник должен быть на месте к первому же вопросу новой компании.
       void this.handbook.ensure(tenantId);
     }
-    if (ctx) await this.repo.saveContext(String(conv.id), { ...ctx, failedRequests: sanitizeFailedRequests((ctx as { failedRequests?: unknown }).failedRequests) });
+    if (ctx) {
+      await this.repo.saveContext(String(conv.id), {
+        ...ctx,
+        failedRequests: sanitizeFailedRequests((ctx as { failedRequests?: unknown }).failedRequests),
+        telemetry: sanitizeTelemetry((ctx as { telemetry?: unknown }).telemetry) as Record<string, unknown> | null,
+      });
+    }
 
     const msg = await this.repo.addMessage({
       tenantId, conversationId: String(conv.id), authorId: user.userId, kind: 'user', body, fileId,
@@ -1561,23 +1587,30 @@ export class SupportDeskService implements OnModuleInit {
    * Пока он не нажал «Разрешить», не происходит НИЧЕГО: в базе лежит предложение с
    * подписью, которую он читает. Это и отличает помощь от доступа к чужому аккаунту.
    */
-  async proposeAction(tenantId: string, user: { userId: string; role: string }, id: string, req: ActionRequest) {
+  async proposeAction(tenantId: string, user: { userId: string; role: string }, id: string, input: ActionRequest) {
+    let req = input;
     await this.assertCanWork(tenantId, user, id);
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
+    // автопротокол — настройка того, кто обратился: другого «над чем» у неё нет
+    if (req.kind === 'meetings.autoprotocol') req = { ...req, entityId: String(conv.user_id) };
     if (!validAction(req)) throw AppException.validation('Непонятно, что именно сделать');
+    if (req.kind === 'import.confirm') req = { ...req, params: await this.prepareImport(tenantId, id, String(req.entityId)) };
 
     const before = await this.currentState(tenantId, req);
     const preview = describeAction({ ...req, labels: { ...req.labels, entity: before.label ?? req.labels?.entity } });
+    if (req.kind === 'meetings.autoprotocol' && before.state?.value === 'true') {
+      throw AppException.conflict('Автопротокол у человека уже включён');
+    }
     const row = await this.repo.proposeAction({
       conversationId: id, actorId: user.userId,
       // В какой роли человек предложил правку в чужой системе — половина ответа на
       // вопрос «почему это произошло», который однажды зададут.
       actorRole: await this.platform.roleOf(user.userId),
       action: req.kind,
-      entityType: req.kind.startsWith('task') ? 'task' : 'project',
+      entityType: req.kind.startsWith('task') ? 'task' : req.kind === 'meetings.autoprotocol' ? 'user' : req.kind === 'import.confirm' ? 'file' : 'project',
       entityId: String(req.entityId), preview,
-      params: { value: req.value ?? null, labels: req.labels ?? {} },
+      params: { value: req.value ?? null, labels: req.labels ?? {}, extra: req.params ?? {} },
       before: before.state,
     });
     await this.repo.addMessage({
@@ -1620,8 +1653,9 @@ export class SupportDeskService implements OnModuleInit {
       kind: act.action as ActionRequest['kind'],
       entityId: String(act.entity_id),
       value: (act.params_json?.value as string | null) ?? null,
+      params: (act.params_json?.extra ?? {}) as Record<string, unknown>,
     };
-    await this.runAction(tenantId, user, req);
+    await this.runAction(tenantId, user, req, id);
     // Действие выполнено в организации обращения и от имени того, кто его разрешил.
     const after = await this.currentState(tenantId, req);
     await this.repo.decideAction(actionId, 'done', true, after.state, sign);
@@ -1654,12 +1688,83 @@ export class SupportDeskService implements OnModuleInit {
     */
     await this.runAction(tenantId, { userId: String(conv.user_id), role: 'member' }, {
       kind, entityId: String(act.entity_id), value: before.value ?? null,
-    });
+    }, id);
     await this.repo.decideAction(actionId, 'undone', act.approved_by_user, before);
     await this.repo.addMessage({
       tenantId, conversationId: id, authorId: user.userId, kind: 'system', body: 'вернул как было',
     });
     return this.view(tenantId, (await this.repo.byId(tenantId, id))!);
+  }
+
+  /**
+   * Подготовить импорт из таблицы, которую человек приложил к разговору (ТЗ-34, 3.4).
+   *
+   * Инженер ничего не записывает: разбираем файл в организации клиента и кладём в
+   * предложение, СКОЛЬКО задач и КУДА поедут. Записью займётся кнопка человека.
+   */
+  private async prepareImport(tenantId: string, conversationId: string, fileId: string): Promise<Record<string, unknown>> {
+    const file = await this.repo.conversationFile(conversationId, fileId);
+    if (!file) throw AppException.notFound('Такого файла в разговоре нет');
+    if (!/\.(csv|tsv|txt|xlsx|xls)$/i.test(file.file_name)) {
+      throw AppException.validation('Импорт — из таблицы: CSV или Excel');
+    }
+    const { stream } = await this.files.getForDownload(tenantId, fileId);
+    const p = await this.fileImport.preview(tenantId, file.file_name, await readAll(stream));
+    if (p.mapping.title === undefined) {
+      throw AppException.validation('В таблице не нашлась колонка с названием задачи — разложите колонки вместе с человеком');
+    }
+    const project = file.file_name.replace(/\.[^.]+$/, '').trim().slice(0, 120) || 'Импорт';
+    return { fileName: file.file_name.slice(0, 160), total: p.totalRows, project, mapping: p.mapping };
+  }
+
+  /**
+   * Живой прогресс (ТЗ-34, 3.6): инженер пишет, что делает и сколько осталось.
+   *
+   * Ставит только тот, кто работает с разговором. На 100% — отметка «Готово» в ленте и
+   * тихий push: человек, заблокировавший телефон, узнаёт об этом без звонка.
+   */
+  async setProgress(
+    tenantId: string, user: { userId: string; role: string }, id: string,
+    raw: { text?: string; percent?: number; minutesLeft?: number | null },
+  ) {
+    await this.assertCanWork(tenantId, user, id);
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    const p = normalizeProgress(raw);
+    await this.repo.setProgress(id, p, user.userId);
+    if (p && p.percent >= 100) {
+      const who = (await this.repo.userNameAny(user.userId)) ?? 'Инженер';
+      await this.repo.addMessage({
+        tenantId, conversationId: id, authorId: null, kind: 'system', body: `Готово. ${progressLine(who, p)}`,
+      });
+      void this.push.supportEvent({
+        tenantId, userId: String(conv.user_id), conversationId: id, kind: 'done',
+        title: 'Готово', body: progressLine(who, p),
+      });
+    }
+    const next = (await this.repo.byId(tenantId, id))!;
+    await this.emit(tenantId, next, 'support.progress', { conversationId: id, percent: p?.percent ?? null });
+    return this.view(tenantId, next);
+  }
+
+  /**
+   * Журнал указки (ТЗ-34, 3.3): клиент разрешил инженеру нажимать на своей вкладке,
+   * запретил или инженер нажал элемент. Пишет только тот, кто обратился, — в ленту,
+   * которую видят обе стороны.
+   */
+  async screenTap(tenantId: string, user: { userId: string; role: string }, id: string, event: 'allow' | 'deny' | 'tap', label?: string | null) {
+    const conv = await this.repo.byId(tenantId, id);
+    if (!conv) throw AppException.notFound('Разговор не найден');
+    if (String(conv.user_id) !== String(user.userId)) throw AppException.forbidden('Разрешает только тот, кто обратился');
+    const what = String(label ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    const body = event === 'allow'
+      ? 'разрешил(а) инженеру нажимать на экране — только на показанной вкладке QEVO'
+      : event === 'deny' ? 'запретил(а) инженеру нажимать на экране'
+        : `Инженер нажал на экране${what ? ` «${what}»` : ''}`;
+    await this.repo.addMessage({ tenantId, conversationId: id, authorId: event === 'tap' ? null : user.userId, kind: 'system', body });
+    const next = (await this.repo.byId(tenantId, id))!;
+    await this.emit(tenantId, next, 'support.message.created', { conversationId: id });
+    return { ok: true };
   }
 
   /** Что сейчас: нужно и для подписи предложения, и для записи «до». */
@@ -1668,6 +1773,11 @@ export class SupportDeskService implements OnModuleInit {
       const project = await this.projects.getOrThrow(tenantId, String(req.entityId));
       return { state: null, label: project.name };
     }
+    if (req.kind === 'meetings.autoprotocol') {
+      const on = await this.repo.autoProtocol(tenantId, String(req.entityId));
+      return { state: { value: on ? 'true' : 'false' }, label: null };
+    }
+    if (req.kind === 'import.confirm') return { state: null, label: String(req.params?.fileName ?? '') || null };
     const task = await this.tasksRepo.findById(tenantId, String(req.entityId));
     if (!task) throw AppException.notFound('Задача не найдена');
     const value = req.kind === 'task.deadline'
@@ -1678,8 +1788,27 @@ export class SupportDeskService implements OnModuleInit {
   }
 
   /** Само действие. Каждое — вызов уже существующей части CRM, а не новая логика. */
-  private async runAction(tenantId: string, user: { userId: string; role: string }, req: ActionRequest): Promise<void> {
+  private async runAction(tenantId: string, user: { userId: string; role: string }, req: ActionRequest, conversationId: string): Promise<void> {
     switch (req.kind) {
+      case 'meetings.autoprotocol':
+        // разрешил — включаем; «Вернуть как было» приходит с прежним значением
+        await this.repo.setAutoProtocol(tenantId, String(req.entityId), req.value === undefined || req.value === null ? true : req.value === 'true');
+        return;
+      case 'import.confirm': {
+        /*
+          Файл разбираем заново в момент согласия: подготовленный разбор живёт полчаса,
+          а человек может нажать кнопку и через день. Колонки — те, что видел инженер.
+        */
+        const file = await this.repo.conversationFile(conversationId, String(req.entityId));
+        if (!file) throw AppException.notFound('Файл из разговора не найден');
+        const { stream } = await this.files.getForDownload(tenantId, String(req.entityId));
+        const fresh = await this.fileImport.preview(tenantId, file.file_name, await readAll(stream));
+        const mapping = (req.params?.mapping ?? fresh.mapping) as Record<string, number>;
+        await this.fileImport.run(tenantId, user.userId, {
+          token: fresh.token, mapping, newProjectName: String(req.params?.project ?? 'Импорт').slice(0, 120),
+        });
+        return;
+      }
       case 'task.deadline':
         await this.forecast.setEstimateDeadline(tenantId, String(req.entityId), { deadline: req.value ?? null });
         return;
@@ -2051,4 +2180,17 @@ function failedLines(c: Record<string, unknown>): string[] {
   const list = sanitizeFailedRequests(meta.failedRequests);
   if (!list.length) return [];
   return ['', '**Неудачные запросы**', ...list.map((f) => `${f.method} ${f.path} → ${f.status}${f.requestId ? ` · ${f.requestId}` : ''}`)];
+}
+
+/** Поток файла — целиком в память: таблицы для импорта не больше 10 МБ (как в «Импорте из файла»). */
+async function readAll(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const parts: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of stream as AsyncIterable<Buffer | string>) {
+    const b = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    size += b.length;
+    if (size > 10 * 1024 * 1024) throw AppException.validation('Файл больше 10 МБ — это уже выгрузка базы, перенесём вместе');
+    parts.push(b);
+  }
+  return Buffer.concat(parts);
 }

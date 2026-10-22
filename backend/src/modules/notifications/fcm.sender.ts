@@ -66,7 +66,7 @@ export class FcmSender {
    * `notification` — то, что рисует ОС, когда приложение закрыто. Высокий приоритет:
    * иначе Android доставит «когда-нибудь», а человек ждёт ответ поддержки сейчас.
    */
-  async send(token: string, msg: { title: string; body: string; data: Record<string, string>; badge?: number }): Promise<PushOutcome> {
+  async send(token: string, msg: { title: string; body: string; data: Record<string, string>; badge?: number; silent?: boolean }): Promise<PushOutcome> {
     if (!this.account) return 'disabled';
     try {
       const res = await fetch(`https://fcm.googleapis.com/v1/projects/${this.account.project_id}/messages:send`, {
@@ -77,8 +77,13 @@ export class FcmSender {
             token,
             notification: { title: msg.title, body: msg.body },
             data: msg.data,
-            android: { priority: 'high', notification: { channel_id: 'anthill', sound: 'default' } },
-            apns: { headers: { 'apns-priority': '10' }, payload: { aps: { sound: 'default', badge: msg.badge ?? undefined } } },
+            // «тихий» (ТЗ-34): без звука и без вибрации — просто строка в шторке
+            android: msg.silent
+              ? { priority: 'normal', notification: { channel_id: 'anthill', notification_priority: 'PRIORITY_LOW', default_sound: false, default_vibrate_timings: false } }
+              : { priority: 'high', notification: { channel_id: 'anthill', sound: 'default' } },
+            apns: msg.silent
+              ? { headers: { 'apns-priority': '5' }, payload: { aps: { badge: msg.badge ?? undefined } } }
+              : { headers: { 'apns-priority': '10' }, payload: { aps: { sound: 'default', badge: msg.badge ?? undefined } } },
           },
         }),
       });

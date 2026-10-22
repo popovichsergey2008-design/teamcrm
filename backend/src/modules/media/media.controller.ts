@@ -5,6 +5,7 @@ import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { MediaService } from './media.service';
 import { GuestLinksService } from './guest-links.service';
+import { DbService } from '../../database/db.service';
 
 /** Объявляем ДО контроллера: декоратор @Body() читает тип в момент объявления класса. */
 class StartRoomDto {
@@ -23,7 +24,7 @@ class StartRoomDto {
 @Controller('media')
 @Roles('owner', 'manager', 'member')
 export class MediaController {
-  constructor(private readonly media: MediaService, private readonly guests: GuestLinksService) {}
+  constructor(private readonly media: MediaService, private readonly guests: GuestLinksService, private readonly db: DbService) {}
 
   /** Почему «Позвонить» не работает — ответ здесь, а не в логах контейнера. */
   @Get('health')
@@ -45,8 +46,17 @@ export class MediaController {
   /** Начать созвон: комната живёт в памяти, участники входят по WebSocket. */
   @Post('rooms')
   async start(@CurrentUser() u: AuthUser, @Body() dto: StartRoomDto) {
+    /*
+      Автопротокол (ТЗ-34, 3.4): человек разрешил в службе заботы записывать каждый свой
+      созвон — ИИ зовём сам, даже если кнопка звонка его не просила. Остановить запись
+      можно в самом созвоне, как обычно.
+    */
+    const auto = dto.withAi === true ? true : !!(await this.db.one<{ on: boolean | null }>(
+      `SELECT (ui_prefs->>'autoProtocol') = 'true' AS on FROM users WHERE tenant_id=$1 AND id=$2`,
+      [u.tenantId, u.userId],
+    ).catch(() => null))?.on;
     const room = await this.media.createRoom(
-      u.tenantId, dto.projectId ?? null, dto.withAi === true, u.userId, dto.chatId ?? null, dto.taskId ?? null,
+      u.tenantId, dto.projectId ?? null, auto, u.userId, dto.chatId ?? null, dto.taskId ?? null,
     );
     return { id: room.id, projectId: room.projectId, aiEnabled: room.aiEnabled };
   }

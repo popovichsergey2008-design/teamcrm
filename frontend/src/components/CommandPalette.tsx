@@ -352,6 +352,18 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     const out: Item[] = [];
     const add = (item: Item) => { if (!seen.has(item.key)) { seen.add(item.key); out.push(item); } };
 
+    /*
+      Отдел заботы — ПЕРВОЙ закреплённой строкой, всегда (ТЗ-34, п. 2.3 и 4.2), с молнией
+      и текстом документа дословно. Человек жмёт Ctrl+K — и помощь в одном Enter.
+    */
+    add({
+      key: 'support:open',
+      group: 'Закреплено',
+      title: 'Отдел заботы Qevo: Сказать вопрос голосом (5 сек), решить в чате (30 сек) или включить Huddle-созвон (20 сек)',
+      icon: 'zap',
+      run: () => { openSupport(); onClose(); },
+    });
+
     if (inline) for (const it of inline.items) add(it);
 
     // Команды — сразу после результата: «не беспокоить», «кто свободен», «тёмная тема».
@@ -369,24 +381,6 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
           run: () => { navigate(r.path); onClose(); },
         });
       }
-    }
-
-    /*
-      Служба заботы — закреплённым пунктом сверху (ТЗ-8, разд. 3.2).
-
-      Человек, у которого что-то сломалось, жмёт Ctrl+K и пишет «поддержка»,
-      «помощь», «не работает» — и должен получить не список разделов, а живой
-      разговор. Поэтому пункт стоит первым и ловит все эти слова.
-    */
-    if (!query || /поддерж|помощ|не работ|сломал|ошибк|забот/i.test(query)) {
-      add({
-        key: 'support:open',
-        group: 'Служба заботы',
-        title: 'Написать в службу заботы',
-        hint: 'ответит помощник, при необходимости позовём специалиста',
-        icon: 'support',
-        run: () => { openSupport(); onClose(); },
-      });
     }
 
     // разделы — локально и всегда
@@ -613,7 +607,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
               <div key={it.key}>
                 {head && <div className="palette-group">{head}</div>}
                 <button
-                  className={`palette-item${i === active ? ' active' : ''}`}
+                  className={`palette-item${i === active ? ' active' : ''}${it.key === 'support:open' ? ' palette-pinned' : ''}`}
                   onMouseEnter={() => setActive(i)}
                   onClick={it.run}
                 >

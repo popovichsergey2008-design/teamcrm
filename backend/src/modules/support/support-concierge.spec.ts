@@ -1,4 +1,4 @@
-import { engineerStatus, parseResolution, sanitizeFailedRequests, waitEstimate } from './support-concierge';
+import { engineerStatus, parseResolution, sanitizeFailedRequests, sanitizeTelemetry, waitEstimate } from './support-concierge';
 
 const base = { online: true, manual: null, inHuddle: false, load: 0, maxLoad: 5, hasShifts: false, onShift: false };
 
@@ -46,5 +46,13 @@ describe('итог и диагностика', () => {
     expect(list[0]).toMatchObject({ method: 'POST', path: '/api/projects/130/settings', status: 403, requestId: 'req_abc123' });
     expect(list[1].path).toBe('/api/meet/guest/:token');
     expect(sanitizeFailedRequests(Array.from({ length: 9 }, () => ({ method: 'GET', path: '/a', status: 500 })))).toHaveLength(5);
+  });
+
+  it('ТЗ-34: телеметрия экрана — только размеры, ориентация и короткое название', () => {
+    expect(sanitizeTelemetry({ screen: '390×844', viewport: '390×700', orientation: 'portrait', dpr: 3, entityTitle: '  Отчёт   за неделю ' }))
+      .toEqual({ screen: '390×844', viewport: '390×700', orientation: 'portrait', dpr: 3, entityTitle: 'Отчёт за неделю' });
+    expect(sanitizeTelemetry({ screen: '<script>', orientation: 'вбок', token: 'secret' })).toBeNull();
+    expect(sanitizeTelemetry('строка')).toBeNull();
+    expect(sanitizeTelemetry({ entityTitle: 'x'.repeat(500) })?.entityTitle).toHaveLength(120);
   });
 });

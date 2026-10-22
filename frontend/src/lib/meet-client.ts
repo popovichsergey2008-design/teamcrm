@@ -633,7 +633,7 @@ export class MeetClient {
   }
 
   /** Отметить место на показанном экране участника `target` (ТЗ-29): только подсветка. */
-  point(x: number, y: number, kind: 'circle' | 'arrow' | 'pulse', target: string): void {
+  point(x: number, y: number, kind: 'circle' | 'arrow' | 'pulse' | 'tap', target: string): void {
     this.emit('meet.pointer', { x, y, kind, target });
   }
 

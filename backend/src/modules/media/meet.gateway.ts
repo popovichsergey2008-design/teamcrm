@@ -33,7 +33,8 @@ const GUEST_ALLOWED = new Set([
   'meet.pointer',
 ]);
 
-const POINTER_KINDS = new Set(['circle', 'arrow', 'pulse']);
+// tap — «нажать за показывающего» (ТЗ-34): нажимает только его браузер и только с его разрешения
+const POINTER_KINDS = new Set(['circle', 'arrow', 'pulse', 'tap']);
 
 /** Как часто пересматриваем зал ожидания: наступило время встречи — участники входят сами. */
 const LOBBY_TICK_MS = 15_000;

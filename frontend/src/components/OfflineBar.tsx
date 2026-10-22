@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Icon } from './Icon';
 import { BottomSheet } from './BottomSheet';
 import { queueBanner, removeQueued, retryQueued, type QueuedChange, type QueueSummary } from '../lib/offline-queue';
+
+// ТЗ-34 (5.2): при обрыве связи — кнопка «Подключить инженера» вместо сухого «нет сети»
+const CareError = lazy(() => import('./support/CareError'));
 
 /**
  * Полоса состояния сети и очереди (ТЗ-9, волна 9).
@@ -56,6 +59,7 @@ function QueueSheet({ items, online, onClose, onRetry }: {
   return (
     <BottomSheet title={online ? 'Изменения, ожидающие отправки' : 'Нет сети — изменения отправятся позже'} onClose={onClose}>
       <div className="offline-list">
+        {!online && <Suspense fallback={null}><CareError offline error="Нет связи с сервером" /></Suspense>}
         {items.length === 0 && <div className="offline-empty">Всё отправлено</div>}
         {items.map((c) => (
           <div key={c.id} className={`offline-item offline-item-${c.status}`}>

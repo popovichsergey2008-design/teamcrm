@@ -1,5 +1,8 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, lazy, Suspense, type ErrorInfo, type ReactNode } from 'react';
 import { isChunkError, reloadOnce } from '../lib/chunk-recovery';
+
+// ТЗ-34 (5.2): экран сбоя Отдела заботы — своим куском, грузится только при сбое
+const CareError = lazy(() => import('./support/CareError'));
 
 /**
  * Перехват падения экрана (14.10).
@@ -26,8 +29,7 @@ export class ScreenBoundary extends Component<{ children: ReactNode; full?: bool
     const { error } = this.state;
     if (!error) return this.props.children;
     const chunk = isChunkError(error);
-    return (
-      <div className={`screen-crash${this.props.full ? ' screen-crash-full' : ''}`} role="alert">
+    const plain = (
         <div className="screen-crash-card">
           <h2>{chunk ? 'Вышла новая версия' : 'Экран не загрузился'}</h2>
           <p className="dim">
@@ -42,6 +44,10 @@ export class ScreenBoundary extends Component<{ children: ReactNode; full?: bool
             )}
           </div>
         </div>
+    );
+    return (
+      <div className={`screen-crash${this.props.full ? ' screen-crash-full' : ''}`} role="alert">
+        {chunk ? plain : <Suspense fallback={plain}><CareError error={error.message || String(error)} /></Suspense>}
       </div>
     );
   }

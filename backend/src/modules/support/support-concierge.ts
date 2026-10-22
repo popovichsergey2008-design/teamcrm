@@ -108,5 +108,26 @@ export function sanitizeFailedRequests(raw: unknown): FailedRequest[] {
   });
 }
 
+/**
+ * Телеметрия экрана (ТЗ-34, 3.5): размер экрана и окна, ориентация, плотность и
+ * название открытой карточки. Только числа из белого списка и короткая строка —
+ * ничего, что человек не видит на своём экране сам.
+ */
+export interface Telemetry { screen?: string; viewport?: string; orientation?: 'portrait' | 'landscape'; dpr?: number; entityTitle?: string }
+
+export function sanitizeTelemetry(raw: unknown): Telemetry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const size = (v: unknown) => (typeof v === 'string' && /^\d{2,5}×\d{2,5}$/.test(v) ? v : undefined);
+  const out: Telemetry = {
+    screen: size(r.screen),
+    viewport: size(r.viewport),
+    orientation: r.orientation === 'portrait' || r.orientation === 'landscape' ? r.orientation : undefined,
+    dpr: typeof r.dpr === 'number' && r.dpr > 0 && r.dpr < 10 ? Math.round(r.dpr * 100) / 100 : undefined,
+    entityTitle: typeof r.entityTitle === 'string' && r.entityTitle.trim() ? r.entityTitle.replace(/\s+/g, ' ').trim().slice(0, 120) : undefined,
+  };
+  return Object.values(out).some((v) => v !== undefined) ? out : null;
+}
+
 /** Сколько живёт доступ инженера к настройкам (п. 45). */
 export const ACCESS_MINUTES = 15;

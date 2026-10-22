@@ -23,3 +23,15 @@
 .cg-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; overflow-wrap: anywhere; }
 .cg-snap { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 10px; border: 1px dashed var(--border-2); font-size: 12.5px; }
 .cg-dot-inline { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 2px; }
+/* Шапка Care Hub (ТЗ-34, п. 2.1): лица дежурных, пульс, строка и слоган */
+.cg-faces { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; }
+.cg-face { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 0 0 auto; }
+.cg-face-name { font-size: 11px; color: var(--text-dim); max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-line { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+.cg-pulse { width: 9px; height: 9px; margin-top: 3px; flex: 0 0 auto; border-radius: 50%; background: var(--text-dim); }
+.cg-pulse.live { background: var(--ok); animation: cg-pulse 1.8s ease-out infinite; }
+@keyframes cg-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+@media (prefers-reduced-motion: reduce) { .cg-pulse.live { animation: none; } }
+.cg-slogan { margin: 0; font-size: 13px; line-height: 1.4; }
+.cg-head-compact { gap: 6px; padding: 8px 12px; }
+.cg-head-compact .cg-ava { width: 28px; height: 28px; font-size: 11px; }

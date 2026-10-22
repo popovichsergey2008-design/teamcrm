@@ -13,7 +13,7 @@ import { apiUrl } from './origin';
  */
 
 interface Pending {
-  scope: 'meet' | 'chat';
+  scope: 'meet' | 'chat' | 'app';
   refId?: string;
   event: string;
   data?: unknown;
@@ -50,7 +50,7 @@ async function flush(useBeacon = false): Promise<void> {
 }
 
 /** Записать событие. Никогда не бросает и не ждёт сети. */
-export function diag(scope: 'meet' | 'chat', event: string, refId?: string, data?: unknown): void {
+export function diag(scope: 'meet' | 'chat' | 'app', event: string, refId?: string, data?: unknown): void {
   buffer.push({ scope, refId, event, data, at: new Date().toISOString() });
   // защита от лавины: при шторме событий сохраняем последние, а не первые
   if (buffer.length > MAX_BUFFER) buffer = buffer.slice(-MAX_BUFFER);

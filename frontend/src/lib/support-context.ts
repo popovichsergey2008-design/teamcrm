@@ -28,6 +28,8 @@ const failed: { method: string; path: string; status: number; requestId: string 
 export function noteFailedRequest(method: string, path: string, status: number, requestId: string | null | undefined): void {
   failed.push({ method, path: path.split('?')[0].split('#')[0].slice(0, 160), status, requestId: requestId ? String(requestId).slice(0, 64) : null, at: new Date().toISOString() });
   if (failed.length > 5) failed.shift();
+  // детектор заминок (ТЗ-34) слушает это событие из своего ленивого куска
+  window.dispatchEvent(new CustomEvent('qevo:api-failed', { detail: { method, path, status } }));
 }
 
 /** Запомнить ошибку. Зовётся из перехватчика ответов и из обработчика сбоев окна. */
@@ -92,6 +94,13 @@ function networkName(): string {
   return c?.effectiveType ? `online · ${c.effectiveType}`.slice(0, 24) : 'online';
 }
 
+/** Название открытой карточки — с экрана: задача, доска, чат (ТЗ-34, 3.5). */
+function entityTitle(): string | undefined {
+  const q = (s: string) => document.querySelector<HTMLElement>(s);
+  const t = (q('.drawer-title-input') as HTMLInputElement | null)?.value || (q('.tv2-title') ?? q('.board-title') ?? q('.chat-head-title'))?.textContent;
+  return t?.trim().slice(0, 120) || undefined;
+}
+
 export function collectSupportContext(): SupportContextInput {
   const ua = navigator.userAgent ?? '';
   const path = window.location.pathname;
@@ -112,6 +121,14 @@ export function collectSupportContext(): SupportContextInput {
     nativeVersion: info.nativeVersion?.slice(0, 40) ?? undefined,
     device: info.kind === 'web' ? undefined : info.model?.slice(0, 80) ?? undefined,
     failedRequests: failed.length ? [...failed] : undefined,
+    // ноль скриншотов (ТЗ-34, 3.5): что за экран — размером, ориентацией и названием карточки
+    telemetry: {
+      screen: `${screen.width}×${screen.height}`,
+      viewport: `${innerWidth}×${innerHeight}`,
+      orientation: innerHeight >= innerWidth ? 'portrait' : 'landscape',
+      dpr: devicePixelRatio,
+      entityTitle: entityTitle(),
+    },
   };
 }
 

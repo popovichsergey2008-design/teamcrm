@@ -14,5 +14,7 @@ import { FileImportService } from './file-import.service';
   imports: [ProjectsModule, TasksModule],
   controllers: [FileImportController],
   providers: [FileImportService],
+  // служба заботы готовит импорт из таблицы, приложенной к разговору (ТЗ-34)
+  exports: [FileImportService],
 })
 export class FileImportModule {}
