@@ -127,7 +127,8 @@ describe('Автоматическая постановка задачи (e2e)',
     await http$.patch(`/api/groups/${dept.id}`).set(O).send({ directions: ['backend'] }).expect(200);
 
     // закрытый проект: в нём только Ольга
-    const secret = (await http$.post('/api/projects').set(O).send({ name: 'Закрытый', visibility: 'members' }).expect(201)).body.data;
+    const secret = (await http$.post('/api/projects').set(O).send({ name: 'Закрытый' }).expect(201)).body.data;
+    await http$.patch(`/api/projects/${secret.id}`).set(O).send({ visibility: 'members' }).expect(200);
     await http$.post(`/api/projects/${secret.id}/members`).set(O).send({ userIds: [dev] }).expect(201);
 
     const d = (await http$.post('/api/nl/parse-many').set(O)
