@@ -26,6 +26,7 @@ import { PushService } from '../notifications/push.service';
 import { SecurityService } from '../security/security.service';
 import { SupportConciergeRepository } from './support-concierge.repository';
 import { sanitizeFailedRequests } from './support-concierge';
+import { slaView } from './support-sla';
 
 /**
  * Служба заботы: живой разговор вместо заявок (ТЗ-8).
@@ -1552,6 +1553,13 @@ export class SupportDeskService implements OnModuleInit {
       reopened: Number(d?.reopened ?? 0),
       solvedByAi: Number(d?.ai_only ?? 0),
     };
+  }
+
+  /** Факт к целям Раздела 4 ТЗ-34 — та же видимость, что у сводки. */
+  async sla(tenantId: string, user: { userId: string; role: string }) {
+    await this.assertAgent(tenantId, user);
+    const platform = await this.platform.tenantId();
+    return slaView(await this.repo.sla(platform ? null : tenantId));
   }
 
   // ── MVP 3: действия с разрешения, известные проблемы, сбой, копилот ──

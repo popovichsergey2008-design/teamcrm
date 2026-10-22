@@ -5,6 +5,7 @@ import { fetchBlob } from '../AuthedMedia';
 import { navigate } from '../../lib/router';
 import { Icon } from '../Icon';
 import { EmptyState } from '../EmptyState';
+import { CareEmpty } from '../care/CareEmpty';
 import { SkeletonList } from '../Skeleton';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
@@ -130,6 +131,8 @@ function Inbox({ focusId, onNavigate }: { focusId: string | null; onNavigate: ()
         <ProposalCard p={focused} focused onDone={() => setFocused(null)} onNavigate={onNavigate} />
       )}
 
+      {/* ТЗ-34 «Сегодня» п.3.2: пустой секретарь — карточка заботы */}
+      {items.length === 0 && !focused && <CareEmpty k="secretary" />}
       {items.length === 0 && !focused && (
         <EmptyState
           icon="check-circle"

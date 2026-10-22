@@ -15,6 +15,7 @@ import type {
 import { OptionSelect } from '../components/ui/option-select';
 import { aiPlanLabel, ConsoleAiPlanDialog } from '../components/ConsoleAiPlan';
 // консьерж (ТЗ-29): свой статус, смены, метрики — отдельным куском
+const SlaTargets = lazy(() => import('../components/support/SlaTargets').then((m) => ({ default: m.SlaTargets })));
 const ConciergeConsole = lazy(() => import('../components/support/Concierge').then((m) => ({ default: m.ConciergeConsole })));
 
 /** Секунды человеческими словами: «28 сек», «4 мин», «1 ч 10 мин». */
@@ -269,6 +270,8 @@ export function ConsolePage({ route }: { route: Route }) {
                 </div>
               </div>
             )}
+            {/* Раздел 4 ТЗ-34: цель из документа рядом с фактом */}
+            <Suspense fallback={null}><SlaTargets /></Suspense>
 
             {/*
               Отборы очереди (06_STATE_MACHINE §6).

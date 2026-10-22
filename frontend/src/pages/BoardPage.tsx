@@ -19,6 +19,7 @@ import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
+import { CareEmpty } from '../components/care';
 import { useDragEdgeScroll } from '../hooks/useDragEdgeScroll';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 import { navigate } from '../lib/router';
@@ -514,6 +515,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       .entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'))
     : [];
   const shownCount = board && user ? countMatching(board.columns, filterOpts) : 0;
+  // пустой проект — «пустая воронка» (ТЗ-34): вместо «под фильтр ничего» — карточка заботы
+  const boardEmpty = board?.columns.every((c) => !c.tasks.length);
   // Доске оставляем все колонки даже пустыми — иначе бросать задачу становится некуда;
   // в списке пустые заголовки только мешают.
   // Проект сменился, а выбранный постановщик в нём ничего не ставил — снимаем выбор,
@@ -546,7 +549,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
           // при ошибке заглушку не показываем: она обещает данные, которых уже не будет
           (selected && !error) || projectsLoading ? (
             <SkeletonBoard />
-          ) : projects.length === 0 ? (
+          ) : projects.length === 0 ? (<>
+            {canManageBoard && <CareEmpty k="tasks" />}
             <EmptyState
               icon="board"
               title="Здесь появится доска"
@@ -563,7 +567,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 } }
                 : undefined}
             />
-          ) : (
+          </>) : (
             <EmptyState icon="arrow-left" title="Выберите проект" hint="Список проектов — в меню слева, под разделом «Проекты и Задачи»." />
           )
         )}
@@ -722,7 +726,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               </div>
               {showFinance && <PnlPanel pnl={pnl} alert={alert} cow={cow} />}
             </div>
-            {filterActive(filterOpts) && shownCount === 0 ? (
+            {!isClient && boardEmpty && <CareEmpty k="board" />}
+            {filterActive(filterOpts) && shownCount === 0 && !boardEmpty ? (
               <EmptyState
                 icon="user"
                 title={mineMode === 'delegated' ? 'В этом проекте вы ничего не поручали'

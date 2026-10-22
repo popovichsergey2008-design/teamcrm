@@ -1,0 +1,47 @@
+/* Забота вместо пустоты (ТЗ-34): грузится вместе с ленивым CareEmpty, в стартовый CSS не входит */
+.care-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; margin: 0 auto; max-width: 560px; width: 100%; box-sizing: border-box; }
+.care-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; width: 100%;
+  padding: 20px 16px; border: 1px solid var(--accent-line); border-radius: var(--radius-lg);
+  background: var(--accent-soft); box-sizing: border-box;
+}
+.care-icon { display: inline-flex; padding: 10px; border-radius: 50%; color: var(--accent); background: var(--bg-elev); }
+.care-title { margin: 0; font-size: var(--fs-lg); color: var(--text); line-height: 1.3; }
+.care-text { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.5; }
+.care-btn { margin-top: 6px; min-height: 40px; white-space: normal; height: auto; padding: 8px 14px; text-align: center; line-height: 1.3; }
+
+/* кнопка спасения: светится, пока на неё не нажали */
+.care-rescue {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 44px;
+  padding: 10px 16px; border: 1px solid var(--ok-line); border-radius: var(--radius-lg); cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); font-weight: 600; line-height: 1.35; text-align: left;
+  color: var(--ok); background: var(--ok-soft);
+  box-shadow: 0 0 0 0 var(--ok-line); animation: care-glow 2.4s ease-in-out infinite;
+}
+.care-rescue:hover { border-color: var(--ok); }
+.care-rescue:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+.care-rescue .icon { flex: none; }
+.care-rescue-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+@keyframes care-glow { 50% { box-shadow: 0 0 0 6px transparent, 0 0 18px var(--ok-line); } }
+@media (prefers-reduced-motion: reduce) { .care-rescue { animation: none; } }
+
+/* плашка заботы в чатах и созвонах: вся — одна кнопка */
+.care-plaque {
+  display: flex; align-items: flex-start; gap: 8px; width: calc(100% - 16px); margin: 8px; box-sizing: border-box;
+  padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: var(--radius); cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); line-height: 1.45; text-align: left; color: var(--text); background: var(--accent-soft);
+}
+.care-plaque:hover { border-color: var(--accent); }
+.care-plaque:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.care-plaque .icon { flex: none; margin-top: 2px; color: var(--accent); }
+
+/* «Команда и подписка»: плашка доверия и зелёный бейдж ценности */
+.care-team { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; }
+.care-trust, .care-badge {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--radius);
+  font-size: var(--fs-sm); line-height: 1.45;
+}
+.care-trust { color: var(--text); background: var(--accent-soft); border: 1px solid var(--accent-line); }
+.care-trust .icon { flex: none; margin-top: 2px; color: var(--accent); }
+.care-badge { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); font-weight: 600; }
+.care-badge .icon { flex: none; margin-top: 2px; }

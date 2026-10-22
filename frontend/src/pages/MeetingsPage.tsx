@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import './meetings.css';
 import { fetchBlob } from '../components/AuthedMedia';
 import { EmptyState } from '../components/EmptyState';
+import { CareEmpty } from '../components/care/CareEmpty';
 import { GuestMeetsPanel } from '../components/GuestMeetsPanel';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
@@ -141,6 +142,8 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
           action={{ label: 'Попробовать AI-созвон за 30 секунд', onClick: () => navigate('/onboarding/ai-call?from=meetings_empty') }}
         />
       )}
+      {/* ТЗ-34 «Сегодня» п.3.4: плашка заботы в пустых «Созвонах» */}
+      {loaded && list.length === 0 && <CareEmpty k="chats" />}
 
       <div className="task-list">
         {list.map((m) => (

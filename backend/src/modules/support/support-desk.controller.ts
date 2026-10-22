@@ -167,6 +167,12 @@ export class SupportDeskController {
     return this.desk.dashboard(u.tenantId, u);
   }
 
+  /** Факт к целям Раздела 4 ТЗ-34 (#4620) — тоже раньше «:id». */
+  @Get('sla')
+  sla(@CurrentUser() u: AuthUser) {
+    return this.desk.sla(u.tenantId, u);
+  }
+
   /**
    * Очередь дежурного — раньше «:id», иначе слово «queue» примут за номер разговора.
    *

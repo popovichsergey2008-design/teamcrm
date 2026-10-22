@@ -4,6 +4,7 @@ import { api, ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
 import { navigate } from '../lib/router';
 import { EmptyState } from '../components/EmptyState';
+import { CareEmpty } from '../components/care';
 import { useAuth } from '../state/auth';
 import { NEW_PROJECT_FOCUS, PROJECTS_CHANGED } from '../components/ProjectsNav';
 
@@ -134,7 +135,8 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
 
       {err && <div className="error-text">{err}</div>}
 
-      {rows && shown.length === 0 && (
+      {rows && shown.length === 0 && (<>
+        {!q && slice !== 'archived' && user?.role !== 'client' && <CareEmpty k="tasks" />}
         <EmptyState
           icon="board"
           title={q ? 'Ничего не нашлось' : slice === 'archived' ? 'Архив пуст' : 'Проектов пока нет'}
@@ -142,7 +144,7 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
           // пустой экран — место для демо ИИ-созвона (ТЗ-24, §5)
           action={!q && slice !== 'archived' ? { label: 'Попробовать AI-созвон', onClick: () => navigate('/onboarding/ai-call?from=projects_empty') } : undefined}
         />
-      )}
+      </>)}
 
       {shown.length > 0 && (
         <div className="table-wrap">

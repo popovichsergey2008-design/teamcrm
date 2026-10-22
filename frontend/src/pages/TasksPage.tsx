@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
+import { CareEmpty } from '../components/care';
 import { navigate } from '../lib/router';
 import { forgetProject } from '../lib/last-project';
 import { Avatar } from '../components/ui/avatar';
@@ -442,6 +443,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
 
         {!loading && rows.length === 0 && !error && (
           <div className="ui-empty">
+            {!filterCount && <CareEmpty k="tasks" />}
             <span className="ui-empty-icon"><Icon name="check-circle" size={22} /></span>
             <span className="ui-empty-title">Задач нет</span>
             <span className="ui-empty-hint">{emptyHint(picked[0] ?? 'doing', filterCount > 0)}</span>

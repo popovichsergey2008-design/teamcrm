@@ -13,6 +13,7 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
+import { CareEmpty } from '../components/care';
 import { SkeletonList } from '../components/Skeleton';
 import { GroupChatModal } from '../components/GroupChatModal';
 import { CallStarter } from '../components/CallStarter';
@@ -2231,14 +2232,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         {chatsLoaded && listEmpty && !unreadOnly && (
           query.trim() ? (
             <EmptyState compact icon="search" title="Ничего не нашлось" hint={`По запросу «${query.trim()}» нет ни чатов, ни коллег.`} />
-          ) : (
+          ) : (<>
             <EmptyState
               compact
               icon="users"
               title="Писать пока некому"
               hint="В организации нет других сотрудников. Пригласите команду в разделе «Команда» — и они появятся здесь."
             />
-          )
+            <CareEmpty k="chats" />
+          </>)
         )}
       </aside>
       )}
