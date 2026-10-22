@@ -51,6 +51,10 @@ class BundleDto {
   @IsString() @MaxLength(500) url!: string;
   @IsString() @MaxLength(80) sha256!: string;
   @IsBoolean() mandatory!: boolean;
+  @IsOptional() @IsString() @MaxLength(400) signature?: string;
+}
+class BundleQuery {
+  @IsOptional() @IsString() @MaxLength(40) native?: string;
 }
 class FeaturesDto {
   @IsObject() flags!: Record<string, boolean>;
@@ -114,6 +118,17 @@ export class MobileController {
   @Get('release')
   async release() {
     return { android: await this.cfg.androidRelease() };
+  }
+
+  /**
+   * Веб-бандл для обновления по воздуху (ТЗ-34, этап D) — без входа, как и `release`:
+   * оболочка проверяет его при запуске, ещё до того, как человек вошёл. Бандл отдаётся
+   * только оболочке не старше его `minNative`; иначе `bundle: null`.
+   */
+  @Public()
+  @Get('bundle')
+  async bundle(@Query() q: BundleQuery) {
+    return { bundle: await this.cfg.bundleRelease(q.native ?? null) };
   }
 
   /** Всё, что клиенту нужно при старте: версии, флаги, политики, авария. */

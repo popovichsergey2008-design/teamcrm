@@ -13,6 +13,9 @@
  * платформами. Всё остальное — обычный код фронта.
  */
 
+import type { CareProgress } from './native-logic';
+export type { CareProgress } from './native-logic';
+
 /** Где запущен фронт. `mobile-web` — тот же браузер, но сборка под телефон (PWA). */
 export type PlatformKind = 'web' | 'mobile-web' | 'capacitor';
 
@@ -66,6 +69,12 @@ export interface NotificationsBridge {
    * к устройству, чтобы будить приложение, когда оно закрыто.
    */
   pushToken(): Promise<string | null>;
+  /**
+   * Ход работы инженера службы заботы на экране блокировки (ТЗ-34, A7): постоянное
+   * уведомление с полосой, на 100% — тихое «Готово», null — убрать. Только Android-
+   * оболочка; в браузере ничего не делает.
+   */
+  progress(p: CareProgress | null): void;
 }
 
 export interface BiometricsBridge {
@@ -90,7 +99,11 @@ export interface ShareBridge {
 export type InstallUpdateResult = 'installing' | 'needs_permission' | 'unsupported' | 'failed';
 
 export interface AppUpdateBridge {
-  /** Есть ли новая версия (оболочки или веб-бандла); в браузере всегда null. */
+  /**
+   * Есть ли новый веб-бандл (обновление по воздуху, ТЗ-34 этап D). Оболочка сама качает
+   * и проверяет его; ответ не null — он уже на устройстве и применится при следующем
+   * запуске или уходе в фон (или сразу — `apply()`). В браузере всегда null.
+   */
   check(): Promise<{ version: string; mandatory: boolean } | null>;
   /** Умеет ли оболочка обновить себя сама. Нет — показываем ссылку на скачивание. */
   canInstall(): Promise<boolean>;
@@ -106,7 +119,7 @@ export interface AppUpdateBridge {
   requestInstallPermission(): Promise<void>;
   /** Разрешено ли уже ставить обновления из приложения (Android «из этого источника»). */
   permitted(): Promise<boolean>;
-  /** Скачать и применить: оболочка перезапустит веб-бандл сама. */
+  /** Применить скачанный бандл сейчас: WebView перезагрузится на нём. Нечего — ничего. */
   apply(): Promise<void>;
 }
 

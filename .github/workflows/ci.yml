@@ -176,6 +176,94 @@ jobs:
             bash /opt/teamcrm/deploy/release.sh
           '
 
+  # Обновление веб-части по воздуху (ТЗ-34, этап D): после КАЖДОЙ выкладки main — тот же
+  # коммит, собранный для оболочки (dist-capacitor), уезжает zip'ом в каталог раздачи
+  # рядом с APK (nginx/html/app/bundle). Только после deploy: новый интерфейс не должен
+  # приехать на телефоны раньше сервера, под который он написан. Оболочка Android
+  # спрашивает /api/mobile/bundle, качает zip, сверяет sha256 и подпись и применяет его
+  # со следующего запуска; не подтвердился за 15 с — откат на прежний.
+  #
+  # minNative — в frontend/native/bundle.json: поднимать, когда веб начинает звать
+  # нативный метод, которого нет в старых APK. Подпись — ECDSA P-256 над «версия\nsha256»
+  # ключом из секрета OTA_BUNDLE_KEY_B64 (base64 от PEM; открытый ключ зашит в оболочку,
+  # res/values/strings.xml). Нет секрета — бандл НЕ выпускается: оболочка с ключом всё
+  # равно не примет его без подписи.
+  ota-bundle:
+    name: OTA web bundle → qevo.one/app/bundle
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ota-bundle
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Веб-бандл для оболочки
+        run: npm run build:capacitor
+      - name: zip, sha256, подпись, latest.json
+        env:
+          OTA_KEY_B64: ${{ secrets.OTA_BUNDLE_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$OTA_KEY_B64" ]; then
+            echo "::warning::нет секрета OTA_BUNDLE_KEY_B64 — бандл по воздуху не выпускаем"
+            echo "OTA_SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          V=$(cat dist-capacitor/bundle-version.txt)
+          echo "$V" | grep -Eq '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$'
+          MIN=$(node -p "require('./native/bundle.json').minNative")
+          mkdir -p ota
+          (cd dist-capacitor && zip -qr -X -9 "../ota/qevo-web-$V.zip" .)
+          SHA=$(sha256sum "ota/qevo-web-$V.zip" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "ota/qevo-web-$V.zip")
+          echo "$OTA_KEY_B64" | base64 -d > "$RUNNER_TEMP/ota.pem"
+          SIG=$(printf '%s\n%s' "$V" "$SHA" | openssl dgst -sha256 -sign "$RUNNER_TEMP/ota.pem" | base64 -w0)
+          rm -f "$RUNNER_TEMP/ota.pem"
+          node -e '
+            const [v, min, sha, size, sig] = process.argv.slice(1);
+            const out = {
+              version: v, minNative: min, url: `https://qevo.one/app/bundle/qevo-web-${v}.zip`,
+              sha256: sha, sizeBytes: Number(size), signature: sig, mandatory: false,
+              publishedAt: new Date().toISOString(),
+            };
+            require("fs").writeFileSync("ota/latest.json", JSON.stringify(out, null, 2) + "\n");
+          ' "$V" "$MIN" "$SHA" "$SIZE" "$SIG"
+          echo "OTA_VERSION=$V" >> "$GITHUB_ENV"
+          cat ota/latest.json
+      - name: Ключ деплоя
+        if: env.OTA_SKIP != '1'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: zip и latest.json → nginx/html/app/bundle
+        # Сначала zip, потом манифест (через временный файл и mv — атомарно): оболочка
+        # узнаёт о версии, когда архив уже скачивается. Храним пять последних архивов —
+        # откат руками: latest.json прежней версии с mandatory: true (или настройка
+        # платформы mobile_bundle из консоли).
+        if: env.OTA_SKIP != '1'
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: |
+          set -euo pipefail
+          D=/opt/teamcrm/nginx/html/app/bundle
+          ssh -i ~/.ssh/deploy_key "$TARGET" "mkdir -p $D"
+          scp -i ~/.ssh/deploy_key "ota/qevo-web-$OTA_VERSION.zip" "$TARGET:$D/qevo-web-$OTA_VERSION.zip"
+          scp -i ~/.ssh/deploy_key ota/latest.json "$TARGET:$D/latest.json.tmp"
+          ssh -i ~/.ssh/deploy_key "$TARGET" "set -e; mv -f $D/latest.json.tmp $D/latest.json; cd $D; ls -1t qevo-web-*.zip | tail -n +6 | xargs -r rm -f --"
+          curl -fsS "https://qevo.one/app/bundle/latest.json"
+
   # Новый интерфейс (ТЗ-15) — на dev.qevo.one, пока не готов к проду.
   # Ветка ui-v2 меняет только интерфейс: API, база и созвоны — общие с продом, поэтому
   # здесь ни миграций, ни перезапуска контейнеров. Собираем, сжимаем и подменяем

@@ -13,6 +13,8 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import { registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { browserBridge, BUNDLE_VERSION } from './browser';
+import { careNotification, shouldFetchBundle, type BundleManifest, type CareProgress } from './native-logic';
+import { API_ORIGIN } from '../lib/origin';
 import type { PlatformBridge, PlatformInfo } from './types';
 
 /**
@@ -85,6 +87,11 @@ const AnthillNative = registerPlugin<{
   requestInstallPermission(): Promise<void>;
   installUpdate(o: { url: string; sha256: string; version: string }): Promise<{ status: string; message?: string }>;
   setAudioRoute(o: { route: string }): Promise<{ route: string }>;
+  bundleStatus(): Promise<{ native: string; stable?: string; trial?: string; pending?: string; bad: string[] }>;
+  bundleDownload(o: BundleManifest): Promise<{ status: string; message?: string }>;
+  bundleApply(): Promise<{ applied: boolean }>;
+  bundleReady(o: { version: string }): Promise<{ confirmed: boolean }>;
+  careProgress(o: { title?: string; text?: string; percent?: number; done?: boolean; clear?: boolean }): Promise<{ shown: boolean }>;
   addListener(
     event: 'updateProgress',
     cb: (e: { loaded: number; total: number }) => void,
@@ -123,6 +130,99 @@ async function installUpdate(
   } finally {
     await watch?.remove().catch(() => undefined);
   }
+}
+
+/*
+  Обновление веб-части по воздуху (ТЗ-34, этап D) — только Android-оболочка.
+
+  Сервер отдаёт манифест (`/mobile/bundle?native=…`), оболочка сама качает zip, сверяет
+  sha256 и подпись, распаковывает и применяет со следующего запуска или когда приложение
+  уходит в фон (не посреди созвона). Новый бандл обязан сказать «живой» (`bundleReady`)
+  за 15 с, иначе оболочка вернёт прежний и больше этот не поставит (BundleUpdater.java).
+  Старая оболочка без этих методов отвечает ошибкой — тогда всё молча выключено.
+*/
+const OTA_EVERY_MS = 30 * 60_000;
+/** Куда вернуться после перезагрузки на новый бандл: WebView откроется с корня. */
+const OTA_RESUME_KEY = 'qevo.ota.resume';
+let callActive = false;
+let otaRun: Promise<{ version: string; mandatory: boolean } | null> | null = null;
+
+function otaCheck(): Promise<{ version: string; mandatory: boolean } | null> {
+  if (otaRun) return otaRun;
+  otaRun = (async () => {
+    try {
+      if (deviceInfo?.os !== 'android') return null;
+      const st = await AnthillNative.bundleStatus();
+      const res = await fetch(`${API_ORIGIN}/api/mobile/bundle?native=${encodeURIComponent(st.native)}`);
+      const m = ((await res.json()) as { data?: { bundle?: BundleManifest | null } })?.data?.bundle ?? null;
+      if (!m) return null;
+      const already = st.pending === m.version;
+      if (!already && !shouldFetchBundle(m, { running: BUNDLE_VERSION, native: st.native, bad: st.bad ?? [], pending: st.pending ?? null, stable: st.stable ?? null })) return null;
+      const r = already ? { status: 'ready' } : await AnthillNative.bundleDownload(m);
+      return r.status === 'ready' ? { version: m.version, mandatory: !!m.mandatory } : null;
+    } catch { return null; } finally { otaRun = null; }
+  })();
+  return otaRun;
+}
+
+async function otaApply(): Promise<boolean> {
+  try {
+    if (!(await AnthillNative.bundleStatus()).pending) return false;
+    try { localStorage.setItem(OTA_RESUME_KEY, JSON.stringify({ path: `${location.pathname}${location.search}`, at: Date.now() })); } catch { /* без возврата — откроется главная */ }
+    const { applied } = await AnthillNative.bundleApply();
+    if (!applied) try { localStorage.removeItem(OTA_RESUME_KEY); } catch { /* не страшно */ }
+    return applied;
+  } catch { return false; }
+}
+
+/** Бандл поднялся и нарисовал экран — сказать оболочке «живой». */
+function confirmAlive(): void {
+  const started = Date.now();
+  const tick = () => {
+    if (document.getElementById('root')?.childElementCount) {
+      // полторы секунды на то, чтобы упасть сразу после первой отрисовки
+      setTimeout(() => {
+        if (document.getElementById('root')?.childElementCount) void AnthillNative.bundleReady({ version: BUNDLE_VERSION }).catch(() => undefined);
+      }, 1500);
+      return;
+    }
+    if (Date.now() - started < 14_000) setTimeout(tick, 250);
+  };
+  tick();
+}
+
+function startOta(): void {
+  if (deviceInfo?.os !== 'android') return;
+  // вернуть человека туда, где он был до перезагрузки на новый бандл
+  try {
+    const saved = JSON.parse(localStorage.getItem(OTA_RESUME_KEY) ?? 'null') as { path?: string; at?: number } | null;
+    localStorage.removeItem(OTA_RESUME_KEY);
+    if (saved?.path?.startsWith('/') && !saved.path.startsWith('//') && Date.now() - (saved.at ?? 0) < 6 * 3600_000) {
+      history.replaceState(history.state, '', saved.path);
+    }
+  } catch { /* нет хранилища — откроется главная */ }
+  confirmAlive();
+  setTimeout(() => void otaCheck(), 20_000); // после стартовых запросов, не вместе с ними
+  setInterval(() => void otaCheck(), OTA_EVERY_MS);
+  void CapApp.addListener('appStateChange', ({ isActive }) => {
+    if (!isActive && !callActive) void otaApply();
+    if (isActive) void otaCheck();
+  }).catch(() => undefined);
+}
+
+/*
+  Ход работы инженера на экране блокировки (ТЗ-34, A7). Окно заботы шлёт событие
+  `qevo:care-progress`; разрешение на уведомления спрашиваем здесь, если ещё не
+  спрашивали: человек сам позвал инженера, повод понятен.
+*/
+async function careProgress(p: CareProgress | null): Promise<void> {
+  if (deviceInfo?.os !== 'android') return;
+  try {
+    if (!p) { await AnthillNative.careProgress({ clear: true }); return; }
+    if (localPerm === 'default') localPerm = toPerm((await LocalNotifications.requestPermissions()).display);
+    if (localPerm !== 'granted') return;
+    await AnthillNative.careProgress(careNotification(p));
+  } catch { /* старая оболочка без метода — полоса только в окне заботы */ }
 }
 
 function requestPushToken(): Promise<string | null> {
@@ -233,6 +333,7 @@ async function warmUp(): Promise<void> {
   */
   void PrivacyScreen.enable().catch(() => undefined);
   syncSystemBars();
+  window.addEventListener('qevo:care-progress', (e) => void careProgress((e as CustomEvent<CareProgress | null>).detail ?? null));
   deviceInfo = {
     kind: 'capacitor',
     os: d?.platform === 'ios' ? 'ios' : d?.platform === 'android' ? 'android' : 'other',
@@ -240,6 +341,7 @@ async function warmUp(): Promise<void> {
     bundleVersion: BUNDLE_VERSION,
     model: d ? `${d.manufacturer ? `${d.manufacturer} ` : ''}${d.model} · ${d.operatingSystem} ${d.osVersion}` : null,
   };
+  startOta();
 }
 const ready = warmUp();
 
@@ -267,6 +369,7 @@ export const capacitorBridge: PlatformBridge = {
     prune: pruneShade,
     setBadge: browserBridge.notifications.setBadge,
     pushToken: requestPushToken,
+    progress: (p) => void careProgress(p),
   },
 
   appUpdate: {
@@ -281,6 +384,8 @@ export const capacitorBridge: PlatformBridge = {
     async permitted() {
       try { return (await AnthillNative.canInstall()).allowed; } catch { return false; }
     },
+    check: otaCheck,
+    async apply() { await otaApply(); },
   },
 
   biometrics: {
@@ -375,6 +480,7 @@ export const capacitorBridge: PlatformBridge = {
       даём экрану уснуть; iOS держит звук сам, пока сессия активна (CallKit — позже).
     */
     async keepAwake(on) {
+      callActive = on; // посреди созвона бандл не меняем: перезагрузка оборвала бы звонок
       try { if (on) await KeepAwake.keepAwake(); else await KeepAwake.allowSleep(); } catch { /* не критично */ }
       if (deviceInfo?.os !== 'android') return;
       try {

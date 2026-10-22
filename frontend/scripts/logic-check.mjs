@@ -1457,6 +1457,36 @@ test('эффекты: тишина, свои выключатели, «мини�
   assert.equal(decide('error', { ...base, hasEl: false }).motion, undefined, 'нет элемента — нет движения');
 });
 
+test('забота на экране блокировки: текст хода работы дословно, 100% — «Готово»', async () => {
+  const { careNotification } = await load('platform/native-logic.ts');
+  assert.deepEqual(
+    careNotification({ engineer: 'Михаил', text: 'переносит базу клиентов', percent: 85, minutesLeft: 2 }),
+    { title: 'Служба заботы', text: 'Инженер Михаил переносит базу клиентов: готово 85% (осталось 2 мин). Пришлем тихий пуш по готовности', percent: 85, done: false },
+  );
+  assert.equal(careNotification({ engineer: 'Михаил', text: 'настраивает', percent: 40 }).text, 'Инженер Михаил настраивает: готово 40%. Пришлем тихий пуш по готовности');
+  assert.equal(careNotification({ percent: 140 }).done, true);
+  assert.equal(careNotification({ engineer: 'Ольга', text: 'перенесла базу', percent: 100 }).title, 'Готово');
+  assert.equal(careNotification({ percent: -5, minutesLeft: 0.4 }).text, 'Инженер: готово 0% (осталось 1 мин). Пришлем тихий пуш по готовности');
+});
+
+test('обновление по воздуху: какой бандл качать', async () => {
+  const { shouldFetchBundle, compareVersionKeys } = await load('platform/native-logic.ts');
+  const m = { version: '2026.10.22.1430-abc1234', minNative: '1.50', url: 'https://qevo.one/app/bundle/qevo-web.zip', sha256: 'a'.repeat(64) };
+  const st = { running: '2026.10.22.0900-0000000', native: '1.50', bad: [], pending: null, stable: null };
+  assert.equal(shouldFetchBundle(m, st), true);
+  assert.equal(shouldFetchBundle(m, { ...st, running: m.version }), false, 'уже идёт');
+  assert.equal(shouldFetchBundle(m, { ...st, pending: m.version }), false, 'уже скачан');
+  assert.equal(shouldFetchBundle(m, { ...st, bad: [m.version] }), false, 'помечен битым');
+  assert.equal(shouldFetchBundle(m, { ...st, native: '1.49' }), false, 'оболочка старше minNative');
+  assert.equal(shouldFetchBundle(m, { ...st, running: '2026.10.23.0100-fffffff' }), false, 'старее того, что идёт');
+  assert.equal(shouldFetchBundle({ ...m, mandatory: true }, { ...st, running: '2026.10.23.0100-fffffff' }), true, 'обязательный откат');
+  assert.equal(shouldFetchBundle({ ...m, url: 'https://evil.example/x.zip' }, st), false, 'чужой домен');
+  assert.equal(shouldFetchBundle({ ...m, url: 'http://qevo.one/x.zip' }, st), false, 'без https');
+  assert.equal(shouldFetchBundle(m, { ...st, running: 'dev' }), true);
+  assert.ok(compareVersionKeys('2026.10.22.1430-abc', '2026.10.22.0959-fff') > 0);
+  assert.equal(compareVersionKeys('2026.10.22.1430-abc1234', '2026.10.22.1430-9999999'), 0, 'хеш в сравнение не входит');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

@@ -4,4 +4,10 @@
     <string name="title_activity_main">QEVO</string>
     <string name="package_name">team.anthill.app</string>
     <string name="custom_url_scheme">team.anthill.app</string>
+    <!--
+      Открытый ключ подписи веб-бандла (обновление по воздуху, ТЗ-34 этап D): ECDSA P-256,
+      X.509 DER в base64. Закрытый — infra/secrets/ota-bundle.key.pem и секрет CI
+      OTA_BUNDLE_KEY_B64. Пусто — оболочка проверяет только sha256.
+    -->
+    <string name="qevo_bundle_pubkey" translatable="false">MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEfemsw55rfQBY+mpv1nm1mb0ZKLwSoWPK9gaBKTYhOij46HcB5A8nzija8OJN/oWckcAI0BKVUA8pTThBEOMWTg==</string>
 </resources>

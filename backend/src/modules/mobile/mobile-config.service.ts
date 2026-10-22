@@ -4,6 +4,7 @@ import { join } from 'path';
 import { AppException } from '../../common/http/app-exception';
 import { DbService } from '../../database/db.service';
 import { PlatformService } from '../platform/platform.service';
+import { BundleRelease, bundleForNative, parseBundleRelease } from './bundle-release';
 
 /** Что сервер знает о выпущенном Android-приложении: раздача с сайта, а не из магазина (D-03). */
 export interface AndroidRelease {
@@ -19,14 +20,7 @@ export interface AndroidRelease {
   publishedAt?: string;
 }
 
-/** Веб-бандл для OTA внутри оболочки: версия, совместимость с оболочкой, где взять, хэш. */
-export interface BundleRelease {
-  version: string;
-  minNative: string;
-  url: string;
-  sha256: string;
-  mandatory: boolean;
-}
+export type { BundleRelease } from './bundle-release';
 
 export type PushPrivacy = 'hide' | 'sender_only' | 'full';
 export type LockPolicy = 'off' | 'immediately' | '1' | '5' | '15';
@@ -49,6 +43,7 @@ export class MobileConfigService {
   private readonly log = new Logger('MobileConfig');
   /** latest.json читается с диска не чаще раза в минуту: он меняется раз в выпуск. */
   private fileCache: { at: number; mtime: number; value: AndroidRelease | null } | null = null;
+  private bundleCache: { at: number; mtime: number; value: BundleRelease | null } | null = null;
 
   constructor(private readonly db: DbService, private readonly platform: PlatformService) {}
 
@@ -99,10 +94,46 @@ export class MobileConfigService {
     }
   }
 
+  /**
+   * Веб-бандл для обновления по воздуху (ТЗ-34, этап D). Как и с APK: файл CI
+   * (`bundle/latest.json` в каталоге раздачи) — обычный путь, настройка платформы
+   * `mobile_bundle` — ручной ход техотдела поверх (откатить выкладку, объявить
+   * обязательным). `native` — версия оболочки: бандл не отдаём той, что старше minNative.
+   */
+  async bundleRelease(native?: string | null): Promise<BundleRelease | null> {
+    const manual = parseBundleRelease(await this.platform.setting<unknown>('mobile_bundle', null));
+    const release = manual ?? (await this.bundleFromFile());
+    return native === undefined ? release : bundleForNative(release, native);
+  }
+
+  private async bundleFromFile(): Promise<BundleRelease | null> {
+    const dir = process.env.ANDROID_RELEASES_DIR;
+    if (!dir) return null;
+    const path = join(dir, 'bundle', 'latest.json');
+    const now = Date.now();
+    // выкладка идёт несколько раз в день — держим не дольше 30 секунд
+    if (this.bundleCache && now - this.bundleCache.at < 30_000) return this.bundleCache.value;
+    try {
+      const mtime = (await stat(path)).mtimeMs;
+      if (this.bundleCache && this.bundleCache.mtime === mtime) {
+        this.bundleCache.at = now;
+        return this.bundleCache.value;
+      }
+      const value = parseBundleRelease(JSON.parse(await readFile(path, 'utf8')));
+      if (!value) this.log.warn('bundle/latest.json не годится: нет версии, адреса нашего домена или sha256');
+      this.bundleCache = { at: now, mtime, value };
+      return value;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') this.log.warn(`bundle/latest.json не прочитан: ${(e as Error).message}`);
+      this.bundleCache = { at: now, mtime: 0, value: null };
+      return null;
+    }
+  }
+
   async config(tenantId: string) {
     const [android, bundle, features, org, incident] = await Promise.all([
       this.androidRelease(),
-      this.platform.setting<BundleRelease | null>('mobile_bundle', null),
+      this.bundleRelease(),
       this.platform.setting<Record<string, boolean>>('mobile_features', {}),
       this.orgPolicy(tenantId),
       this.db.one<{ id: string; title: string; message: string }>(
@@ -159,8 +190,11 @@ export class MobileConfigService {
 
   async setBundle(userId: string, r: BundleRelease) {
     await this.assertPlatformAdmin(userId);
-    await this.platform.setSetting('mobile_bundle', r, userId);
-    return r;
+    const clean = parseBundleRelease(r);
+    if (!clean) throw AppException.validation('Бандл: нужна версия, https-адрес нашего домена и sha256');
+    await this.platform.setSetting('mobile_bundle', clean, userId);
+    this.bundleCache = null;
+    return clean;
   }
 
   async setFeatures(userId: string, flags: Record<string, boolean>) {

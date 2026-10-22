@@ -94,6 +94,7 @@ export const browserBridge: PlatformBridge = {
       } catch { /* нет API — нет значка */ }
     },
     pushToken: () => Promise.resolve(null),
+    progress: () => undefined,
   },
 
   biometrics: {

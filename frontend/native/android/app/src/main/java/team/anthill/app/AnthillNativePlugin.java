@@ -1,14 +1,24 @@
 package team.anthill.app;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.FileProvider;
+
+import com.getcapacitor.JSArray;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -44,6 +54,179 @@ import java.util.Locale;
  */
 @CapacitorPlugin(name = "AnthillNative")
 public class AnthillNativePlugin extends Plugin {
+
+    // ── Обновление веб-части по воздуху (ТЗ-34, этап D): вся логика — в BundleUpdater ──
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private volatile boolean visible = true;
+    /** Сторож пробного бандла сработал, пока приложение было свёрнуто: проверим по возвращении. */
+    private volatile String watchdogDue = null;
+
+    @Override
+    public void load() {
+        String trial = BundleUpdater.runningTrial(getContext());
+        if (trial != null) watch(trial);
+    }
+
+    @Override
+    protected void handleOnPause() {
+        visible = false;
+    }
+
+    @Override
+    protected void handleOnResume() {
+        visible = true;
+        String due = watchdogDue;
+        watchdogDue = null;
+        // по возвращении даём бандлу ещё одно окно: свёрнутый WebView мог не успеть отрисоваться
+        if (due != null) watch(due);
+    }
+
+    /** Через 15 с пробный бандл должен сказать «живой», иначе — назад, на прежний. */
+    private void watch(final String trial) {
+        main.postDelayed(() -> {
+            if (!trial.equals(BundleUpdater.runningTrial(getContext()))) return; // подтвердился
+            if (!visible) {
+                watchdogDue = trial;
+                return;
+            }
+            String back = BundleUpdater.rollbackNow(getContext(), trial);
+            if (back == null) return;
+            if (back.isEmpty()) bridge.setServerAssetPath("public");
+            else bridge.setServerBasePath(back);
+        }, BundleUpdater.CONFIRM_MS);
+    }
+
+    /** Что стоит и что скачано: для проверки обновлений и диагностики. */
+    @PluginMethod
+    public void bundleStatus(PluginCall call) {
+        Context c = getContext();
+        JSObject r = new JSObject();
+        r.put("native", BundleUpdater.nativeName(c));
+        r.put("stable", BundleUpdater.get(c, "stable"));
+        r.put("trial", BundleUpdater.get(c, "trial"));
+        r.put("pending", BundleUpdater.get(c, "pending"));
+        JSArray bad = new JSArray();
+        for (String v : BundleUpdater.badList(c)) bad.put(v);
+        r.put("bad", bad);
+        call.resolve(r);
+    }
+
+    /** Скачать бандл по манифесту: sha256, подпись (если ключ зашит), распаковка в files/bundles. */
+    @PluginMethod
+    public void bundleDownload(PluginCall call) {
+        final String version = call.getString("version");
+        final String url = call.getString("url");
+        final String sha256 = call.getString("sha256");
+        final String signature = call.getString("signature", "");
+        final String key = getContext().getString(R.string.qevo_bundle_pubkey);
+        new Thread(() -> {
+            try {
+                call.resolve(status(BundleUpdater.download(getContext(), version, url, sha256, signature, key), null));
+            } catch (Throwable t) {
+                call.resolve(status("failed", String.valueOf(t.getMessage())));
+            }
+        }, "qevo-bundle").start();
+    }
+
+    /** Применить скачанный бандл сейчас (уход в фон или кнопка): WebView перезагрузится. */
+    @PluginMethod
+    public void bundleApply(PluginCall call) {
+        final String path = BundleUpdater.applyPending(getContext());
+        JSObject r = new JSObject();
+        r.put("applied", path != null);
+        // ответ — до перезагрузки: после неё звать уже некого
+        call.resolve(r);
+        if (path == null) return;
+        final String version = BundleUpdater.runningTrial(getContext());
+        main.post(() -> bridge.setServerBasePath(path));
+        if (version != null) watch(version);
+    }
+
+    /** Бандл поднялся и нарисовал экран: пробный становится подтверждённым. */
+    @PluginMethod
+    public void bundleReady(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("confirmed", BundleUpdater.confirm(getContext(), call.getString("version", "")));
+        call.resolve(r);
+    }
+
+    // ── Живой прогресс службы заботы на экране блокировки (ТЗ-34, A7) ──
+
+    private static final String CARE_CHANNEL = "qevo-care";
+    private static final int CARE_ID = 900_101;
+
+    /**
+     * Постоянное уведомление с полосой: инженер переносит данные или настраивает, человек
+     * заблокировал телефон — и видит, сколько готово. Канал тихий (без звука и вибрации),
+     * видимость PUBLIC — текст виден и на экране блокировки. done — вместо полосы тихое
+     * «Готово», которое можно смахнуть; clear — убрать. Текст собирает JS: его можно
+     * поправить обновлением по воздуху, без нового APK.
+     */
+    @PluginMethod
+    public void careProgress(PluginCall call) {
+        Context c = getContext();
+        NotificationManagerCompat nm = NotificationManagerCompat.from(c);
+        JSObject r = new JSObject();
+        if (Boolean.TRUE.equals(call.getBoolean("clear", false))) {
+            nm.cancel(CARE_ID);
+            r.put("shown", false);
+            call.resolve(r);
+            return;
+        }
+        if (!nm.areNotificationsEnabled()) {
+            r.put("shown", false);
+            call.resolve(r);
+            return;
+        }
+        try {
+            NotificationManager sys = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (sys.getNotificationChannel(CARE_CHANNEL) == null) {
+                NotificationChannel ch = new NotificationChannel(CARE_CHANNEL, "Служба заботы", NotificationManager.IMPORTANCE_LOW);
+                ch.setDescription("Ход работы инженера: сколько готово и сколько осталось");
+                ch.setSound(null, null);
+                ch.enableVibration(false);
+                ch.setShowBadge(false);
+                ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                sys.createNotificationChannel(ch);
+            }
+            boolean done = Boolean.TRUE.equals(call.getBoolean("done", false));
+            Integer raw = call.getInt("percent", 0);
+            int percent = Math.max(0, Math.min(100, raw == null ? 0 : raw));
+            String title = call.getString("title", "Служба заботы");
+            String text = call.getString("text", "");
+
+            Intent launch = c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());
+            PendingIntent open = launch == null ? null : PendingIntent.getActivity(c, CARE_ID, launch,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+
+            NotificationCompat.Builder b = new NotificationCompat.Builder(c, CARE_CHANNEL)
+                .setSmallIcon(R.drawable.ic_stat_notify)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setSilent(true)
+                .setOnlyAlertOnce(true)
+                .setShowWhen(false);
+            if (open != null) b.setContentIntent(open);
+            if (done) {
+                b.setOngoing(false).setAutoCancel(true).setProgress(0, 0, false).setCategory(NotificationCompat.CATEGORY_STATUS);
+            } else {
+                b.setOngoing(true).setAutoCancel(false).setProgress(100, percent, false).setCategory(NotificationCompat.CATEGORY_PROGRESS);
+            }
+            nm.notify(CARE_ID, b.build());
+            r.put("shown", true);
+            call.resolve(r);
+        } catch (SecurityException e) {
+            // разрешение на уведомления отозвали между проверкой и показом
+            r.put("shown", false);
+            call.resolve(r);
+        } catch (Throwable t) {
+            call.reject("не удалось показать ход работы: " + t.getMessage());
+        }
+    }
 
     /**
      * Куда идёт звук созвона (задача #1464): «как в Телеграме» — в разговорный динамик у

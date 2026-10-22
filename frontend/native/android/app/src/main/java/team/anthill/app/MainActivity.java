@@ -9,6 +9,9 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Свой плагин регистрируется до моста: иначе JS его не увидит.
         registerPlugin(AnthillNativePlugin.class);
+        // Обновление по воздуху: откатить неподтвердившийся бандл и применить скачанный —
+        // до моста, который при старте читает путь веб-части (ТЗ-34, этап D).
+        BundleUpdater.prepareLaunch(getApplicationContext());
         super.onCreate(savedInstanceState);
     }
 }

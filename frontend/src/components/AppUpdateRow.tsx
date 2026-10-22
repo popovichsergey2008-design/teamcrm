@@ -49,7 +49,10 @@ export function AppUpdateRow() {
       setMobileConfig(c);
       setRelease(c.android);
       const newer = !!c.android && !!installed && compareVersions(installed, c.android.latestNative) < 0;
+      // веб-часть обновляется отдельно, по воздуху (ТЗ-34, этап D)
+      const web = newer ? null : await platform.appUpdate.check();
       if (newer) window.dispatchEvent(new Event(UPDATE_OPEN_EVENT));
+      else if (web) toastSaved('Обновление интерфейса скачано', 'Применится, когда вы свернёте приложение');
       else toastSaved('У вас последняя версия', `QEVO ${installed?.split(' ')[0] ?? ''}`.trim());
     } catch {
       toastSaved('Не удалось проверить обновления', 'Проверьте связь и попробуйте ещё раз');
@@ -65,6 +68,7 @@ export function AppUpdateRow() {
             ? `Последнее обновление: ${release.latestNative}${release.publishedAt ? ` от ${day(release.publishedAt)}` : ''}${behind ? ' — не установлено' : ' — установлено'}`
             : 'Проверяем, есть ли обновления…'}
         </span>
+        <span className="dim">Интерфейс {platform.info().bundleVersion}</span>
       </div>
       {behind ? (
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => window.dispatchEvent(new Event(UPDATE_OPEN_EVENT))}>
