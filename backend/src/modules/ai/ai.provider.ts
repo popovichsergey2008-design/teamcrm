@@ -1,3 +1,4 @@
+import { dropHallucinations } from './stt-hallucinations';
 import { createHash } from 'crypto';
 import { Logger } from '@nestjs/common';
 
@@ -390,9 +391,12 @@ export class RealAiProvider implements AiProvider {
     if (!this.openaiKey) return [];
     const json = await this.whisperRaw(audio, filename || 'audio.mp3', 'verbose_json', hint);
     const segments = Array.isArray(json?.segments) ? json.segments : [];
-    return segments
-      .map((s: any) => ({ start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text ?? '').trim() }))
-      .filter((s: TranscriptSegment) => s.text.length > 0);
+    // на тишине Whisper сочиняет фразы из роликов — убираем их до стенограммы
+    return dropHallucinations(segments.map((s: any) => ({
+      start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text ?? '').trim(),
+      noSpeechProb: Number(s.no_speech_prob), avgLogprob: Number(s.avg_logprob),
+    })).filter((s: { text: string }) => s.text.length > 0))
+      .map(({ start, end, text }) => ({ start, end, text }));
   }
 
   /** OpenAI Whisper: аудио-буфер → распознанный текст. */
