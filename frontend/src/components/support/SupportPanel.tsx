@@ -17,6 +17,7 @@ import { OptionSelect } from '../ui/option-select';
 import { useEnterSend } from '../../hooks/useEnterSend';
 import type { SupportOpen } from './SupportDock';
 import type { CareProgress } from '../../lib/care-rules';
+import { resetCarePositions, useCareDrag } from './useCareDrag';
 // консьерж (ТЗ-29) — своим куском: панель службы заботы входит в стартовую сборку
 const ConciergeHead = lazy(() => import('./Concierge').then((m) => ({ default: m.ConciergeHead })));
 const ConciergeCards = lazy(() => import('./Concierge').then((m) => ({ default: m.ConciergeCards })));
@@ -615,6 +616,17 @@ export default function SupportPanel({ embedded = false, request, open: openProp
     else if (dy > 60) { if (full) setFull(false); else onMinimize?.(); }
   };
 
+  /*
+    Окно на ПК и планшете таскают за шапку (#4636): кнопки в шапке остаются кнопками,
+    двойной щелчок по шапке или «вернуть на место» — снова справа снизу. На телефоне
+    окно — шторка над вкладками, там свои жесты (ручка сверху).
+  */
+  const panelDrag = useCareDrag<HTMLElement>('care.panel', {
+    media: '(min-width: 721px)',
+    ignore: ':is(button, a, input, select, textarea, label):not([data-care-handle])',
+    margin: 8,
+  });
+
   /** ПК ↔ телефон (п. 3.7): тот же разговор по ссылке, созвон — по ссылке комнаты. */
   const continueElsewhere = async () => {
     if (!conv) return;
@@ -643,6 +655,7 @@ export default function SupportPanel({ embedded = false, request, open: openProp
       */}
       {open && (
         <aside
+          ref={embedded ? undefined : panelDrag.ref}
           className={`support-dock${embedded ? ' support-dock-embedded' : ''}${full ? ' support-dock-full' : ''}${minimized ? ' support-dock-min' : ''}`}
           role="dialog"
           aria-label="Отдел заботы"
@@ -653,8 +666,26 @@ export default function SupportPanel({ embedded = false, request, open: openProp
               <span />
             </div>
           )}
-          <header className="support-head">
-            <span className="support-head-mark" aria-hidden="true"><Icon name={mineConversation ? 'support' : 'user'} size={18} /></span>
+          <header
+            className={`support-head${embedded ? '' : ' support-head-drag'}`}
+            {...(embedded ? {} : { ...panelDrag.handlers, onDoubleClick: panelDrag.onDoubleClick })}
+          >
+            {embedded ? (
+              <span className="support-head-mark" aria-hidden="true"><Icon name={mineConversation ? 'support' : 'user'} size={18} /></span>
+            ) : (
+              /* Ручка для клавиатуры: в фокусе стрелки двигают окно, Home — на место */
+              <button
+                type="button"
+                className="support-head-mark support-head-handle"
+                data-care-handle=""
+                onKeyDown={panelDrag.onKeyDown}
+                aria-label="Переместить окно: стрелки — сдвинуть, Home — вернуть на место"
+                aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home"
+                title="Перетащите окно за шапку; двойной щелчок — на место"
+              >
+                <Icon name={mineConversation ? 'support' : 'user'} size={18} />
+              </button>
+            )}
             <div className="support-head-title">
               {mineConversation ? (
                 <>
@@ -725,6 +756,11 @@ export default function SupportPanel({ embedded = false, request, open: openProp
             >
               <Icon name="clock" size={15} />
             </button>
+            {!embedded && panelDrag.moved && (
+              <button className="msg-icon support-head-home" onClick={resetCarePositions} title="Вернуть окно на место — справа снизу" aria-label="Вернуть окно на место">
+                <Icon name="pin" size={15} />
+              </button>
+            )}
             {!embedded && onMinimize && (
               <button className="msg-icon" onClick={onMinimize} title="Свернуть в кружок — разговор останется с вами" aria-label="Свернуть">
                 <Icon name="minimize" size={15} />

@@ -9,20 +9,29 @@ import {
 import { Icon } from '../Icon';
 import type { SupportOpen } from './SupportDock';
 import type { PanelInfo } from './SupportPanel';
+import { useCareDrag } from './useCareDrag';
 
 const SupportPanel = lazy(() => import('./SupportPanel'));
 
+/**
+ * Подсказка островка — в пределах экрана: островок могли утащить к краю (#4636), и
+ * подсказка над ним уехала бы за верх, а по центру — за левый или правый край.
+ */
+function fitTip(btn: HTMLElement | null): void {
+  const t = btn?.querySelector<HTMLElement>('.care-tip');
+  if (!t) return;
+  t.style.marginLeft = '';
+  t.classList.remove('up', 'down');
+  const r = t.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  const shift = r.left < 8 ? 8 - r.left : r.right > vw - 8 ? vw - 8 - r.right : 0;
+  if (shift) t.style.marginLeft = `${Math.round(shift)}px`;
+  if (r.top < 8) t.classList.add('down');
+  else if (r.bottom > vh - 8) t.classList.add('up');
+}
+
 const initials = (n: string) => n.split(/\s+/).map((x) => x[0] ?? '').join('').slice(0, 2).toUpperCase();
 const touch = () => window.matchMedia?.('(pointer: coarse)').matches ?? false;
-
-/** Чтение и запись своих мелочей (где стоит кружок): в приватном окне хранилища может не быть. */
-function readPos(): { x: number; y: number } | null {
-  try { const v = JSON.parse(localStorage.getItem('care.bubble') ?? 'null') as { x: number; y: number } | null; return v && Number.isFinite(v.x) && Number.isFinite(v.y) ? v : null; }
-  catch { return null; }
-}
-function savePos(p: { x: number; y: number }): void {
-  try { localStorage.setItem('care.bubble', JSON.stringify(p)); } catch { /* не критично */ }
-}
 
 /**
  * Отдел заботы поверх приложения (ТЗ-34, #4620).
@@ -115,23 +124,27 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
   useEffect(() => {
     let timer = 0;
     let fired = false;
+    let start: { x: number; y: number } | null = null;
     const down = (e: PointerEvent) => {
       const el = (e.target as HTMLElement | null)?.closest?.('[data-care-hold]');
       if (!el) return;
       fired = false;
       heldRef.current = false;
+      start = { x: e.clientX, y: e.clientY };
       timer = window.setTimeout(() => { fired = true; heldRef.current = true; openQuick(); }, 1000);
     };
     const cancel = () => window.clearTimeout(timer);
     const click = (e: MouseEvent) => {
       if (!fired) return;
       fired = false;
+      heldRef.current = false;
       if ((e.target as HTMLElement | null)?.closest?.('[data-care-hold]')) { e.preventDefault(); e.stopPropagation(); }
     };
     window.addEventListener('pointerdown', down, true);
     window.addEventListener('pointerup', cancel, true);
     window.addEventListener('pointercancel', cancel, true);
-    const move = (e: PointerEvent) => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 8) cancel(); };
+    // повели островок или кружок (#4636) — это перетаскивание, а не удержание
+    const move = (e: PointerEvent) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) >= 5) { start = null; cancel(); } };
     window.addEventListener('pointermove', move, true);
     window.addEventListener('click', click, true);
     return () => {
@@ -163,7 +176,9 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
     let start: { x: number; y: number } | null = null;
     const ts = (e: TouchEvent) => {
       const t = e.touches[0];
-      start = t && e.touches.length === 1 && t.clientY < 48 ? { x: t.clientX, y: t.clientY } : null;
+      // островок сверху тянут пальцем (#4636) — это не «свайп к поиску»
+      const onCare = (e.target as Element | null)?.closest?.('[data-care-drag]');
+      start = t && e.touches.length === 1 && t.clientY < 48 && !onCare ? { x: t.clientX, y: t.clientY } : null;
     };
     const tm = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -214,35 +229,6 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
     return () => { mo.disconnect(); window.removeEventListener('pointerdown', down, true); window.removeEventListener('qevo:api-failed', failed); };
   }, []);
 
-  // ── кружок (PiP): перетаскивается, тап — развернуть ──
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(readPos);
-  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
-  const bubbleDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false };
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-  };
-  const bubbleMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
-    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 6) return;
-    d.moved = true;
-    const size = 60;
-    setPos({
-      x: Math.min(window.innerWidth - size - 4, Math.max(4, d.ox + dx)),
-      y: Math.min(window.innerHeight - size - 4, Math.max(4, d.oy + dy)),
-    });
-  };
-  const bubbleUp = () => {
-    const d = dragRef.current;
-    dragRef.current = null;
-    if (!d) return;
-    if (d.moved) { if (pos) savePos(pos); return; }
-    if (heldRef.current) { heldRef.current = false; return; }
-    show();
-  };
-
   const engineers = care?.engineers ?? [];
   const onDuty = engineers.filter((e) => e.status !== 'offline');
   const time = careShort(care?.estimate ?? null, care?.medianSec);
@@ -254,10 +240,24 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
   const progress = info?.progress ?? null;
 
   const tapPill = () => {
+    // удержание уже открыло шторку — отпускание пальца не «тап»
+    if (heldRef.current) { heldRef.current = false; return; }
     // касание на телефоне — подсказка всплывает и держится, окно открывается рядом
-    if (touch()) { setTip(true); window.setTimeout(() => setTip(false), 2600); }
+    if (touch()) { fitTip(document.querySelector('.care-pill')); setTip(true); window.setTimeout(() => setTip(false), 2600); }
     show();
   };
+  const bubbleTap = () => {
+    if (heldRef.current) { heldRef.current = false; return; }
+    show();
+  };
+  /*
+    Островок и кружок перетаскиваются мышью и пальцем (#4636): тап без сдвига — как
+    раньше открывает, удержание 1 с — шторка, стрелки на фокусе — сдвиг, Home — на место.
+  */
+  const pillDrag = useCareDrag<HTMLButtonElement>('care.pill', { margin: 2, onTap: tapPill });
+  // подсказка на телефоне всплывает и после возврата островка — тоже в пределах экрана
+  useEffect(() => { if (tip) fitTip(document.querySelector('.care-pill')); }, [tip, open]);
+  const bubbleDrag = useCareDrag<HTMLButtonElement>('care.bubble.pos', { onTap: bubbleTap });
 
   return (
     <div className="care-root">
@@ -265,11 +265,18 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
       {!open && !quick && (
         <button
           type="button"
+          ref={pillDrag.ref}
           className={`care-pill${tip ? ' tip' : ''}`}
           data-care-hold=""
+          data-care-drag=""
           onClick={tapPill}
+          {...pillDrag.handlers}
+          onKeyDown={pillDrag.onKeyDown}
+          onPointerEnter={(e) => fitTip(e.currentTarget)}
+          onFocus={(e) => fitTip(e.currentTarget)}
           aria-label={`Забота 24/7${time ? ` • ${time}` : ''}. ${tipText}`}
           aria-describedby="care-tip"
+          aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home"
         >
           <span className="care-pill-faces" aria-hidden="true">
             {onDuty.slice(0, 3).map((e) => (
@@ -288,13 +295,14 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
       {open && min && !quick && (
         <button
           type="button"
+          ref={bubbleDrag.ref}
           className="care-bubble"
           data-care-hold=""
-          style={pos ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' } : undefined}
-          onPointerDown={bubbleDown}
-          onPointerMove={bubbleMove}
-          onPointerUp={bubbleUp}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(); } }}
+          data-care-drag=""
+          onClick={bubbleTap}
+          {...bubbleDrag.handlers}
+          onKeyDown={bubbleDrag.onKeyDown}
+          aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home"
           aria-label={`Развернуть окно заботы${unread ? `, новых сообщений: ${unread}` : ''}${progress ? `. Готово ${progress.percent}%` : ''}`}
           title={progress ? `${progress.percent}% · ${progress.text}` : 'Развернуть'}
         >
