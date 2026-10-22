@@ -1,0 +1,29 @@
+/* #4615 Автоматическая постановка: срок чипами и сводка «Так поставлю». Грузится вместе с окном быстрой команды. */
+.nla-deadline { display: flex; flex-direction: column; gap: 8px; }
+.nla-label { font-size: var(--fs-xs); color: var(--text-mut); }
+.nla-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.nla-chip {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-elev-2); color: var(--text); font: inherit; font-size: var(--fs-sm, 14px); cursor: pointer;
+}
+.nla-chip:hover { border-color: var(--accent); }
+.nla-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nla-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.nla-thinking { display: flex; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--text-mut); }
+.nla-sum { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm, 8px); background: var(--bg-elev); }
+.nla-sum-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-xs); color: var(--text-mut); }
+.nla-sum-head > span { display: inline-flex; align-items: center; gap: 5px; }
+.nla-title { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.nla-desc { font-size: var(--fs-sm, 14px); color: var(--text); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.nla-facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 2px 0 0; font-size: var(--fs-sm, 14px); }
+.nla-facts dt { color: var(--text-mut); }
+.nla-facts dd { margin: 0; color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.nla-why { color: var(--text-mut); }
+.nla-facts dd.nla-missing { color: var(--danger); }
+.nla-warn { display: flex; gap: 5px; align-items: flex-start; font-size: var(--fs-xs); color: var(--text); }
+.nla-done-note { display: flex; gap: 6px; align-items: flex-start; padding: 8px 10px; border-radius: var(--radius-sm, 8px); background: var(--accent-soft); color: var(--text); font-size: var(--fs-xs); }
+@media (max-width: 480px) {
+  .nla-facts { grid-template-columns: 1fr; gap: 0; }
+  .nla-facts dd { margin-bottom: 4px; }
+}
+.nla-actions { flex-wrap: wrap; }

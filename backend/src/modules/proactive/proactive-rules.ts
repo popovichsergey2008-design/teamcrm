@@ -6,7 +6,7 @@
  * положить в ящик, до какого момента «отложить» и в каком порядке показывать.
  */
 
-export const SKILLS = ['commitment', 'workload', 'reply', 'followup', 'brief', 'decision', 'postcall'] as const;
+export const SKILLS = ['commitment', 'workload', 'reply', 'followup', 'brief', 'decision', 'postcall', 'autotask'] as const;
 export type Skill = typeof SKILLS[number];
 
 export const PRIORITY_LABEL = ['Критично', 'Сегодня', 'Важно', 'К сведению'] as const;
@@ -21,6 +21,8 @@ export const SECTION_OF: Record<Skill, 'attention' | 'commitments' | 'replies' |
   decision: 'attention',
   // ТЗ-22: итоги встречи не разобраны — через сутки или после «Разобрать позже»
   postcall: 'meetings',
+  // #4615: автоматически поставленная задача — проверить через 30 секунд
+  autotask: 'attention',
 };
 
 /** Причины 👎 (§109). */

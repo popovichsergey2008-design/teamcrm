@@ -11,6 +11,7 @@ import { UsersModule } from '../users/users.module';
 import { BatchRepository } from './batch.repository';
 import { BatchService } from './batch.service';
 import { TagsModule } from '../tags/tags.module';
+import { AutoConfirmService } from './auto-confirm.service';
 
 /** NL-команда / Zero-UI: естественный язык → создание задачи/сделки (с подтверждением). */
 @Module({
@@ -20,7 +21,7 @@ import { TagsModule } from '../tags/tags.module';
   // TagsModule — подтверждение тегов перед созданием задачи (ТЗ по тегам).
   imports: [TasksModule, DealsModule, FilesModule, UsersModule, TagsModule],
   controllers: [NlController],
-  providers: [NlService, VoiceService, VoiceRepository, BatchService, BatchRepository, ProjectResolverService],
-  exports: [NlService, ProjectResolverService],
+  providers: [NlService, VoiceService, VoiceRepository, BatchService, BatchRepository, ProjectResolverService, AutoConfirmService],
+  exports: [NlService, ProjectResolverService, AutoConfirmService],
 })
 export class NlModule {}

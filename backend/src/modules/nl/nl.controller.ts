@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ArrayMaxSize, IsArray, IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -19,6 +19,8 @@ class ParseDto {
    * last — просто последняя открытая доска (слабый: недавнее, а не обстановка).
    */
   @IsOptional() @IsIn(['board', 'last']) currentKind?: 'board' | 'last';
+  /** #4615: автоматическая постановка — проект, руководитель отдела и теги без вопросов. */
+  @IsOptional() @IsBoolean() auto?: boolean;
 }
 class ParseEventDto {
   @IsString() @MaxLength(2000) text!: string;
@@ -128,7 +130,7 @@ export class NlController {
    */
   @Post('parse-many')
   parseMany(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, { currentKind: dto.currentKind });
+    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, { currentKind: dto.currentKind, auto: dto.auto === true });
   }
 
   /** Надиктованная встреча → заполненный черновик события (ничего не создаёт). */

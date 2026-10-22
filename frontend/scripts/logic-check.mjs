@@ -1585,6 +1585,25 @@ test('забота: встряхивание — три сильных рывк�
   assert.equal(g.sample(0, 0, 9.81, true, 0), false);
 });
 
+test('автопостановка #4615: чипы срока — сегодня, завтра, послезавтра, через неделю, свой', async () => {
+  const { chipDate, chipFor, effectiveDeadline, DEADLINE_CHIPS } = await load('lib/auto-task.ts');
+  assert.deepEqual(DEADLINE_CHIPS.map((c) => c.label), ['Сегодня', 'Завтра', 'Послезавтра', 'Через неделю']);
+  const now = new Date(2026, 9, 30, 23, 40); // 30 октября, поздний вечер — месяц кончается
+  assert.equal(chipDate('today', now), '2026-10-30');
+  assert.equal(chipDate('tomorrow', now), '2026-10-31');
+  assert.equal(chipDate('after', now), '2026-11-01');
+  assert.equal(chipDate('week', now), '2026-11-06');
+  // срок прозвучал во фразе — чип выбран сам; не совпал с готовым — «Свой срок»
+  assert.equal(chipFor('2026-10-31', now), 'tomorrow');
+  assert.equal(chipFor('2026-11-06T15:00:00.000Z', now), 'week');
+  assert.equal(chipFor('2026-12-15', now), 'custom');
+  assert.equal(chipFor(null, now), null);
+  // выбранный чипом срок главнее услышанного; не трогали — услышанный
+  assert.equal(effectiveDeadline('2026-11-02', '2026-10-31', true), '2026-10-31');
+  assert.equal(effectiveDeadline('2026-11-02', '2026-10-31', false), '2026-11-02');
+  assert.equal(effectiveDeadline(null, null, false), null);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

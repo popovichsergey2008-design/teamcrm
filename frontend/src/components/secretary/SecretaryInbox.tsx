@@ -42,7 +42,7 @@ const REASONS: { key: string; label: string }[] = [
 
 const SKILL_TITLE: Record<string, string> = {
   commitment: 'Обещания', workload: 'Страж нагрузки', reply: 'Ответы', followup: 'После встреч с клиентом',
-  brief: 'Утренняя сводка', decision: 'Решения', postcall: 'Итоги встреч',
+  brief: 'Утренняя сводка', decision: 'Решения', postcall: 'Итоги встреч', autotask: 'Постановка задач',
 };
 
 function when(iso: string | null): string {
@@ -210,6 +210,8 @@ function ProposalCard({ p, focused, onDone, onNavigate }: {
   const [pick, setPick] = useState<{ action: AssistantProposal['actions'][number]; candidates: { id: string; name: string }[]; projects: { id: string; name: string }[] } | null>(null);
 
   const act = async (a: AssistantProposal['actions'][number], extra?: Record<string, unknown>) => {
+    // #4615 «Править»: просто открыть задачу — карточка остаётся, «Ок» можно нажать потом
+    if (a.link) { go(a.link); return; }
     if (a.risk === 'external' && !(await confirmAction({ title: `${a.label}?`, description: p.effect ?? undefined, confirmLabel: a.label }))) return;
     setBusy(true); setErr('');
     try {

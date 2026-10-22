@@ -21,6 +21,8 @@ import {
   taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
+import { DepartmentInfo, pickAutoProject, pickDepartmentLead } from './auto-task';
+import { AutoConfirmService } from './auto-confirm.service';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -54,6 +56,14 @@ export interface NlDraft {
     estimateHours?: number | null;
     /** Направления задачи (отметки в карточке): по словам и классификации, правятся в предпросмотре. */
     directions?: Skill[];
+    /** #4615: исполнитель назван в самой фразе — он главнее подбора. */
+    assigneeNamed?: boolean;
+    /** #4615, автоматическая постановка: черновик собран без вопросов. */
+    auto?: boolean;
+    /** Почему этот исполнитель — словами, для сводки и сообщения-подтверждения. */
+    assigneeWhy?: string;
+    /** Теги, подобранные ИИ: в автоматической постановке принимаются сами. */
+    autoTags?: { id: string; name: string; color: string | null }[];
   };
   /**
    * Кому и почему предлагаем поручить задачу (ТЗ-10, этап 4).
@@ -130,6 +140,7 @@ export class NlService {
     private readonly security: SecurityService,
     private readonly workload: WorkloadGuardService,
     private readonly projectResolver: ProjectResolverService,
+    private readonly autoConfirm: AutoConfirmService,
   ) {}
 
   private async roleOf(tenantId: string, userId: string): Promise<string | null> {
@@ -248,7 +259,7 @@ export class NlService {
   async parse(
     tenantId: string, userId: string, text: string,
     currentProjectId?: string | null, whole?: string | null,
-    opts: { currentKind?: 'board' | 'last' } = {},
+    opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
   ): Promise<NlDraft> {
     const clean = (text ?? '').trim();
     /** Общая часть надиктовки: пусто, когда поручение и есть вся команда. */
@@ -311,14 +322,30 @@ export class NlService {
       }).catch((e) => { this.log.warn(`определитель проекта: ${(e as Error).message}`); return null; });
       // последняя открытая доска — только слабая подсказка: ставим её в варианты, если других нет
       const lastBoard = currentProjectId && opts.currentKind === 'last' && projectSet.has(String(currentProjectId)) ? String(currentProjectId) : null;
-      const projectId = resolved?.level === 'HIGH' ? resolved.projectId : null;
+      /*
+        #4615, автоматическая постановка: не спрашиваем. MEDIUM — лучший кандидат,
+        LOW — открытая доска, иначе последний проект, где человек ставил задачи.
+        Почему выбран — словами, это увидит постановщик в сообщении-подтверждении.
+      */
+      const auto = opts.auto ? pickAutoProject({
+        level: resolved?.level ?? null, resolvedId: resolved?.projectId ?? null, resolvedHint: resolved?.hint ?? null,
+        boardId: currentProjectId && opts.currentKind !== 'last' ? String(currentProjectId) : null,
+        lastTaskProjectId: await this.lastTaskProject(tenantId, userId),
+        lastBoardId: currentProjectId && opts.currentKind === 'last' ? String(currentProjectId) : null,
+        alternatives: (resolved?.alternatives ?? []).map((a) => String(a.projectId)),
+        visible: new Set(projectSet.keys()),
+      }) : null;
+      const projectId = auto ? auto.projectId : resolved?.level === 'HIGH' ? resolved.projectId : null;
       const candidates = resolved
         ? [...(resolved.projectId && resolved.level !== 'HIGH' ? [{ id: resolved.projectId, name: resolved.projectName ?? '' }] : []),
           ...resolved.alternatives.map((a) => ({ id: a.projectId, name: a.name })),
           ...(lastBoard ? [{ id: lastBoard, name: projectSet.get(lastBoard)! }] : [])]
           .filter((c, i, arr) => c.id !== projectId && arr.findIndex((x) => x.id === c.id) === i).slice(0, 3)
         : [];
-      if (resolved?.notFoundName) warnings.push(`Проект «${resolved.notFoundName}» не найден среди доступных — выберите существующий`);
+      if (auto) {
+        if (!projectId) warnings.push('Проект не определён — выберите проект');
+        else if (resolved?.notFoundName) warnings.push(`Проекта «${resolved.notFoundName}» среди доступных нет — поставлю в «${projectSet.get(projectId)}»`);
+      } else if (resolved?.notFoundName) warnings.push(`Проект «${resolved.notFoundName}» не найден среди доступных — выберите существующий`);
       else if (!projectId && candidates.length) warnings.push('К какому проекту относится задача? Выберите из вариантов');
       else if (!projectId) warnings.push('Проект не определён — выберите проект');
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
@@ -351,7 +378,7 @@ export class NlService {
         title: cleanTitle(title, t.description ? String(t.description) : null).slice(0, 255),
         description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,
-        projectHint: projectId && resolved ? resolved.hint : '',
+        projectHint: auto ? auto.why : projectId && resolved ? resolved.hint : '',
         projectResolution: resolved ? {
           predictedProjectId: resolved.projectId, confidence: resolved.confidence, level: resolved.level,
           resolution: resolved.resolution, reasonCodes: resolved.reasonCodes, hint: resolved.hint,
@@ -391,7 +418,17 @@ export class NlService {
    */
   async parseMany(
     tenantId: string, userId: string, text: string, currentProjectId?: string | null,
-    opts: { currentKind?: 'board' | 'last' } = {},
+    opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
+  ): Promise<NlDraft[]> {
+    const drafts = await this.parseManyInner(tenantId, userId, text, currentProjectId, opts);
+    // #4615: проект уже выбран в разборе; здесь — руководитель отдела и теги
+    if (opts.auto) await this.autoFill(tenantId, drafts);
+    return drafts;
+  }
+
+  private async parseManyInner(
+    tenantId: string, userId: string, text: string, currentProjectId: string | null | undefined,
+    opts: { currentKind?: 'board' | 'last'; auto?: boolean },
   ): Promise<NlDraft[]> {
     const clean = (text ?? '').trim();
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
@@ -592,9 +629,119 @@ export class NlService {
       задача уходила контентщику «потому что модель так решила», и объяснить это
       было нечем. Нет рекомендации — задача остаётся ничьей, это видно и поправимо.
     */
+    draft.task.assigneeNamed = !!namedAssigneeId;
     if (namedAssigneeId) return;
     draft.task.assigneeId = pick.userId;
     draft.task.assigneeName = pick.name;
+  }
+
+  /**
+   * Автоматическая постановка (#4615): исполнитель — руководитель отдела по направлению
+   * задачи, теги — подобранные ИИ (принимаются сами: проверку заменяет «Ок» постановщика).
+   *
+   * Названный во фразе человек главнее, но только если видит проект. Руководитель не
+   * видит проект — участник того же отдела с этим направлением; отделы не настроены —
+   * прежний подбор по навыку и загрузке, тоже только среди видящих проект.
+   */
+  private async autoFill(tenantId: string, drafts: NlDraft[]): Promise<void> {
+    const list = drafts.filter((d) => d.task);
+    if (!list.length) return;
+    const [departments, candidates, skillRows] = await Promise.all([
+      this.departments(tenantId), this.autoCandidates(tenantId),
+      this.db.many<{ user_id: string; skills: string[] }>(
+        `SELECT s.user_id::text, array_agg(s.skill) AS skills FROM user_skills s JOIN users u ON u.id = s.user_id
+          WHERE u.tenant_id=$1 GROUP BY s.user_id`, [tenantId],
+      ).catch(() => []),
+    ]);
+    const seers = await this.projectSeers(tenantId, list.map((d) => d.task!.projectId).filter((p): p is string => !!p));
+    const skills = new Map(skillRows.map((r) => [String(r.user_id), r.skills ?? []]));
+    const load = new Map(candidates.map((c) => [c.userId, c.openTasks]));
+    const names = new Map(list[0].context.users.map((u) => [String(u.id), u.name]));
+    for (const d of list) {
+      const t = d.task!;
+      t.auto = true;
+      const see = t.projectId ? seers.get(t.projectId) ?? new Set<string>() : null;
+      const canSee = (u: string) => !!see?.has(String(u));
+      if (t.assigneeNamed && t.assigneeId) {
+        if (!see || canSee(t.assigneeId)) { t.assigneeWhy = 'назван в тексте'; continue; }
+        d.warnings.push(`${t.assigneeName ?? 'Названный исполнитель'} не видит проект «${t.projectName ?? ''}» — назначен другой`);
+      }
+      const skill = d.routing?.skill ?? t.directions?.[0] ?? null;
+      const lead = see ? pickDepartmentLead(skill, departments, {
+        canSee, skillsOf: (u) => skills.get(u) ?? [], openTasks: (u) => load.get(u) ?? 0, nameOf: (u) => names.get(u) ?? null,
+      }) : null;
+      if (lead) {
+        t.assigneeId = lead.userId; t.assigneeName = lead.name || names.get(lead.userId) || null; t.assigneeWhy = lead.reason;
+        load.set(lead.userId, (load.get(lead.userId) ?? 0) + 1);
+        continue;
+      }
+      // прежний подбор — но только среди тех, кто видит проект
+      if (t.assigneeId && see && !canSee(t.assigneeId)) {
+        const pick = pickAssignee({ skill, confidence: 1 }, candidates.filter((c) => canSee(c.userId)));
+        t.assigneeId = pick.userId; t.assigneeName = pick.name;
+        t.assigneeWhy = pick.userId ? pick.reason : '';
+      } else {
+        t.assigneeWhy = t.assigneeId ? (d.routing?.reason ?? '') : '';
+      }
+    }
+    // Теги — подбором ИИ из тегов компании; не подобрались — «без тегов».
+    await Promise.all(list.map(async (d) => {
+      const t = d.task!;
+      const r = await this.tags.suggest(tenantId, {
+        title: t.title, description: t.description, checklist: t.checklist, projectName: t.projectName,
+      }).catch(() => null);
+      t.autoTags = (r?.suggestions ?? []).map((x: { tagId: string; name: string; color: string | null }) => ({ id: String(x.tagId), name: x.name, color: x.color ?? null }));
+    }));
+  }
+
+  /** Отделы с руководителем, направлениями и участниками (#4615). */
+  private async departments(tenantId: string): Promise<DepartmentInfo[]> {
+    const rows = await this.db.many<{ id: string; name: string; lead_user_id: string | null; directions: string[] | null; member_ids: string[] | null }>(
+      `SELECT g.id::text, g.name, g.lead_user_id::text, g.directions,
+              COALESCE(array_agg(ug.user_id::text) FILTER (WHERE ug.user_id IS NOT NULL), '{}') AS member_ids
+         FROM groups g LEFT JOIN user_groups ug ON ug.group_id = g.id
+        WHERE g.tenant_id=$1 AND g.kind='department'
+        GROUP BY g.id`, [tenantId],
+    ).catch((e) => { this.log.warn(`отделы для постановки: ${(e as Error).message}`); return []; });
+    return rows.map((r) => ({
+      id: String(r.id), name: r.name, leadUserId: r.lead_user_id ? String(r.lead_user_id) : null,
+      directions: r.directions ?? [], memberIds: (r.member_ids ?? []).map(String),
+    }));
+  }
+
+  /**
+   * Кто видит проекты — те же правила, что у доступа к проекту: владелец и менеджеры
+   * компании, проект «для всех», хозяин проекта, участники. Клиентов не берём.
+   */
+  private async projectSeers(tenantId: string, projectIds: string[]): Promise<Map<string, Set<string>>> {
+    const out = new Map<string, Set<string>>();
+    const ids = [...new Set(projectIds.map(String))];
+    if (!ids.length) return out;
+    const rows = await this.db.many<{ project_id: string; user_id: string }>(
+      `SELECT p.id::text AS project_id, u.id::text AS user_id
+         FROM projects p
+         JOIN users u ON u.tenant_id = p.tenant_id AND u.is_active = TRUE
+         JOIN roles r ON r.id = u.role_id
+        WHERE p.tenant_id=$1 AND p.id = ANY($2::bigint[]) AND r.code <> 'client'
+          AND (r.code IN ('owner', 'manager') OR p.visibility = 'all' OR p.owner_user_id = u.id
+               OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = u.id))`,
+      [tenantId, ids],
+    ).catch(() => []);
+    for (const r of rows) {
+      if (!out.has(r.project_id)) out.set(r.project_id, new Set());
+      out.get(r.project_id)!.add(String(r.user_id));
+    }
+    return out;
+  }
+
+  /** Последний проект, где человек ставил задачи (#4615: проект без вопросов). */
+  private async lastTaskProject(tenantId: string, userId: string): Promise<string | null> {
+    const row = await this.db.one<{ project_id: string }>(
+      `SELECT t.project_id::text FROM tasks t JOIN projects p ON p.id = t.project_id
+        WHERE t.tenant_id=$1 AND t.created_by=$2 AND t.deleted_at IS NULL AND p.status <> 'archived'
+        ORDER BY t.created_at DESC LIMIT 1`, [tenantId, userId],
+    ).catch(() => null);
+    return row?.project_id ? String(row.project_id) : null;
   }
 
   /**
@@ -709,9 +856,21 @@ export class NlService {
         сообщения в чате — одна проверка на все четыре. Задачи, которые заводит сама
         система (импорты, повторы, встречи), идут мимо: подтверждать там некому.
       */
-      await this.tags.assertGate(tenantId, {
-        tagIds: t.tagIds, tagsConfirmed: t.tagsConfirmed, confirmedWithoutTags: t.confirmedWithoutTags,
-      });
+      /*
+        #4615, автоматическая постановка: теги подобрал ИИ, и их проверку заменяет «Ок»
+        постановщика в сообщении через 30 секунд. Исполнитель — только из видящих проект.
+      */
+      const auto = t.auto === true;
+      const autoTagIds = Array.isArray(t.tagIds) ? t.tagIds.map(String).filter(Boolean) : [];
+      await this.tags.assertGate(tenantId, auto
+        ? { tagIds: autoTagIds, tagsConfirmed: true, confirmedWithoutTags: !autoTagIds.length }
+        : { tagIds: t.tagIds, tagsConfirmed: t.tagsConfirmed, confirmedWithoutTags: t.confirmedWithoutTags });
+      if (auto && t.assigneeId) {
+        const seers = await this.projectSeers(tenantId, [String(t.projectId)]);
+        if (!seers.get(String(t.projectId))?.has(String(t.assigneeId))) {
+          throw AppException.validation('Исполнитель не видит этот проект — выберите другого', { code: 'ASSIGNEE_CANNOT_SEE_PROJECT' });
+        }
+      }
       // Срок раньше дописывался строкой в описание («Срок: 2026-08-17») — задача выходила
       // без даты, и ни светофор, ни «просрочено» её не видели. Теперь это настоящее поле.
       /*
@@ -746,7 +905,7 @@ export class NlService {
       } as any, userId, { workloadChecked: !!opts.interactive });
       await this.tags.applyToNewTask(tenantId, { userId }, String(task.id), String(task.project_id), {
         tagIds: Array.isArray(t.tagIds) ? t.tagIds.map(String) : [],
-        suggestedTagIds: Array.isArray(t.suggestedTagIds) ? t.suggestedTagIds.map(String) : [],
+        suggestedTagIds: auto ? autoTagIds : Array.isArray(t.suggestedTagIds) ? t.suggestedTagIds.map(String) : [],
       });
       void this.secretary.record({
         tenantId, userId, kind: 'nl_task',
@@ -762,7 +921,14 @@ export class NlService {
           reasonCodes: Array.isArray(pr.reasonCodes) ? pr.reasonCodes.map(String).slice(0, 10) : [], taskId: String(task.id),
         });
       }
-      return { type: 'task', task };
+      // #4615: через 30 секунд — «Задача поставлена, проверьте» (запись в базе, а не таймер)
+      const confirmAt = auto
+        ? await this.autoConfirm.schedule(tenantId, userId, String(task.id), {
+          projectWhy: t.projectHint ? String(t.projectHint).slice(0, 200) : null,
+          assigneeWhy: t.assigneeWhy ? String(t.assigneeWhy).slice(0, 200) : null,
+        }).catch((e) => { this.log.warn(`подтверждение постановки ${task.id}: ${(e as Error).message}`); return null; })
+        : null;
+      return { type: 'task', task, ...(confirmAt ? { confirmAt } : {}) };
     }
     if (body.intent === 'create_deal') {
       // то же право, что у раздела сделок: быстрая команда не обходит его

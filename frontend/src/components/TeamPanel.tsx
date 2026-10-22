@@ -13,6 +13,7 @@ import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { CareEmpty } from './care/CareEmpty';
+import { DIRECTIONS } from './DirectionsPicker';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
@@ -183,6 +184,22 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
     } finally { setBusyGroup(''); }
   };
 
+  /*
+    #4615: руководитель и направления отдела. Задача из быстрой команды по направлению
+    (бэкенд, контент, дизайн…) уходит руководителю того отдела, где отмечено направление.
+  */
+  const saveGroup = async (id: string, patch: { leadUserId?: string | null; directions?: string[] }) => {
+    setGroups((list) => list.map((g) => (String(g.id) !== String(id) ? g : {
+      ...g,
+      ...(patch.leadUserId !== undefined ? { lead_user_id: patch.leadUserId } : {}),
+      ...(patch.directions ? { directions: patch.directions } : {}),
+    })));
+    try { await api.updateGroup(id, patch); toastSaved(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Не удалось сохранить отдел'); await reload(); }
+  };
+  const departments = groups.filter((g) => g.kind === 'department');
+  const noLeads = departments.length === 0 || !departments.some((g) => g.lead_user_id);
+
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer" onClick={(e) => e.stopPropagation()}>
@@ -200,7 +217,7 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
         <div className="tabs">
           <button className={`tab ${tab === 'people' ? 'active' : ''}`} onClick={() => setTab('people')}>Сотрудники</button>
           <button className={`tab ${tab === 'positions' ? 'active' : ''}`} onClick={() => setTab('positions')}>Должности</button>
-          <button className={`tab ${tab === 'groups' ? 'active' : ''}`} onClick={() => setTab('groups')}>Группы</button>
+          <button className={`tab ${tab === 'groups' ? 'active' : ''}`} onClick={() => setTab('groups')}>Отделы и группы</button>
         </div>
         {msg && <div className="dim">{msg}</div>}
 
@@ -483,6 +500,15 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={addGroup}>Создать</button>
               </div>
             </div>
+            {noLeads && (me?.role === 'owner' || me?.role === 'manager') && (
+              <div className="tv2-callout tv2-callout-warn" role="note" style={{ marginBottom: 12, flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                <Icon name="alert" size={15} />
+                <span>
+                  Ни у одного отдела нет руководителя. Назначьте отделу руководителя и отметьте направления — тогда задачи
+                  из быстрой команды будут сами уходить руководителю: программистские — в программирование, контент — в контент.
+                </span>
+              </div>
+            )}
             {groups.length === 0 && (
               <EmptyState
                 compact
@@ -510,6 +536,40 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                       Удалить
                     </button>
                   </div>
+
+                  {g.kind === 'department' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, margin: '6px 0 8px' }}>
+                      <label className="dim" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        Руководитель
+                        <OptionSelect
+                          className="input"
+                          value={g.lead_user_id ? String(g.lead_user_id) : ''}
+                          aria-label={`Руководитель отдела «${g.name}»`}
+                          onChange={(e) => void saveGroup(g.id, { leadUserId: e.target.value || null })}
+                        >
+                          <option value="">не выбран</option>
+                          {users.map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
+                        </OptionSelect>
+                      </label>
+                      <div className="dim">Направления — задачи по ним уходят руководителю</div>
+                      <div className="directions-picker" role="group" aria-label={`Направления отдела «${g.name}»`}>
+                        {DIRECTIONS.map(([code, label]) => {
+                          const list: string[] = g.directions ?? [];
+                          const on = list.includes(code);
+                          return (
+                            <label key={code} className={`directions-chip${on ? ' on' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={() => void saveGroup(g.id, { directions: on ? list.filter((x) => x !== code) : [...list, code] })}
+                              />
+                              {label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {members.length === 0
                     ? <div className="dim group-empty">Пока никого — добавьте сотрудников списком ниже.</div>

@@ -8,6 +8,8 @@ export interface GroupRow {
   name: string;
   kind: string;
   lead_user_id: string | null;
+  /** #4615: направления отдела — задачи по ним уходят руководителю отдела. */
+  directions: string[];
   created_at: Date;
 }
 
@@ -34,19 +36,28 @@ export class GroupsRepository {
     ) as Promise<GroupRow>;
   }
 
-  update(tenantId: string, id: string, patch: { name?: string; kind?: string; leadUserId?: string | null }) {
+  update(tenantId: string, id: string, patch: { name?: string; kind?: string; leadUserId?: string | null; directions?: string[] }) {
     const fields: string[] = [];
     const vals: any[] = [];
     let i = 1;
     if (patch.name !== undefined) { fields.push(`name=$${i++}`); vals.push(patch.name); }
     if (patch.kind !== undefined) { fields.push(`kind=$${i++}`); vals.push(patch.kind); }
     if (patch.leadUserId !== undefined) { fields.push(`lead_user_id=$${i++}`); vals.push(patch.leadUserId); }
+    if (patch.directions !== undefined) { fields.push(`directions=$${i++}::text[]`); vals.push(patch.directions); }
     if (!fields.length) return this.db.one<GroupRow>(`SELECT * FROM groups WHERE tenant_id=$1 AND id=$2`, [tenantId, id]);
     vals.push(tenantId, id);
     return this.db.one<GroupRow>(
       `UPDATE groups SET ${fields.join(', ')} WHERE tenant_id=$${i++} AND id=$${i} RETURNING *`,
       vals,
     );
+  }
+
+  /** Руководитель — только из своей компании и действующий. */
+  async userInTenant(tenantId: string, userId: string): Promise<boolean> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT id FROM users WHERE tenant_id=$1 AND id=$2 AND is_active = TRUE`, [tenantId, userId],
+    ).catch(() => null);
+    return !!row;
   }
 
   async remove(tenantId: string, id: string): Promise<void> {

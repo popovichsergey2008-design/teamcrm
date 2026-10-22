@@ -1604,8 +1604,11 @@ export const api = {
   nlParse: (text: string, currentProjectId?: string | null, currentKind?: 'board' | 'last') =>
     request<any>('POST', '/nl/parse', currentProjectId ? { text, currentProjectId, ...(currentKind ? { currentKind } : {}) } : { text }),
   /** Та же команда, но с несколькими поручениями сразу: черновиков столько, сколько задач. */
-  nlParseMany: (text: string, currentProjectId?: string | null, currentKind?: 'board' | 'last') =>
-    request<any[]>('POST', '/nl/parse-many', currentProjectId ? { text, currentProjectId, ...(currentKind ? { currentKind } : {}) } : { text }),
+  /** auto — #4615: проект, руководитель отдела и теги подбираются без вопросов. */
+  nlParseMany: (text: string, currentProjectId?: string | null, currentKind?: 'board' | 'last', auto?: boolean) =>
+    request<any[]>('POST', '/nl/parse-many', {
+      text, ...(currentProjectId ? { currentProjectId, ...(currentKind ? { currentKind } : {}) } : {}), ...(auto ? { auto: true } : {}),
+    }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
   /**
    * Пакет задач из одной команды (ТЗ-10, этап 2).
@@ -1763,6 +1766,8 @@ export const api = {
   deleteGroup: (id: string) => request<any>('DELETE', `/groups/${id}`),
   groupMembers: (id: string) => request<any[]>('GET', `/groups/${id}/members`),
   addGroupMember: (id: string, userId: string) => request<any>('POST', `/groups/${id}/members`, { userId }),
+  /** #4615: руководитель и направления отдела. */
+  updateGroup: (id: string, b: { name?: string; leadUserId?: string | null; directions?: string[] }) => request<any>('PATCH', `/groups/${id}`, b),
   removeGroupMember: (id: string, userId: string) => request<any>('DELETE', `/groups/${id}/members/${userId}`),
   // invites
   createInvite: (b: { email: string; role: string; positionId?: string }) => request<{ token: string; email: string }>('POST', '/invites', b),
@@ -3361,14 +3366,15 @@ export interface NewsSettings {
 /** Предложение секретаря (ТЗ-21): что увидел, почему, что предлагаю, что изменится. */
 export interface AssistantProposal {
   id: string;
-  skill: 'commitment' | 'workload' | 'reply' | 'followup' | 'brief' | 'decision';
+  skill: 'commitment' | 'workload' | 'reply' | 'followup' | 'brief' | 'decision' | 'postcall' | 'autotask';
   kind: string;
   section: 'attention' | 'commitments' | 'replies' | 'meetings' | 'morning';
   title: string; summary: string | null; why: string | null; recommend: string | null; effect: string | null;
   priority: number; priorityLabel: string; confidence: number;
   status: 'new' | 'seen' | 'snoozed' | 'executing' | 'executed' | 'dismissed' | 'expired' | 'failed';
   source: { type: string | null; id: string | null; at: string | null; label: string | null; link: string | null };
-  actions: { key: string; label: string; risk?: string; primary?: boolean }[];
+  /** link — кнопка просто открывает адрес (#4615 «Править»), без запроса к серверу. */
+  actions: { key: string; label: string; risk?: string; primary?: boolean; link?: string }[];
   payload: Record<string, unknown>;
   snoozeUntil: string | null; createdAt: string; resolvedAt: string | null; resolvedAction: string | null;
   result: string | null; error?: string | null;

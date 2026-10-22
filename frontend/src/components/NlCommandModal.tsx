@@ -20,6 +20,8 @@ import { Textarea } from './ui/field';
 import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { feedback } from '../lib/feedback';
+import { AutoSummary, DeadlineChips } from './NlAutoTask';
+import { effectiveDeadline } from '../lib/auto-task';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
 interface CreatedTask {
@@ -99,6 +101,66 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const [tagSettings, setTagSettings] = useState<TagSettings | null>(null);
   useEffect(() => { api.tagSettings().then(setTagSettings).catch(() => setTagSettings(null)); }, []);
 
+  /*
+    #4615: автоматическая постановка — режим по умолчанию. Одно поле (текст или голос),
+    срок чипами и «Поставить задачу»; проект, исполнителя, теги и приоритет система
+    ставит сама, а через 30 секунд просит постановщика проверить. «Править поля» —
+    прежний подробный предпросмотр.
+  */
+  const [manual, setManual] = useState(false);
+  /** Срок, выбранный чипом (или услышанный во фразе, пока чип не трогали). */
+  const [deadline, setDeadline] = useState<string | null>(null);
+  const touched = useRef(false);
+  const [thinking, setThinking] = useState(false);
+  /** Для какого текста черновики актуальны: изменили фразу — разбор пойдёт заново. */
+  const parsedFor = useRef('');
+  const seq = useRef(0);
+  /** Какой текст сейчас разбирается: расшифровка уже ушла — второй раз не шлём. */
+  const pending = useRef('');
+  const [autoNote, setAutoNote] = useState(false);
+
+  /** Разбор в фоне: пауза в наборе или готовая расшифровка — без кнопки «Разобрать». */
+  const autoParse = async (raw: string): Promise<any[] | null> => {
+    const command = raw.trim();
+    if (command.length < 3) return null;
+    const my = ++seq.current;
+    pending.current = command;
+    setThinking(true); setMsg('');
+    try {
+      const list = await api.nlParseMany(command, currentProjectId, currentKind, true);
+      if (my !== seq.current) return null;
+      parsedFor.current = command;
+      setDrafts(list); setDone([]); setHeard(command);
+      // срок прозвучал во фразе — чип выбран сам
+      if (!touched.current) setDeadline(list.find((d: any) => d.task?.deadline)?.task.deadline ?? null);
+      return list;
+    } catch (e) {
+      if (my === seq.current) setMsg(e instanceof ApiError ? e.message : 'Не получилось разобрать — попробуйте ещё раз');
+      return null;
+    } finally {
+      if (my === seq.current) { setThinking(false); pending.current = ''; }
+    }
+  };
+
+  useEffect(() => {
+    if (manual || stage !== 'compose') return;
+    const command = text.trim();
+    if (command.length < 3 || command === parsedFor.current) return;
+    // команда из строки поиска или «Разложить по специалистам» — разбираем сразу
+    const t = setTimeout(() => {
+      if (command !== parsedFor.current && command !== pending.current) void autoParse(command);
+    }, command === (initialText ?? '').trim() ? 0 : 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, manual, stage]);
+
+  const chooseDeadline = (d: string | null) => {
+    touched.current = true;
+    setDeadline(d);
+    // точный срок из подсказки о перегрузе больше не действует: выбран другой день
+    setDrafts((list) => list.map((x) => (x.task?.deadlineAt ? { ...x, task: { ...x.task, deadlineAt: null } } : x)));
+  };
+
   const parse = async (raw?: string) => {
     const command = (raw ?? text).trim();
     if (command.length < 3) return setMsg('Слишком короткая команда');
@@ -156,14 +218,21 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         const next = await api.voiceStatus(job.id);
         setJob(next);
         if (next.status === 'ready') {
-          setDrafts(next.tasks ?? []);
-          setHeard(next.transcript ?? '');
+          if (!manual && next.transcript) {
+            // #4615: расшифровка готова — разбор с автозаполнением идёт сам
+            setText(next.transcript);
+            void autoParse(next.transcript);
+          } else {
+            setDrafts(next.tasks ?? []);
+            setHeard(next.transcript ?? '');
+          }
           feedback('ai.completed');
         }
         if (next.status === 'error') feedback('error');
       } catch { /* следующий заход попробует снова: сеть моргает, запись цела */ }
     }, 2000);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job]);
 
   // Автозапуск ровно один раз: в режиме разработки эффекты вызываются дважды,
@@ -199,6 +268,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       intent: 'create_task',
       task: {
         ...draft.task,
+        // подробный предпросмотр — теги подтверждает человек, как раньше
+        auto: false,
         // не трогал галочку — берём его привычное значение, а не заводское
         requiresApproval: draft.task.requiresApproval ?? stickyCheck('task.requiresApproval', true),
         // пустые строки в шагах — след правки, а не шаг: до задачи они не доходят
@@ -347,6 +418,84 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     }
   };
 
+  /** Срок, с которым уйдёт черновик: чип главнее; не трогали — услышанный во фразе. */
+  const dueOf = (d: any) => effectiveDeadline(d.task?.deadline, deadline, touched.current);
+
+  const autoBody = (d: any) => {
+    const tagIds = (d.task.autoTags ?? []).map((x: { id: string }) => String(x.id));
+    return {
+      intent: 'create_task',
+      task: {
+        ...d.task,
+        auto: true,
+        deadline: dueOf(d),
+        requiresApproval: d.task.requiresApproval ?? stickyCheck('task.requiresApproval', true),
+        checklist: (d.task.checklist ?? []).map((x: string) => x.trim()).filter(Boolean),
+        tagIds, suggestedTagIds: tagIds,
+      },
+    };
+  };
+
+  /**
+   * «Поставить задачу» (#4615). Фразу успели поменять после разбора — сначала разбор.
+   * Одна задача — с радаром перегрузки (409 — подсказка в сводке), несколько — пакетом.
+   */
+  const submitAuto = async () => {
+    if (busy) return;
+    let list = drafts;
+    if (text.trim() !== parsedFor.current || thinking) {
+      const fresh = await autoParse(text);
+      if (!fresh) return;
+      list = fresh;
+    }
+    const tasks = list.map((d, i) => ({ d, i })).filter(({ d, i }) => d.intent === 'create_task' && d.task && !done.includes(i));
+    if (!tasks.length) { setMsg(list.length ? 'Не понял, какую задачу поставить — уточните фразу' : 'Напишите, что нужно сделать'); return; }
+    if (tasks.some(({ d }) => !d.task.deadlineAt && !effectiveDeadline(d.task.deadline, deadline, touched.current))) {
+      setMsg('Выберите срок'); return;
+    }
+    const noProject = tasks.filter(({ d }) => !d.task.projectId);
+    if (noProject.length) {
+      for (const { i } of noProject) patchDraft(i, { error: 'Выберите проект — без проекта задачу создать нельзя' });
+      return;
+    }
+    setBusy(true); setMsg('');
+    try {
+      if (tasks.length === 1) {
+        const { d, i } = tasks[0];
+        try {
+          const res: any = await api.nlApply(autoBody(d));
+          setDone((x) => [...x, i]);
+          if (res?.task) { feedback('task.created'); remember(d, res.task); }
+        } catch (e) {
+          const w = workloadOf(e);
+          if (w) patchDraft(i, { error: null, workload: w });
+          else patchDraft(i, { error: e instanceof ApiError ? e.message : 'Не удалось поставить задачу' });
+          return;
+        }
+      } else {
+        const batch = await api.createTaskBatch({
+          drafts: tasks.map(({ d }) => autoBody(d)),
+          sourceType: job ? 'voice' : 'text',
+          sourceText: text.slice(0, 4000) || undefined,
+          clientRequestId: requestId.current,
+        });
+        setDone((x) => [...x, ...tasks.map(({ i }) => i)]);
+        if (batch.created) feedback('task.created', { count: batch.created });
+        if (batch.failedCount) setMsg(`Поставлено ${batch.created} из ${batch.requested}. Что не получилось — на странице пакета.`);
+        setCreated((x) => [...x, ...batch.tasks.map((t) => ({
+          taskId: String(t.taskId), projectId: String(t.projectId), title: t.title,
+          projectName: t.projectName, assigneeName: t.assigneeName, deadline: t.deadlineAt,
+        }))]);
+      }
+      setAutoNote(true);
+      setStage('done');
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : 'Не удалось поставить задачи');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const retry = async () => {
     if (!job) return;
     setMsg('');
@@ -421,13 +570,18 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       <div className="drawer-overlay" {...overlayProps(onClose)}>
         <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()}>
           <div className="nl-v2-head">
-            <h2 className="ui-modal-title"><Icon name="check-circle" size={20} /> Создано: {created.length} {plural(created.length, 'задача', 'задачи', 'задач')}</h2>
+            <h2 className="ui-modal-title"><Icon name="check-circle" size={20} /> {autoNote ? 'Поставлено' : 'Создано'}: {created.length} {plural(created.length, 'задача', 'задачи', 'задач')}</h2>
             <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
           </div>
           {msg && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
           <div className="nl-v2-sub">
             Задачи уже на досках и у исполнителей. Нажмите на любую, чтобы открыть карточку.
           </div>
+          {autoNote && (
+            <div className="nla-done-note" role="status">
+              <Icon name="bell" size={14} /> Через полминуты пришлю сообщение: проверьте и нажмите «Ок» или «Править».
+            </div>
+          )}
           {cardTask && (
             <TaskCardWindow
               projectId={cardTask.projectId}
@@ -446,7 +600,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               </button>
             ))}
           </div>
-          <div className="nl-actions">
+          <div className="nl-actions nla-actions">
             <Button variant="primary" size="sm" onClick={openTaskList}>
               <Icon name="list" size={15} /> Посмотреть задачи
             </Button>
@@ -461,11 +615,101 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               onClick={() => {
               requestId.current = newChangeId();
               setStage('compose'); setDrafts([]); setDone([]); setCreated([]); setText(''); setHeard(''); setMsg('');
+              parsedFor.current = ''; touched.current = false; setDeadline(null); setAutoNote(false);
             }}
             >
               <Icon name="zap" size={15} /> Ещё команда
             </Button>
           </div>
+        </aside>
+      </div>
+    );
+  }
+
+  if (!manual) {
+    const taskDrafts = drafts.map((d, i) => ({ d, i })).filter(({ d, i }) => d.intent === 'create_task' && d.task && !done.includes(i));
+    const other = drafts.map((d, i) => ({ d, i })).filter(({ d }) => d.intent !== 'create_task' || !d.task);
+    const needDue = taskDrafts.some(({ d }) => !d.task.deadlineAt && !dueOf(d));
+    return (
+      <div className="drawer-overlay" {...overlayProps(onClose)}>
+        <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()}>
+          <div className="nl-v2-head">
+            <h2 className="ui-modal-title"><Icon name="zap" size={20} /> Новая задача</h2>
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
+          </div>
+          <div className="nl-v2-sub">
+            Напишите или скажите, что сделать. Проект, исполнителя, теги и приоритет система подставит сама — вам остаётся срок.
+          </div>
+          <textarea
+            className="ui-textarea"
+            rows={3}
+            aria-label="Что нужно сделать"
+            placeholder="Например: поправить форму входа на сайте — после ввода пароля не пускает"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submitAuto(); }}
+          />
+          <VoiceStatus recording={recording} transcribing={false} error={voice.error} hint="нажмите «Остановить», когда закончите" className="nl-voice" />
+          {job && job.status !== 'ready' && (
+            <div className={`nl-job${job.status === 'error' ? ' error' : ''}`} role="status">
+              {working && <span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span>}
+              <span>{job.status === 'error' ? job.error || JOB_LABEL.error : JOB_LABEL[job.status]}</span>
+              {job.status === 'error' && <Button variant="outline" size="sm" onClick={retry}>Повторить обработку</Button>}
+            </div>
+          )}
+          <div className="nla-label" id="nla-due">Срок</div>
+          <DeadlineChips value={deadline} onChange={chooseDeadline} />
+          {thinking && (
+            <div className="nla-thinking" role="status"><span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> Разбираю…</div>
+          )}
+          {taskDrafts.map(({ d, i }) => (
+            <AutoSummary
+              key={i}
+              draft={d}
+              index={taskDrafts.findIndex((x) => x.i === i)}
+              many={taskDrafts.length > 1}
+              deadline={dueOf(d)}
+              busy={busy}
+              onPatchTask={(patch) => patchTask(i, patch)}
+              onPatchDraft={(patch) => patchDraft(i, patch)}
+              onDrop={() => dropDraft(i)}
+            />
+          ))}
+          {other.map(({ d, i }) => (
+            <DraftCard
+              key={i}
+              draft={d}
+              created={done.includes(i)}
+              busy={busy}
+              onPatchTask={(patch) => patchTask(i, patch)}
+              onPatchDeal={(patch) => patchDeal(i, patch)}
+              onPatchDraft={(patch) => patchDraft(i, patch)}
+              onDrop={() => dropDraft(i)}
+              onApply={(over?: Record<string, unknown>) => applyOne(d, i, over)}
+            />
+          ))}
+          {msg && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
+          <div className="nl-actions nla-actions">
+            <Button variant={recording ? 'destructive' : 'outline'} onClick={voice.toggle} disabled={busy || working}>
+              {recording ? <><Icon name="stop" size={15} /> Остановить</> : <><Icon name="mic" size={15} /> Голосом</>}
+            </Button>
+            <Button
+              variant="primary"
+              className="nl-parse"
+              onClick={() => void submitAuto()}
+              disabled={recording || working || text.trim().length < 3 || (taskDrafts.length > 0 && needDue)}
+              loading={busy}
+              title={needDue ? 'Выберите срок' : undefined}
+            >
+              {!busy && <Icon name="check" size={15} />} {taskDrafts.length > 1 ? `Поставить ${taskDrafts.length} ${plural(taskDrafts.length, 'задачу', 'задачи', 'задач')}` : 'Поставить задачу'}
+            </Button>
+            {taskDrafts.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setManual(true)} title="Подробный предпросмотр: все поля задачи">
+                <Icon name="edit" size={14} /> Править поля
+              </Button>
+            )}
+          </div>
+          {taskDrafts.length > 0 && needDue && <div className="nl-need-project"><Icon name="alert" size={13} /> Выберите срок — остальное уже заполнено.</div>}
         </aside>
       </div>
     );
@@ -527,6 +771,9 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           </Button>
           <Button variant="primary" className="nl-parse" onClick={() => void parse()} disabled={recording || working} loading={busy}>
             {!busy && <Icon name="sparkles" size={15} />} {busy ? 'Разбираю…' : 'Разобрать'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => { parsedFor.current = ''; setManual(false); }} title="Поставить автоматически: вы выбираете только срок">
+            <Icon name="zap" size={14} /> Автоматически
           </Button>
         </div>
 

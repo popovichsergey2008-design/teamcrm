@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { SKILLS } from './skills';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -15,6 +16,8 @@ class UpdateGroupDto {
   @IsOptional() @IsString() @MaxLength(96) name?: string;
   @IsOptional() @IsIn(['department', 'group']) kind?: string;
   @IsOptional() @IsString() leadUserId?: string | null;
+  /** #4615: направления отдела (Бэкенд, Контент, Дизайн…) — по ним задача уходит руководителю. */
+  @IsOptional() @IsArray() @ArrayMaxSize(16) @IsIn(SKILLS as unknown as string[], { each: true }) directions?: string[];
 }
 class MemberDto {
   @IsString() userId!: string;
@@ -40,6 +43,9 @@ export class GroupsController {
   @Post()
   @Roles('owner', 'manager')
   async create(@CurrentUser() user: AuthUser, @Body() dto: CreateGroupDto) {
+    if (dto.leadUserId && !(await this.repo.userInTenant(user.tenantId, String(dto.leadUserId)))) {
+      throw AppException.validation('Руководитель не найден среди сотрудников');
+    }
     try {
       return await this.repo.create(user.tenantId, dto.name.trim(), dto.kind ?? 'group', dto.leadUserId ?? null);
     } catch (e: any) {
@@ -51,7 +57,14 @@ export class GroupsController {
   @Patch(':id')
   @Roles('owner', 'manager')
   async update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateGroupDto) {
-    const row = await this.repo.update(user.tenantId, id, dto);
+    const leadUserId = dto.leadUserId === undefined ? undefined : dto.leadUserId ? String(dto.leadUserId) : null;
+    if (leadUserId && !(await this.repo.userInTenant(user.tenantId, leadUserId))) {
+      throw AppException.validation('Руководитель не найден среди сотрудников');
+    }
+    const row = await this.repo.update(user.tenantId, id, {
+      name: dto.name, kind: dto.kind, leadUserId,
+      directions: dto.directions ? [...new Set(dto.directions)] : undefined,
+    });
     if (!row) throw AppException.notFound('Group not found');
     return row;
   }

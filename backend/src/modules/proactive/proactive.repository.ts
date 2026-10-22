@@ -20,7 +20,7 @@ export interface ProposalRow {
   priority: number;
   confidence: string;
   status: string;
-  actions: { key: string; label: string; risk?: string; primary?: boolean }[];
+  actions: { key: string; label: string; risk?: string; primary?: boolean; link?: string }[];
   payload: Record<string, unknown>;
   fingerprint: string;
   snooze_until: Date | null;
@@ -52,7 +52,7 @@ export interface NewProposal {
   effect?: string;
   priority: number;
   confidence: number;
-  actions: { key: string; label: string; risk?: string; primary?: boolean }[];
+  actions: { key: string; label: string; risk?: string; primary?: boolean; link?: string }[];
   payload?: Record<string, unknown>;
   fingerprint: string;
   expiresAt?: Date | null;
