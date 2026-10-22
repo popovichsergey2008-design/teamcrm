@@ -119,6 +119,25 @@ export class WorkloadGuardService {
   }
 
   /**
+   * Ранняя проверка (#1525): экран спрашивает, как только известны исполнитель и срок, —
+   * до нажатия «Создать». Ничего не пишет и не запрещает: только оценка и подсказка.
+   * Выключен страж в настройках — подсказки нет.
+   */
+  async check(tenantId: string, input: GuardInput): Promise<Record<string, unknown>> {
+    if (!input.assigneeId || !input.projectId) return { warn: false };
+    if (!(await this.enabled(tenantId).catch(() => false))) return { warn: false };
+    const a = await this.assess(tenantId, input).catch((e) => { this.log.warn(`проверка: ${(e as Error).message}`); return null; });
+    if (!a?.warn) return { warn: false };
+    const alternativeDeadline = a.alternativeDate ? await this.alternativeDeadline(tenantId, a.alternativeDate) : null;
+    return { ...a, alternativeDeadline, assigneeId: String(input.assigneeId) };
+  }
+
+  /** День без времени (быстрая команда) — как при создании: конец рабочего дня. */
+  async deadlineOfDate(tenantId: string, date: string): Promise<string> {
+    return zonedTime(date, '18:00', await this.tz(tenantId)).toISOString();
+  }
+
+  /**
    * Проверка до создания (§28). Перегруз и не подтверждено — отказ с подробностями: экран
    * показывает предупреждение и варианты; «Оставить как есть» повторяет запрос с
    * подтверждением, и решение пишется в журнал (§34).
@@ -136,7 +155,7 @@ export class WorkloadGuardService {
       return;
     }
     const alternativeDeadline = a.alternativeDate ? await this.alternativeDeadline(actor.tenantId, a.alternativeDate) : null;
-    throw new AppException('CONFLICT', a.reasons.join(' '), {
+    throw new AppException('CONFLICT', a.hint ?? a.reasons.join(' '), {
       workload: { ...a, alternativeDeadline, assigneeId: String(input.assigneeId) },
     });
   }
@@ -164,16 +183,16 @@ export class WorkloadGuardService {
         sourceType: 'task', sourceId: String(task.id), sourceAt: new Date(),
         sourceLabel: `Задача #${task.id} «${task.title}»`, sourceLink: `/projects/${task.project_id}/task/${task.id}`,
         title: `${a.assigneeName}: риск перегруза (${a.after}%)`,
-        summary: a.reasons.join(' '),
+        summary: a.hint ?? a.reasons.join(' '),
         why: 'Задача уже поставлена из разговора или встречи — решите, оставить ли её так.',
-        recommend: [altDay ? `перенести срок ${altDay}` : null, alt ? `передать ${alt.name} (станет ${alt.after}%)` : null].filter(Boolean).join(' или ') || 'оставить как есть',
+        recommend: [altDay ? `поставить дедлайн ${altDay} 15:00` : null, alt ? `передать ${alt.name} (станет ${alt.after}%)` : null].filter(Boolean).join(' или ') || 'оставить как есть',
         effect: 'Изменится срок или исполнитель задачи; исполнитель получит уведомление, как при обычной правке.',
         priority: a.level === 'overloaded' ? 1 : 2,
         confidence: 0.9,
         actions: [
-          ...(altDeadline ? [{ key: 'move_deadline', label: altDay ? `Срок ${altDay.replace(/^на /, 'на ')}` : 'Перенести срок', risk: 'high_write', primary: true }] : []),
-          ...(alt ? [{ key: 'reassign', label: `Передать: ${alt.name}`, risk: 'high_write' }] : []),
-          { key: 'keep', label: 'Оставить', risk: 'low_write' },
+          ...(altDeadline ? [{ key: 'move_deadline', label: a.moveLabel ?? 'Перенести срок', risk: 'high_write', primary: true }] : []),
+          ...(alt ? [{ key: 'reassign', label: a.reassignLabel ?? `Передать: ${alt.name}`, risk: 'high_write' }] : []),
+          { key: 'keep', label: 'Оставить как есть', risk: 'low_write' },
         ],
         payload: { taskId: String(task.id), alternativeDeadline: altDeadline, alternativeAssignee: alt?.id ?? null, before: a.before, after: a.after },
         fingerprint: fingerprint({ skill: 'workload', sourceType: 'task', sourceId: String(task.id) }),

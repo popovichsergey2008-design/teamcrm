@@ -384,9 +384,15 @@ ${extracted.text}`,
    * Для «Мозга»: тот же гибридный поиск по готовому вектору вопроса. Вектор от заглушки
    * (нет ключа) не используем — только слова.
    */
-  async recall(tenantId: string, q: string, vec: number[] | null, viewer: ProjectViewer, projectId?: string, k = 6) {
+  async recall(
+    tenantId: string, q: string, vec: number[] | null, viewer: ProjectViewer, projectId?: string, k = 6,
+    /** Период источника из вопроса («в августе», #1525). */
+    period?: { from: Date; to: Date } | null,
+  ) {
     const real = (await this.ai.embedModelFor(tenantId).catch(() => 'mock-embed')) !== 'mock-embed';
-    const hits = await this.repo.hybrid(tenantId, real ? vec : null, ftsQuery(q), k, { projectId: projectId ?? null }, viewer);
+    const hits = await this.repo.hybrid(tenantId, real ? vec : null, ftsQuery(q), k, {
+      projectId: projectId ?? null, from: period?.from ?? null, to: period?.to ?? null,
+    }, viewer);
     return this.decorate(tenantId, hits);
   }
 

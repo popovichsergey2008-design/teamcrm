@@ -1,3 +1,4 @@
+import { dative, genitive, plural } from '../../common/text/ru-names';
 import { band, capacityPct, LOAD_WINDOW_DAYS, LoadBreakdown, Priority, taskPoints } from '../radar/pulse-rules';
 
 /**
@@ -46,6 +47,15 @@ export interface Assessment {
   alternatives: { id: string; name: string; after: number }[];
   /** «Из чего 210%»: строка разбивки нагрузки, без процентов. */
   basis: string | null;
+  /**
+   * Мягкая подсказка словами документа (#1525): «Обратите внимание: у Сергея на четверг
+   * уже назначено 4 срочные задачи. Если поставить еще одну, возникнет перегрузка.
+   * Предлагаю поставить дедлайн на пятницу 15:00 или передать задачу Константину?»
+   */
+  hint: string | null;
+  /** Подписи кнопок: «Дедлайн на пятницу 15:00», «Передать Константину». */
+  moveLabel: string | null;
+  reassignLabel: string | null;
 }
 
 /** Местная дата момента — переводчик даётся снаружи (пояс человека). */
@@ -103,21 +113,24 @@ export function assess(
   */
   const warn = (cost > 0 && after > 100) || (deadlineDate !== null && sameDayUrgent >= 3);
   if (!warn) {
-    return { warn: false, level: 'ok', before, after, sameDayUrgent, reasons: [], deadlineDate, alternativeDate: null, alternatives: [], basis };
+    return {
+      warn: false, level: 'ok', before, after, sameDayUrgent, reasons: [], deadlineDate, alternativeDate: null, alternatives: [], basis,
+      hint: null, moveLabel: null, reassignLabel: null,
+    };
   }
 
   /*
-    Другой срок (§33, решение 13.10): ближайший рабочий день в пределах двух недель от
-    сегодня, где у человека не больше одной задачи со сроком и нет срочных. Отсчёт — от
-    сегодня, а не от текущего срока: раньше каждый повтор сдвигал дату ещё на день, и
-    срок уезжал на месяцы. Нет такого дня — дату не предлагаем.
+    Другой срок (§33; #1525 — «на пятницу 15:00» после срока «на четверг»): ближайший
+    рабочий день ПОСЛЕ срока (без срока — после сегодня), где у человека не больше одной
+    задачи со сроком и нет срочных. Ищем в пределах двух недель. Повтор не уводит дату
+    дальше: принятый вариант экран больше не перепроверяет (решение 13.10, #1553).
   */
+  const start = deadlineDate && deadlineDate > today ? deadlineDate : today;
   let alternativeDate: string | null = null;
   for (let i = 1; i <= LOAD_WINDOW_DAYS; i++) {
-    const d = addDays(today, i);
+    const d = addDays(start, i);
     const dow = isoDowOf(d);
     if (dow === 6 || dow === 7) continue;
-    if (d === deadlineDate) continue;
     if (dayAll(d) <= 1 && dayUrgent(d) === 0) { alternativeDate = d; break; }
   }
 
@@ -132,16 +145,50 @@ export function assess(
     .sort((a, b) => a.after - b.after)
     .slice(0, 3);
 
+  const altDay = alternativeDate ? dayWord(alternativeDate, today) : null;
+  const alt = alternatives[0];
+  const counted = person.breakdown ? person.breakdown.overdue + person.breakdown.inWindow + person.breakdown.moving : 0;
   return {
     warn: true, level: band(after) === 'overloaded' ? 'overloaded' : 'high', before, after, sameDayUrgent,
     reasons: [...reasons, 'Высокий риск задержки.'], deadlineDate, alternativeDate, alternatives, basis,
+    hint: softHint({
+      name: person.name,
+      day: deadlineDate && sameDayUrgent >= 3 ? dayWord(deadlineDate, today) : null,
+      sameDayUrgent, counted, alreadyOver: before > 100, altDay, altName: alt?.name ?? null,
+    }),
+    moveLabel: altDay ? `Дедлайн ${altDay} ${ALT_TIME}` : null,
+    reassignLabel: alt ? `Передать ${dative(alt.name)}` : null,
   };
 }
 
-const plural = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10; const m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-};
+/** Время предложенного срока — как в документе: «на пятницу 15:00». */
+export const ALT_TIME = '15:00';
+
+/**
+ * Подсказка словами документа (#1525). Имя — в родительном и дательном, день — в
+ * винительном, «срочная задача / срочные задачи / срочных задач» по числу.
+ * Перегруз без срочных на день — та же форма: «у Сергея уже 9 задач на эти две недели».
+ */
+export function softHint(i: {
+  name: string; day: string | null; sameDayUrgent: number; counted: number; alreadyOver: boolean;
+  altDay: string | null; altName: string | null;
+}): string {
+  const who = genitive(i.name);
+  const load = i.day
+    ? `у ${who} ${i.day} уже назначено ${i.sameDayUrgent} ${plural(i.sameDayUrgent, 'срочная задача', 'срочные задачи', 'срочных задач')}`
+    : i.counted > 0
+      ? `у ${who} уже ${i.counted} ${plural(i.counted, 'задача', 'задачи', 'задач')} на эти две недели`
+      : `у ${who} уже полная загрузка на эти две недели`;
+  const risk = !i.day && i.alreadyOver
+    ? 'Если поставить еще одну, перегрузка станет сильнее.'
+    : 'Если поставить еще одну, возникнет перегрузка.';
+  const offers = [
+    i.altDay ? `поставить дедлайн ${i.altDay} ${ALT_TIME}` : null,
+    i.altName ? `передать задачу ${dative(i.altName)}` : null,
+  ].filter(Boolean);
+  const offer = offers.length ? ` Предлагаю ${offers.join(' или ')}?` : '';
+  return `Обратите внимание: ${load}. ${risk}${offer}`;
+}
 
 /** «Считаем на 2 недели: 18 просрочено, 1 со сроком, 4 в работе; не считаем 8 отложенных». */
 export function basisText(b: PersonLoadNow['breakdown']): string | null {

@@ -476,6 +476,8 @@ export interface SemanticHit {
   projectName: string | null;
   snippet: string;
   score: number;
+  /** куда вести: встреча — с секунды записи (`/meetings/7?t=735`), #1525 */
+  link?: string | null;
 }
 
 /** Согласование: то, что ждёт ответа человека и не является задачей. */

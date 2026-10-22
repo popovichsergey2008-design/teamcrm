@@ -714,9 +714,15 @@ export class NlService {
       });
       // Срок раньше дописывался строкой в описание («Срок: 2026-08-17») — задача выходила
       // без даты, и ни светофор, ни «просрочено» её не видели. Теперь это настоящее поле.
-      const deadlineAt = /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
+      /*
+        Точный срок со временем (#1525): «Дедлайн на пятницу 15:00» из подсказки о
+        перегрузе приходит готовым моментом — день без времени стал бы 18:00.
+      */
+      const exactAt = typeof t.deadlineAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(t.deadlineAt) && !Number.isNaN(Date.parse(t.deadlineAt))
+        ? new Date(t.deadlineAt).toISOString() : undefined;
+      const deadlineAt = exactAt ?? (/^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
         ? new Date(`${t.deadline}T18:00:00`).toISOString() // день без времени — считаем концом рабочего дня
-        : undefined;
+        : undefined);
       if (t.assigneeId && opts.interactive) {
         await this.workload.guard({ tenantId, userId }, {
           assigneeId: String(t.assigneeId), projectId: String(t.projectId),
