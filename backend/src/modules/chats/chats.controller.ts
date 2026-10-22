@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
@@ -319,9 +319,12 @@ export class ChatsController {
   sendClip(
     @CurrentUser() u: AuthUser, @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File, @Body() body: { kind?: string },
+    @Req() req: { socket?: { destroyed?: boolean } },
   ) {
     if (!file) throw AppException.validation('Запись не получена');
-    return this.chats.sendClip(u.tenantId, id, u, file, body?.kind === 'screen' ? 'screen' : 'voice');
+    // «Отменить» у клиента рвёт соединение (#4635): после расшифровки это видно по сокету
+    return this.chats.sendClip(u.tenantId, id, u, file, body?.kind === 'screen' ? 'screen' : 'voice',
+      () => req.socket?.destroyed === true);
   }
 
   /** Вопрос помощнику в этом чате: ответ ложится в ту же переписку, при всех. */

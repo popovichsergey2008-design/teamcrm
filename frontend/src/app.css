@@ -2816,7 +2816,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .chat-clip-audio { display: block; width: 260px; max-width: 100%; margin-top: 4px; }
 /* Идёт запись — видно без сомнений: человек говорит вслух и обязан понимать, пишется ли. */
 .chat-clip-state {
-  display: flex; align-items: center; gap: 8px; margin: 0 16px; padding: 6px 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 16px; padding: 6px 10px;
   font-size: var(--fs-xs); color: var(--text-dim);
   background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
@@ -2826,6 +2826,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 }
 @keyframes clip-blink { 50% { opacity: .2; } }
 @media (prefers-reduced-motion: reduce) { .chat-clip-dot { animation: none; } }
+/* «Отменить/Повторить» у записи — пальцем, не прицеливаясь (#4635) */
+@media (pointer: coarse) { .chat-clip-state .ui-btn, .voice-note-actions .ui-btn { min-height: 44px; } }
 
 /*
   Ответы помощника и сводки.
