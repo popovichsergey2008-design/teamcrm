@@ -72,3 +72,22 @@ export function watchSpeaking(tracks: SpeakingTrack[], onChange: (userId: string
     void ctx.close().catch(() => undefined);
   };
 }
+
+/**
+ * Порядок плиток при показе экрана (#4622): кто говорил последним — первым.
+ *
+ * Полоса участников листается, и людей в ней больше, чем влезает. Говорящий должен
+ * быть на виду, поэтому каждый новый голос встаёт в начало; остальные — в порядке
+ * последней реплики, а кто ещё не говорил, остаётся на своём месте после них.
+ */
+export function promoteSpeaker(order: string[], userId: string): string[] {
+  return order[0] === userId ? order : [userId, ...order.filter((id) => id !== userId)];
+}
+
+export function orderBySpeech<T>(items: T[], idOf: (item: T) => string, order: string[]): T[] {
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return items
+    .map((item, i) => ({ item, i, r: rank.get(idOf(item)) ?? Infinity }))
+    .sort((a, b) => (a.r === b.r ? a.i - b.i : a.r - b.r))
+    .map((x) => x.item);
+}

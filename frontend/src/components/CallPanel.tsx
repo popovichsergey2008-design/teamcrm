@@ -9,7 +9,7 @@ import { api, ApiError, tokens } from '../lib/api';
 import { Knock, MeetClient, Peer, RemoteTrack } from '../lib/meet-client';
 import { MiniPerson, callTime, currentScreen, mergeTrack } from '../lib/call-mini';
 import { openPipWindow, pipSupported } from '../lib/pip';
-import { watchSpeaking } from '../lib/speaking';
+import { orderBySpeech, promoteSpeaker, watchSpeaking } from '../lib/speaking';
 import { diag } from '../lib/diag';
 import { playKnock, startRingback, stopRingback } from '../lib/sound';
 import { useAuth } from '../state/auth';
@@ -361,6 +361,27 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
       .map((t) => ({ userId: String(t.userId), track: t.track }));
     return watchSpeaking(list, setSpeaking);
   }, [audioKey]);
+
+  /*
+    При показе экрана полоса участников листается (#4622): кто заговорил — встаёт первым
+    и полоса сама прокручивается к началу. Голос должен продержаться ~0,6 с: кашель и
+    «угу» не должны перетасовывать плитки. Если человек сам листает полосу — не дёргаем.
+  */
+  const [spoke, setSpoke] = useState<string[]>([]);
+  useEffect(() => {
+    if (!speaking) return;
+    const t = window.setTimeout(() => setSpoke((o) => promoteSpeaker(o, speaking)), 600);
+    return () => window.clearTimeout(t);
+  }, [speaking]);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const stripBusyUntil = useRef(0);
+  const holdStrip = () => { stripBusyUntil.current = Date.now() + 4000; };
+  const firstSpeaker = spoke[0];
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el || !firstSpeaker || Date.now() < stripBusyUntil.current || el.matches(':hover')) return;
+    el.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }, [firstSpeaker]);
 
   useEffect(() => {
     let cancelled = false;
@@ -761,10 +782,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
   const camByUser = new Map(tracks.filter((t) => t.kind === 'video' && !t.screen).map((t) => [String(t.userId), t]));
   const me = String(guest?.userId ?? user?.id ?? '');
   const tiles = peers.map((p) => ({ peer: p, track: camByUser.get(String(p.userId)) ?? null }));
-  const peopleTiles = tiles.map(({ peer, track }) => (
+  const shown = screenTrack ? orderBySpeech(tiles, (t) => String(t.peer.userId), spoke) : tiles;
+  const peopleTiles = shown.map(({ peer, track }) => (
     <ParticipantTile
       key={peer.userId}
       peer={peer}
+      speaking={String(peer.userId) === speaking}
       track={track?.track ?? null}
       self={String(peer.userId) === me}
       selfTrack={String(peer.userId) === me ? selfVideo : null}
@@ -1078,7 +1101,11 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
                   size={15}
                 />
               </button>
-              {!peopleHidden && <div className="call-strip">{peopleTiles}</div>}
+              {!peopleHidden && (
+                <div className="call-strip" ref={stripRef} onWheel={holdStrip} onTouchMove={holdStrip} onPointerDown={holdStrip}>
+                  {peopleTiles}
+                </div>
+              )}
             </div>
           ) : (
             <div className="call-grid">{peopleTiles}</div>
@@ -1213,8 +1240,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
  * видеовстречах. Без камеры показываем инициал, иначе на месте человека
  * зияет чёрный прямоугольник и непонятно, здесь он вообще или нет.
  */
-function ParticipantTile({ peer, track, self, selfTrack, selfMicOn }: {
+function ParticipantTile({ peer, track, self, selfTrack, selfMicOn, speaking }: {
   peer: Peer;
+  speaking?: boolean;
   track: MediaStreamTrack | null;
   self: boolean;
   selfTrack: MediaStreamTrack | null;
@@ -1222,7 +1250,7 @@ function ParticipantTile({ peer, track, self, selfTrack, selfMicOn }: {
 }) {
   const shown = self ? selfTrack : track;
   return (
-    <div className={`call-tile ${self ? 'call-self' : ''} ${peer.isAi ? 'call-tile-ai' : ''}`}>
+    <div className={`call-tile ${self ? 'call-self' : ''} ${peer.isAi ? 'call-tile-ai' : ''}${speaking ? ' call-tile-speaking' : ''}`}>
       {shown
         ? <RemoteMedia track={shown} muted={self} />
         : (

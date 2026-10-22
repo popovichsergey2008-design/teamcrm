@@ -1668,6 +1668,15 @@ test('сокет: просроченный access-токен видно до п�
   assert.equal(tokenStale('мусор', now), false);
 });
 
+test('показ экрана: кто говорил последним — первым в полосе (#4622)', async () => {
+  const { promoteSpeaker, orderBySpeech } = await load('lib/speaking.ts');
+  let o = [];
+  o = promoteSpeaker(o, 'b'); o = promoteSpeaker(o, 'd'); o = promoteSpeaker(o, 'b');
+  assert.deepEqual(o, ['b', 'd']);
+  assert.deepEqual(orderBySpeech(['a', 'b', 'c', 'd', 'e'], (x) => x, o), ['b', 'd', 'a', 'c', 'e'], 'молчавшие — на своих местах после говоривших');
+  assert.deepEqual(orderBySpeech(['a', 'c'], (x) => x, o), ['a', 'c'], 'ушедший говорящий порядок не ломает');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
