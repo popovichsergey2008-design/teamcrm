@@ -10,6 +10,8 @@
   border: 1px solid var(--border-2); border-radius: 999px; background: var(--bg-elev); color: var(--text);
   box-shadow: var(--shadow-lg); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
   -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+  /* перетаскивается мышью и пальцем (#4636): страница под ним не листается */
+  touch-action: none;
 }
 .care-pill:hover { border-color: var(--accent-line); }
 .care-pill:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
@@ -122,6 +124,13 @@
 @media (max-width: 720px) {
   .care-sheet, .care-stall { bottom: calc(var(--bottom-nav-h) + 10px); }
 }
+/* Тащат островок, кружок или окно (#4636): без подсказок и переходов, рука «держит» */
+.care-dragging { cursor: grabbing; transition: none; }
+.care-dragging .care-tip { display: none; }
+/* островок у верхнего или нижнего края — подсказка с другой стороны */
+.care-tip.down { bottom: auto; top: calc(100% + 8px); }
+.care-tip.up { top: auto; bottom: calc(100% + 8px); }
+
 @media (prefers-reduced-motion: reduce) {
   .care-dot.live, .care-sheet, .care-stall { animation: none; }
   .care-tip { transition: none; }

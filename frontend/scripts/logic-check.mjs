@@ -1585,6 +1585,37 @@ test('забота: встряхивание — три сильных рывк�
   assert.equal(g.sample(0, 0, 9.81, true, 0), false);
 });
 
+test('забота #4636: островок и окно прижимаются в видимую область, клик — не перетаскивание', async () => {
+  const { clampOffset, isDrag, keyNudge, parseOffset, ZERO } = await load('lib/care-drag.ts');
+  const ins = { top: 4, right: 4, bottom: 4, left: 4 };
+  // островок справа снизу на 1366×768: без сдвига стоит где стоял
+  const pill = { x: 1100, y: 712, w: 196, h: 38 };
+  assert.deepEqual(clampOffset(ZERO, pill, { w: 1366, h: 768 }, ins), ZERO);
+  // утащили влево вверх за край — прижали к полю
+  assert.deepEqual(clampOffset({ dx: -2000, dy: -2000 }, pill, { w: 1366, h: 768 }, ins), { dx: -1096, dy: -708 });
+  // окно уменьшили: запомненный сдвиг вправо-вниз больше не помещается — у края, не за ним
+  assert.deepEqual(clampOffset({ dx: 300, dy: 300 }, pill, { w: 1024, h: 600 }, ins), { dx: -276, dy: -154 });
+  // нижние вкладки телефона — не заезжаем под них
+  const bub = { x: 303, y: 539, w: 60, h: 60 };
+  assert.deepEqual(clampOffset({ dx: 0, dy: 200 }, bub, { w: 375, h: 667 }, { ...ins, bottom: 60 }), { dx: 0, dy: 8 });
+  // окно выше экрана — прижато к верху: шапка, за которую тянут, всегда видна
+  assert.deepEqual(clampOffset({ dx: 0, dy: 50 }, { x: 900, y: 100, w: 420, h: 900 }, { w: 1366, h: 768 }, ins), { dx: 0, dy: -96 });
+  assert.equal(Object.is(clampOffset({ dx: -0.2, dy: 0 }, pill, { w: 1366, h: 768 }, ins).dx, -0), false, 'без «-0»');
+  // порог: дрогнула рука на 4 px — это клик
+  assert.equal(isDrag(3, 3), false);
+  assert.equal(isDrag(4, 3), true);
+  // клавиатура
+  assert.deepEqual(keyNudge('ArrowLeft', false), { dx: -10, dy: 0 });
+  assert.deepEqual(keyNudge('ArrowDown', true), { dx: 0, dy: 40 });
+  assert.equal(keyNudge('Home', false), 'reset');
+  assert.equal(keyNudge('Enter', false), null);
+  // сохранённое: мусор — на место по умолчанию
+  assert.deepEqual(parseOffset('{"dx":-120.4,"dy":-40}'), { dx: -120, dy: -40 });
+  assert.deepEqual(parseOffset('{"x":1}'), ZERO);
+  assert.deepEqual(parseOffset('не json'), ZERO);
+  assert.deepEqual(parseOffset(null), ZERO);
+});
+
 test('автопостановка #4615: чипы срока — сегодня, завтра, послезавтра, через неделю, свой', async () => {
   const { chipDate, chipFor, effectiveDeadline, DEADLINE_CHIPS } = await load('lib/auto-task.ts');
   assert.deepEqual(DEADLINE_CHIPS.map((c) => c.label), ['Сегодня', 'Завтра', 'Послезавтра', 'Через неделю']);
