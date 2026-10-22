@@ -1,4 +1,4 @@
-import { buildSteps, isComplete, nextStep, OnboardingFacts, progress } from './onboarding-steps';
+import { buildSteps, isComplete, nextStep, OnboardingFacts, progress, requiredDone } from './onboarding-steps';
 import { industryByCode, INDUSTRIES, suggestedDepartments } from './industries';
 
 const EMPTY: OnboardingFacts = {
@@ -8,7 +8,7 @@ const EMPTY: OnboardingFacts = {
 describe('путь владельца: шаги и завершение', () => {
   it('сразу после регистрации пройден только первый шаг', () => {
     const steps = buildSteps({ ...EMPTY, aiPlan: false });
-    expect(progress(steps)).toEqual({ done: 1, total: 8 });
+    expect(progress(steps)).toEqual({ done: 1, total: 9 });
     expect(steps[0].key).toBe('workspace');
     expect(steps[0].done).toBe(true);
     expect(isComplete(steps)).toBe(false);
@@ -16,14 +16,14 @@ describe('путь владельца: шаги и завершение', () => 
 
   it('шаги считаются по ФАКТУ, а не по отметкам мастера', () => {
     // владелец создал проект и задачу сам, мимо подсказки
-    const steps = buildSteps({ ...EMPTY, projects: 1, tasks: 2 });
+    const steps = buildSteps({ ...EMPTY, projects: 1, tasks: 2, projectInfo: true });
     expect(steps.find((s) => s.key === 'project')?.done).toBe(true);
     expect(steps.find((s) => s.key === 'task')?.done).toBe(true);
     expect(isComplete(steps)).toBe(true);
   });
 
   it('владелец-одиночка завершает путь без приглашений и отделов', () => {
-    const steps = buildSteps({ ...EMPTY, projects: 1, tasks: 1 });
+    const steps = buildSteps({ ...EMPTY, projects: 1, tasks: 1, projectInfo: true });
     expect(steps.find((s) => s.key === 'team')?.done).toBe(false);
     expect(steps.find((s) => s.key === 'departments')?.done).toBe(false);
     // требование ТЗ: приглашение команды не блокирует завершение
@@ -62,8 +62,18 @@ describe('путь владельца: шаги и завершение', () => 
     // отложенное пропускаем
     expect(nextStep(buildSteps({ ...EMPTY, projects: 1, tasks: 1, aiDemo: 'done' }, ['company']))?.key).toBe('departments');
     // не осталось ничего — звать некуда
-    const all = { companyConfirmed: true, departments: 1, teammates: 1, invites: 0, projects: 1, tasks: 1, aiDemo: 'done' as const, aiPlan: true };
+    const all = { companyConfirmed: true, departments: 1, teammates: 1, invites: 0, projects: 1, tasks: 1, aiDemo: 'done' as const, aiPlan: true, projectInfo: true };
     expect(nextStep(buildSteps(all))).toBeNull();
+  });
+
+  it('#4632: «Данные о проекте» держат путь, пока не заполнены или не отложены', () => {
+    const noInfo = buildSteps({ ...EMPTY, projects: 1, tasks: 1 });
+    expect(noInfo.find((s) => s.key === 'project_info')).toMatchObject({ done: false, required: false });
+    expect(isComplete(noInfo)).toBe(false);
+    expect(requiredDone(noInfo)).toBe(true);
+    // «Позже» — путь закрыт, шаг виден отложенным
+    expect(isComplete(buildSteps({ ...EMPTY, projects: 1, tasks: 1 }, ['project_info']))).toBe(true);
+    expect(isComplete(buildSteps({ ...EMPTY, projects: 1, tasks: 1, projectInfo: true }))).toBe(true);
   });
 
   it('настройки компании считаются только по подтверждению', () => {

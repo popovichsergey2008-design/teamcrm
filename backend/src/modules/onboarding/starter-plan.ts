@@ -83,3 +83,33 @@ export function starterPlan(input: {
     examples: [...EXAMPLES[sphere]],
   };
 }
+
+/**
+ * Человек вернулся к вопросу «один или с командой» и передумал (#4632) — доску
+ * перестраиваем, а не заводим второй проект.
+ *
+ * Только если на доске всё ещё набор от бота (вариант А или Б): колонки, которые
+ * человек завёл или переименовал сам, не трогаем — он уже работает по-своему.
+ * Колонки переименовываются по местам, недостающая добавляется в конец, лишняя
+ * удаляется (задачи из неё переедут в соседнюю).
+ */
+export type ColumnOp =
+  | { op: 'rename'; index: number; name: string }
+  | { op: 'add'; name: string }
+  | { op: 'delete'; index: number };
+
+export function reshapeColumns(current: readonly string[], target: readonly string[]): ColumnOp[] {
+  const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+  if (same(current, target)) return [];
+  if (!same(current, SOLO_COLUMNS) && !same(current, TEAM_COLUMNS)) return [];
+  const ops: ColumnOp[] = [];
+  const n = Math.min(current.length, target.length);
+  for (let i = 0; i < n; i++) if (current[i] !== target[i]) ops.push({ op: 'rename', index: i, name: target[i] });
+  for (let i = n; i < target.length; i++) ops.push({ op: 'add', name: target[i] });
+  // с конца: индексы оставшихся не съезжают
+  for (let i = current.length - 1; i >= n; i--) ops.push({ op: 'delete', index: i });
+  return ops;
+}
+
+/** Описание от бота — его можно переписать при смене ответов; написанное человеком — нет. */
+export const isStarterDescription = (d: string | null | undefined) => String(d ?? '').startsWith('Первый проект, собранный Qevo-ботом');

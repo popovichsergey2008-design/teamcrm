@@ -36,7 +36,7 @@ export interface User {
     /** Обучение новичка (#4605): что пройдено и запускать ли самому. */
     tour?: { auto?: boolean; done?: string[] };
     /** Первый запуск (#4620): слайды, выбор и Qevo-бот уже показаны. */
-    welcome?: { done?: boolean };
+    welcome?: { done?: boolean; bot?: unknown };
   };
 }
 
@@ -294,7 +294,7 @@ export interface Industry {
 
 /** Один шаг пути владельца. */
 export interface OnboardingStep {
-  key: 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'task';
+  key: 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'project_info' | 'task';
   title: string;
   hint: string;
   done: boolean;

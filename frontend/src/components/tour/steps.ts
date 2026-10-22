@@ -174,4 +174,129 @@ export const TOURS: Record<TourKey, TourStep[]> = {
       text: 'Решения, которые ждут вас, и остальные задачи — свёрнуты, чтобы не отвлекали от главного.',
     },
   ],
+
+  // ── #4632: остальные разделы меню — по 2–4 шага при первом заходе ──
+  calendar: [
+    {
+      desktop: '.cal-new-row', mobile: '.cal-new-row',
+      title: 'Новая встреча',
+      text: '«Событие» — встреча или напоминание. Кнопка с микрофоном рядом — продиктуйте: «Созвон с Альфой в четверг в 11», и время с участниками QEVO разберёт сам.',
+    },
+    {
+      desktop: '.cal-actions .kv2-seg', mobile: '.cal-actions .kv2-seg',
+      title: 'День, неделя, месяц',
+      text: 'Переключайте вид календаря. «Задачи» рядом — показать сроки задач поверх встреч.',
+    },
+    {
+      desktop: '.cal-actions [aria-label="Синхронизация календаря"]', mobile: '.cal-actions [aria-label="Синхронизация календаря"]',
+      title: 'Google Календарь',
+      text: 'Подключите — наши встречи появятся в Google, а события оттуда — здесь. Кнопка с часами рядом — рабочее время и выходные компании.',
+    },
+  ],
+
+  projects: [
+    {
+      desktop: '.projects-tools .ui-btn-primary', mobile: '.projects-tools .ui-btn-primary',
+      title: 'Новый проект',
+      text: 'Название и пара слов о проекте — и доска с колонками готова. Чем подробнее описание, тем точнее ИИ узнаёт проект во встречах и чатах.',
+    },
+    {
+      desktop: '.projects-tools .view-switch', mobile: '.projects-tools .view-switch',
+      title: 'Все, мои, архив',
+      text: '«Мои» — проекты, где вы ответственный. Законченный проект уберите в архив — данные сохранятся.',
+    },
+    {
+      desktop: '.projects-table .projects-row', mobile: '.projects-table .projects-row',
+      title: 'Доска проекта',
+      text: 'Нажмите на проект — откроется его доска. Описание, ключевые слова и ответственный — там же, в «Настройках».',
+    },
+    {
+      desktop: '.projects-tools .board-all-btn', mobile: '.projects-tools .board-all-btn',
+      title: 'Общие задачи',
+      text: 'Все задачи по всем проектам сразу: что делаю, что поручил, где помогаю.',
+    },
+  ],
+
+  news: [
+    {
+      desktop: '.feed-head .ui-btn-primary', mobile: '.feed-head .ui-btn-primary',
+      title: 'Создать',
+      text: 'Новость, важное объявление, опрос или релиз — для всей компании.',
+    },
+    {
+      desktop: '.feed-head .ui-btn-outline', mobile: '.feed-head .ui-btn-outline',
+      title: 'Сказать спасибо',
+      text: 'Поблагодарите коллегу при всех — благодарности попадают в итоги недели.',
+    },
+    {
+      desktop: '.feed-tabs', mobile: '.feed-tabs',
+      title: 'Что показать',
+      text: 'Все записи, хайлайты дня, благодарности — переключайте здесь.',
+    },
+  ],
+
+  pulse: [
+    {
+      desktop: '.pulse-verdict', mobile: '.pulse-verdict',
+      title: 'Индекс здоровья команды',
+      text: 'Одна цифра из 100 и главное словами: где горит, кто перегружен, что застряло. Цифры в тексте открывают список за ними.',
+    },
+    {
+      desktop: '.pulse-grid .pulse-card', mobile: '.pulse-grid .pulse-card',
+      title: 'Решения и затыки',
+      text: 'Что ждёт именно вашего решения — с кнопками прямо здесь: передать, продлить срок, разобрать всё разом.',
+    },
+  ],
+
+  support: [
+    {
+      desktop: '.page-head-actions .ui-btn-primary', mobile: '.page-head-actions .ui-btn-primary',
+      title: 'Обратиться в службу заботы',
+      text: 'Живой человек на связи: напишите, что непонятно, — ответят в разговоре и, если нужно, покажут на вашем экране.',
+    },
+    {
+      desktop: '.support-state', mobile: '.support-state',
+      title: 'Кто сейчас на связи',
+      text: 'Дежурные и обычное время ответа — честно, без «ваша заявка №…».',
+    },
+  ],
+
+  settings: [
+    {
+      desktop: '.settings-grid', mobile: '.settings-grid',
+      title: 'Личный кабинет',
+      text: 'Всё о компании в одном месте: команда и отделы, интеграции, почта, отчёты, база знаний, безопасность и тариф ИИ.',
+    },
+    {
+      desktop: '.settings-grid .settings-card', mobile: '.settings-grid .settings-card',
+      title: 'Карточки настроек',
+      text: 'Нажмите на карточку — откроется её раздел. Начните с команды: пригласите коллег ссылкой или почтой.',
+    },
+  ],
+
+  profile: [
+    {
+      desktop: '.profile-nav', mobile: '.profile-nav',
+      title: 'Ваш профиль',
+      text: 'Фото, должность и контакты, пароль и вход, отпуск и доступность, какие уведомления получать.',
+    },
+  ],
+
+  secretary: [
+    {
+      desktop: '.anthill-compose', mobile: '.anthill-compose',
+      title: 'QEVO Bot — ИИ-секретарь',
+      text: 'Пишите или говорите как человеку: «что у меня горит?», «поставь Ольге задачу до пятницы». Всё, что меняет данные, — только с вашего подтверждения.',
+    },
+    {
+      desktop: '.anthill-hints', mobile: '.anthill-hints',
+      title: 'С чего начать',
+      text: 'Готовые вопросы — нажмите любой, чтобы попробовать.',
+    },
+    {
+      desktop: '.anthill-head-acts', mobile: '.anthill-head-acts',
+      title: 'Новый разговор и история',
+      text: '«Новый» — начать с чистого листа; кнопка с часами — прошлые разговоры.',
+    },
+  ],
 };

@@ -12,8 +12,9 @@ import { api } from './api';
  * `auto: false` — сам не запускается (так помечены все, кто пришёл до обучения, и
  * кто нажал «Больше не показывать»); вручную — из меню профиля в любой момент.
  */
-export type TourKey = 'intro' | 'board' | 'chats' | 'focus';
-export const TOUR_KEYS: TourKey[] = ['intro', 'board', 'chats', 'focus'];
+// #4632: подсказки и у остальных разделов меню — при первом заходе в каждый
+export const TOUR_KEYS = ['intro', 'board', 'chats', 'focus', 'calendar', 'projects', 'news', 'pulse', 'support', 'settings', 'profile', 'secretary'] as const;
+export type TourKey = (typeof TOUR_KEYS)[number];
 export interface TourPrefs { auto?: boolean; done?: string[] }
 
 const START = 'qevo:tour';

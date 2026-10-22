@@ -1,4 +1,4 @@
-import { SOLO_COLUMNS, sphereFromText, starterPlan, TEAM_COLUMNS, teamFromText } from './starter-plan';
+import { isStarterDescription, reshapeColumns, SOLO_COLUMNS, sphereFromText, starterPlan, TEAM_COLUMNS, teamFromText } from './starter-plan';
 
 describe('первый проект от Qevo-бота (#4620)', () => {
   it('вариант А «Пока работаю один» — Сделать / В работе / Готово', () => {
@@ -51,5 +51,26 @@ describe('первый проект от Qevo-бота (#4620)', () => {
     expect(teamFromText('с командой из пяти человек')).toBe(true);
     expect(teamFromText('вместе с коллегами')).toBe(true);
     expect(teamFromText('не знаю')).toBeNull();
+  });
+
+  it('#4632: передумал «один ↔ команда» — колонки по местам, без второго проекта', () => {
+    expect(reshapeColumns(SOLO_COLUMNS, TEAM_COLUMNS)).toEqual([
+      { op: 'rename', index: 0, name: 'Бэклог' },
+      { op: 'rename', index: 2, name: 'На проверке' },
+      { op: 'add', name: 'Готово' },
+    ]);
+    expect(reshapeColumns(TEAM_COLUMNS, SOLO_COLUMNS)).toEqual([
+      { op: 'rename', index: 0, name: 'Сделать' },
+      { op: 'rename', index: 2, name: 'Готово' },
+      { op: 'delete', index: 3 },
+    ]);
+    expect(reshapeColumns(SOLO_COLUMNS, SOLO_COLUMNS)).toEqual([]);
+    // колонки уже свои — не трогаем
+    expect(reshapeColumns(['Идеи', 'В работе', 'Готово'], TEAM_COLUMNS)).toEqual([]);
+  });
+
+  it('описание от бота узнаётся, написанное человеком — нет', () => {
+    expect(isStarterDescription(starterPlan({ sphere: 'it', name: 'A', team: true }).description)).toBe(true);
+    expect(isStarterDescription('Сайт для клиента Альфа')).toBe(false);
   });
 });

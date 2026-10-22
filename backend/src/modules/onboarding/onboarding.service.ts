@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { INDUSTRIES, industryByCode } from './industries';
-import { buildSteps, isComplete, nextStep, OnboardingStep, progress, StepKey } from './onboarding-steps';
+import { buildSteps, isComplete, nextStep, OnboardingStep, progress, requiredDone, StepKey } from './onboarding-steps';
 import { OnboardingRepository } from './onboarding.repository';
 import { FilesService } from '../files/files.service';
 
@@ -44,7 +44,8 @@ export class OnboardingService {
       { ...facts, companyConfirmed: !!state?.company_confirmed_at },
       state?.skipped ?? [],
     );
-    const completed = isComplete(steps);
+    // прошли путь раньше, чем в нём появились «Данные о проекте», — так и остаётся
+    const completed = isComplete(steps) || (!!state?.completed_at && requiredDone(steps));
     // Отмечаем завершение, как только оно случилось: иначе «завершено» жило бы только
     // в текущем ответе и подсказка возвращалась бы при каждом входе.
     if (completed && !state?.completed_at) await this.repo.markCompleted(tenantId);
