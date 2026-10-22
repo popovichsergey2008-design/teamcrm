@@ -5,6 +5,7 @@ import { SkeletonList } from './Skeleton';
 import { Checkbox } from './ui/checkbox';
 import { confirmAction } from './ui/dialog';
 import { PlanCards } from './AiPlanChooser';
+import { CareEmpty } from './care/CareEmpty';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import { useEscape } from '../hooks/useEscape';
@@ -60,6 +61,9 @@ export function AiPlanPanel({ canManage, onClose }: { canManage: boolean; onClos
           <h3><Icon name="sparkles" size={18} /> Тариф и ИИ</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
+
+        {/* ТЗ-34 «Сегодня» п.6.1: забота включена в каждый тариф */}
+        <CareEmpty k="badge" />
 
         {!v && !err && <SkeletonList rows={4} />}
         {err && <div className="error-text" role="alert">{err}</div>}

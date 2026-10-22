@@ -12,6 +12,7 @@ import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
+import { CareEmpty } from './care/CareEmpty';
 
 type Tab = 'people' | 'positions' | 'groups';
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
@@ -235,6 +236,8 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
             )}
+            {/* ТЗ-34 «Сегодня» п.6.1: плашка доверия и зелёный бейдж ценности */}
+            <CareEmpty k="team" />
             <div className="panel-toolbar">
               <div className="drawer-section-title" style={{ margin: 0 }}>Сотрудники ({users.length})</div>
               <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setShowAdd((v) => !v)}>{showAdd ? 'Скрыть' : '＋ Добавить людей'}</button>

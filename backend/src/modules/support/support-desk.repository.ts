@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import type { SlaRow } from './support-sla';
 
 export interface ConversationRow {
   id: string;
@@ -1028,6 +1029,49 @@ export class SupportDeskRepository {
               -- решено без человека: разговор закрыт, а специалист так и не понадобился
               COUNT(*) FILTER (WHERE closed_at IS NOT NULL AND assigned_agent_id IS NULL)::text AS ai_only
          FROM win`,
+      [tenantId],
+    );
+  }
+
+  /**
+   * Факт к целям Раздела 4 ТЗ-34 (#4620) — то же окно в 30 дней, что у сводки.
+   *
+   * Подключение к созвону — от просьбы до «принял» (decided_at): ровно то время, что
+   * человек ждёт инженера на линии. «Скриншоты от пользователя» — картинки, которые
+   * прислал он сам: снимок, сделанный приложением, сюда не попадает.
+   */
+  sla(tenantId: string | null) {
+    return this.db.one<SlaRow>(
+      `WITH win AS (
+         SELECT * FROM support_conversations
+          WHERE ($1::bigint IS NULL OR tenant_id = $1::bigint)
+            AND created_at > now() - interval '30 days'
+       ),
+       calls AS (
+         SELECT EXTRACT(EPOCH FROM (r.decided_at - r.created_at)) AS sec
+           FROM support_call_requests r JOIN win ON win.id = r.conversation_id
+          WHERE r.status = 'accepted' AND r.decided_at IS NOT NULL
+       ),
+       shots AS (
+         SELECT m.conversation_id
+           FROM support_messages m
+           JOIN win ON win.id = m.conversation_id
+           JOIN files f ON f.id = m.file_id
+          WHERE m.author_kind = 'user' AND f.content_type LIKE 'image/%'
+       )
+       SELECT (SELECT COUNT(*) FROM win)::text AS total,
+              (SELECT percentile_cont(0.5) WITHIN GROUP (
+                 ORDER BY EXTRACT(EPOCH FROM (ai_first_response_at - created_at)))
+                 FROM win WHERE ai_first_response_at IS NOT NULL)::text AS ai_median,
+              (SELECT percentile_cont(0.5) WITHIN GROUP (
+                 ORDER BY EXTRACT(EPOCH FROM (human_first_response_at - created_at)))
+                 FROM win WHERE human_first_response_at IS NOT NULL)::text AS human_median,
+              (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY sec) FROM calls)::text AS huddle_median,
+              (SELECT COUNT(*) FROM calls)::text AS huddle_count,
+              (SELECT COUNT(*) FROM shots)::text AS shots,
+              (SELECT COUNT(DISTINCT conversation_id) FROM shots)::text AS shot_convs,
+              (SELECT COUNT(*) FROM win WHERE csat_score IS NOT NULL)::text AS csat_count,
+              (SELECT COUNT(*) FROM win WHERE csat_score >= 3)::text AS csat_happy`,
       [tenantId],
     );
   }

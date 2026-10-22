@@ -221,6 +221,14 @@ export interface FocusItem {
 }
 
 /** Консьерж (ТЗ-29): кто на связи и сколько ждать. */
+/** Факт к целям Раздела 4 ТЗ-34 за 30 дней (GET /support/desk/sla). */
+export interface SupportSla {
+  days: number; conversations: number;
+  aiFirstSeconds: number | null; humanFirstSeconds: number | null;
+  huddleConnectSeconds: number | null; huddleCount: number;
+  userScreenshots: number; conversationsWithScreenshots: number;
+  csatCount: number; happyPercent: number | null;
+}
 export interface SupportConcierge {
   engineers: { userId: string; name: string; role: string; verified: boolean; avatarUrl: string | null; status: 'available' | 'busy' | 'in_huddle' | 'away' | 'offline'; statusText: string }[];
   estimate: { kind: 'now' | 'queue' | 'offline'; text: string; minutes: [number, number] | null };
@@ -2085,6 +2093,7 @@ export const api = {
     escalated: number; escalatedUnsure: number;
     csatAvg: number | null; csatCount: number; reopened: number; solvedByAi: number;
   }>('GET', '/support/desk/dashboard'),
+  supportSla: () => request<SupportSla>('GET', '/support/desk/sla'),
 
   /** Предложить действие человеку (право дежурного). */
   supportProposeAction: (id: string, kind: string, entityId: string, value?: string | null) =>
