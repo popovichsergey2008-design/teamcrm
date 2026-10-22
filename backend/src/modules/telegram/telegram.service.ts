@@ -4,9 +4,30 @@ import { TgAccount, TelegramRepository } from './telegram.repository';
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * Обработчик текста боту от модулей, которым нужен свой разговор (#1525: клиент по
+ * ссылке t.me/бот?start=c_…). Вернул true — сообщение его, дейлик и привязка
+ * сотрудника его не видят. staff — у чата есть привязка сотрудника CRM.
+ */
+export type TelegramTextHook = (chatId: string, text: string, ctx: { staff: boolean; name: string | null }) => Promise<boolean>;
+
 @Injectable()
 export class TelegramService {
+  private readonly hooks: TelegramTextHook[] = [];
+
   constructor(private readonly repo: TelegramRepository) {}
+
+  onText(h: TelegramTextHook): void {
+    this.hooks.push(h);
+  }
+
+  /** Сообщение забрал один из обработчиков — дальше его не разбираем. Сбой обработчика — не его. */
+  async handleExternal(chatId: string, text: string, ctx: { staff: boolean; name: string | null }): Promise<boolean> {
+    for (const h of this.hooks) {
+      if (await h(chatId, text, ctx).catch(() => false)) return true;
+    }
+    return false;
+  }
 
   /** Одноразовый код привязки (показывается в веб-CRM, отправляется боту). */
   async issueLinkCode(tenantId: string, userId: string): Promise<{ code: string; expiresAt: Date }> {

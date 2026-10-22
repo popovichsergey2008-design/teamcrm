@@ -46,6 +46,12 @@ export class StandupService {
 
     const actor = await this.telegram.resolveActor(tgUser);
 
+    // клиент по ссылке с итогами встречи (#1525) — не сотрудник, его сообщения не дейлик
+    if (msg.text) {
+      const name = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || msg.from.username || null;
+      if (await this.telegram.handleExternal(String(msg.chat?.id ?? tgUser), String(msg.text), { staff: !!actor, name })) return;
+    }
+
     // привязка по коду / отклонение непривязанных
     if (!actor) {
       if (msg.text) {

@@ -1,0 +1,22 @@
+/* Итоги клиенту сразу после звонка (#1525). Грузится лениво вместе с окном. */
+.fu { display: flex; flex-direction: column; gap: 10px; }
+.fu-line { margin: 0; font-size: var(--fs-md); line-height: 1.45; overflow-wrap: anywhere; }
+.fu-k { font-weight: 600; }
+.fu-ask { margin: 2px 0 0; font-size: var(--fs-md); font-weight: 600; }
+.fu-text {
+  max-height: 168px; overflow-y: auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.fu-edit { display: flex; flex-direction: column; gap: 8px; }
+.fu-edit textarea { resize: vertical; font-size: var(--fs-sm); line-height: 1.5; }
+.fu-main { align-self: stretch; justify-content: center; }
+.fu-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.fu-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.45; }
+.fu-err { font-size: var(--fs-sm); }
+.fu-link { display: flex; flex-direction: column; gap: 8px; }
+.fu-url { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--fs-sm); }
+.fu-done { margin: 0; display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); }
+.fu-done svg { color: var(--ok); flex: none; }
+@media (max-width: 480px) {
+  .fu-row > .ui-btn { flex: 1 1 100%; justify-content: center; }
+}

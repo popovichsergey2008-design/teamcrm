@@ -128,6 +128,23 @@ function PostCall({ meetingId }: { meetingId: string }) {
     return () => { socket.off('meeting.postcall', on); if (timer) window.clearInterval(timer); };
   }, [meetingId, load, processing]);
 
+  /*
+    Итоги клиенту (#1525): письмо готово и ещё не отправлено — окно «Я подготовил отчет
+    для вашего клиента» всплывает само, один раз (ключ ставит окно). Отправили из окна —
+    перечитываем блок «Письмо клиенту».
+  */
+  const fuId = data?.followup && ['new', 'seen', 'snoozed', 'failed'].includes(data.followup.status) ? data.followup.id : '';
+  useEffect(() => {
+    let shown = false;
+    try { shown = localStorage.getItem(`qevo.followupPopup.${fuId}`) === '1'; } catch { /* нет хранилища — покажем */ }
+    if (fuId && !shown) window.dispatchEvent(new CustomEvent('qevo:followup', { detail: fuId }));
+  }, [fuId]);
+  useEffect(() => {
+    const on = () => void load();
+    window.addEventListener('qevo:followup-done', on);
+    return () => window.removeEventListener('qevo:followup-done', on);
+  }, [load]);
+
   if (loadErr) {
     return (
       <div className="pc-page"><div className="pc-shell">
@@ -569,6 +586,8 @@ function Followup({ card, onSent }: { card: NonNullable<PostcallView['followup']
 
   const act = async (key: string, label: string) => {
     setErr('');
+    // Telegram (#1525) — в окне итогов: там ссылка для непривязанного клиента и текст целиком
+    if (key === 'send_tg') { window.dispatchEvent(new CustomEvent('qevo:followup', { detail: card.id })); return; }
     if (key === 'copy') {
       try { await navigator.clipboard.writeText(body); } catch { /* не дали доступа к буферу — текст всё равно виден */ }
     } else {

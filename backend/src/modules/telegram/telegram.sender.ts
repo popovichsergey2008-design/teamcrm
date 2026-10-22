@@ -77,6 +77,28 @@ export class TelegramSender {
     }
   }
 
+  /**
+   * Отправка с ответом, дошло ли (#1525: итоги клиенту). «blocked» — человек остановил
+   * бота или удалил чат (Telegram отвечает 403/400 chat not found): туда больше не пишем.
+   */
+  async deliver(chatId: string | number, text: string): Promise<'ok' | 'blocked' | 'failed'> {
+    if (!this.token) return 'failed';
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096), disable_web_page_preview: true }),
+      });
+      if (res.ok) return 'ok';
+      const json: any = await res.json().catch(() => null);
+      const why = String(json?.description ?? '');
+      return res.status === 403 || /chat not found|user is deactivated/i.test(why) ? 'blocked' : 'failed';
+    } catch (e) {
+      this.logger.warn(`deliver failed: ${(e as Error).message}`);
+      return 'failed';
+    }
+  }
+
   async sendMessage(chatId: string | number, text: string, replyMarkup?: unknown): Promise<void> {
     if (!this.token) {
       this.logger.debug(`(no token) -> ${chatId}: ${text.slice(0, 80)}`);

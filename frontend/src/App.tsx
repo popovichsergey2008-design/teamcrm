@@ -94,6 +94,8 @@ const CallPanel = lazy(() => import('./components/CallPanel').then((m) => ({ def
 const TourHost = lazy(() => import('./components/tour/TourHost'));
 // первый запуск (#4620): слайды, выбор и Qevo-бот — один раз, своим куском
 const WelcomeHost = lazy(() => import('./components/welcome/WelcomeHost'));
+// итоги клиенту (#1525): окно поверх любого экрана, когда итог встречи готов
+const FollowupPopup = lazy(() => import('./components/followup/FollowupPopup'));
 
 // Окна по нажатию — тоже по требованию: на первом экране их нет.
 const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
@@ -389,6 +391,15 @@ export function App() {
       socket.off('presence.updated', onPresence); socket.off('connect', onPresence);
     };
   }, [crmAlive]);
+
+  const [followupId, setFollowupId] = useState('');
+  useEffect(() => {
+    const show = (e: unknown) => { const id = (e as { id?: string }).id ?? (e as CustomEvent).detail; if (id) setFollowupId(String(id)); };
+    const socket = getSocket();
+    socket.on('followup.ready', show);
+    window.addEventListener('qevo:followup', show);
+    return () => { socket.off('followup.ready', show); window.removeEventListener('qevo:followup', show); };
+  }, []);
 
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.
   // Подраздел («Клиенты») адрес занимает под себя, доска под ним остаётся как есть.
@@ -902,6 +913,7 @@ export function App() {
       {tourWanted && <Suspense fallback={null}><TourHost route={route} /></Suspense>}
       {/* пока кусок первого запуска грузится, обучение ждёт (data-tour-hold) */}
       {welcome > 0 && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} /></Suspense>}
+      {followupId && <Suspense fallback={null}><FollowupPopup key={followupId} id={followupId} onClose={() => setFollowupId('')} /></Suspense>}
 
       <BottomNav
         route={route}
