@@ -8,7 +8,15 @@ import { norm, score } from '../lib/palette-match';
 import { Command, findCommands } from '../lib/commands';
 import { setThemeChoice } from '../lib/theme';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { lazyComponent } from '../lib/lazy';
 import type { SearchResults, SemanticHit } from '../types';
+
+// ответ «второго мозга» — отдельным куском: нужен, только когда задан вопрос (#1525)
+const PaletteAnswer = lazyComponent(() => import('./PaletteAnswer').then((m) => m.PaletteAnswer));
+
+/** Вопрос, а не поиск: «…?» или начинается с вопросительного слова (#1525). */
+const isQuestion = (q: string) => q.length >= 6
+  && /\?$|^(что|кто|когда|где|как\p{L}*|почему|зачем|сколько|решили)(?!\p{L})/iu.test(q);
 
 /**
  * Командная строка (Ctrl+K).
@@ -120,7 +128,8 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   const [remote, setRemote] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
   const [semantic, setSemantic] = useState<SemanticHit[] | null>(null);
-  const [answer, setAnswer] = useState<{ text: string; sources: string[] } | null>(null);
+  // «Спросить ИИ» нажали на НЕвопросе; вопрос спрашивается сам
+  const [asked, setAsked] = useState<string | null>(null);
   const [thinking, setThinking] = useState<'search' | 'answer' | null>(null);
 
   /*
@@ -192,7 +201,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoVoice]);
 
-  const go = (to: Route, remember?: Recent) => {
+  const go = (to: Route | string, remember?: Recent) => {
     if (remember) rememberVisit(remember);
     navigate(to);
     onClose();
@@ -337,14 +346,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     finally { setThinking(null); }
   };
 
-  const askAi = async () => {
-    setThinking('answer');
-    try {
-      const r = await api.brainAnswer(q.trim());
-      setAnswer({ text: r.answer, sources: r.citations.map((c) => c.title).filter(Boolean) as string[] });
-    } catch { setAnswer({ text: 'Не удалось получить ответ. Проверьте ключ модели в настройках ИИ.', sources: [] }); }
-    finally { setThinking(null); }
-  };
+  const question = asked ?? (isQuestion(q.trim()) ? q.trim() : null);
 
   const items = useMemo<Item[]>(() => {
     const query = norm(q);
@@ -495,16 +497,16 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
             title: h.snippet.slice(0, 140),
             hint: [HIT_LABEL[h.sourceType] ?? h.sourceType, h.title, h.projectName].filter(Boolean).join(' · '),
             icon: 'sparkles',
-            run: () => go(hitRoute(h)),
+            // ссылка памяти ведёт точно: встреча — с секунды записи (`?t=`)
+            run: () => go(h.link ?? hitRoute(h)),
           });
         }
       }
-      if (!answer) {
+      if (!question) {
         add({
-          key: 'act:ai', group: 'По смыслу',
-          title: thinking === 'answer' ? 'Собираю ответ…' : 'Спросить ИИ',
+          key: 'act:ai', group: 'По смыслу', title: 'Спросить ИИ',
           hint: 'ответ по архиву компании со ссылками на источники', icon: 'robot',
-          run: () => { if (!thinking) askAi(); },
+          run: () => setAsked(q.trim()),
         });
       }
     }
@@ -520,14 +522,14 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     });
 
     return out;
-  }, [q, local, remote, role, semantic, answer, thinking, inline]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, local, remote, role, semantic, question, thinking, inline]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setActive(0);
     // Смысловой слой относится к конкретной формулировке: при правке строки его
     // результаты устаревают, и оставлять их под новым запросом — обман.
     setSemantic(null);
-    setAnswer(null);
+    setAsked(null);
     setInline(null);
   }, [q]);
 
@@ -589,15 +591,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
           className="palette-voice"
         />
 
-        {answer && (
-          <div className="palette-answer">
-            <div className="palette-answer-head"><Icon name="robot" size={15} /> Ответ по архиву компании</div>
-            <div>{answer.text}</div>
-            {answer.sources.length > 0 && (
-              <div className="palette-answer-src">Источники: {answer.sources.join(' · ')}</div>
-            )}
-          </div>
-        )}
+        {question && <PaletteAnswer key={question} question={question} onGo={(path) => go(path)} />}
 
         <div className="palette-list" ref={listRef}>
           {items.map((it, i) => {

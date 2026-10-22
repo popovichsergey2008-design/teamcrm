@@ -4,7 +4,7 @@ import { TaskCardWindow } from './TaskCardWindow';
 import { TaskTagsField } from './TaskTagsField';
 import { confirmTags, EMPTY_TAGS, pendingTagCount } from '../lib/tags';
 import { api, ApiError, TagSettings, VoiceJob } from '../lib/api';
-import { workloadOf, WorkloadWarning } from './WorkloadWarning';
+import { useWorkloadCheck, workloadOf, WorkloadWarning } from './WorkloadWarning';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { DatePicker } from './DatePicker';
 import { DirectionsPicker } from './DirectionsPicker';
@@ -647,6 +647,16 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
   useEffect(() => {
     if (draft?.error || draft?.workload) alertRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [draft?.error, draft?.workload]);
+  /*
+    #1525: подсказка о перегрузе — в предпросмотре, сразу как известны исполнитель и срок
+    (команда текстом и голосом), а не после «Создать».
+  */
+  const t = draft?.intent === 'create_task' && !created ? draft.task : null;
+  const early = useWorkloadCheck(t ? {
+    assigneeId: t.assigneeId, projectId: t.projectId, priority: t.priority, directions: t.directions,
+    deadlineAt: t.deadlineAt ?? null, deadline: t.deadlineAt ? null : t.deadline,
+  } : {});
+  const wl = draft?.workload ?? early.info;
   /** Одноимённые не копим: файл выбирают дважды чаще, чем прикладывают два одинаковых. */
   const addFiles = (list: FileList | null) => {
     if (!list?.length) return;
@@ -751,7 +761,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         <div className="dim nl-hint">Постановщик — вы: задача записывается от вашего имени</div>
         <div className="tv2-grid2">
           <Select ariaLabel="Приоритет" className="tv2-wide" value={String(draft.task.priority ?? 'normal')} onValueChange={(v) => onPatchTask({ priority: v })} options={[{ value: 'low', label: 'Низкий' }, { value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }]} />
-          <DatePicker value={draft.task.deadline ?? ''} onChange={(v) => onPatchTask({ deadline: v || null })} placeholder="срок не задан" />
+          <DatePicker value={draft.task.deadline ?? ''} onChange={(v) => onPatchTask({ deadline: v || null, deadlineAt: null })} placeholder="срок не задан" />
         </div>
 
         <TaskTagsField
@@ -850,18 +860,26 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
           {draft.error && (
             <div className="error-text" role="alert" style={{ fontSize: 12 }}><Icon name="alert" size={12} /> {draft.error}</div>
           )}
-          {draft.workload && (
+          {wl && (
             <WorkloadWarning
-              info={draft.workload}
+              info={wl}
               busy={busy}
-              onMove={draft.workload.alternativeDate ? () => onApply({ deadline: draft.workload.alternativeDate, confirmWorkload: true }) : undefined}
-              onReassign={(id) => onApply({ assigneeId: id })}
-              onKeep={() => onApply({ confirmWorkload: true })}
+              /*
+                До «Создать» кнопки только правят черновик; после 409 — ставят сразу.
+                Срок — точным моментом 15:00 (#1525), а не днём: день стал бы 18:00.
+              */
+              onMove={wl.alternativeDate ? () => {
+                const move = { deadline: wl.alternativeDate, deadlineAt: wl.alternativeDeadline };
+                early.accept(String(wl.assigneeId));
+                if (draft.workload) onApply({ ...move, confirmWorkload: true }); else onPatchTask(move);
+              } : undefined}
+              onReassign={(id) => (draft.workload ? onApply({ assigneeId: id }) : onPatchTask({ assigneeId: id }))}
+              onKeep={() => { early.accept(String(wl.assigneeId)); if (draft.workload) onApply({ confirmWorkload: true }); }}
             />
           )}
         </div>
         {/* #1549: без проекта кнопка не прячется — нажатие объясняет, что проект обязателен, и подсвечивает поле */}
-        <Button variant="primary" className="tv2-wide" onClick={() => onApply()} loading={busy}>
+        <Button variant="primary" className="tv2-wide" onClick={() => onApply(early.confirmed ? { confirmWorkload: true } : undefined)} loading={busy}>
           {files.length ? `Создать задачу и прикрепить ${files.length}` : 'Создать задачу'}
         </Button>
       </div>

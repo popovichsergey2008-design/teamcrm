@@ -1,4 +1,4 @@
-import { assess, basisText, dayWord, LocalDate } from './workload-rules';
+import { assess, basisText, dayWord, LocalDate, softHint } from './workload-rules';
 
 const now = new Date('2026-10-12T08:00:00Z'); // понедельник
 const local: LocalDate = (d) => {
@@ -21,9 +21,13 @@ describe('страж нагрузки', () => {
     ], now, local);
     expect(a.warn).toBe(true);
     expect(a.reasons[0]).toBe('Сергей: на четверг уже 4 срочные задачи.');
-    // от сегодня (пн 12.10): вторник свободен
-    expect(a.alternativeDate).toBe('2026-10-13');
+    // #1525: после срока (чт 15.10) — пятница свободна
+    expect(a.alternativeDate).toBe('2026-10-16');
     expect(a.alternatives.map((x) => x.name)).toEqual(['Константин']);
+    // слово в слово по документу
+    expect(a.hint).toBe('Обратите внимание: у Сергея на четверг уже назначено 4 срочные задачи. Если поставить еще одну, возникнет перегрузка. Предлагаю поставить дедлайн на пятницу 15:00 или передать задачу Константину?');
+    expect(a.moveLabel).toBe('Дедлайн на пятницу 15:00');
+    expect(a.reassignLabel).toBe('Передать Константину');
   });
 
   it('свободный человек — без предупреждения', () => {
@@ -53,14 +57,17 @@ describe('страж нагрузки', () => {
 describe('страж нагрузки: дата и разбивка (#1553)', () => {
   const busy = (dates: string[]) => dates.map((d) => ({ priority: 'normal' as const, deadlineAt: new Date(`${d}T12:00:00Z`) }));
 
-  it('другой срок — от сегодня и не дальше двух недель, повтор не уводит дату', () => {
-    const gleb = { id: '1', name: 'Глеб', points: 20, norm: 12, tasks: busy(['2026-10-13', '2026-10-13', '2026-10-14', '2026-10-14']) };
+  it('другой срок — первый свободный рабочий день после срока (#1525), выходные пропускаем', () => {
+    const gleb = { id: '1', name: 'Глеб', points: 20, norm: 12, tasks: busy(['2026-10-13', '2026-10-13', '2026-10-21', '2026-10-21']) };
     const a = assess(gleb, { priority: 'normal', deadlineAt: new Date('2026-10-20T15:00:00Z'), directions: [], allowed: null }, [], now, local);
     expect(a.warn).toBe(true);
-    expect(a.alternativeDate).toBe('2026-10-15');
-    // со сроком позже (как после «сдвинуть») — та же дата, а не ещё на день дальше
-    const again = assess(gleb, { priority: 'normal', deadlineAt: new Date('2026-10-22T15:00:00Z'), directions: [], allowed: null }, [], now, local);
-    expect(again.alternativeDate).toBe('2026-10-15');
+    expect(a.alternativeDate).toBe('2026-10-22');
+    // срок в пятницу — следующий понедельник, не суббота
+    const fri = assess(gleb, { priority: 'normal', deadlineAt: new Date('2026-10-16T15:00:00Z'), directions: [], allowed: null }, [], now, local);
+    expect(fri.alternativeDate).toBe('2026-10-19');
+    // без срока — от сегодня
+    const none = assess(gleb, { priority: 'normal', deadlineAt: null, directions: [], allowed: null }, [], now, local);
+    expect(none.alternativeDate).toBe('2026-10-14');
   });
 
   it('все две недели заняты — дату не предлагаем', () => {
@@ -81,5 +88,27 @@ describe('страж нагрузки: дата и разбивка (#1553)', ()
     expect(basisText({ overdue: 18, inWindow: 1, moving: 4, later: 8, reviews: 0, meetingHours: 0 }))
       .toBe('Считаем задачи на ближайшие 2 недели, часы не нужны: 18 просрочено, 1 со сроком в эти 2 недели, 4 в работе без срока. Не считаем 8 задач без движения и без близкого срока.');
     expect(basisText(undefined)).toBeNull();
+  });
+});
+
+describe('мягкая подсказка (#1525)', () => {
+  const base = { name: 'Сергей Попович', day: null, sameDayUrgent: 0, counted: 0, alreadyOver: false, altDay: null, altName: null };
+
+  it('склонение «срочная задача»', () => {
+    expect(softHint({ ...base, day: 'на среду', sameDayUrgent: 3 })).toContain('у Сергея на среду уже назначено 3 срочные задачи.');
+    expect(softHint({ ...base, day: 'на завтра', sameDayUrgent: 5 })).toContain('уже назначено 5 срочных задач.');
+    expect(softHint({ ...base, day: 'на сегодня', sameDayUrgent: 21 })).toContain('уже назначено 21 срочная задача.');
+  });
+
+  it('перегруз без срочных на день — та же форма', () => {
+    expect(softHint({ ...base, name: 'Анна Ким', counted: 9, altName: 'Глеб Орлов' }))
+      .toBe('Обратите внимание: у Анны уже 9 задач на эти две недели. Если поставить еще одну, возникнет перегрузка. Предлагаю передать задачу Глебу?');
+    expect(softHint({ ...base, name: 'Илья', counted: 2, alreadyOver: true, altDay: 'на 30.10' }))
+      .toBe('Обратите внимание: у Ильи уже 2 задачи на эти две недели. Если поставить еще одну, перегрузка станет сильнее. Предлагаю поставить дедлайн на 30.10 15:00?');
+  });
+
+  it('нечего предложить — без вопроса', () => {
+    expect(softHint({ ...base, name: 'Мария', counted: 1 }))
+      .toBe('Обратите внимание: у Марии уже 1 задача на эти две недели. Если поставить еще одну, возникнет перегрузка.');
   });
 });

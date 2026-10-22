@@ -48,6 +48,15 @@ export class BrainRepository {
     );
   }
 
+  /** Имя спрашивающего и пояс компании — для подписи «на созвоне с …» и дат ответа (#1525). */
+  async viewer(tenantId: string, userId: string): Promise<{ name: string | null; tz: string }> {
+    const r = await this.db.one<{ name: string | null; tz: string | null }>(
+      `SELECT u.full_name AS name, t.timezone AS tz FROM tenants t LEFT JOIN users u ON u.tenant_id = t.id AND u.id = $2 WHERE t.id = $1`,
+      [tenantId, userId],
+    );
+    return { name: r?.name ?? null, tz: r?.tz || 'Europe/Moscow' };
+  }
+
   // ── семантический кэш ответов (похожий вопрос → без вызова LLM) ──
   private vec(v: number[]): string {
     return '[' + v.join(',') + ']';

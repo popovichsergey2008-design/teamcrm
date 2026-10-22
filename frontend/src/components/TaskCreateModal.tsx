@@ -10,7 +10,7 @@ import { overlayProps } from '../lib/overlay';
 import { clearDraft, draftHasContent, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
 import { useAuth } from '../state/auth';
 import { SuggestAssignee } from './SuggestAssignee';
-import { localInput, workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
+import { localInput, useWorkloadCheck, workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
 import { DirectionsPicker } from './DirectionsPicker';
 import { NlCommandModal } from './NlCommandModal';
 import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
@@ -300,6 +300,15 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
   /** Страж нагрузки (ТЗ-21): сервер предупредил о перегрузе — человек выбирает вариант. */
   const [workload, setWorkload] = useState<WorkloadInfo | null>(null);
+  /*
+    #1525: подсказка — сразу, как только известны исполнитель и срок, до «Создать».
+    Голос заполняет те же поля — проверка срабатывает и после него.
+  */
+  const early = useWorkloadCheck({
+    assigneeId, projectId, priority, directions,
+    deadlineAt: deadline && !Number.isNaN(Date.parse(deadline)) ? new Date(deadline).toISOString() : null,
+  });
+  const shownWorkload = workload ?? early.info;
 
   const submit = async (o: { assigneeId?: string; deadline?: string; confirmWorkload?: boolean } = {}) => {
     if (!title.trim()) return setErr('Введите название задачи');
@@ -326,7 +335,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         confirmedWithoutTags: tags.confirmedWithoutTags,
         requiresApproval,
         directions: directions.length ? directions : undefined,
-        confirmWorkload: o.confirmWorkload || undefined,
+        confirmWorkload: o.confirmWorkload || (early.confirmed && !o.assigneeId) || undefined,
       });
       setCreatedId(String(created.id));
       feedback('task.created');
@@ -655,20 +664,31 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
           В конце длинной формы предупреждение о перегрузе оставалось за краем окна:
           нажал «Создать» — ничего не произошло, а ответ надо искать прокруткой.
         */}
-        {(workload || err) && (
+        {(shownWorkload || err) && (
           <div className="ui-modal-alerts">
-            {workload && (
+            {shownWorkload && (
               <WorkloadWarning
-                info={workload}
+                info={shownWorkload}
                 busy={busy}
-                onMove={workload.alternativeDeadline ? () => {
-                  const v = localInput(workload.alternativeDeadline!);
+                /*
+                  Подсказка пришла ДО «Создать» — кнопки только правят форму, задачу ставит
+                  сам человек. Пришла ответом на «Создать» (409) — ставим сразу, как раньше.
+                  Принятый вариант — это решение: повторно о том же человеке не спрашиваем.
+                */
+                onMove={shownWorkload.alternativeDeadline ? () => {
+                  const v = localInput(shownWorkload.alternativeDeadline!);
                   setDeadline(v);
-                  // свободный день — это и есть решение: ставим без повторного предупреждения
-                  void submit({ deadline: v, confirmWorkload: true });
+                  early.accept(String(shownWorkload.assigneeId));
+                  if (workload) void submit({ deadline: v, confirmWorkload: true });
                 } : undefined}
-                onReassign={(id) => { setAssigneeId(id); void submit({ assigneeId: id }); }}
-                onKeep={() => void submit({ confirmWorkload: true })}
+                onReassign={(id) => {
+                  setAssigneeId(id); setAssigneeTouched(true);
+                  if (workload) void submit({ assigneeId: id });
+                }}
+                onKeep={() => {
+                  early.accept(String(shownWorkload.assigneeId));
+                  if (workload) void submit({ confirmWorkload: true });
+                }}
               />
             )}
             {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}

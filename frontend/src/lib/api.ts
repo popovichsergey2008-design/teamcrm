@@ -1200,13 +1200,22 @@ export const api = {
    * вызывается явным действием, а не на каждую букву.
    */
   semanticSearch: (q: string) =>
-    request<SemanticHit[]>('GET', `/knowledge/search?q=${encodeURIComponent(q)}&k=6`),
+    // память компании (ТЗ-21): права до поиска и точная ссылка — встреча с нужной секунды
+    request<SemanticHit[]>('GET', `/knowledge/memory?q=${encodeURIComponent(q)}&k=6`),
 
   /** Разовый вопрос ИИ со ссылками на источники (тот же конвейер и кэш, что у «Спросить ИИ»). */
   brainAnswer: (question: string) =>
-    request<{ answer: string; citations: { sourceType: string; sourceId: string; title: string | null }[]; cached: boolean }>(
-      'POST', '/brain/answer', { question },
-    ),
+    request<{
+      answer: string;
+      /** #1525: живая ссылка «Вот ссылка на созвон с воспроизведением с 12:15» */
+      play?: { link: string; label: string } | null;
+      citations: { sourceType: string; sourceId: string; title: string | null; link?: string | null }[];
+      cached: boolean;
+    }>('POST', '/brain/answer', { question }),
+
+  /** #1525: ранняя проверка нагрузки — до «Создать», ничего не пишет. */
+  workloadCheck: (b: { assigneeId: string; projectId: string; priority?: string; deadlineAt?: string | null; deadline?: string | null; directions?: string[] }) =>
+    request<{ warn: boolean } & Record<string, any>>('POST', '/workload/check', b),
 
   /** Поиск командной строки: одна ручка на все источники, права проверяет сервер. */
   search: (q: string) => request<SearchResults>('GET', `/search?q=${encodeURIComponent(q)}`),
