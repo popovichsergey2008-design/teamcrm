@@ -1138,6 +1138,26 @@ export class ChatsRepository {
    * Помечаем `edited_at`: молча подменённый текст — худшее, что можно сделать с
    * перепиской, на которую потом ссылаются. Собеседник должен видеть, что правили.
    */
+  /**
+   * Расшифровка клипа (#4643) — в тех же полях, что у «палочки» (ТЗ-26): второй раз
+   * за неё не платим. Готовый текст встаёт и в тело, но только вместо подписи: если
+   * автор уже поправил сообщение сам, его слова не перетираем. Отметки «изменено» нет —
+   * это не правка человека. Неудача не перебивает расшифровку, сделанную «палочкой».
+   */
+  async clipTranscript(tenantId: string, id: string, status: 'running' | 'ready' | 'failed', text: string | null, caption: string): Promise<string | null> {
+    const row = await this.db.one<{ body: string }>(
+      `UPDATE chat_messages
+          SET transcript_status = CASE WHEN $3::text = 'failed' AND transcript IS NOT NULL THEN transcript_status ELSE $3::text END,
+              transcript = COALESCE($4, transcript),
+              transcribed_at = CASE WHEN $3::text = 'ready' THEN now() ELSE transcribed_at END,
+              body = CASE WHEN $4::text IS NOT NULL AND body = $5 THEN $4 ELSE body END
+        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+        RETURNING body`,
+      [tenantId, id, status, text, caption],
+    );
+    return row ? row.body : null;
+  }
+
   async editMessage(tenantId: string, id: string, body: string): Promise<void> {
     await this.db.query(
       `UPDATE chat_messages SET body=$3, edited_at=now()

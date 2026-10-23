@@ -709,7 +709,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * когда нажали «отправить». Неотправленная запись остаётся в панели с «Повторить»
    * и «Отменить»; таймаут, отмена и повтор живут в хуке (#4635). Чат — тот, где начали запись.
    */
-  const clip = useClipRecorder((blob, kind, chatId, signal) => api.sendChatClip(chatId, blob, kind, signal));
+  const clip = useClipRecorder((blob, kind, chatId, signal, progress) => api.sendChatClip(chatId, blob, kind, signal, progress));
   const clipBusy = clip.sending || !!clip.failed;
 
   /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
@@ -886,10 +886,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     };
     // задачу по сообщению завёл кто-то другой — отметка должна появиться и у нас,
     // иначе по той же фразе заведут вторую
-    const onTranscript = (p: { chatId: string; messageId: string; transcript: string }) => {
+    // расшифровка голосового готова (палочка или фоном после отправки, #4643): текст встаёт вместо подписи
+    const onTranscript = (p: { chatId: string; messageId: string; transcript: string | null; status?: string; body?: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
       setMessages((prev) => prev.map((m) => (String(m.id) === String(p.messageId)
-        ? { ...m, transcript: p.transcript, transcript_status: 'ready' } : m)));
+        ? { ...m, transcript: p.transcript ?? m.transcript, transcript_status: p.status ?? 'ready', body: p.body ?? m.body } : m)));
     };
     const onTaskLinked = (p: { chatId: string; messageId: string; taskId: string; title: string; projectId?: string }) => {
       if (String(p.chatId) !== String(activeId)) return;
@@ -2985,7 +2986,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             onOpen={() => openPreview(messages, String(f.fileId))}
                           />
                         ))}
-                        {m.transcript && (
+                        {m.transcript_status === 'running' ? (
+                          <div className="chat-transcript" role="status">
+                            Расшифровываю <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
+                          </div>
+                        ) : m.transcript && m.transcript !== m.body && (
                           <details className="chat-transcript">
                             <summary>Текст</summary>
                             <div>{m.transcript}</div>
@@ -3161,7 +3166,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={clip.stop}>Отправить</button>
                   </>
                 )}
-                {clip.sending && <span className="dim">Отправляю и расшифровываю…</span>}
+                {clip.sending && <span className="dim">Отправляю… {Math.round(clip.progress * 100)}%</span>}
                 {clip.error && <span className="error-text">{clip.error}</span>}
                 {clip.failed && (
                   <>

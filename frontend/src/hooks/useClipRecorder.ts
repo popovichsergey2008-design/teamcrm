@@ -26,8 +26,8 @@ const MAX_MS = 5 * 60_000;
 export type ClipKind = 'voice' | 'screen';
 
 /**
- * Отправка записи под таймаутом и с отменой. Ждём минуту с четвертью на расшифровку
- * плюс загрузку (~40 КБ/с), но не больше двух минут. Возвращает текст ошибки;
+ * Отправка записи под таймаутом и с отменой. Ждём минуту с четвертью плюс загрузку
+ * (~40 КБ/с), но не больше двух минут; с #4643 сервер отвечает сразу после загрузки. Возвращает текст ошибки;
  * пусто — ушло или отменено (отменённое `ref` уже не держит, о нём молчим).
  */
 export async function sendTimed(ref: { current: AbortController | null }, bytes: number, step: (signal: AbortSignal) => Promise<unknown>) {
@@ -41,7 +41,17 @@ export async function sendTimed(ref: { current: AbortController | null }, bytes:
   } finally { window.clearTimeout(t); if (ref.current === ac) ref.current = null; }
 }
 
-type Send = (blob: Blob, kind: ClipKind, target: string, signal: AbortSignal) => Promise<unknown>;
+type Send = (blob: Blob, kind: ClipKind, target: string, signal: AbortSignal, progress: (part: number) => void) => Promise<unknown>;
+
+/**
+ * Голос пишем моно ~32 кбит/с (#4643): по умолчанию WebView кодирует 128 кбит/с, и минута
+ * весила ~1 МБ — по мобильной сети это и было «крутится и непонятно, зависло ли».
+ * Формат — какой умеет запись: opus в webm, иначе mp4/aac (старые WebView).
+ */
+const voiceOpts = (): MediaRecorderOptions => {
+  const mimeType = ['audio/webm;codecs=opus', 'audio/mp4'].find((t) => MediaRecorder.isTypeSupported?.(t));
+  return mimeType ? { mimeType, audioBitsPerSecond: 32_000 } : { audioBitsPerSecond: 32_000 };
+};
 
 export function useClipRecorder(send: Send) {
   const [recording, setRecording] = useState<ClipKind | null>(null);
@@ -49,6 +59,8 @@ export function useClipRecorder(send: Send) {
   const [sending, setSending] = useState(false);
   /** Отправка не удалась: текст для человека; сама запись лежит в `kept` до «Повторить». */
   const [failed, setFailed] = useState('');
+  /** Доля загруженного файла, 0…1: проценты на кнопке — видно, что не зависло. */
+  const [progress, setProgress] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const timer = useRef<number | null>(null);
@@ -61,8 +73,8 @@ export function useClipRecorder(send: Send) {
   const run = useCallback(async () => {
     const c = kept.current;
     if (!c) return;
-    setFailed(''); setSending(true);
-    const msg = await sendTimed(ctrl, c.blob.size, (signal) => sink.current(c.blob, c.kind, c.target, signal));
+    setFailed(''); setSending(true); setProgress(0);
+    const msg = await sendTimed(ctrl, c.blob.size, (signal) => sink.current(c.blob, c.kind, c.target, signal, setProgress));
     if (!msg) kept.current = null;
     setSending(false); setFailed(msg);
   }, []);
@@ -92,7 +104,7 @@ export function useClipRecorder(send: Send) {
     let stream: MediaStream;
     try {
       stream = kind === 'voice'
-        ? await navigator.mediaDevices.getUserMedia({ audio: true })
+        ? await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } })
         // Звук просим вместе с картинкой: запись экрана без голоса показывает, ЧТО
         // происходит, но не объясняет, что с этим не так.
         : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -100,7 +112,8 @@ export function useClipRecorder(send: Send) {
       return setError(kind === 'voice' ? 'Микрофон недоступен' : 'Показ экрана отменён');
     }
 
-    const mr = new MediaRecorder(stream);
+    let mr: MediaRecorder;
+    try { mr = new MediaRecorder(stream, kind === 'voice' ? voiceOpts() : undefined); } catch { mr = new MediaRecorder(stream); }
     chunks.current = [];
     drop.current = false;
     mr.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); };
@@ -130,5 +143,5 @@ export function useClipRecorder(send: Send) {
     if (mr && mr.state !== 'inactive') mr.stop();
   }, []);
 
-  return { recording, error, sending, failed, start, stop, cancel, retry: run };
+  return { recording, error, sending, progress, failed, start, stop, cancel, retry: run };
 }

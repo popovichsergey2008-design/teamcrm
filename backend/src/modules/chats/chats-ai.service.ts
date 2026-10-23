@@ -155,6 +155,11 @@ export class ChatsAiService {
     };
   }
 
+  /** Есть ли у компании распознавание речи: нет — клип не обещает расшифровку (#4643). */
+  canTranscribe(tenantId: string): Promise<boolean> {
+    return this.ai.canTranscribe(tenantId).catch(() => false);
+  }
+
   /**
    * Расшифровка клипа.
    *

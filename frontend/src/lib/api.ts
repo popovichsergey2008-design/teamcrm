@@ -1873,18 +1873,9 @@ export const api = {
    * Расшифровка делается на сервере и ложится в тело сообщения — иначе аудио и видео
    * становятся чёрной дырой: их не найдёт поиск и не разберёт помощник.
    */
-  sendChatClip: async (chatId: string, blob: Blob, kind: 'voice' | 'screen', signal?: AbortSignal) => {
-    const fd = new FormData();
-    const ext = kind === 'voice' ? 'webm' : 'webm';
-    fd.append('file', blob, `${kind === 'voice' ? 'Голосовое' : 'Запись экрана'} ${new Date().toLocaleString('ru-RU')}.${ext}`);
-    fd.append('kind', kind);
-    const res = await fetch(apiUrl(`/api/chats/${chatId}/clip`), {
-      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd, signal,
-    });
-    const env = await res.json().catch(() => ({ ok: false }));
-    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Запись не отправлена');
-    return env.data;
-  },
+  sendChatClip: (chatId: string, blob: Blob, kind: 'voice' | 'screen', signal?: AbortSignal, onProgress?: (part: number) => void) =>
+    // загрузка с ходом — отдельным куском: первому экрану она не нужна (#4643)
+    import('./clip-upload').then((m) => m.uploadClip(chatId, blob, kind, signal, onProgress)),
 
   /** Вопрос помощнику в чате: ответ ложится в ту же переписку, при всех. */
   askChatAi: (chatId: string, question: string) =>

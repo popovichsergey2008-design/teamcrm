@@ -1,6 +1,7 @@
 import { stripPasteJunk } from '../../common/text/paste-junk';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { trackBackground } from '../../common/background-work';
 import { NlService } from '../nl/nl.service';
 import { ChatsAiService } from './chats-ai.service';
 import { ChatTaskDraftService } from './chat-task-draft.service';
@@ -16,10 +17,12 @@ import { ScheduledRepository, ScheduledRow } from './scheduled.repository';
 const PAGE = 50;
 
 /**
- * Дольше этого расшифровку клипа не ждём (#4635): человек смотрит на «Отправляю…»,
- * а провайдер речи может думать минутами. Не успели — клип уходит с подписью без текста.
+ * Дольше этого расшифровку клипа не ждём. С #4643 она идёт фоном и отправку не держит,
+ * потолок нужен только чтобы «Расшифровываю…» не висело вечно.
  */
-const CLIP_TEXT_BUDGET_MS = 40_000;
+const CLIP_TEXT_BUDGET_MS = 120_000;
+/** Причёсывание моделью — не дольше этого, иначе остаётся текст как услышан. */
+const CLIP_TIDY_BUDGET_MS = 20_000;
 /** Обещание с потолком по времени: не успело — `fallback`, само оно доживает в фоне. */
 function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   let t: NodeJS.Timeout | undefined;
@@ -1076,34 +1079,73 @@ export class ChatsService {
     gone: () => boolean = () => false,
   ) {
     const chat = await this.access(tenantId, chatId, user);
+    const t0 = Date.now();
     const stored = await this.files.upload({
       tenantId, userId: user.userId, buffer: file.buffer, fileName: file.originalname,
       contentType: file.mimetype, ownerKind: 'chat_message', ownerId: chatId,
     });
-
-    // Расшифровка своих ошибок наружу не поднимает: клип уходит и без текста —
-    // запись ценнее расшифровки, и терять её из-за отсутствия ключа нельзя.
-    const until = Date.now() + CLIP_TEXT_BUDGET_MS;
-    const heard = (await within(this.chatAi.transcribe(tenantId, file.buffer, file.originalname), CLIP_TEXT_BUDGET_MS, '')).trim();
-    /*
-      И причёсываем: Whisper отдаёт поток слов без знаков препинания, читать такое
-      невозможно. Модель только расставляет знаки и чинит ослышки — не пересказывает.
-      Автор всё равно может поправить сообщение, как любое своё (просьба заказчика).
-    */
-    const text = heard ? await within(this.chatAi.tidyTranscript(tenantId, heard), Math.max(5_000, until - Date.now()), heard) : '';
-    // Отменённая отправка не должна всплыть в чате через полминуты расшифровки
+    const timing = { bytes: file.buffer.length, mime: file.mimetype, kind, storeMs: Date.now() - t0 };
+    // «Отменить» во время загрузки: соединение уже оборвано — сообщения не будет
     if (gone()) { await this.files.removeInternal(tenantId, String(stored.id)).catch(() => undefined); return null; }
-    // Подпись нужна и без расшифровки: в ленте «вложение» без слова не отличить
-    // от документа, а голосовое от записи экрана — тем более.
-    const body = text || (kind === 'voice' ? 'Голосовое сообщение' : 'Запись экрана');
 
-    const message = await this.repo.addMessage({
-      tenantId, chatId, authorId: user.userId, body, fileId: String(stored.id),
+    /*
+      Сообщение — СРАЗУ, расшифровка — потом (#4643). Раньше ответ ждал Whisper и
+      причёсывание моделью (до 45 с), и на телефоне «Отправляю…» крутилось так долго,
+      что было не понять, зависло или идёт. Теперь голосовое в ленте через секунду
+      с подписью, а текст встаёт на её место событием, когда будет готов.
+      Подпись нужна и без расшифровки: «вложение» без слова не отличить от документа.
+    */
+    const caption = kind === 'voice' ? 'Голосовое сообщение' : 'Запись экрана';
+    const stt = await this.chatAi.canTranscribe(tenantId);
+    const row = await this.repo.addMessage({
+      tenantId, chatId, authorId: user.userId, body: caption, fileId: String(stored.id),
     });
+    if (stt) await this.repo.clipTranscript(tenantId, String(row.id), 'running', null, caption);
+    const message = { ...row, transcript_status: stt ? 'running' : null };
     await this.repo.markRead(tenantId, chatId, user.userId);
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
+    if (stt) void trackBackground(this.clipText(tenantId, chatId, String(row.id), file, caption, to, timing));
+    else this.diag.write({ tenantId, scope: 'chat', refId: chatId, userId: user.userId, side: 'server', event: 'clip.timing', data: { ...timing, stt: false } });
     return message;
+  }
+
+  /**
+   * Расшифровка клипа фоном. Своих ошибок наружу не поднимает: запись ценнее
+   * расшифровки. Не вышло — признак снимается, подпись остаётся.
+   */
+  private async clipText(
+    tenantId: string, chatId: string, messageId: string,
+    file: { buffer: Buffer; originalname: string }, caption: string, to: string[],
+    timing: Record<string, unknown>,
+  ) {
+    const t1 = Date.now();
+    let heard = '';
+    let text = '';
+    let tidyMs = 0;
+    try {
+      heard = (await within(this.chatAi.transcribe(tenantId, file.buffer, file.originalname), CLIP_TEXT_BUDGET_MS, '')).trim();
+      /*
+        И причёсываем: Whisper отдаёт поток слов без знаков препинания, читать такое
+        невозможно. Модель только расставляет знаки и чинит ослышки — не пересказывает.
+        Автор всё равно может поправить сообщение, как любое своё (просьба заказчика).
+      */
+      const t2 = Date.now();
+      text = heard ? (await within(this.chatAi.tidyTranscript(tenantId, heard), CLIP_TIDY_BUDGET_MS, heard)).trim() : '';
+      tidyMs = heard ? Date.now() - t2 : 0;
+    } catch { text = ''; }
+    const sttMs = Date.now() - t1 - tidyMs;
+    // Длительности и размер — без содержимого: только чтобы видеть, где теряется время
+    this.diag.write({
+      tenantId, scope: 'chat', refId: chatId, side: 'server', event: 'clip.timing',
+      data: { ...timing, messageId, stt: true, sttMs, tidyMs, chars: text.length, ok: !!text },
+    });
+    const body = await this.repo.clipTranscript(tenantId, messageId, text ? 'ready' : 'failed', text ? text.slice(0, 8000) : null, caption)
+      .catch(() => null);
+    if (body === null) return; // сообщение успели удалить
+    this.realtime.emitToUsers(tenantId, to, 'chat.message.transcript', {
+      chatId, messageId, transcript: text || null, status: text ? 'ready' : 'failed', body,
+    });
   }
 
   /** Вложение: файл кладётся в MinIO тем же путём, что и вложения задач. */

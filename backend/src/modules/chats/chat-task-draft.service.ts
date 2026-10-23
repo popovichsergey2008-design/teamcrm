@@ -23,6 +23,14 @@ interface SplitItem {
   checklist: string[]; priority: string; taskId?: string | null;
 }
 
+/**
+ * Слов у сообщения нет: пусто или только подпись клипа, пока идёт расшифровка (#4643).
+ * Разбирать подпись «Голосовое сообщение» как поручение бессмысленно — нужен звук.
+ */
+const bodyless = (body: string | null | undefined) => {
+  const t = String(body ?? '').trim();
+  return t.length < 3 || t === 'Голосовое сообщение' || t === 'Запись экрана';
+};
 const isAudio = (mime: string | null, name: string | null) =>
   String(mime ?? '').toLowerCase().startsWith('audio/') || /\.(webm|ogg|oga|opus|m4a|mp3|wav|aac)$/i.test(String(name ?? ''));
 
@@ -184,7 +192,7 @@ export class ChatTaskDraftService {
       второй раз за неё не платим. Нет — расшифровываем фоном (длинное — кусками), окно
       показывает «Расшифровка…», а черновик дозаполнится событием.
     */
-    const voice = String(msg.body ?? '').trim().length < 3 ? await this.voiceFile(tenantId, messageId) : null;
+    const voice = bodyless(msg.body) ? await this.voiceFile(tenantId, messageId) : null;
     if (voice) {
       const t = await this.repo.transcript(tenantId, messageId);
       if (t?.transcript_status === 'ready' && t.transcript) {
@@ -207,7 +215,7 @@ export class ChatTaskDraftService {
   private async reanalyze(tenantId: string, user: Viewer, draft: DraftRow, chat: Parameters<typeof chatProject>[0]): Promise<DraftRow> {
     const msg = await this.chats.messageBody(tenantId, String(draft.message_id));
     const src = { fileNameFallback: msg?.file_name ?? null, projectHint: chatProject(chat) };
-    const voice = String(msg?.body ?? '').trim().length < 3 ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
+    const voice = bodyless(msg?.body) ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
     if (voice) {
       const waiting = (await this.repo.patch(tenantId, String(draft.id), { status: 'transcribing' })) ?? draft;
       void trackBackground(this.transcribeAndAnalyze(tenantId, user, waiting, voice, src));
@@ -284,7 +292,7 @@ export class ChatTaskDraftService {
     const chat = await this.chats.get(tenantId, String(draft.chat_id));
     const msg = await this.chats.messageBody(tenantId, String(draft.message_id));
     const src = { fileNameFallback: msg?.file_name ?? null, projectHint: chat ? chatProject(chat) : null };
-    const voice = String(msg?.body ?? '').trim().length < 3 ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
+    const voice = bodyless(msg?.body) ? await this.voiceFile(tenantId, String(draft.message_id)) : null;
     if (voice) {
       const waiting = (await this.repo.patch(tenantId, draftId, { status: 'transcribing' })) ?? draft;
       void trackBackground(this.transcribeAndAnalyze(tenantId, user, waiting, voice, src));
@@ -580,7 +588,7 @@ export class ChatTaskDraftService {
     if (splitInto >= 2) {
       const msg = await this.chats.messageBody(tenantId, String(draft.message_id));
       const t = await this.repo.transcript(tenantId, String(draft.message_id));
-      const source = String(msg?.body ?? '').trim() || String(t?.transcript ?? draft.title);
+      const source = (bodyless(msg?.body) ? '' : String(msg?.body ?? '').trim()) || String(t?.transcript ?? draft.title);
       const many = await this.nl.parseMany(tenantId, user.userId, `${source}\n(раздели на ${splitInto} задачи)`, draft.project_id).catch(() => []);
       const split = many.filter((x) => x.task?.title).slice(0, 6).map((x) => ({
         title: String(x.task!.title).slice(0, 255), description: x.task!.description ?? null, assigneeId: x.task!.assigneeId ?? null,
