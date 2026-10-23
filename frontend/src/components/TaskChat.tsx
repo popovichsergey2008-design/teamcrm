@@ -30,6 +30,10 @@ import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction } from './ui/dialog';
 import { OptionSelect } from './ui/option-select';
 import { useEnterSend } from '../hooks/useEnterSend';
+import { lazyComponent } from '../lib/lazy';
+
+/** Кнопки ответа ИИ у поля (#4639) — ленивые: чат задачи едет в первом экране. */
+const TaskAiReplyBar = lazyComponent(() => import('./TaskAiReplyBar').then((m) => m.TaskAiReplyBar));
 
 /**
  * Цвет имени автора.
@@ -970,7 +974,7 @@ export function TaskChat({
   const closeEmoji = useCallback(() => setEmojiOpen(false), []);
   useDismiss(emojiOpen, closeEmoji, '.chat-tools');
   const closeQuick = useCallback(() => setQuickOpen(false), []);
-  useDismiss(quickOpen, closeQuick, '.chat-tools');
+  useDismiss(quickOpen, closeQuick, '.tc-ai-more');
 
   /** Закреплённые сообщения: их единицы, считаем из уже загруженной ленты. */
   const pinned = comments.filter((c: any) => c.pinned_at);
@@ -1607,18 +1611,6 @@ export function TaskChat({
         </button>
       )}
 
-      {/* Быстрые вопросы к ИИ — по кнопке в поле ввода: пять кнопок над строкой
-          занимали место каждый день ради нажатия раз в неделю. */}
-      {quickOpen && (
-        <div className="ai-quick" data-pop>
-          {QUICK_ASKS.map((qa) => (
-            <button key={qa.label} className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => { setQuickOpen(false); ask(qa.ask); }}>
-              {qa.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Кому отвечаем — видно прямо над полем, как в мессенджере: с именем,
           куском реплики и крестиком «передумал». */}
       {replyTo && (
@@ -1701,6 +1693,34 @@ export function TaskChat({
         </div>
       )}
 
+      {/* Быстрые вопросы помощнику — в «✨ Ещё» рядом с кнопками ответа (#4639): они
+          нужны себе, а не собеседнику, и на виду им место не каждый день. */}
+      {quickOpen && (
+        <div className="ai-quick" data-pop role="group" aria-label="Спросить помощника">
+          {QUICK_ASKS.map((qa) => (
+            <button key={qa.label} className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => { setQuickOpen(false); ask(qa.ask); }}>
+              {qa.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* Ответ одной кнопкой, как в Jira (#4639, #4641, #4642): видно всегда, у самого поля. */}
+      {!editing && (
+        <TaskAiReplyBar
+          taskId={taskId}
+          feed={comments}
+          meId={String(user?.id ?? '')}
+          meName={user?.fullName ?? null}
+          body={body}
+          setBody={setBody}
+          disabled={busy}
+          moreOpen={quickOpen}
+          onToggleMore={() => { setQuickOpen((v) => !v); setEmojiOpen(false); }}
+          onFilled={() => requestAnimationFrame(() => composeRef.current?.querySelector('textarea')?.focus())}
+          onError={setErr}
+        />
+      )}
+
       <div className="comment-input" ref={composeRef}>
         <label className="chat-tool" title="Прикрепить файл — или просто вставьте скриншот через Ctrl+V">
           <Icon name="paperclip" size={17} />
@@ -1729,22 +1749,12 @@ export function TaskChat({
           }}
           rows={1}
           autoGrow
-          placeholder={pending ? 'Подпись к вложению…' : 'Нажмите @, чтобы позвать человека или помощника'}
+          placeholder={pending.length ? 'Подпись к вложению…' : 'Нажмите @, чтобы позвать человека или помощника'}
           onEnter={send}
         />
         <div className="chat-tools">
           {/* Пока идёт запись, соседние кнопки прячем: пользы от них сейчас нет, а
               место нужно подписи «Остановить» — особенно на телефоне. */}
-          {!voice.recording && <button
-            className={`chat-tool${quickOpen ? ' active' : ''}`}
-            onClick={() => { setQuickOpen((v) => !v); setEmojiOpen(false); }}
-            disabled={busy}
-            title="Быстрые вопросы помощнику"
-            aria-label="Быстрые вопросы помощнику"
-            aria-expanded={quickOpen}
-          >
-            <Icon name="sparkles" size={17} />
-          </button>}
           {!voice.recording && <span className="chat-tool-wrap">
             <button
               className={`chat-tool${emojiOpen ? ' active' : ''}`}

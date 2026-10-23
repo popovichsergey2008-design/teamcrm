@@ -1,0 +1,23 @@
+/* Ответ одной кнопкой у поля ввода задачи (#4639). Лениво — вместе с чатом задачи. */
+.tc-ai-chips {
+  flex: 0 0 auto; display: flex; gap: 6px; align-items: center;
+  margin: 6px 10px 0; overflow-x: auto; scrollbar-width: none;
+}
+.tc-ai-chips::-webkit-scrollbar { display: none; }
+.tc-ai-chip { flex: 0 0 auto; border-radius: 999px; }
+/* Ждут ответа от меня — мягкая подсветка, а не красная тревога. */
+.tc-ai-chip.is-hot, .tc-ai-more.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); }
+.tc-ai-spin { width: 12px; height: 12px; }
+.tc-ai-draft {
+  flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px;
+  margin: 6px 10px 0; padding: 4px 6px 4px 10px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+.tc-ai-draft-note { display: inline-flex; align-items: center; gap: 6px; }
+.tc-ai-draft-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+.task-chat-wide .tc-ai-chips, .task-chat-wide .tc-ai-draft { width: calc(100% - 20px); max-width: 900px; margin-left: auto; margin-right: auto; }
+/* Телефон: одна строка с прокруткой, пальцу — не меньше 44 точек. */
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+  .tc-ai-chip, .tc-ai-draft .ui-btn { min-height: 44px; }
+}

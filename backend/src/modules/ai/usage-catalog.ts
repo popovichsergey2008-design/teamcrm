@@ -26,6 +26,7 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'agent_task_rework', title: 'ИИ-агент: доработка по замечаниям', where: 'Карточка задачи → ИИ-агент', group: 'tasks' },
   { key: 'inbox_draft', title: 'Черновик задачи из входящего письма', where: 'Входящие', group: 'tasks' },
   { key: 'task_assistant', title: 'Помощник в обсуждении задачи', where: 'Карточка задачи → «Обсуждение»', group: 'tasks' },
+  { key: 'task_ai_reply', title: 'Предложить ответ / обновление статуса в задаче', where: 'Карточка задачи → кнопки у поля ввода', group: 'tasks' },
   { key: 'chat_assistant', title: 'Помощник в чате (@AI)', where: 'Чаты и миты → любой чат', group: 'service' },
   // интернет (ТЗ-33): не токены, а веб-кредиты — считаются в «Настройки → Тариф и ИИ»
   { key: 'web_search', title: 'Поиск в интернете (QEVO Bot)', where: 'QEVO Bot — тариф «Расширенный»', group: 'knowledge' },

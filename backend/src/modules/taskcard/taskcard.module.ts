@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TasksModule } from '../tasks/tasks.module';
 import { TaskCardController } from './taskcard.controller';
 import { LabelsController } from './labels.controller';
+import { TaskAiReplyService } from './task-ai-reply.service';
 import { TaskAssistantService } from './task-assistant.service';
 import { TaskReviewService } from './task-review.service';
 import { TaskCardService } from './taskcard.service';
@@ -13,7 +14,7 @@ import { KnowledgeModule } from '../knowledge/knowledge.module';
 @Module({
   imports: [TasksModule, IntegrationOutboxModule, NotificationsModule, KnowledgeModule],
   controllers: [TaskCardController, LabelsController],
-  providers: [TaskCardService, TaskCardRepository, TaskAssistantService, TaskReviewService],
+  providers: [TaskCardService, TaskCardRepository, TaskAssistantService, TaskReviewService, TaskAiReplyService],
   exports: [TaskCardRepository, TaskCardService],
 })
 export class TaskCardModule {}

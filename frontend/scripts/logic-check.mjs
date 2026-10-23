@@ -1752,6 +1752,18 @@ test('выделение сообщений: порядок, права, коп�
     'Пётр, [23.10.2026 09:03]\n[a.png]\n\nАнна, [23.10.2026 09:03]\n[Переслано от Ира]\nраньше\n\nАнна, [23.10.2026 12:05]\nпозже');
 });
 
+// ── «Предложить ответ» в задаче подсвечен, когда ждут меня (#4639) ─────────────
+test('awaitsMyReply: вопрос или обращение после моего последнего сообщения', async () => {
+  const { awaitsMyReply } = await load('lib/task-ai-reply.ts');
+  const me = ['1', 'Борис Честный'];
+  assert.equal(awaitsMyReply([{ author_id: 2, body: 'Получится до вечера?' }], ...me), true, 'вопрос');
+  assert.equal(awaitsMyReply([{ author_id: 2, body: '@Борис, глянь' }], ...me), true, 'упоминание по имени');
+  assert.equal(awaitsMyReply([{ author_id: 2, body: 'ок', reply_author: 'Борис Честный' }], ...me), true, 'ответ на моё');
+  assert.equal(awaitsMyReply([{ author_id: 2, body: 'Залил на тест' }], ...me), false, 'просто сообщение');
+  assert.equal(awaitsMyReply([{ author_id: 2, body: 'Когда?' }, { author_id: 1, body: 'Завтра' }], ...me), false, 'уже ответил');
+  assert.equal(awaitsMyReply([{ author_id: 1, body: 'Готово?' }, { author_id: 2, body: 'Ответ?', is_ai: true }], ...me), false, 'ИИ и мои не в счёт');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

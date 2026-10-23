@@ -4,10 +4,13 @@ import {
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
+import { TaskAiReplyService } from './task-ai-reply.service';
+import type { AiReplyKind } from './task-ai-reply-rules';
 import { TaskAssistantService } from './task-assistant.service';
 import { TaskReviewService } from './task-review.service';
 import { TaskCardService } from './taskcard.service';
@@ -39,6 +42,11 @@ class ChecklistDto {
 class AssistantAskDto {
   @IsString() @MinLength(2) @MaxLength(2000) question!: string;
 }
+class AiReplyDto {
+  @IsIn(['reply', 'status', 'thanks']) kind!: AiReplyKind;
+  /** Повторное нажатие — другой вариант. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(50) variant?: number;
+}
 class AssistantChecklistDto {
   @IsArray() @IsString({ each: true }) items!: string[];
 }
@@ -59,6 +67,7 @@ export class TaskCardController {
     private readonly svc: TaskCardService,
     private readonly assistant: TaskAssistantService,
     private readonly review$: TaskReviewService,
+    private readonly aiReply: TaskAiReplyService,
   ) {}
 
   // comments
@@ -204,6 +213,17 @@ export class TaskCardController {
   @Post(':id/assistant')
   askAssistant(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AssistantAskDto) {
     return this.assistant.ask(u.tenantId, id, u.userId, dto.question);
+  }
+
+  /**
+   * «Предложить ответ», «Обновление статуса», «Спасибо» у поля ввода (#4639, #4641, #4642).
+   *
+   * Возвращает ЧЕРНОВИК: он ложится в поле ввода, отправляет человек сам. В ленту
+   * ничего не пишется. Чужая задача — 404, без ключа ИИ — понятный текст.
+   */
+  @Post(':id/ai-reply')
+  aiReplySuggest(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: AiReplyDto) {
+    return this.aiReply.suggest(u.tenantId, id, { userId: u.userId, role: u.role }, dto.kind, dto.variant ?? 0);
   }
 
   /**
