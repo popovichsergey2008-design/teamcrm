@@ -209,11 +209,14 @@ export class OrgService {
       await this.db.query(`UPDATE groups SET directions = array_remove(directions, $3) WHERE tenant_id=$1 AND id=$2`, [tenantId, parent.id, skill]);
       target = await this.createDepartment(tenantId, label, skill, user.id, parent.id);
     } else {
-      // отдел человека без руководителя и без направлений — дописываем направление туда
-      const home = org.departments.find((d) => d.memberIds.includes(user.id) && !leadOf(org, d) && !d.directions.length);
+      // Сначала — отдел, которым человек уже руководит: «IT отдел» у Сергея получает
+      // направления сам, а не обрастает отдельными «Бэкенд» и «Фронтенд» без людей
+      // (тогда задачу руководителя некому раздать). Иначе — его отдел без руководителя и направлений.
+      const home = org.departments.find((d) => leadOf(org, d) === user.id)
+        ?? org.departments.find((d) => d.memberIds.includes(user.id) && !leadOf(org, d) && !d.directions.length);
       if (home) {
         await this.db.query(
-          `UPDATE groups SET lead_user_id=$3, directions = array_append(directions, $4) WHERE tenant_id=$1 AND id=$2`,
+          `UPDATE groups SET lead_user_id=$3, directions = array_append(array_remove(directions, $4), $4) WHERE tenant_id=$1 AND id=$2`,
           [tenantId, home.id, user.id, skill]);
         target = home;
       } else {
