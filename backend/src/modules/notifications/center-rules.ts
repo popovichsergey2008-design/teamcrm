@@ -6,6 +6,8 @@
  * сервера. Сервис только достаёт участников и пишет строки.
  */
 
+import { guessGender } from '../../common/text/ru-grammar';
+
 /** События по задаче, которые ложатся в историю. */
 export type TaskEventKind =
   | 'created' | 'participant' | 'assignee' | 'manager' | 'deadline' | 'priority' | 'status' | 'closed'
@@ -136,10 +138,16 @@ export interface TaskEventDetails {
  * Действие словами — то, что стоит между именем автора и задачей:
  * «Ольга | назначил вас исполнителем задачи | [#12] Обновить прайс».
  *
- * Глаголы в мужском роде, как в письмах: пола в профиле нет, а «назначил(а)» читается
- * хуже ошибки. У системных событий автора нет — фраза тогда начинает строку сама.
+ * Пола в профиле нет: по имени автора угадываем, и «Валентина Игоревна» получает
+ * «добавила». Не угадали — мужской род, как в письмах: «назначил(а)» читается хуже.
+ * У системных событий автора нет — фраза тогда начинает строку сама.
  */
-export function taskEventPhrase(kind: TaskEventKind, role: RecipientRole, d: TaskEventDetails = {}): string {
+export function taskEventPhrase(kind: TaskEventKind, role: RecipientRole, d: TaskEventDetails = {}, actorName?: string | null): string {
+  const phrase = basePhrase(kind, role, d);
+  return guessGender(actorName) === 'f' ? phrase.replace(/^(\S+л)(?=\s)/u, '$1а') : phrase;
+}
+
+function basePhrase(kind: TaskEventKind, role: RecipientRole, d: TaskEventDetails): string {
   switch (kind) {
     case 'created': return role === 'creator' ? 'назначил вас постановщиком задачи' : 'поставил вам задачу';
     case 'participant':
@@ -179,7 +187,7 @@ export function priorityLabel(p: string | null | undefined): string {
 export function taskEventText(
   kind: TaskEventKind, role: RecipientRole, actorName: string | null, taskTitle: string, d: TaskEventDetails = {},
 ): { title: string; body: string } {
-  const phrase = taskEventPhrase(kind, role, d);
+  const phrase = taskEventPhrase(kind, role, d, actorName);
   const title = actorName ? `${actorName} ${phrase}: ${taskTitle}` : `${phrase}: ${taskTitle}`;
   const body = d.comment || d.reason
     || (d.status ? `Статус: ${d.status}` : '')

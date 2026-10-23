@@ -67,17 +67,17 @@ describe('Центр уведомлений (e2e)', () => {
       assigneeId: ivan.id, watcherIds: [gleb.id],
     }).expect(201)).body.data;
 
-    // исполнитель: «Ольга Ким поставил вам задачу [#N] Обновить прайс», со ссылкой на задачу
+    // исполнитель: «Ольга Ким поставила вам задачу [#N] Обновить прайс», со ссылкой на задачу
     const created = (await waitFor(ivan.tok, 'task.created')).hit;
     expect(created.actor.name).toBe('Ольга Ким');
     expect(created.task).toEqual({ id: String(task.id), title: 'Обновить прайс', projectId: String(proj.id) });
-    expect(created.details.phrase).toBe('поставил вам задачу');
+    expect(created.details.phrase).toBe('поставила вам задачу');
     expect(created.path).toBe(`/projects/${proj.id}/task/${task.id}`);
     expect(created.readAt).toBeNull();
 
     // наблюдатель — своей строкой
     const watch = (await waitFor(gleb.tok, 'task.participant')).hit;
-    expect(watch.details.phrase).toBe('добавил вас наблюдателем в задачу');
+    expect(watch.details.phrase).toBe('добавила вас наблюдателем в задачу');
 
     // автор о своём действии не узнаёт
     expect((await center(O)).items).toEqual([]);
@@ -133,9 +133,9 @@ describe('Центр уведомлений (e2e)', () => {
 
     await http.patch(`/api/tasks/${task.id}`).set(H(O)).send({ assigneeId: petr.id }).expect(200);
     const toPetr = (await waitFor(petr.tok, 'task.assignee')).hit;
-    expect(toPetr.details.phrase).toBe('назначил вас исполнителем задачи');
+    expect(toPetr.details.phrase).toBe('назначила вас исполнителем задачи');
     const fromIvan = (await waitFor(ivan.tok, 'task.assignee')).hit;
-    expect(fromIvan.details.phrase).toBe('передал другому исполнителю задачу');
+    expect(fromIvan.details.phrase).toBe('передала другому исполнителю задачу');
 
     await http.post(`/api/tasks/${task.id}/plan`).set(H(O)).send({ deadlineAt: '2026-12-01T15:00:00.000Z' }).expect(201);
     const deadline = (await waitFor(petr.tok, 'task.deadline')).hit;

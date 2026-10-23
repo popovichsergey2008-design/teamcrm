@@ -59,6 +59,10 @@ describe('центр уведомлений: адресаты события п�
     expect(taskEventPhrase('assignee', 'target')).toBe('назначил вас исполнителем задачи');
     expect(taskEventPhrase('assignee', 'previous')).toBe('передал другому исполнителю задачу');
     expect(taskEventPhrase('assignee', 'watcher')).toBe('сменил исполнителя задачи');
+    // род по имени автора: угадали женский — «добавила», не угадали — мужской
+    expect(taskEventPhrase('participant', 'watcher', { participantRole: 'watcher' }, 'Кривонос Валентина Игоревна')).toBe('добавила вас наблюдателем в задачу');
+    expect(taskEventPhrase('shift_asked', 'creator', {}, 'Анна Лебедева')).toBe('просит перенести срок задачи');
+    expect(taskEventPhrase('comment', 'assignee', {}, 'Глеб Смирнов')).toBe('оставил комментарий к задаче');
   });
 
   it('комментарий: упомянутым — отдельно, остальным — «оставил комментарий»', () => {
@@ -77,7 +81,7 @@ describe('центр уведомлений: адресаты события п�
 describe('центр уведомлений: слова', () => {
   it('строка для телефона: кто, что и какая задача', () => {
     const t = taskEventText('participant', 'target', 'Ольга Ким', 'Обновить прайс', { participantRole: 'watcher' });
-    expect(t.title).toBe('Ольга Ким добавил вас наблюдателем в задачу: Обновить прайс');
+    expect(t.title).toBe('Ольга Ким добавила вас наблюдателем в задачу: Обновить прайс');
     expect(taskEventText('comment', 'assignee', 'Глеб', 'Прайс', { comment: 'Посмотри  \n цены' }).body).toBe('Посмотри цены');
   });
 

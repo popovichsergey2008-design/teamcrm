@@ -65,7 +65,7 @@ export class NotificationCenter {
           actorId: e.actorId, taskId: String(card.id),
           details: {
             ...d,
-            phrase: taskEventPhrase(e.kind, r.role, d),
+            phrase: taskEventPhrase(e.kind, r.role, d, actorName),
             // строки под заголовком — как в Битриксе: кто делает и до какого числа
             assignee: card.assignee_name,
             deadline: d.deadline !== undefined ? d.deadline : card.deadline_at ? new Date(card.deadline_at).toISOString() : null,
