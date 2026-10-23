@@ -6,6 +6,7 @@ import { VelocityRepository } from '../velocity/velocity.repository';
 import { computeForecast, computeOverload } from './forecast.calculator';
 import { ForecastRepository } from './forecast.repository';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
+import { NotificationCenter } from '../notifications/center.service';
 
 const DAY_MS = 86_400_000;
 
@@ -16,6 +17,7 @@ export class ForecastService {
     private readonly velocity: VelocityRepository,
     private readonly realtime: RealtimeService,
     private readonly outbox: IntegrationOutboxService,
+    private readonly center: NotificationCenter,
   ) {}
 
   /** Детерминированный пересчёт прогноза/риска задачи + эмиссия task.risk_changed (internal). */
@@ -104,6 +106,13 @@ export class ForecastService {
     }
 
     await this.repo.assign(tenantId, taskId, assigneeId);
+    // новый исполнитель узнаёт из центра, прежний — что задачу передали (#4655)
+    if (String(task.assignee_id ?? '') !== String(assigneeId)) {
+      void this.center.task({
+        tenantId, taskId: String(taskId), kind: 'assignee', actorId, targets: [String(assigneeId)],
+        previous: task.assignee_id ? String(task.assignee_id) : null, suffix: `a${assigneeId}:${Date.now()}`,
+      });
+    }
     await stampTaskChanges(this.repo.dbHandle, tenantId, taskId, actorId, 'MANUAL').catch(() => undefined);
     await this.repo.auditAssignment({
       tenantId,
@@ -136,10 +145,25 @@ export class ForecastService {
     patch: { estimate?: number | null; deadline?: string | null },
     actorId: string | null = null,
   ) {
+    // прежний срок — чтобы не звать участников, когда срок сохранили тем же
+    const before = patch.deadline !== undefined ? await this.repo.getTask(tenantId, taskId) : null;
     const res = await this.repo.setEstimateDeadline(tenantId, taskId, patch);
+    if (before && !sameMoment(before.deadline_at, patch.deadline ?? null)) {
+      const deadline = patch.deadline ? new Date(patch.deadline).toISOString() : null;
+      void this.center.task({
+        tenantId, taskId: String(taskId), kind: 'deadline', actorId, suffix: `d${deadline ?? 'none'}:${Date.now()}`,
+        details: { deadline },
+      });
+    }
     if (actorId) await stampTaskChanges(this.repo.dbHandle, tenantId, taskId, actorId, 'MANUAL').catch(() => undefined);
     // Снятый срок внешней системе тоже важен: там задача иначе останется просроченной.
     if (patch.deadline !== undefined) await this.outbox.enqueueForTask(tenantId, taskId, 'task.update');
     return res;
   }
+}
+
+/** Тот же ли это момент: строка из формы и дата из базы сравниваются по времени, а не по записи. */
+function sameMoment(a: Date | string | null, b: string | null): boolean {
+  if (!a || !b) return !a && !b;
+  return new Date(a).getTime() === new Date(b).getTime();
 }

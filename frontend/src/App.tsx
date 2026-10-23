@@ -44,6 +44,9 @@ import { useDeviceRegistration } from './hooks/useDeviceRegistration';
 import { LockScreen } from './components/LockScreen';
 import { useMobileConfig } from './hooks/useMobileConfig';
 import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
+import { useNotificationCenter } from './hooks/useNotificationCenter';
+import { NotificationBell } from './components/NotificationBell';
+import { OPEN_CENTER_EVENT } from './lib/notification-center';
 import { useLiveSignals } from './hooks/useLiveSignals';
 import { TaskDraftButton } from './components/TaskDraftButton';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
@@ -103,6 +106,8 @@ const FollowupPopup = lazy(() => import('./components/followup/FollowupPopup'));
 const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
 const NlCommandModal = lazyComponent(() => import('./components/NlCommandModal').then((m) => m.NlCommandModal));
 const InboxPanel = lazyComponent(() => import('./components/InboxPanel').then((m) => m.InboxPanel));
+// центр уведомлений (#4655): в первом экране — только значок со счётчиком
+const NotificationCenter = lazyComponent(() => import('./components/notifications/NotificationCenter').then((m) => m.NotificationCenter));
 const ShortcutsHelp = lazyComponent(() => import('./components/ShortcutsHelp').then((m) => m.ShortcutsHelp));
 
 /** Заглушка на время загрузки раздела: место под ним уже занято, экран не прыгает. */
@@ -199,6 +204,8 @@ export function App() {
   // Работа без сети (волна 9): очередь изменений и догон пропущенного после разрыва.
   const offline = useOfflineQueue(crmAlive);
   useDeltaSync(crmAlive);
+  // центр уведомлений (#4655): счётчик на значке и всплывашка о событии по задаче
+  useNotificationCenter(crmAlive);
 
   /**
    * Доска умеет принимать «куда прыгнуть» только при монтировании, поэтому переход
@@ -259,6 +266,13 @@ export function App() {
     navigate('/focus', { replace: true });
   }, [route, user]);
   const [helpOpen, setHelpOpen] = useState(false);
+  /** Центр уведомлений (#4655): открывают колокольчики в панелях и всплывашки. */
+  const [centerOpen, setCenterOpen] = useState(false);
+  useEffect(() => {
+    const open = () => setCenterOpen(true);
+    window.addEventListener(OPEN_CENTER_EVENT, open);
+    return () => window.removeEventListener(OPEN_CENTER_EVENT, open);
+  }, []);
   /*
     Chat Bar и окно чата поверх CRM (ТЗ-5, этап 1).
 
@@ -942,6 +956,12 @@ export function App() {
         />
       )}
       {helpOpen && <ShortcutsHelp onClose={() => setHelpOpen(false)} />}
+      {centerOpen && <NotificationCenter onClose={() => setCenterOpen(false)} />}
+      {/*
+        Колокольчик на узком экране — сверху справа: левой панели нет, правой панели
+        чатов тоже. На широком он живёт в левой панели рядом с аккаунтом (CSS).
+      */}
+      <NotificationBell className="notif-bell-float" />
       {nl && (
         <NlCommandModal
           onClose={() => setNl(null)}

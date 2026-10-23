@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
+import { NotificationBell } from './NotificationBell';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { setQuietSource } from '../lib/quiet';
@@ -563,6 +564,8 @@ export function Sidebar({
                 </span>
               </span>
             </button>
+            {/* Центр уведомлений (#4655) — на виду, рядом с аккаунтом: как колокольчик в шапке Битрикса */}
+            <NotificationBell className="nav-bell" />
             <button
               className="nav-collapse"
               onClick={toggleCollapsed}

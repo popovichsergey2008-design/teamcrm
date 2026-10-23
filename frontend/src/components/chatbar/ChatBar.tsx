@@ -9,6 +9,7 @@ import { stampLabel } from '../../lib/chat-text';
 import type { SearchResults } from '../../types';
 import { PeoplePicker } from '../PeoplePicker';
 import { initialsOf } from '../../lib/initials';
+import { badgeText, openNotificationCenter, useCenterUnread } from '../../lib/notification-center';
 
 /** Строка списка чатов — то, что отдаёт GET /chats (см. ChatsPage). */
 export interface BarChat {
@@ -184,8 +185,8 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
       .slice(0, 14),
     [chats],
   );
-  // тихие чаты в общий счётчик не входят — ради этого их и выключают
-  const totalUnread = chats.reduce((n, c) => n + (c.notify === 'none' ? 0 : (Number(c.unread) || 0)), 0);
+  // число на колокольчике — из центра уведомлений (#4655), одно на все значки
+  const centerUnread = useCenterUnread();
 
   /* Поиск — по чатам и по людям сразу: человек ищет «Глеб», а не «диалог с Глебом». */
   const q = query.trim().toLowerCase();
@@ -280,12 +281,22 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
           <Icon name={shown ? 'chevron-right' : 'chevron-left'} size={16} />
           {shown && <span className="bar-label">Чаты</span>}
         </button>
-        <button className="bar-icon" onClick={shown ? undefined : onToggle} title={totalUnread ? `Непрочитанных: ${totalUnread}` : 'Непрочитанных нет'} aria-label="Непрочитанные">
+        {/*
+          Колокольчик ведёт в центр уведомлений (#4655) — тот же, что в левой панели:
+          два разных «уведомления» в двух углах экрана путают. Непрочитанные сообщения
+          видны на самих чатах ниже и на «Чатах» в меню.
+        */}
+        <button
+          className="bar-icon"
+          onClick={() => { setHoverOpen(false); openNotificationCenter(); }}
+          title={centerUnread ? `Уведомления: непрочитанных ${centerUnread}` : 'Уведомления'}
+          aria-label="Уведомления"
+        >
           <span className="bar-avatar">
             <Icon name="bell" size={16} />
-            {totalUnread > 0 && <span className="bar-badge">{totalUnread > 99 ? '99+' : totalUnread}</span>}
+            {centerUnread > 0 && <span className="bar-badge">{badgeText(centerUnread)}</span>}
           </span>
-          {shown && <span className="bar-label">{totalUnread ? `Непрочитанных: ${totalUnread}` : 'Всё прочитано'}</span>}
+          {shown && <span className="bar-label">{centerUnread ? `Уведомления · ${badgeText(centerUnread)}` : 'Уведомления'}</span>}
         </button>
         {/* QEVO Bot — такой же собеседник, как коллега: открывается тем же окном (ТЗ-6). */}
         <button

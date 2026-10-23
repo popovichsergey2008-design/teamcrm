@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { getSocket } from '../lib/socket';
 import { playTaskChime } from '../lib/sound';
-import { showToast } from '../lib/notifications';
 import { AlertCounters, flashTab, stopTabAlert, tabAlertMessage } from '../lib/tab-alert';
 import { NavCounters } from './useNavCounters';
 
@@ -38,7 +37,7 @@ export function useTabAlert(enabled: boolean, counters: NavCounters, chatUnread:
   useEffect(() => {
     if (!enabled) return;
     const socket = getSocket();
-    const onForYou = (p: { title?: string; taskId?: string; projectId?: string }) => {
+    const onForYou = () => {
       flashTab('Новая задача');
       /*
         Звук — отдельно от мигания вкладки.
@@ -48,11 +47,11 @@ export function useTabAlert(enabled: boolean, counters: NavCounters, chatUnread:
         у сообщения: по звуку должно быть понятно, что случилось, не глядя на экран.
       */
       playTaskChime();
-      showToast({
-        title: 'Новая задача на вас',
-        body: p?.title ?? 'Откройте, чтобы посмотреть',
-        section: 'focus',
-      });
+      /*
+        Всплывашки здесь больше нет (#4655): её показывает центр уведомлений по своей
+        записи — со ссылкой на саму задачу, а не на «Фокус дня», и с записью в истории,
+        которая не пропадёт вместе со всплывашкой.
+      */
       // счётчик панели должен догнать событие, иначе бейдж отстанет на минуту
       window.dispatchEvent(new CustomEvent('teamcrm:tasks-changed'));
     };

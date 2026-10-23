@@ -25,6 +25,9 @@ export interface ChatPushInput {
   threadRootId?: string | null;
 }
 
+/** Виды писем о задачах: их строку в ящике заводит центр уведомлений, письмо к ней пристёгивается (#4655). */
+const TASK_MAIL_KEYS = new Set(['task.created', 'task.commented', 'task.status']);
+
 /** Не чаще одного push по одному чату одному человеку за это время — иначе оживлённая группа шлёт очередь. */
 const CHAT_PUSH_THROTTLE_S = 120;
 
@@ -336,17 +339,26 @@ export class PushService {
   async deliver(row: MailRow): Promise<void> {
     if (!row.user_id) return;
     let item: InboxRow | null = null;
+    /*
+      Письма о задачах (#4655): строку в ящик уже положил центр уведомлений — с автором,
+      задачей и подробностями. Письмо к ней только пристёгивается; второй строки и
+      второго сигнала «есть новое» не будет. Строки нет — центр это событие человеку
+      не адресовал (о его же действии), push тоже не нужен.
+    */
+    const fromCenter = TASK_MAIL_KEYS.has(row.event_key);
     try {
-      item = await this.inbox.record({
-        tenantId: row.tenant_id, userId: row.user_id, mailId: String(row.id), eventKey: row.event_key,
-        title: row.subject, body: PushService.previewOf(row.body_text), path: PushService.pathOf(row.body_text),
-      });
+      item = fromCenter
+        ? await this.inbox.attachMail(row.user_id, row.dedup_key, String(row.id))
+        : await this.inbox.record({
+          tenantId: row.tenant_id, userId: row.user_id, mailId: String(row.id), eventKey: row.event_key,
+          title: row.subject, body: PushService.previewOf(row.body_text), path: PushService.pathOf(row.body_text),
+        });
     } catch (e) {
       this.log.warn(`ящик для письма #${row.id}: ${(e as Error).message}`);
       return;
     }
     // Живому приложению (сокет открыт, пусть и в фоне) — сигнал без push: оно само догонит ящик (волна 12).
-    if (item) this.realtime.emitToUsers(row.tenant_id, [row.user_id], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
+    if (item && !fromCenter) this.realtime.emitToUsers(row.tenant_id, [row.user_id], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
     if (!item || row.push_sent_at || !this.fcm.enabled) return;
     if (await this.inbox.isQuiet(row.tenant_id, row.user_id).catch(() => false)) return;
 

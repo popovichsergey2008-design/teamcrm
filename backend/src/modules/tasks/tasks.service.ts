@@ -20,6 +20,7 @@ import { PushService } from '../notifications/push.service';
 import { handoffGate } from './handoff-gate';
 import { REGISTRY_PAGE_SIZE, RegistryFilters } from './task-registry';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationCenter } from '../notifications/center.service';
 import { nextWednesday } from './deadline-shift';
 import { effectsOf, FollowupAnswer, shiftTarget } from './followup-rules';
 import { FollowupsRepository } from './followups.repository';
@@ -66,6 +67,8 @@ export class TasksService {
     private readonly workload: WorkloadGuardService,
     /** Ящик уведомлений: увиденное и неактуальное гасится и в шторке (#1531). */
     private readonly push: PushService,
+    /** Центр уведомлений (#4655): смена исполнителя, постановщика, приоритета — в историю участникам. */
+    private readonly center: NotificationCenter,
     /** #4615, 23.10: структура компании — обучение на переназначениях постановщика. */
     @Optional() private readonly org?: OrgService,
   ) {}
@@ -419,11 +422,43 @@ export class TasksService {
       });
     }
     const changed = Object.keys(dto).filter((k) => (dto as any)[k] !== undefined);
-    await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
+    const logId = await this.activity.log(tenantId, id, actorId, 'updated', { fields: changed });
+    void this.historyOfUpdate(tenantId, existing, updated, actorId, logId);
     if (actorId) await this.repo.stampTransition(tenantId, id, actorId, 'MANUAL').catch(() => undefined);
     if (dto.title !== undefined || dto.description !== undefined) this.knowledge.enqueue(tenantId, 'task', id); // переиндексация при смене текста
     await this.outbox.enqueue(tenantId, existing.project_id, 'task.update', id);
     return updated as TaskRow;
+  }
+
+  /**
+   * Что из правки карточки стоит истории уведомлений (#4655): новый исполнитель,
+   * новый постановщик, другой приоритет. Название и описание не в счёт — правку текста
+   * участники увидят в задаче, а уведомление о каждой запятой превратило бы центр в шум.
+   * Номер записи журнала — ключ повтора: одна правка — одна строка каждому.
+   */
+  private async historyOfUpdate(
+    tenantId: string, before: TaskRow, after: TaskRow | null, actorId: string | null, logId: string,
+  ): Promise<void> {
+    if (!after) return;
+    const was = (v: unknown) => String(v ?? '');
+    if (was(after.assignee_id) !== was(before.assignee_id)) {
+      await this.center.task({
+        tenantId, taskId: String(before.id), kind: 'assignee', actorId,
+        targets: after.assignee_id ? [String(after.assignee_id)] : [],
+        previous: before.assignee_id ? String(before.assignee_id) : null,
+        suffix: `u${logId}`,
+      });
+    }
+    if (after.created_by && was(after.created_by) !== was(before.created_by)) {
+      await this.center.task({
+        tenantId, taskId: String(before.id), kind: 'manager', actorId, targets: [String(after.created_by)], suffix: `u${logId}`,
+      });
+    }
+    if (was(after.priority) !== was(before.priority)) {
+      await this.center.task({
+        tenantId, taskId: String(before.id), kind: 'priority', actorId, suffix: `u${logId}`, details: { priority: after.priority ?? null },
+      });
+    }
   }
 
   /**
@@ -833,7 +868,11 @@ export class TasksService {
     if (decidesHimself) {
       await this.repo.setDeadline(tenantId, id, target);
       await this.shiftRecurrence(tenantId, task, target);
-      await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: target.toISOString() });
+      const logId = await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: target.toISOString() });
+      void this.center.task({
+        tenantId, taskId: String(id), kind: 'deadline', actorId: actor.userId, suffix: `s${logId}`,
+        details: { deadline: target.toISOString() },
+      });
     } else {
       await this.repo.askDeadlineShift(tenantId, id, target, actor.userId);
       await this.activity.log(tenantId, id, actor.userId, 'deadline_shift_asked', { to: target.toISOString() });
@@ -934,7 +973,10 @@ export class TasksService {
     this.assertCanDecide(task, actor);
     await this.repo.setDeadline(tenantId, id, to);
     await this.shiftRecurrence(tenantId, task, to);
-    await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: to.toISOString(), source: 'chat' });
+    const logId = await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: to.toISOString(), source: 'chat' });
+    void this.center.task({
+      tenantId, taskId: String(id), kind: 'deadline', actorId: actor.userId, suffix: `s${logId}`, details: { deadline: to.toISOString() },
+    });
     const updated = (await this.repo.findById(tenantId, id))!;
     this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
     return updated;

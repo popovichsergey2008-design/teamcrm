@@ -7,6 +7,8 @@ export interface MailRow {
   id: string; tenant_id: string; user_id: string | null; to_email: string;
   subject: string; body_text: string; body_html: string | null;
   event_key: string; attempts: number;
+  /** Ключ повтора: у писем о задачах он же — ключ строки центра уведомлений (#4655). */
+  dedup_key: string;
   /** Когда дубль ушёл в Telegram: повтор письма не должен слать второе сообщение. */
   tg_sent_at: Date | null;
   /** Когда ушёл push (ТЗ-9): тот же принцип. */

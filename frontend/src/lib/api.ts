@@ -40,6 +40,20 @@ export const tokens = {
 export interface InboxItem {
   id: string; eventKey: string; title: string; body: string; path: string | null; createdAt: string; readAt: string | null;
 }
+/** Вид записи центра уведомлений (#4655) — для фильтра и значка. */
+export type NotificationCategory = 'task' | 'comment' | 'mention' | 'chat' | 'meet' | 'other';
+/** Строка центра уведомлений: кто, что сделал и с какой задачей. */
+export interface CenterItem extends InboxItem {
+  category: NotificationCategory;
+  actor: { id: string; name: string; avatarUrl: string | null } | null;
+  task: { id: string; title: string; projectId: string | null } | null;
+  /** Подробности события: фраза действия, исполнитель, срок, кусок комментария. */
+  details: {
+    phrase?: string; assignee?: string | null; deadline?: string | null; shiftTo?: string | null;
+    status?: string | null; priority?: string | null; comment?: string | null; reason?: string | null;
+  } | null;
+}
+export interface CenterPage { items: CenterItem[]; next: string | null; unread: number }
 export interface OrgPolicy { pushPrivacy: 'hide' | 'sender_only' | 'full'; minLockPolicy: 'off' | 'immediately' | '1' | '5' | '15' }
 
 /** Сессия в списке устройств: своя или сотрудника (руководству). */
@@ -1158,6 +1172,20 @@ export const api = {
       unreadItems?: { path: string | null; title: string; body: string }[];
     }>('GET', `/mobile/notifications${after ? `?after=${encodeURIComponent(after)}` : ''}`),
   mobileNotificationsRead: (upTo: string) => request<{ ok: boolean }>('POST', '/mobile/notifications/read', { upTo }),
+  /** Центр уведомлений (#4655): история, фильтр, поиск; листание назад по `before`. */
+  notificationCenter: (q: { before?: string | null; unread?: boolean; category?: NotificationCategory | null; q?: string }) => {
+    const p = new URLSearchParams();
+    if (q.before) p.set('before', q.before);
+    if (q.unread) p.set('unread', '1');
+    if (q.category) p.set('category', q.category);
+    if (q.q?.trim()) p.set('q', q.q.trim());
+    const qs = p.toString();
+    return request<CenterPage>('GET', `/notifications/center${qs ? `?${qs}` : ''}`);
+  },
+  notificationUnread: () => request<{ unread: number }>('GET', '/notifications/center/unread'),
+  notificationsRead: (ids: string[]) => request<{ unread: number }>('POST', '/notifications/center/read', { ids }),
+  notificationsReadAll: (category?: NotificationCategory | null) =>
+    request<{ unread: number }>('POST', '/notifications/center/read-all', category ? { category } : {}),
   /** Политика организации: приватность push и нижняя граница блокировки (владелец). */
   orgPolicy: () => request<OrgPolicy>('GET', '/mobile/org-policy'),
   setOrgPolicy: (b: Partial<OrgPolicy>) => request<OrgPolicy>('POST', '/mobile/org-policy', b),

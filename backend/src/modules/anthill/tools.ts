@@ -835,7 +835,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         if (p.assigneeId) patch.assigneeId = p.assigneeId;
         if (p.priority) patch.priority = p.priority;
         if (Object.keys(patch).length) await tasks.update(ctx.tenantId, taskId, patch as any, ctx.user.userId);
-        if (p.deadline) await forecast.setEstimateDeadline(ctx.tenantId, taskId, { deadline: String(p.deadline) });
+        if (p.deadline) await forecast.setEstimateDeadline(ctx.tenantId, taskId, { deadline: String(p.deadline) }, ctx.user.userId);
         return {
           text: `Задача #${taskId} изменена.`,
           // прежние значения — чтобы «Отменить» вернуло ровно то, что было
@@ -862,7 +862,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         if (changed.includes('priority')) patch.priority = prev.priority;
         if (Object.keys(patch).length) await tasks.update(ctx.tenantId, taskId, patch as any, ctx.user.userId);
         if (changed.includes('deadline')) {
-          if (prev.deadline) await forecast.setEstimateDeadline(ctx.tenantId, taskId, { deadline: prev.deadline });
+          if (prev.deadline) await forecast.setEstimateDeadline(ctx.tenantId, taskId, { deadline: prev.deadline }, ctx.user.userId);
           else await repo.clearDeadline(ctx.tenantId, taskId);
         }
         return `Задача #${taskId} возвращена как была.`;

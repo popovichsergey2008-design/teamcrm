@@ -1,0 +1,77 @@
+/*
+  Центр уведомлений (#4655). Своим файлом: едет вместе с куском центра, первый экран
+  за него не платит. Шторка — общая `.drawer` (на телефоне она уже во весь экран);
+  здесь только то, чем центр отличается: шапка и фильтры стоят, прокручивается список.
+*/
+.nc-drawer { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+.nc-drawer .drawer-head h3 { display: flex; align-items: center; gap: 8px; }
+.nc-head-actions { display: flex; align-items: center; gap: 6px; }
+
+.nc-search {
+  display: flex; align-items: center; gap: 8px; margin: 4px 0 10px;
+  padding: 0 10px; height: 36px; border-radius: var(--radius-sm);
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-mut);
+}
+.nc-search:focus-within { border-color: var(--accent); }
+.nc-search input {
+  flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: none;
+  color: var(--text); font: inherit; font-size: var(--fs-sm);
+}
+.nc-search input::placeholder { color: var(--text-mut); }
+
+.nc-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.nc-chip {
+  padding: 4px 10px; border-radius: 999px; cursor: pointer; font: inherit; font-size: var(--fs-xs);
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.nc-chip:hover { color: var(--text); border-color: var(--border-2); }
+.nc-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.nc-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.nc-sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+.nc-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -20px; padding: 0 12px 16px; }
+.nc-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.nc-item {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 8px; border-radius: var(--radius);
+  color: var(--text); text-decoration: none; position: relative; border: 1px solid transparent;
+}
+.nc-item:hover { background: var(--hover); }
+.nc-item:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+/* новое — подложкой акцента, как непрочитанное в Битриксе: видно, не вчитываясь */
+.nc-unread { background: var(--accent-soft); border-color: var(--accent-line); }
+.nc-unread:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+.nc-avatar { flex: 0 0 auto; margin-top: 1px; }
+.nc-icon {
+  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg-elev-2); color: var(--text-dim); border: 1px solid var(--border);
+}
+.nc-icon-alarm { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
+
+.nc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); line-height: 1.4; }
+.nc-text { overflow-wrap: anywhere; }
+.nc-text b { font-weight: 600; }
+.nc-task { color: var(--accent); font-weight: 500; }
+.nc-item:hover .nc-task { text-decoration: underline; }
+.nc-line { color: var(--text-dim); font-size: var(--fs-xs); }
+.nc-key { color: var(--text-mut); }
+.nc-quote {
+  color: var(--text-dim); font-size: var(--fs-xs); border-left: 2px solid var(--border-2); padding-left: 8px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.nc-time { color: var(--text-mut); font-size: var(--fs-xs); }
+.nc-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; }
+
+.nc-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+  padding: 40px 16px; color: var(--text-dim); font-size: var(--fs-sm);
+}
+.nc-more { display: grid; place-items: center; min-height: 40px; }
+
+@media (max-width: 720px) {
+  .nc-list { margin: 0 -14px; padding: 0 6px 12px; }
+  /* фильтры на телефоне — одной прокручиваемой строкой, а не тремя рядами над списком */
+  .nc-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .nc-chip { flex: 0 0 auto; }
+  .nc-head-actions .ui-btn { padding-inline: 8px; }
+}

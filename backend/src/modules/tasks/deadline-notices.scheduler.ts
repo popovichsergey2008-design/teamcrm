@@ -3,6 +3,7 @@ import { DeadlineCandidate, DeadlineNoticesRepository } from './deadline-notices
 import { humanDeadline, noticeDue, noticeText, SOON_MS } from './deadline-notice';
 import { TaskActivityRepository } from './task-activity.repository';
 import { RealtimeService } from '../realtime/realtime.service';
+import { NotificationCenter } from '../notifications/center.service';
 
 /**
  * Раз в пять минут. Срок — не будильник: сказать «почти просрочена» на пять минут
@@ -39,6 +40,7 @@ export class DeadlineNoticesScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly repo: DeadlineNoticesRepository,
     private readonly activity: TaskActivityRepository,
     private readonly realtime: RealtimeService,
+    private readonly center: NotificationCenter,
   ) {}
 
   onModuleInit(): void {
@@ -112,6 +114,15 @@ export class DeadlineNoticesScheduler implements OnModuleInit, OnModuleDestroy {
     await this.activity.log(row.tenant_id, row.task_id, null, `deadline_${kind}`, {
       deadlineAt: row.deadline_at,
       commentId: comment?.id ?? null,
+    });
+
+    /*
+      И в центр уведомлений (#4655) — исполнителю, а о просрочке и постановщику. Строка
+      в обсуждении видна тому, кто открыл задачу; центр — тому, кто о ней забыл.
+    */
+    void this.center.task({
+      tenantId: row.tenant_id, taskId: row.task_id, kind: kind === 'soon' ? 'deadline_soon' : 'overdue', actorId: null,
+      suffix: new Date(row.deadline_at).toISOString(), details: { deadline: new Date(row.deadline_at).toISOString() },
     });
 
     this.realtime.emitScoped(
