@@ -42,6 +42,7 @@ import { OrgModule } from './modules/org/org.module';
 import { InvitesModule } from './modules/team/invites.module';
 import { AccountModule } from './modules/account/account.module';
 import { TaskCardModule } from './modules/taskcard/taskcard.module';
+import { BeforeAfterModule } from './modules/before-after/before-after.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -133,6 +134,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     InvitesModule,
     AccountModule,
     TaskCardModule,
+    BeforeAfterModule,
     TagsModule,
     TemplatesModule,
     OnboardingModule,

@@ -139,8 +139,9 @@ export function parsePath(pathname: string): Route {
       return seg[1] ? { section, view: seg[1] } : { section };
     case 'projects': {
       if (!seg[1]) return { section };
+      // `/check` — отчёт «было/стало» задачи (#4657): ссылка из уведомления и «Поделиться»
       return seg[2] === 'task' && seg[3]
-        ? { section, projectId: seg[1], taskId: seg[3] }
+        ? { section, projectId: seg[1], taskId: seg[3], ...(seg[4] === 'check' ? { view: 'check' } : {}) }
         : { section, projectId: seg[1] };
     }
     case 'news':
@@ -177,7 +178,7 @@ export function buildPath(r: Route): string {
     case 'projects':
       if (!r.projectId) return '/projects';
       return r.taskId
-        ? `/projects/${enc(r.projectId)}/task/${enc(r.taskId)}`
+        ? `/projects/${enc(r.projectId)}/task/${enc(r.taskId)}${r.view === 'check' ? '/check' : ''}`
         : `/projects/${enc(r.projectId)}`;
     case 'chat':
       if (r.view === 'meetings') return r.meetingId ? `/meetings/${enc(r.meetingId)}` : '/chat/meetings';

@@ -26,10 +26,12 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'agent_task_rework', title: 'ИИ-агент: доработка по замечаниям', where: 'Карточка задачи → ИИ-агент', group: 'tasks' },
   { key: 'inbox_draft', title: 'Черновик задачи из входящего письма', where: 'Входящие', group: 'tasks' },
   { key: 'task_assistant', title: 'Помощник в обсуждении задачи', where: 'Карточка задачи → «Обсуждение»', group: 'tasks' },
+  { key: 'task_before_after', title: 'Проверка «было/стало» по задаче', where: 'Карточка задачи → «Было/стало», и сама после сдачи', group: 'tasks' },
   { key: 'task_ai_reply', title: 'Предложить ответ / обновление статуса в задаче', where: 'Карточка задачи → кнопки у поля ввода', group: 'tasks' },
   { key: 'chat_assistant', title: 'Помощник в чате (@AI)', where: 'Чаты и миты → любой чат', group: 'service' },
   // интернет (ТЗ-33): не токены, а веб-кредиты — считаются в «Настройки → Тариф и ИИ»
   { key: 'web_search', title: 'Поиск в интернете (QEVO Bot)', where: 'QEVO Bot — тариф «Расширенный»', group: 'knowledge' },
+  { key: 'before_after_shot', title: 'Снимок страницы для «было/стало»', where: 'Карточка задачи → «Было/стало» — тариф «Расширенный»', group: 'knowledge' },
   { key: 'read_url', title: 'Чтение страницы по ссылке (QEVO Bot)', where: 'QEVO Bot — тариф «Расширенный»', group: 'knowledge' },
   { key: 'chat_digest', title: 'Сводка непрочитанного', where: 'Чаты и миты → «Кратко» и «Что я пропустил»', group: 'service' },
   { key: 'chat_search', title: 'Поиск по переписке словами', where: 'Чаты и миты → «Входящие»', group: 'service' },

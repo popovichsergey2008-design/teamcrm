@@ -9,5 +9,7 @@ import { ReportsService } from './reports.service';
   imports: [FilesModule],
   controllers: [ReportsController],
   providers: [ReportsService, ReportsRepository, PdfRenderer],
+  // PDF «было/стало» (#4657) печатается тем же Chromium
+  exports: [PdfRenderer],
 })
 export class ReportsModule {}
