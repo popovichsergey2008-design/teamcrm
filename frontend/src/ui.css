@@ -311,10 +311,28 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .tasks-v2-error .ui-btn { margin-left: auto; }
 /* прокрутка: вкладка зажата по высоте окна — список прокручивается внутри страницы */
 .ui-page.tasks-v2 { flex: 1; min-height: 0; overflow-y: auto; }
+/*
+  #4645: ни один блок страницы не сжимается по её высоте. Страница — колонка flex, а у
+  карточки таблицы overflow: hidden, поэтому её минимальная высота — ноль: на экране
+  высотой 768 карточка ужималась до окна и срезала строки, а прокручивать странице
+  было нечего — «выбрал исполнителя, вижу пять задач, дальше обрезано».
+*/
+.ui-page.tasks-v2 > * { flex-shrink: 0; }
+/* снизу запас под плавающую «Заботу 24/7»: последняя строка и страницы не уходят под неё */
+.ui-page.tasks-v2 { padding-bottom: 80px; }
+/*
+  Столбцы считаются от ширины САМОЙ таблицы, а не окна (#4645): на ноутбуке 1280 с
+  раскрытым меню таблице остаётся ~900 px, и шесть столбцов по окну оставляли задаче
+  полсотни пикселей — номер и приоритет наезжали на «Проект». Лишнее убираем по мере
+  сужения: сначала теги, потом статус; на узком — как на телефоне, название и срок.
+*/
+.tasks-v2 .ui-card { container-type: inline-size; }
 .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 150px 110px 170px 130px 190px; }
 .tasks-v2-row.late { box-shadow: inset 3px 0 0 var(--danger); }
 .tasks-v2-row.done .tasks-v2-name { color: var(--text-mut); text-decoration: line-through; }
-.tasks-v2-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* обрезаем по ячейке: номер и приоритет не вылезают в соседний столбец ни при какой ширине */
+.tasks-v2-title { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
+.tasks-v2-title .ui-badge { flex: none; }
 .tasks-v2-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .tasks-v2-id { color: var(--text-mut); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; flex: none; }
 .tasks-v2-done-icon { color: var(--ok); flex: none; }
@@ -328,9 +346,18 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .tasks-v2-tags-cell { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .tasks-v2-tags-cell .label-chip { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
-@media (max-width: 1100px) {
-  .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 130px 160px 120px; }
+@container (max-width: 1080px) {
+  .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 140px 120px 160px 120px; }
+  .tasks-v2-row > *:nth-child(6) { display: none; }
+}
+@container (max-width: 860px) {
+  .tasks-v2-row { grid-template-columns: minmax(0, 1fr) 130px 150px 120px; }
   .tasks-v2-row > *:nth-child(3), .tasks-v2-row > *:nth-child(6) { display: none; }
+}
+@container (max-width: 600px) {
+  .tasks-v2-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .tasks-v2-row > *:nth-child(2), .tasks-v2-row > *:nth-child(3), .tasks-v2-row > *:nth-child(4),
+  .tasks-v2-row > *:nth-child(6) { display: none; }
 }
 @media (max-width: 720px) {
   .tasks-v2-filters-btn { display: inline-flex; }
