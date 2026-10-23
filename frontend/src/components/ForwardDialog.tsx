@@ -14,9 +14,10 @@ import { overlayProps } from '../lib/overlay';
  * Список — те же чаты, что в разделе: показываем их все с поиском, потому что
  * пересылают обычно в тот чат, который в списке далеко не первый.
  */
-export function ForwardDialog({ chatId, messageId, preview, onClose, onDone }: {
+export function ForwardDialog({ chatId, messageIds, preview, onClose, onDone }: {
   chatId: string;
-  messageId: string;
+  /** Одно сообщение или выделенные (#4640) — тогда одним запросом, в порядке времени. */
+  messageIds: string[];
   /** Что именно пересылают — видно перед выбором: чтобы не отправить не то. */
   preview: string;
   onClose: () => void;
@@ -46,7 +47,9 @@ export function ForwardDialog({ chatId, messageId, preview, onClose, onDone }: {
   const send = async (to: { id: string; title: string }) => {
     setBusy(to.id); setErr('');
     try {
-      await api.forwardMessage(chatId, messageId, to.id);
+      await (messageIds.length > 1
+        ? api.forwardMessages(chatId, messageIds, to.id)
+        : api.forwardMessage(chatId, messageIds[0], to.id));
       onDone(to.id, to.title);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось переслать');
@@ -57,7 +60,7 @@ export function ForwardDialog({ chatId, messageId, preview, onClose, onDone }: {
     <div className="modal-overlay" {...overlayProps(onClose)}>
       <div className="modal-card forward-card" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3><Icon name="reply" size={16} /> Переслать сообщение</h3>
+          <h3><Icon name="reply" size={16} /> {messageIds.length > 1 ? `Переслать сообщения (${messageIds.length})` : 'Переслать сообщение'}</h3>
           <button className="drawer-close" onClick={onClose} title="Закрыть" aria-label="Закрыть">
             <Icon name="close" size={20} />
           </button>

@@ -36,9 +36,12 @@ import type { MessageTaskDraft } from '../components/MessageToTask';
 // окно «Задача из сообщения» (ТЗ-26) — по нажатию палочки, не в стартовой сборке
 const MessageToTask = lazy(() => import('../components/MessageToTask').then((m) => ({ default: m.MessageToTask })));
 // созданная из сообщения задача — сразу окном поверх чата (#1554)
+const ChatSelectBar = lazy(() => import('../components/ChatSelectBar').then((m) => ({ default: m.ChatSelectBar })));
 const TaskCardWindow = lazy(() => import('../components/TaskCardWindow').then((m) => ({ default: m.TaskCardWindow })));
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ForwardDialog } from '../components/ForwardDialog';
+import { useEscape } from '../hooks/useEscape';
+import { orderedSel, rangeSel, toggleSel } from '../lib/chat-select';
 import { QUICK_REACTIONS } from '../lib/emoji';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
@@ -393,7 +396,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   */
   const [emojiFor, setEmojiFor] = useState<{ id: string | null; at: { x: number; y: number } } | null>(null);
   /** Какое сообщение пересылаем и что показать в подтверждении. */
-  const [forwardOf, setForwardOf] = useState<{ id: string; preview: string } | null>(null);
+  const [forwardOf, setForwardOf] = useState<{ ids: string[]; preview: string } | null>(null);
+  /**
+   * Режим выделения (#4640, как в Telegram): null — выключен. `selAt` — опора для
+   * Shift+щелчка. Сменили чат — выбор сбрасывается: он про ту переписку.
+   */
+  const [sel, setSel] = useState<string[] | null>(null);
+  const selAt = useRef<string | null>(null);
+  useEffect(() => { setSel(null); }, [activeId]);
+  useEscape(() => setSel(null), !!sel && !forwardOf);
   const focusComposer = () => setComposerFocus((n) => n + 1);
   /**
    * Сайдбар чата ⓘ (ТЗ-5, этап 2). Занимает тот же правый слот, что и ветка:
@@ -1657,8 +1668,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       // теряет и вложения, и автора.
       label: 'Переслать',
       icon: 'reply' as const,
-      onClick: () => setForwardOf({ id: String(m.id), preview: String(m.body ?? m.file_name ?? 'вложение') }),
+      onClick: () => setForwardOf({ ids: [String(m.id)], preview: String(m.body ?? m.file_name ?? 'вложение') }),
     },
+    { label: 'Выделить', icon: 'check-circle' as const, onClick: () => { selAt.current = String(m.id); setSel([String(m.id)]); } },
     { label: 'Напомнить', icon: 'clock' as const, onClick: () => setRemindFor(String(m.id)) },
     ...(!mine && !m.is_ai && !m.thread_root_id ? [{
       label: 'Пометить как непрочитанное',
@@ -1683,6 +1695,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       { label: 'Удалить', icon: 'trash' as const, danger: true, onClick: () => { void removeMessage(String(m.id)); } },
     ] : []),
   ];
+
+  /**
+   * Щелчок в режиме выделения переключает сообщение — целиком, вместе с кнопками
+   * внутри (ловим на подъёме). Ctrl/⌘ вне режима — начать его, Shift — диапазон.
+   */
+  const selClick = (m: Message) => (e: React.MouseEvent) => {
+    const id = String(m.id);
+    // Вне режима Ctrl/⌘ — только по самому сообщению: по ссылке это «открыть в новой
+    // вкладке», а при выделенном тексте — копирование.
+    if (!sel && (!(e.ctrlKey || e.metaKey) || (e.target as Element).closest('a') || window.getSelection()?.toString())) return;
+    e.preventDefault(); e.stopPropagation();
+    setSel(e.shiftKey && sel ? rangeSel(sel, messages.map((x) => String(x.id)), selAt.current, id) : toggleSel(sel, id));
+    selAt.current = id;
+  };
+  const selected = sel ? orderedSel(messages, sel) : [];
 
   /**
    * Правая кнопка и долгое нажатие — на самом сообщении, где их и ищут.
@@ -2822,7 +2849,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     {unreadFrom === String(m.id) && <div className="chat-unread-line">Непрочитанные сообщения</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === String(m.id)) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === String(m.id) ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
+                    <div onClickCapture={selClick(m)} className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${sel ? ` msg-selmode${sel.includes(String(m.id)) ? ' msg-sel-on' : ''}` : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === String(m.id)) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === String(m.id) ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
+                      {sel && (
+                        <button className="msg-sel" aria-pressed={sel.includes(String(m.id))} aria-label="Выбрать сообщение">
+                          <Icon name="check" size={14} />
+                        </button>
+                      )}
                       <div
                         className={`chat-msg ${mine && !m.is_ai ? 'mine' : ''}${m.is_ai ? ' chat-msg-ai' : ''}`
                           + `${ctxFor?.id === String(m.id) ? ' msg-ctx-open' : ''}`}
@@ -3216,8 +3248,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             {active?.kind === 'dm' && active.peerId && (
               <DeepFocusGuard peerId={String(active.peerId)} peerName={active.title ?? ''} />
             )}
+            {sel && (
+              <Suspense fallback={null}>
+                <ChatSelectBar
+                  chatId={String(activeId)}
+                  selected={selected}
+                  userId={user?.id}
+                  onForward={() => setForwardOf({ ids: selected.map((m) => String(m.id)), preview: selected.map((m) => m.body || 'вложение').join(' · ') })}
+                  onDeleted={(gone) => setMessages((list) => list.filter((m) => !gone.has(String(m.id))))}
+                  onDone={() => setSel(null)}
+                />
+              </Suspense>
+            )}
             <div
               className="chat-input"
+              style={sel ? { display: 'none' } : undefined}
               // Файл можно и перетащить — то же действие, что и вставка из буфера.
               onDragOver={(e) => e.preventDefault()}
               // Перетащить можно и пачку: снимки экрана носят по нескольку сразу.
@@ -3268,7 +3313,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   if (userId === 'ai') return; // помощник участником чата не становится
                   setMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]));
                 }}
-                placeholder={pending ? 'Подпись к вложению…' : 'Сообщение… «@» — позвать по имени'}
+                placeholder={pending.length ? 'Подпись к вложению…' : 'Сообщение… «@» — позвать по имени'}
                 onEnter={send}
                 // Enter отправляет, Shift+Enter или Ctrl+Enter переносит строку — как в мессенджерах.
                 autoGrow
@@ -3613,11 +3658,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       {forwardOf && activeId && (
         <ForwardDialog
           chatId={String(activeId)}
-          messageId={forwardOf.id}
+          messageIds={forwardOf.ids}
           preview={forwardOf.preview}
           onClose={() => setForwardOf(null)}
           onDone={(toChatId, title) => {
             setForwardOf(null);
+            setSel(null);
             toastSaved('Переслано', title);
             // Переслали в открытый чат — показываем сразу, иначе придёт только сокетом.
             if (String(toChatId) === String(activeId)) reload();
