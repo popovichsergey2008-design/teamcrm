@@ -420,7 +420,8 @@ export function App() {
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.
   // Подраздел («Клиенты») адрес занимает под себя, доска под ним остаётся как есть.
   useEffect(() => {
-    if (route.section !== 'projects' || route.view) return;
+    // `/check` — та же задача, только сразу на вкладке «Было/стало» (#4657): доска нужна как обычно
+    if (route.section !== 'projects' || (route.view && route.view !== 'check')) return;
     if (route.projectId === boardReported.current.projectId && route.taskId === boardReported.current.taskId) return;
     boardReported.current = { projectId: route.projectId, taskId: route.taskId };
     setBoardJump((j) => ({ projectId: route.projectId, taskId: route.taskId, nonce: j.nonce + 1 }));

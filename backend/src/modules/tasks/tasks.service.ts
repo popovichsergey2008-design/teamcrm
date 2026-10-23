@@ -25,6 +25,7 @@ import { nextWednesday } from './deadline-shift';
 import { effectsOf, FollowupAnswer, shiftTarget } from './followup-rules';
 import { FollowupsRepository } from './followups.repository';
 import { OrgService } from '../org/org.service';
+import { BeforeAfterService, HANDOFF_STAGES } from '../before-after/before-after.service';
 
 @Injectable()
 export class TasksService {
@@ -71,6 +72,8 @@ export class TasksService {
     private readonly center: NotificationCenter,
     /** #4615, 23.10: структура компании — обучение на переназначениях постановщика. */
     @Optional() private readonly org?: OrgService,
+    /** #4657: отчёт «было/стало» сам после сдачи — глобальный, без встречной зависимости. */
+    @Optional() private readonly beforeAfter?: BeforeAfterService,
   ) {}
 
   /**
@@ -698,6 +701,17 @@ export class TasksService {
       if (isDoneColumn(column.name)) void this.push.taskSeen(tenantId, id, null);
     }
     await this.repo.stampTransition(tenantId, id, actorId, source ?? (actorId ? 'MANUAL' : 'AUTOMATION')).catch(() => undefined);
+    /*
+      Сдали работу — проверка «было/стало» сама (#4657).
+
+      Только при переходе В этап сдачи (проверка, тестирование, согласование, готово), а
+      не при каждом перетаскивании: пересортировка внутри «Готово» новых материалов не
+      приносит. Запуск отложен и сам решает, есть ли что сравнивать.
+    */
+    const stage = column.stage_type ?? (isReviewColumn(column.name) ? 'review' : isDoneColumn(column.name) ? 'done' : 'work');
+    if (String(task.column_id) !== String(dto.columnId) && HANDOFF_STAGES.has(stage)) {
+      this.beforeAfter?.scheduleAuto(tenantId, id, actorId);
+    }
     return moved;
   }
 

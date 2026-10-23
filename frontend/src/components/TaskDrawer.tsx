@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { TaskClientField } from './TaskClientField';
-import { navigate } from '../lib/router';
+import { navigate, parsePath } from '../lib/router';
 import { useAuth } from '../state/auth';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
@@ -41,6 +41,8 @@ import { useTitleHint } from '../lib/page-title';
 import { feedback, feedback as fx } from '../lib/feedback';
 // «Послушать контекст · 15 сек» (ТЗ-25) — отдельным куском, только у задач со встречи
 const TaskAudioProof = lazy(() => import('./meetings/TaskAudioProof'));
+// «Было/стало» (#4657) — своим куском и со своим CSS: отчёт смотрят после сдачи, не в каждой карточке
+const BeforeAfterTab = lazy(() => import('./before-after/BeforeAfterTab'));
 
 interface Props {
   task: Task;
@@ -58,7 +60,7 @@ interface Props {
 }
 
 // Обсуждения среди вкладок больше нет: чат стоит справа и виден всегда.
-type Tab = 'overview' | 'checklist' | 'files' | 'agent' | 'chat';
+type Tab = 'overview' | 'checklist' | 'files' | 'agent' | 'chat' | 'check';
 const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Низкий' },
   { value: 'normal', label: 'Обычный' },
@@ -85,7 +87,13 @@ function orderColumns(columns: { id: string; name: string }[], mode: 'finish' | 
 }
 
 export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, onToggleTimer, onClose, onRefresh }: Props) {
-  const [tab, setTab] = useState<Tab>('overview');
+  // ссылка на отчёт «было/стало» (`/projects/:p/task/:t/check`) открывает карточку сразу на нём
+  const [tab, setTab] = useState<Tab>(() => {
+    const r = parsePath(window.location.pathname);
+    return r.view === 'check' && String(r.taskId) === String(task.id) ? 'check' : 'overview';
+  });
+  /** «⋯ → Проверить было/стало»: вкладка откроется и сразу запустит проверку. */
+  const [checkNow, setCheckNow] = useState(false);
   // заголовок вкладки «#1137 Название» — ссылка из браузера скажет, о какой задаче речь (#1516)
   useTitleHint(task.id ? `task:${task.id}` : null, task.title ? `#${task.id} ${task.title}` : null);
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
@@ -646,6 +654,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     // «Чат» на всю карточку — ответ на «сообщения в маленьких окнах»: колонка справа
     // в 360 точек превращала абзац в двадцать строк, а картинку — в марку.
     { value: 'chat', label: <><Icon name="chat" size={14} /> Чат</> },
+    // «Было/стало» (#4657): пункты правок, снимки до и после и вердикт по каждому
+    { value: 'check', label: <><Icon name="eye" size={14} /> Было/стало</> },
   ];
 
   return (
@@ -841,6 +851,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 Объединить с дублем
               </MenuItem>
             )}
+            <MenuItem onSelect={() => { setCheckNow(true); setTab('check'); }} icon={<Icon name="eye" size={15} />} disabled={moving}>
+              Проверить было/стало
+            </MenuItem>
             {/* Шаблон — про СПОСОБ работы, поэтому среди действий над задачей целиком. */}
             <MenuItem onSelect={() => setSaveTpl(true)} icon={<Icon name="copy" size={15} />} disabled={moving}>
               Сохранить как шаблон
@@ -933,6 +946,18 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         )}
 
         {tab === 'agent' && <AgentTab taskId={task.id} assigned={!!task.agent_assigned} onRefresh={onRefresh} />}
+
+        {tab === 'check' && (
+          <Suspense fallback={<div className="dim">Загружаю отчёт…</div>}>
+            <BeforeAfterTab
+              taskId={String(task.id)}
+              projectId={String(task.project_id)}
+              autoRun={checkNow}
+              onAutoRunDone={() => setCheckNow(false)}
+              onRefresh={onRefresh}
+            />
+          </Suspense>
+        )}
 
         {tab === 'overview' && (
           <>
