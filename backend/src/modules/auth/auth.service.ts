@@ -18,6 +18,8 @@ import { PublicUser, toPublicUser } from '../users/users.service';
 import { RefreshTokenRepository } from './refresh-token.repository';
 import { AccountsRepository } from './accounts.repository';
 import { LoginDto, RegisterDto } from './auth.dto';
+import { QaSwitchRepository } from './qa-switch.repository';
+import { backRefusal } from './qa-switch.rules';
 
 interface TokenPair {
   accessToken: string;
@@ -50,6 +52,7 @@ export class AuthService {
     private readonly accounts: AccountsRepository,
     /** Базовый набор тегов новой организации: без него первый же фильтр пустой. */
     private readonly tags: TagsService,
+    private readonly qa: QaSwitchRepository,
   ) {}
 
   private orgRefs(rows: any[]): OrgRef[] {
@@ -228,7 +231,7 @@ export class AuthService {
 
   /** Ротация: проверяет refresh, отзывает старый, выдаёт новую пару. */
   async refresh(refreshToken: string, meta?: SessionMeta): Promise<TokenPair> {
-    let payload: { sub: string; tenantId: string };
+    let payload: { sub: string; tenantId: string; act?: string };
     try {
       payload = await this.jwt.verifyAsync(refreshToken, {
         secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'),
@@ -244,28 +247,51 @@ export class AuthService {
     const user = await this.users.findById(payload.tenantId, payload.sub);
     if (!user || !user.is_active) throw AppException.unauthorized('User inactive');
 
+    /*
+      #1562: сессия тестового сотрудника продолжается, только пока жива строка допуска
+      и сам вошедший. Убрали строку — обновить токен нельзя, сессия кончилась.
+    */
+    const actorId = payload.act ? String(payload.act) : undefined;
+    if (actorId) {
+      const refusal = backRefusal({
+        tenantId: String(payload.tenantId), currentId: String(payload.sub), actorId,
+        hasAccess: await this.qa.hasAccess(String(payload.tenantId), actorId, String(payload.sub)),
+        actor: await this.qa.person(String(payload.tenantId), actorId),
+      });
+      if (refusal) {
+        await this.refreshTokens.revoke(row.id);
+        throw AppException.unauthorized('Сессия тестового сотрудника закрыта');
+      }
+    }
+
     await this.refreshTokens.revoke(row.id);
-    return this.issueTokens(user, meta);
+    return this.issueTokens(user, meta, actorId);
   }
 
   async logout(refreshToken: string): Promise<void> {
     await this.refreshTokens.revokeByHash(this.sha256(refreshToken));
   }
 
-  private async issueTokens(user: UserRow, meta?: SessionMeta): Promise<TokenPair> {
+  /** #1562: пара токенов для переключения на тестового сотрудника и обратно. */
+  issueFor(user: UserRow, meta: SessionMeta | undefined, actorId?: string): Promise<TokenPair> {
+    return this.issueTokens(user, meta, actorId);
+  }
+
+  private async issueTokens(user: UserRow, meta?: SessionMeta, actorId?: string): Promise<TokenPair> {
     const accessTtl = Number(this.config.get('JWT_ACCESS_TTL') ?? 900);
     const refreshTtl = Number(this.config.get('JWT_REFRESH_TTL') ?? 2_592_000);
 
     // refresh-токен и его строку создаём ПЕРВЫМИ — id строки кладём в access как sid
     const jti = randomUUID();
     const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, tenantId: user.tenant_id, jti },
+      { sub: user.id, tenantId: user.tenant_id, jti, ...(actorId ? { act: actorId } : {}) },
       { secret: this.config.getOrThrow<string>('JWT_REFRESH_SECRET'), expiresIn: refreshTtl },
     );
     const expiresAt = new Date(Date.now() + refreshTtl * 1000);
     const row = await this.refreshTokens.create(user.id, this.sha256(refreshToken), expiresAt, meta);
-    // где человек сейчас работает — туда и следующий вход (вход, переключение, обновление сессии)
-    if (user.account_id) {
+    // где человек сейчас работает — туда и следующий вход (вход, переключение, обновление сессии);
+    // сессия тестового сотрудника (#1562) его «последнее пространство» не трогает
+    if (user.account_id && !actorId) {
       await this.users.rememberTenant(String(user.account_id), String(user.tenant_id)).catch(() => undefined);
     }
 
@@ -275,6 +301,7 @@ export class AuthService {
       role: user.role_code as RoleCode,
       email: user.email,
       sid: row.id,
+      ...(actorId ? { act: actorId } : {}),
     };
     const accessToken = await this.jwt.signAsync(accessPayload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),

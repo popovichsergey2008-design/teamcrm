@@ -51,7 +51,7 @@ export class AccountController {
 
   @Get()
   me(@CurrentUser() u: AuthUser) {
-    return this.account.getMe(u.tenantId, u.userId);
+    return this.account.getMe(u.tenantId, u.userId, u.actorId);
   }
 
   @Patch()
@@ -61,6 +61,8 @@ export class AccountController {
 
   @Post('password')
   password(@CurrentUser() u: AuthUser, @Body() dto: PasswordDto) {
+    // #1562: из сессии тестового пароль ему не меняют — иначе вход перестал бы быть поводком
+    if (u.actorId) throw AppException.forbidden('Недоступно, пока вы вошли как тестовый сотрудник');
     return this.account.changePassword(u.tenantId, u.userId, u.sessionId, dto.currentPassword, dto.newPassword);
   }
 

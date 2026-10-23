@@ -86,6 +86,8 @@ const AiDemoPage = lazy(() => import('./pages/AiDemoPage').then((m) => ({ defaul
 const PostCallPage = lazy(() => import('./pages/PostCallPage').then((m) => ({ default: m.PostCallPage })));
 const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ default: m.SupportPage })));
 const ConsolePage = lazy(() => import('./pages/ConsolePage').then((m) => ({ default: m.ConsolePage })));
+// #1562: полоса «вы вошли как тестовый» — только у переключившихся
+const QaSwitchBar = lazy(() => import('./components/QaSwitchBar'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const ClientPortal = lazy(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })));
 const MeetingPage = lazy(() => import('./pages/MeetingPage').then((m) => ({ default: m.MeetingPage })));
@@ -684,6 +686,7 @@ export function App() {
       */}
       <main className="app-main" key={user.tenantId}>
         <OfflineBar online={offline.online} items={offline.items} summary={offline.summary} onRetry={offline.flush} />
+        {user.qaSwitch?.actingAs && <Suspense fallback={null}><QaSwitchBar name={user.fullName} /></Suspense>}
         {visited.has('focus') && (
           <Pane active={route.section === 'focus'}>
             <FocusPage

@@ -16,6 +16,10 @@ import { FocusSettingsPanel } from '../components/FocusSettingsPanel';
 import { MailPanel } from '../components/MailPanel';
 import { GuestBrandPanel } from '../components/GuestBrandPanel';
 import { navigate, Route } from '../lib/router';
+import { useState } from 'react';
+import { useAuth } from '../state/auth';
+import { confirmAction } from '../components/ui/dialog';
+import { enterQa } from '../lib/qa-switch';
 
 /**
  * «Настройки и интеграции» — единая точка вместо кнопок, разбросанных по верхней панели.
@@ -188,6 +192,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       </div>
 
       <div className="settings-grid">
+        <QaSwitchCard />
         {CARDS.filter((c) => !c.roles || c.roles.includes(role)).map((c) => (
           <button
             key={c.tab}
@@ -244,5 +249,33 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * #1562: временная кнопка «Войти как qa test». Есть только у тех, кому сервер выдал
+ * допуск (строка в qa_switch_access); у всех остальных компаний и людей её нет.
+ */
+function QaSwitchCard() {
+  const qa = useAuth().user?.qaSwitch;
+  const [error, setError] = useState('');
+  if (!qa?.canSwitch || !qa.targetName) return null;
+  const name = qa.targetName;
+  const go = async () => {
+    const ok = await confirmAction({
+      title: `Войти как ${name}?`,
+      description: `Вы войдёте как ${name}. Вернуться можно кнопкой сверху.`,
+      confirmLabel: 'Войти',
+    });
+    if (!ok) return;
+    setError('');
+    try { await enterQa(qa.targetId); } catch (e) { setError((e as Error).message || 'Не удалось переключиться'); }
+  };
+  return (
+    <button className="settings-card" onClick={go} data-testid="qa-switch">
+      <span className="settings-card-icon"><Icon name="user" size={20} /></span>
+      <span className="settings-card-title">Войти как {name}</span>
+      <span className="settings-card-hint">{error || 'Тестовый сотрудник для проверки интерфейса — временно'}</span>
+    </button>
   );
 }

@@ -9,6 +9,7 @@ import { SessionsService } from '../auth/sessions.service';
 import { AccountsRepository } from '../auth/accounts.repository';
 import { VelocityService } from '../velocity/velocity.service';
 import { PlatformService } from '../platform/platform.service';
+import { QaSwitchService } from '../auth/qa-switch.service';
 
 @Injectable()
 export class AccountService {
@@ -21,9 +22,10 @@ export class AccountService {
     private readonly accounts: AccountsRepository,
     private readonly velocity: VelocityService,
     private readonly platform: PlatformService,
+    private readonly qa: QaSwitchService,
   ) {}
 
-  async getMe(tenantId: string, userId: string) {
+  async getMe(tenantId: string, userId: string, actorId?: string) {
     const p: any = await this.users.getProfile(tenantId, userId);
     if (!p) throw AppException.notFound('User not found');
     const groups = await this.groups.groupsForUser(tenantId, userId);
@@ -69,6 +71,8 @@ export class AccountService {
       platformAdmin: platformRole === 'admin' || platformRole === 'support_admin',
       /** Роль в техотделе: у инженера консоль другая — не очередь, а его эскалации. */
       platformRole,
+      /** #1562: кнопка «Войти как qa test» и полоса возврата. Без строки допуска — canSwitch: false. */
+      qaSwitch: await this.qa.status({ tenantId, userId, actorId }).catch(() => ({ canSwitch: false })),
     };
   }
 

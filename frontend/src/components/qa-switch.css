@@ -1,0 +1,15 @@
+/* #1562: полоса «Вы вошли как тестовый сотрудник» — пастель предупреждения, как у полосы сети. */
+.qa-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; width: 100%; flex: 0 0 auto;
+  padding: 6px 12px; font-size: var(--fs-xs); font-weight: 600;
+  border-bottom: 1px solid var(--warn-line); background: var(--warn-soft); color: var(--warn);
+}
+.qa-bar-text { flex: 1 1 auto; min-width: 0; }
+.qa-bar-back {
+  min-height: 32px; padding: 4px 10px; border: 1px solid var(--warn-line); border-radius: var(--radius-sm);
+  background: var(--bg-elev); color: var(--text); font: inherit; cursor: pointer;
+}
+.qa-bar-back:hover { border-color: var(--warn); }
+.qa-bar-back:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.qa-bar-back:disabled { opacity: .7; cursor: default; }
+.qa-bar-error { flex-basis: 100%; color: var(--danger); font-weight: 500; }

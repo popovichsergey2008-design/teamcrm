@@ -19,6 +19,8 @@ export interface User {
   platformRole?: 'support' | 'support_admin' | 'engineer' | 'incident_manager' | 'admin' | null;
   /** Отделы и группы человека. Приходят из GET /users; в токене авторизации их нет. */
   groups?: { id: string; name: string; kind: string }[];
+  /** #1562: временный вход как тестовый сотрудник (только по допуску на сервере). */
+  qaSwitch?: { canSwitch: boolean; targetId?: string; targetName?: string; actingAs?: { actorName: string } };
   /** Путь к аватару (`/api/files/:id`) — файл лежит за авторизацией, тянется через Avatar. */
   avatarUrl?: string | null;
   /** Личное меню: порядок пунктов и скрытые разделы; Chat Bar. Живёт у человека, не в браузере. */

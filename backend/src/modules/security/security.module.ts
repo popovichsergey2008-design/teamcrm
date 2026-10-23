@@ -14,6 +14,7 @@ import { SecurityService } from './security.service';
 @Module({
   controllers: [SecurityController],
   providers: [SecurityService, SecurityRepository],
-  exports: [SecurityService],
+  // репозиторий — ради журнала: в него пишут и вне слоя безопасности (#1562 вход как тестовый)
+  exports: [SecurityService, SecurityRepository],
 })
 export class SecurityModule {}

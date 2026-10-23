@@ -7,6 +7,17 @@ import { AuthService, SessionMeta } from './auth.service';
 import { PasswordResetService } from './password-reset.service';
 import { LoginDto, LogoutDto, RefreshDto, RegisterDto } from './auth.dto';
 import { SocialService } from './social.service';
+import { QaSwitchService } from './qa-switch.service';
+import { AppException } from '../../common/http/app-exception';
+
+class QaSwitchDto {
+  @IsOptional() @IsString() @MaxLength(20) targetUserId?: string;
+}
+
+/** #1562: из сессии тестового сотрудника нельзя менять ему вход, пароль и пространства. */
+function notActing(user: AuthUser) {
+  if (user.actorId) throw AppException.forbidden('Недоступно, пока вы вошли как тестовый сотрудник');
+}
 
 class SwitchOrgDto {
   @IsString() tenantId!: string;
@@ -42,7 +53,28 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly reset: PasswordResetService,
     private readonly social: SocialService,
+    private readonly qa: QaSwitchService,
   ) {}
+
+  // ── #1562: временный вход как тестовый сотрудник (только по строке в qa_switch_access) ──
+
+  @ApiBearerAuth()
+  @Get('auth/qa-switch')
+  qaStatus(@CurrentUser() user: AuthUser) {
+    return this.qa.status(user);
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/qa-switch')
+  qaSwitch(@CurrentUser() user: AuthUser, @Body() dto: QaSwitchDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.qa.switchTo(user, dto.targetUserId, this.meta(ua, ip));
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/qa-switch/back')
+  qaBack(@CurrentUser() user: AuthUser, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.qa.back(user, this.meta(ua, ip));
+  }
 
   // ── вход через Google и Telegram ──
 
@@ -74,12 +106,14 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('auth/google/link')
   linkGoogle(@CurrentUser() user: AuthUser, @Body() dto: GoogleLoginDto) {
+    notActing(user);
     return this.social.linkGoogle(user.tenantId, user.userId, dto.idToken);
   }
 
   @ApiBearerAuth()
   @Post('auth/telegram/link')
   linkTelegram(@CurrentUser() user: AuthUser, @Body() dto: TelegramLoginDto) {
+    notActing(user);
     return this.social.linkTelegram(user.tenantId, user.userId, dto.data);
   }
 
@@ -143,6 +177,7 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('auth/switch-org')
   switchOrg(@CurrentUser() user: AuthUser, @Body() dto: SwitchOrgDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    notActing(user);
     return this.auth.switchOrg(user.tenantId, user.userId, dto.tenantId, this.meta(ua, ip));
   }
 
@@ -156,6 +191,7 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('auth/organizations')
   createOrg(@CurrentUser() user: AuthUser, @Body() dto: CreateOrgDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    notActing(user);
     return this.auth.createOrg(user.tenantId, user.userId, dto.name, this.meta(ua, ip));
   }
 }
