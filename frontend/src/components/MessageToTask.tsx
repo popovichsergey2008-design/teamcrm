@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError, TagSettings } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
@@ -10,6 +10,7 @@ import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
 import { feedback } from '../lib/feedback';
+import { overServer, settleEdits } from '../lib/local-edits';
 import './message-to-task.css';
 
 /** Черновик задачи из сообщения — то, что отдаёт сервер и правит человек. */
@@ -77,10 +78,25 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
   const [mode, setMode] = useState<'single' | 'split'>('single');
   const [wish, setWish] = useState('');
   const [workload, setWorkload] = useState<WorkloadInfo | null>(null);
+  /*
+    Правки человека, которые сервер ещё не сохранил (#4645).
+
+    Черновик живёт на сервере и приезжает событием после каждой записи — своей, ИИ,
+    ответа автора о проекте. Раньше любое событие целиком заменяло черновик на экране,
+    и набранное в «Описании» исчезало на следующей же букве: окно выглядело так, будто
+    править текст ИИ нельзя. Теперь всё, что приходит с сервера, ложится ПОД эти правки.
+  */
+  const edits = useRef<Partial<MessageTaskDraft>>({});
   /** любой ответ сервера по черновику: сам черновик, списки, голосовое */
   const take = (r: any) => {
-    setDraft(r.draft); if (r.context) setCtx(r.context);
+    setDraft(r.draft ? overServer(r.draft as MessageTaskDraft, edits.current) : r.draft);
+    if (r.context) setCtx(r.context);
     if (r.voice !== undefined) setVoice(r.voice);
+  };
+  /** Правка на экране: сразу в поле и в список несохранённого. */
+  const edit = (fields: Partial<MessageTaskDraft>) => {
+    edits.current = { ...edits.current, ...fields };
+    setDraft((cur) => (cur ? { ...cur, ...fields } : cur));
   };
   const [already, setAlready] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,17 +135,31 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
       if (outside.status !== 'failed') feedback('ai.started', { el: document.querySelector('.mtt-drawer') });
       return;
     }
-    setDraft(outside);
-  }, [outside, draft]); // eslint-disable-line react-hooks/exhaustive-deps
+    setDraft(overServer(outside, edits.current));
+    // Только на новое событие: при зависимости от draft эффект срабатывал на каждую
+    // набранную букву и возвращал в поле то, что было в последнем событии.
+  }, [outside]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Правку отправляем сразу: черновик на сервере, и вкладка может закрыться в любой момент. */
-  const patch = async (body: Record<string, unknown>) => {
+  const patch = async (body: Partial<MessageTaskDraft>) => {
     if (!draft) return;
-    setDraft({ ...draft, ...(body as Partial<MessageTaskDraft>) });
+    edit(body);
     try {
       const r = await api.patchMessageTaskDraft(draft.draftId, body);
+      edits.current = settleEdits(edits.current, body);
       take(r);
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Правка не сохранилась'); }
+  };
+  /*
+    Перед «Создать» — дописать на сервер всё несохранённое. Задачу собирает сервер из
+    своего черновика, а поле сохраняется по уходу фокуса: нажатие «Создать» прямо из
+    поля отправляло правку и подтверждение наперегонки.
+  */
+  const flush = async () => {
+    if (!draft || !Object.keys(edits.current).length) return;
+    const body = edits.current;
+    take(await api.patchMessageTaskDraft(draft.draftId, body));
+    edits.current = settleEdits(edits.current, body);
   };
 
   const ask = async () => {
@@ -164,6 +194,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     }
     setBusy(true); setErr('');
     try {
+      await flush();
       const res = await api.confirmMessageTaskDraft(draft.draftId, {
         tagIds: tags.tagIds,
         suggestedTagIds: tags.suggested,
@@ -191,6 +222,8 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     setBusy(true); setErr('');
     try {
       const r = await api.instructMessageTaskDraft(draft.draftId, wish.trim());
+      // попросил переписать словами — теперь главнее то, что переписал ИИ
+      edits.current = {};
       take(r); setWish('');
       feedback('ai.completed', { el: document.querySelector('.mtt-drawer') });
       if ((r.draft?.split?.length ?? 0) >= 2) setMode('split');
@@ -201,7 +234,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
   const retry = async () => {
     if (!draft) return;
     setBusy(true); setErr('');
-    try { take(await api.retryMessageTaskDraft(draft.draftId)); }
+    try { const r = await api.retryMessageTaskDraft(draft.draftId); edits.current = {}; take(r); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось повторить'); }
     finally { setBusy(false); }
   };
@@ -318,7 +351,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               <input
                 className="input"
                 value={draft.title}
-                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                onChange={(e) => edit({ title: e.target.value })}
                 onBlur={(e) => void patch({ title: e.target.value })}
                 maxLength={255}
               />
@@ -329,7 +362,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                 className="input"
                 rows={3}
                 value={draft.description}
-                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                onChange={(e) => edit({ description: e.target.value })}
                 onBlur={(e) => void patch({ description: e.target.value })}
               />
             </div>
@@ -421,8 +454,8 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                   <input
                     className="input"
                     value={step}
-                    onChange={(e) => setDraft({
-                      ...draft, checklist: draft.checklist.map((x, k) => (k === i ? e.target.value : x)),
+                    onChange={(e) => edit({
+                      checklist: draft.checklist.map((x, k) => (k === i ? e.target.value : x)),
                     })}
                     onBlur={() => void patch({ checklist: draft.checklist })}
                   />
@@ -436,7 +469,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                   </button>
                 </div>
               ))}
-              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setDraft({ ...draft, checklist: [...draft.checklist, ''] })}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => edit({ checklist: [...draft.checklist, ''] })}>
                 <Icon name="plus" size={13} /> Шаг
               </button>
             </div>
