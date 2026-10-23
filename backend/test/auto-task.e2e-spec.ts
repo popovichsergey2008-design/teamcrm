@@ -183,7 +183,7 @@ describe('Автоматическая постановка задачи (e2e)',
     };
     const sergey = await person('Сергей Руководитель', ['backend', 'frontend']);
     const gleb = await person('Глеб Специалист', ['backend']);
-    const anna = await person('Анна Фронт', ['frontend']);
+    const anna = await person('Анна Лебедева', ['frontend']);
 
     // «Кто отвечает за Бэкенд» → отдел создаётся сам
     const d = (await http$.post('/api/org/direction-lead').set(O).send({ skill: 'backend', userId: sergey.id }).expect(201)).body.data;

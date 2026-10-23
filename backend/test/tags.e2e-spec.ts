@@ -53,9 +53,10 @@ describe('теги задач (e2e)', () => {
     expect(list.items.map((t: any) => t.name)).toEqual(
       expect.arrayContaining(['Контентная задача', 'Программная задача', 'Дизайнерская задача', 'Клиент-менеджер', 'Отложенная задача']),
     );
-    // По умолчанию разметка включена и требует подтверждения (требование ТЗ).
+    // По умолчанию разметка включена, теги ставятся сами (#4615); подтверждение — по желанию компании.
     expect(list.settings.aiTagging).toBe(true);
-    expect(list.settings.requireConfirmation).toBe(true);
+    expect(list.settings.requireConfirmation).toBe(false);
+    await http.post('/api/tags/settings').set(O).send({ aiTagging: true, requireConfirmation: true }).expect(201);
 
     // Свой тег компании.
     const seo = (await http.post('/api/tags').set(O).send({ name: 'SEO' }).expect(201)).body.data;
