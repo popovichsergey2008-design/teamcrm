@@ -24,6 +24,7 @@ import { DirectionsPicker } from './DirectionsPicker';
 import { CLIENTS_ENABLED, MONETIZATION_ENABLED } from '../config';
 import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, TagsValue } from '../lib/tags';
+import { followServer } from '../lib/local-edits';
 import { overlayProps } from '../lib/overlay';
 import { showToast, toastSaved } from '../lib/notifications';
 import { AiFeedback } from './AiFeedback';
@@ -104,9 +105,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     показывать прежнюю дату: на экране не менялось ничего, и выходило, что кнопка не
     работает. Подхватываем новый срок — но только если человек сам это поле не правил,
     иначе обновление затрёт то, что он набрал.
+
+    Прошлое значение берём В ПЕРЕМЕННУЮ до того, как переписать ref (#4652): функция
+    в setDeadline выполняется позже, уже с новым ref, — поле считалось «правленым»,
+    оставалось со старым сроком, кнопка «Сохранить» загоралась и возвращала его в задачу.
   */
   useEffect(() => {
-    setDeadline((cur) => (cur === lastServerDeadline.current ? initialDeadline : cur));
+    const prev = lastServerDeadline.current;
+    setDeadline((cur) => followServer(cur, prev, initialDeadline));
     lastServerDeadline.current = initialDeadline;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDeadline]);

@@ -832,6 +832,8 @@ export class TasksService {
     const decidesHimself = String(task.created_by ?? '') === String(actor.userId) || actor.role === 'owner';
     if (decidesHimself) {
       await this.repo.setDeadline(tenantId, id, target);
+      // чужая просьба о переносе этим решением исчерпана — висеть ей незачем
+      if (task.deadline_shift_to) await this.repo.clearDeadlineShift(tenantId, id);
       await this.shiftRecurrence(tenantId, task, target);
       await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: target.toISOString() });
     } else {

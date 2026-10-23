@@ -1764,6 +1764,40 @@ test('awaitsMyReply: вопрос или обращение после моег�
   assert.equal(awaitsMyReply([{ author_id: 1, body: 'Готово?' }, { author_id: 2, body: 'Ответ?', is_ai: true }], ...me), false, 'ИИ и мои не в счёт');
 });
 
+// ── поле на экране и на сервере (#4652, #4645) ─────────────────────────────────
+test('срок в карточке следует за сервером, если его не правили (#4652)', async () => {
+  const { followServer } = await load('lib/local-edits.ts');
+  // «Сделал»: сервер перенёс срок, поле человек не трогал — показываем новый
+  assert.equal(followServer('2026-10-19T17:00', '2026-10-19T17:00', '2026-10-28T17:00'), '2026-10-28T17:00');
+  // человек набрал свой срок — обновление его не затирает
+  assert.equal(followServer('2026-11-02T10:00', '2026-10-19T17:00', '2026-10-28T17:00'), '2026-11-02T10:00');
+  /*
+    Корень бага: сравнение шло с ref, который к моменту вызова updater'а уже указывал на
+    НОВЫЙ срок. Поле со старым сроком выглядело «правленым», и «Сохранить» возвращал его.
+  */
+  let ref = '2026-10-19T17:00';
+  const late = (cur) => followServer(cur, ref, '2026-10-28T17:00');
+  ref = '2026-10-28T17:00';
+  assert.equal(late('2026-10-19T17:00'), '2026-10-19T17:00', 'так было: прошлое значение читали после перезаписи');
+  const prev = '2026-10-19T17:00';
+  const fixed = (cur) => followServer(cur, prev, '2026-10-28T17:00');
+  assert.equal(fixed('2026-10-19T17:00'), '2026-10-28T17:00', 'так стало: прошлое значение снято до перезаписи');
+});
+
+test('черновик из сообщения: правки человека поверх событий сервера (#4645)', async () => {
+  const { overServer, settleEdits } = await load('lib/local-edits.ts');
+  const server = { title: 'ИИ', description: 'от ИИ', checklist: ['a'], status: 'ready' };
+  // событие черновика пришло, пока человек правит описание — набранное остаётся
+  assert.deepEqual(overServer(server, { description: 'моё' }), { ...server, description: 'моё' });
+  assert.deepEqual(overServer(server, {}), server);
+  // ответ на отправку снимает отправленное
+  assert.deepEqual(settleEdits({ description: 'моё', title: 'т' }, { description: 'моё' }), { title: 'т' });
+  // пока шёл запрос, поле правили ещё раз — правка остаётся
+  assert.deepEqual(settleEdits({ description: 'моё2' }, { description: 'моё' }), { description: 'моё2' });
+  // чек-лист сравнивается по содержимому
+  assert.deepEqual(settleEdits({ checklist: ['a', 'b'] }, { checklist: ['a', 'b'] }), {});
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
