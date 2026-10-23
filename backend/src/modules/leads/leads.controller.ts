@@ -7,11 +7,14 @@ import { LeadsService } from './leads.service';
 
 export const MOVE_FROM = ['bitrix24', 'yougile', 'jira', 'trello', 'other'] as const;
 export const TEAM_SIZES = ['1-5', '6-15', '16-50', '50+'] as const;
+/** Что прислать (#4648): видео работы приложения или план переезда. */
+export const WANTS = ['video', 'plan'] as const;
 
 class LeadDto {
   @IsIn(['quiz', 'exit', 'support']) source!: 'quiz' | 'exit' | 'support';
   @IsOptional() @IsIn(MOVE_FROM as unknown as string[]) from?: string;
   @IsOptional() @IsIn(TEAM_SIZES as unknown as string[]) team?: string;
+  @IsOptional() @IsIn(WANTS as unknown as string[]) want?: 'video' | 'plan';
   @IsString() @MinLength(3) @MaxLength(120) contact!: string;
   @IsOptional() @IsString() @MaxLength(300) page?: string;
   /** Вопрос из «Проверьте нас за 30 секунд» (#4616) — уходит дежурным сразу. */

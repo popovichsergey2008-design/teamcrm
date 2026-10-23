@@ -17,6 +17,7 @@ export interface NewLead {
   source: string;
   from?: string;
   team?: string;
+  want?: 'video' | 'plan';
   contact: string;
   page?: string;
   message?: string;
@@ -56,15 +57,16 @@ export class LeadsService {
     const phone = !contact.startsWith('@') && digits.length >= 10 && digits.length <= 15;
     const contactLine = phone ? `WhatsApp: ${contact} — https://wa.me/${digits.length === 11 && digits.startsWith('8') ? `7${digits.slice(1)}` : digits}` : `Telegram: ${contact}`;
     await this.db.query(
-      `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null],
+      `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message, want) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null, l.want ?? null],
     );
     const text = l.source === 'support' ? [
       'Вопрос с сайта — проверка «ответ за 30 секунд», ответьте сейчас!',
       contactLine,
       `Вопрос: ${l.message?.trim() || '—'}`,
     ].join('\n') : [
-      'Заявка с сайта: план переезда',
+      // дежурный сразу видит, какой сценарий выбрал человек (#4648)
+      l.want === 'video' ? 'Заявка с сайта: прислать видео работы приложения' : 'Заявка с сайта: план переезда',
       `Откуда: ${l.from ? FROM_LABEL[l.from] ?? l.from : 'не указано'}`,
       `Команда: ${l.team ?? 'не указано'}`,
       contactLine,
