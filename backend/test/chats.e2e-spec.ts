@@ -536,4 +536,55 @@ describe('Чаты команды (e2e)', () => {
     const after = (await http$.get('/api/chats').set(M).expect(200)).body.data;
     expect(after.some((c: any) => String(c.id) === String(g.id))).toBe(false);
   });
+
+  it('#4640: несколько выделенных сообщений пересылаются одним запросом, по времени и с автором', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'FW', email: `fw_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
+      .expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const mateEmail = `fw_m_${uniq()}@t.test`;
+    const mate = (await http$.post('/api/users').set(O)
+      .send({ email: mateEmail, fullName: 'Борис Коллега', password: 'password123', role: 'member' })
+      .expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+
+    // Откуда пересылаем: группа без коллеги. Куда: личный диалог с ним.
+    const src = (await http$.post('/api/chats/groups').set(O).send({ title: 'Исходный' }).expect(201)).body.data;
+    const dm = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
+    const ids: string[] = [];
+    for (const body of ['первое', 'второе', 'третье']) {
+      ids.push(String((await http$.post(`/api/chats/${src.id}/messages`).set(O).send({ body }).expect(201)).body.data.id));
+    }
+
+    // Порядок щелчков — не порядок переписки: в чат получателя ложится по времени.
+    const res = (await http$.post(`/api/chats/${src.id}/messages/forward`).set(O)
+      .send({ toChatId: String(dm.id), messageIds: [ids[2], ids[0], ids[1], ids[0]] })
+      .expect(201)).body.data;
+    expect(res.forwarded).toBe(3);
+    expect(res.messages.map((m: any) => m.body)).toEqual(['первое', 'второе', 'третье']);
+    expect(res.messages.every((m: any) => m.forwarded_author === 'Анна Владелец')).toBe(true);
+    expect(res.messages.map((m: any) => String(m.forwarded_from_id))).toEqual(ids);
+
+    const feed = (await http$.get(`/api/chats/${dm.id}/messages`).set(M).expect(200)).body.data;
+    const got = [...feed].sort((a: any, b: any) => Number(a.id) - Number(b.id)).map((m: any) => m.body);
+    expect(got).toEqual(['первое', 'второе', 'третье']);
+
+    // Коллега не видит исходный чат — переслать из него не может.
+    await http$.post(`/api/chats/${src.id}/messages/forward`).set(M)
+      .send({ toChatId: String(dm.id), messageIds: ids }).expect(403);
+
+    // Чужое сообщение в пачке отклоняет ВСЮ пачку: ничего не переслано наполовину.
+    const other = (await http$.post(`/api/chats/${dm.id}/messages`).set(O).send({ body: 'из другого чата' }).expect(201)).body.data;
+    const before = (await http$.get(`/api/chats/${dm.id}/messages`).set(O).expect(200)).body.data.length;
+    await http$.post(`/api/chats/${src.id}/messages/forward`).set(O)
+      .send({ toChatId: String(dm.id), messageIds: [ids[0], String(other.id)] }).expect(404);
+    const after = (await http$.get(`/api/chats/${dm.id}/messages`).set(O).expect(200)).body.data.length;
+    expect(after).toBe(before);
+
+    // Лимит за раз и пустой выбор.
+    await http$.post(`/api/chats/${src.id}/messages/forward`).set(O)
+      .send({ toChatId: String(dm.id), messageIds: Array.from({ length: 101 }, (_, i) => String(i + 1)) }).expect(400);
+    await http$.post(`/api/chats/${src.id}/messages/forward`).set(O)
+      .send({ toChatId: String(dm.id), messageIds: [] }).expect(400);
+  });
 });

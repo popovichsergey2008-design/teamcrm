@@ -3000,6 +3000,20 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   font-size: var(--fs-xs); color: var(--text-mut); font-style: italic;
 }
 
+/* #4640: выделение нескольких сообщений, как в Telegram */
+.msg-selmode { position: relative; padding-left: 38px; cursor: pointer; border-radius: var(--radius-sm); user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.msg-sel-on { background: var(--accent-soft); }
+.msg-sel {
+  position: absolute; left: 4px; top: 50%; translate: 0 -50%; width: 26px; height: 26px; padding: 0;
+  display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--border-2);
+  background: var(--bg-elev); color: transparent; cursor: pointer;
+}
+.msg-sel:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.msg-sel[aria-pressed="true"] { background: var(--accent-2); border-color: var(--accent-2); color: var(--on-accent); }
+.msg-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--bg-elev); }
+.msg-selbar b { margin-right: auto; }
+@media (pointer: coarse) { .msg-selbar .ui-btn { min-height: 44px; } }
+@media (max-width: 480px) { .msg-selbar b { flex-basis: 100%; } }
 /* Куда переслать: список чатов с поиском. */
 .forward-card { display: flex; flex-direction: column; gap: 8px; max-width: 460px; }
 .forward-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }

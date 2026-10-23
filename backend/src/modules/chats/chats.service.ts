@@ -819,6 +819,64 @@ export class ChatsService {
     return message;
   }
 
+  /**
+   * Переслать несколько сообщений разом (#4640, «выделить, как в Telegram»).
+   *
+   * Правила те же, что у одиночной пересылки: доступ к обоим чатам, автор оригинала
+   * в пометке, вложения той же привязкой. Каждое сообщение обязано лежать в исходном
+   * чате — по нему и проверен доступ; чужое id в пачке отклоняет ВСЮ пачку, а не
+   * молча выпадает: человек должен знать, что переслалось не всё.
+   *
+   * В чат получателя сообщения ложатся в порядке их времени, а не щелчков, одной
+   * транзакцией. Уведомление — одно на пачку: десять звонков подряд ради одной
+   * пересылки — шум.
+   */
+  async forwardMany(
+    tenantId: string, fromChatId: string, messageIds: string[],
+    user: { userId: string; role: string }, toChatId: string,
+  ) {
+    const ids = [...new Set(messageIds.map(String))];
+    if (!ids.length) throw AppException.validation('Не выбрано ни одного сообщения');
+    if (ids.length > ChatsService.FORWARD_LIMIT) {
+      throw AppException.validation(`За раз можно переслать не больше ${ChatsService.FORWARD_LIMIT} сообщений`);
+    }
+    await this.access(tenantId, fromChatId, user);
+    const target = await this.access(tenantId, toChatId, user);
+    const src = (await this.repo.forwardSources(tenantId, ids))
+      .filter((m) => String(m.chat_id) === String(fromChatId));
+    if (src.length !== ids.length) {
+      const found = new Set(src.map((m) => String(m.id)));
+      const missing = ids.filter((id) => !found.has(id));
+      throw AppException.notFound(`Сообщения не найдены в этом чате: ${missing.join(', ')}`);
+    }
+    const created = await this.repo.addForwardedBatch({
+      tenantId, chatId: toChatId, authorId: user.userId, fromChatId,
+      items: src.map((m) => ({
+        body: String(m.body ?? ''),
+        fileIds: m.fileIds,
+        author: m.forwarded_author ?? m.author_name ?? 'Собеседник',
+        fromId: String(m.id),
+      })),
+    });
+    const messages = [];
+    for (const id of created) {
+      const full = await this.repo.messageById(id);
+      if (full) messages.push(full);
+    }
+    const to = await this.recipients(target, tenantId);
+    for (const message of messages) this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId: toChatId, message });
+    void this.push.chatMessage({
+      tenantId, chatId: toChatId, chatKind: target.kind, chatTitle: target.title,
+      authorId: user.userId, authorName: null,
+      text: messages.length === 1 ? String(src[0].body || 'вложение') : `Переслано сообщений: ${messages.length}`,
+      recipients: to, mentioned: [], modes: await this.repo.notifyModes(toChatId), threadRootId: null,
+    }).catch(() => undefined);
+    return { forwarded: messages.length, messages };
+  }
+
+  /** Сколько сообщений пересылают за один раз: дальше — уже выгрузка переписки. */
+  static readonly FORWARD_LIMIT = 100;
+
   /** Откуда взялась задача: чат, автор и сама фраза. */
   sourceMessage(tenantId: string, taskId: string) {
     return this.repo.sourceMessage(tenantId, taskId);

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -43,6 +43,11 @@ class ReactionDto {
 }
 class ForwardDto {
   @IsString() @MaxLength(32) toChatId!: string;
+}
+/** Пакетная пересылка (#4640): id сообщений исходного чата, не больше 100 за раз. */
+class ForwardManyDto {
+  @IsString() @MaxLength(32) toChatId!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(100, { message: "За раз можно переслать не больше 100 сообщений" }) @Matches(/^\d{1,19}$/, { each: true }) messageIds!: string[];
 }
 class PinDto {
   @IsOptional() @IsBoolean() pinned?: boolean;
@@ -398,6 +403,15 @@ export class ChatsController {
   @Post(':id/messages/:mid/unread')
   unreadFrom(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
     return this.chats.markUnreadFrom(u.tenantId, id, u, mid);
+  }
+
+  /**
+   * Переслать несколько выделенных сообщений одним действием (#4640). Порядок в чате
+   * получателя — по времени исходных сообщений; всё или ничего.
+   */
+  @Post(':id/messages/forward')
+  forwardMany(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ForwardManyDto) {
+    return this.chats.forwardMany(u.tenantId, id, dto.messageIds.map(String), u, String(dto.toChatId));
   }
 
   /** Переслать сообщение в другой чат — как в Telegram. */

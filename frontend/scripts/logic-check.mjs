@@ -1721,6 +1721,31 @@ test('показ экрана: кто говорил последним — пе
   assert.deepEqual(orderBySpeech(['a', 'c'], (x) => x, o), ['a', 'c'], 'ушедший говорящий порядок не ломает');
 });
 
+test('выделение сообщений: порядок, права, копирование (#4640)', async () => {
+  const { toggleSel, rangeSel, orderedSel } = await load('lib/chat-select.ts');
+  const { canDeleteAll, selCopyText } = await load('lib/chat-select-actions.ts');
+  let s = toggleSel(null, '5'); s = toggleSel(s, '3');
+  assert.deepEqual(s, ['5', '3']);
+  assert.equal(toggleSel(toggleSel(s, '5'), '3'), null, 'снят последний — режим выключается');
+  assert.deepEqual(rangeSel(['1'], ['1', '2', '3', '4'], '4', '2'), ['1', '2', '3', '4'], 'Shift — диапазон в обе стороны, к выбранному');
+  assert.deepEqual(rangeSel(['3'], ['1', '2', '3', '4'], '2', '4'), ['3', '2', '4']);
+  assert.deepEqual(rangeSel(null, ['1', '2'], null, '2'), ['2'], 'без опоры — как обычный щелчок');
+  const at = (h, mi) => new Date(2026, 9, 23, h, mi).toISOString();
+  const msgs = [
+    { id: 10, created_at: at(12, 5), author_id: 1, author_name: 'Анна', body: 'позже' },
+    { id: 7, created_at: at(9, 3), author_id: 2, author_name: 'Пётр', body: '', files: [{ name: 'a.png' }] },
+    { id: 8, created_at: at(9, 3), author_id: 1, is_ai: false, author_name: 'Анна', body: ' раньше ', forwarded_author: 'Ира' },
+    { id: 11, created_at: at(13, 0), author_id: 1, body: 'не выбрано' },
+  ];
+  const ord = orderedSel(msgs, ['10', '8', '7']);
+  assert.deepEqual(ord.map((m) => m.id), [7, 8, 10], 'по времени, при равном — по id');
+  assert.equal(canDeleteAll(ord, 1), false, 'среди выбранных чужое');
+  assert.equal(canDeleteAll(ord.filter((m) => m.author_id === 1), '1'), true);
+  assert.equal(canDeleteAll([], 1), false);
+  assert.equal(selCopyText(ord),
+    'Пётр, [23.10.2026 09:03]\n[a.png]\n\nАнна, [23.10.2026 09:03]\n[Переслано от Ира]\nраньше\n\nАнна, [23.10.2026 12:05]\nпозже');
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

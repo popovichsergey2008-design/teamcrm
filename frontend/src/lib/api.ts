@@ -1790,6 +1790,9 @@ export const api = {
   /** Переслать сообщение в другой чат — с автором оригинала и вложениями. */
   forwardMessage: (chatId: string, messageId: string, toChatId: string) =>
     request<any>('POST', `/chats/${chatId}/messages/${messageId}/forward`, { toChatId }),
+  /** Пакетная пересылка выделенных (#4640): одним запросом, порядок — по времени. */
+  forwardMessages: (chatId: string, messageIds: string[], toChatId: string) =>
+    request<any>('POST', `/chats/${chatId}/messages/forward`, { toChatId, messageIds }),
   openDm: (userId: string) => request<{ id: string; kind: string }>('POST', '/chats/dm', { userId }),
   createChatGroup: (title: string, userIds: string[]) => request<any>('POST', '/chats/groups', { title, userIds }),
   openProjectChat: (projectId: string) => request<{ id: string; kind: string }>('POST', `/chats/project/${projectId}`),

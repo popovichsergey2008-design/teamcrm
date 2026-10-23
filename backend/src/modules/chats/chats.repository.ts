@@ -468,7 +468,12 @@ export class ChatsRepository {
         [i.threadRootId],
       );
     }
-    const full = await this.db.one<MessageRow>(
+    return (await this.messageById(row!.id))!;
+  }
+
+  /** Сообщение в том виде, в каком его получают отправитель и все по сокету. */
+  messageById(id: string | number): Promise<MessageRow | null> {
+    return this.db.one<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
               f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
               m.thread_root_id, m.reply_count, m.last_reply_at,
@@ -490,9 +495,8 @@ export class ChatsRepository {
     LEFT JOIN chat_messages r ON r.id = m.reply_to_id
     LEFT JOIN users ru ON ru.id = r.author_id
         WHERE m.id=$1`,
-      [row!.id],
+      [id],
     );
-    return full!;
   }
 
   /**
@@ -1036,6 +1040,65 @@ export class ChatsRepository {
     );
     const ids = files.map((f) => String(f.file_id));
     return { ...row, fileIds: ids.length ? ids : (row.file_id ? [String(row.file_id)] : []) };
+  }
+
+  /**
+   * Несколько сообщений для пакетной пересылки (#4640) — одним запросом, сразу в
+   * порядке их времени: так они и лягут в чат получателя.
+   */
+  async forwardSources(tenantId: string, messageIds: string[]) {
+    const rows = await this.db.many<{
+      id: string; chat_id: string; body: string; author_name: string | null;
+      forwarded_author: string | null; file_id: string | null; created_at: string; file_ids: string[] | null;
+    }>(
+      `SELECT m.id::text, m.chat_id::text, m.body, u.full_name AS author_name, m.forwarded_author,
+              m.file_id::text, m.created_at,
+              (SELECT array_agg(mf.file_id::text ORDER BY mf.position, mf.file_id)
+                 FROM chat_message_files mf WHERE mf.tenant_id=$1 AND mf.message_id=m.id) AS file_ids
+         FROM chat_messages m
+         LEFT JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id=$1 AND m.id = ANY($2::bigint[]) AND m.deleted_at IS NULL
+        ORDER BY m.created_at, m.id`,
+      [tenantId, messageIds],
+    );
+    return rows.map((r) => ({
+      ...r,
+      fileIds: r.file_ids?.length ? r.file_ids : (r.file_id ? [String(r.file_id)] : []),
+    }));
+  }
+
+  /**
+   * Положить пересылаемые сообщения в чат ОДНОЙ транзакцией: или легли все, или ни
+   * одного — половина пересланного разговора хуже, чем ничего (её примут за целое).
+   * Возвращает id новых сообщений в том же порядке.
+   */
+  async addForwardedBatch(i: {
+    tenantId: string; chatId: string; authorId: string; fromChatId: string;
+    items: { body: string; fileIds: string[]; author: string; fromId: string }[];
+  }): Promise<string[]> {
+    return this.db.withTransaction(async (c) => {
+      const ids: string[] = [];
+      for (const it of i.items) {
+        const row = (await c.query<{ id: string }>(
+          `INSERT INTO chat_messages
+             (tenant_id, chat_id, author_id, body, file_id, forwarded_author, forwarded_from_id, forwarded_chat_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::bigint,$8::bigint) RETURNING id::text`,
+          [i.tenantId, i.chatId, i.authorId, it.body, it.fileIds[0] ?? null, it.author, it.fromId, i.fromChatId],
+        )).rows[0];
+        if (it.fileIds.length) {
+          await c.query(
+            `INSERT INTO chat_message_files (message_id, file_id, tenant_id, position)
+                  SELECT $1, x.id, $2, x.pos
+                    FROM unnest($3::bigint[]) WITH ORDINALITY AS x(id, pos)
+             ON CONFLICT DO NOTHING`,
+            [row.id, i.tenantId, it.fileIds],
+          );
+        }
+        ids.push(String(row.id));
+      }
+      await c.query(`UPDATE chats SET last_message_at=now() WHERE id=$1`, [i.chatId]);
+      return ids;
+    });
   }
 
   messageBody(tenantId: string, id: string) {
