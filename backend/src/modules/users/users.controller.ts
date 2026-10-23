@@ -37,6 +37,8 @@ class UpdateUserDto {
   @IsOptional() @IsArray() @IsIn(SKILLS as unknown as string[], { each: true }) skills?: string[];
   @IsOptional() @IsBoolean() canReceiveAutoTasks?: boolean;
   @IsOptional() @IsNumber() @Min(0.5) @Max(2) autoAssignmentWeight?: number;
+  /** #4615, 23.10: кому подчиняется; null — руководитель его отдела. */
+  @IsOptional() @IsString() reportsToUserId?: string | null;
 }
 
 @ApiTags('users')
@@ -71,6 +73,7 @@ export class UsersController {
       skills: dto.skills,
       canReceiveAutoTasks: dto.canReceiveAutoTasks,
       autoAssignmentWeight: dto.autoAssignmentWeight,
+      reportsToUserId: dto.reportsToUserId === undefined ? undefined : dto.reportsToUserId ? String(dto.reportsToUserId) : null,
     }, { actorId: user.userId, actorRole: user.role });
   }
 }

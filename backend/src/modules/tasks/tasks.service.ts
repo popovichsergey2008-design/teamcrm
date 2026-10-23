@@ -1,6 +1,6 @@
 import { stripPasteJunk } from '../../common/text/paste-junk';
 import { WorkloadGuardService } from '../workload/workload.service';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { TagsService } from '../tags/tags.service';
 import { SecurityService } from '../security/security.service';
@@ -23,6 +23,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { nextWednesday } from './deadline-shift';
 import { effectsOf, FollowupAnswer, shiftTarget } from './followup-rules';
 import { FollowupsRepository } from './followups.repository';
+import { OrgService } from '../org/org.service';
 
 @Injectable()
 export class TasksService {
@@ -65,6 +66,8 @@ export class TasksService {
     private readonly workload: WorkloadGuardService,
     /** Ящик уведомлений: увиденное и неактуальное гасится и в шторке (#1531). */
     private readonly push: PushService,
+    /** #4615, 23.10: структура компании — обучение на переназначениях постановщика. */
+    @Optional() private readonly org?: OrgService,
   ) {}
 
   /**
@@ -199,6 +202,12 @@ export class TasksService {
     await this.tags.applyToNewTask(tenantId, user, String(task.id), String(task.project_id), {
       tagIds: dto.labelIds, suggestedTagIds: dto.suggestedTagIds,
     });
+    // #4615, 23.10: тегов не выбрали и «без тегов» не сказали — ИИ ставит сам (если компания не требует подтверждения)
+    if (!dto.labelIds?.length && dto.confirmedWithoutTags !== true) {
+      void this.tags.autoTagNew(tenantId, user, String(task.id), String(task.project_id), {
+        title: task.title, description: task.description ?? null,
+      });
+    }
     return task;
   }
 
@@ -398,6 +407,10 @@ export class TasksService {
       Пети на Петю — новостью это не является.
     */
     const newAssignee = String(updated?.assignee_id ?? '');
+    // #4615, 23.10: постановщик переназначил задачу направления — учимся, кто за него отвечает
+    if (newAssignee && actorId && existing.assignee_id && newAssignee !== String(existing.assignee_id)) {
+      void this.org?.noteReassign(tenantId, { taskId: String(id), actorId: String(actorId), assigneeId: newAssignee });
+    }
     if (newAssignee && newAssignee !== String(existing.assignee_id ?? '') && newAssignee !== String(actorId ?? '')) {
       this.realtime.emitToUsers(tenantId, [newAssignee], 'task.for_you', {
         taskId: String(id),

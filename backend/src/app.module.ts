@@ -38,6 +38,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
 import { FilesModule } from './modules/files/files.module';
 import { TeamModule } from './modules/team/team.module';
+import { OrgModule } from './modules/org/org.module';
 import { InvitesModule } from './modules/team/invites.module';
 import { AccountModule } from './modules/account/account.module';
 import { TaskCardModule } from './modules/taskcard/taskcard.module';
@@ -128,6 +129,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     ForecastModule,
     FilesModule,
     TeamModule,
+    OrgModule,
     InvitesModule,
     AccountModule,
     TaskCardModule,

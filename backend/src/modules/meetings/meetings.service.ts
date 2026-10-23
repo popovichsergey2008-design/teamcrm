@@ -1,7 +1,9 @@
 import { ProjectResolverService } from '../nl/project-resolver.service';
 import { TagsService } from '../tags/tags.service';
 import { ProjectViewer } from '../../common/access/project-visibility';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { OrgService } from '../org/org.service';
+import { orgLines } from '../org/org-rules';
 import { Readable } from 'stream';
 import { AppException } from '../../common/http/app-exception';
 import { AiService } from '../ai/ai.service';
@@ -77,6 +79,8 @@ export class MeetingsService {
     /** ТЗ-31: проект черновика, если у встречи его нет. */
     private readonly projectResolver: ProjectResolverService,
     private readonly tags: TagsService,
+    /** #4615, 23.10: структура компании — модели в разбор и подбор «руководителю дизайна». */
+    @Optional() private readonly org?: OrgService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -613,9 +617,12 @@ export class MeetingsService {
     ]);
     // Состав команды и доски идут вместе со стенограммой: без них модель не свяжет
     // «поставь на Юру» с Юрием Про и «в колонку Тексты» — с настоящей колонкой.
-    const roster = team.length
+    // #4615, 23.10: должности и иерархия — «поставь руководителю дизайна» модель свяжет с человеком
+    const org = this.org ? await this.org.snapshot(tenantId).catch(() => null) : null;
+    const structure = org ? orgLines(org) : '';
+    const roster = (team.length
       ? `Сотрудники компании: ${team.map((u) => u.full_name).slice(0, 60).join(', ')}.\n`
-      : '';
+      : '') + (structure ? `${structure}\n` : '');
     // О чём проект и его другие названия (19.10): на встрече говорят «по CRM», «в мобилке»,
     // а не имя доски — без описания модель не свяжет это с проектом.
     const about = (p: { description: string | null; aliases: string[] | null }) => {
@@ -718,12 +725,35 @@ export class MeetingsService {
       }));
     }
 
+    /*
+      #4615, 23.10: исполнителя не назвали по имени — то же правило, что везде: роль
+      («руководителю дизайна»), иначе руководитель отдела направления. Подбор «по загрузке»
+      здесь не берём: задачи со встречи с исполнителем создаются сами.
+    */
+    const finalProject = (t: (typeof value.tasks)[number], i: number) => matchNamed(projects, t.projectHint)?.id ?? resolvedFor.get(i) ?? projectId ?? null;
+    const seers = org && this.org
+      ? await this.org.seers(tenantId, value.tasks.map((t, i) => finalProject(t, i)).filter((x): x is string => !!x).map(String)).catch(() => new Map<string, Set<string>>())
+      : new Map<string, Set<string>>();
+    const byStructure = (t: (typeof value.tasks)[number], i: number): string | null => {
+      if (!org || !this.org) return null;
+      const pid = finalProject(t, i);
+      const see = pid ? seers.get(String(pid)) ?? new Set<string>() : null;
+      const c = this.org.decide(org, (u) => !see || see.has(String(u)), {
+        authorId: matchTeamMember(team, t.authorHint) ?? (meeting?.created_by ? String(meeting.created_by) : null),
+        text: [t.assigneeHint, t.title, t.description, t.quote].filter(Boolean).join('\n'),
+      });
+      if (!c.userId || !['role', 'lead', 'deputy'].includes(c.source)) return null;
+      const got = org.people.find((p) => p.id === c.userId);
+      if (got) got.openTasks += 1;
+      return c.userId;
+    };
+
     await this.repo.replaceDrafts(tenantId, meetingId, value.tasks.map((t, i) => {
       // Названный вслух проект важнее выбранного при загрузке записи: на встрече
       // говорят о деле, а поле в форме часто оставляют пустым.
       const project = matchNamed(projects, t.projectHint);
       const column = project ? matchNamed(project.columns ?? [], t.columnHint) : null;
-      const assigneeId = matchTeamMember(team, t.assigneeHint);
+      const assigneeId = matchTeamMember(team, t.assigneeHint) ?? byStructure(t, i);
       const at = speakerAt(replies, t.sec, t.quote);
       return {
         title: t.title,

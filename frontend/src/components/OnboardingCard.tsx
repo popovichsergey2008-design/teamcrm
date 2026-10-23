@@ -56,6 +56,7 @@ export function OnboardingCard({ always = false }: {
     if (step.key === 'departments') return setDialog('departments');
     if (step.key === 'team') return setDialog('team');
     if (step.key === 'ai_demo') return navigate('/onboarding/ai-call?from=checklist');
+    if (step.key === 'leads') return navigate('/settings/team?tab=structure');
     // Проект и задача заводятся там же, где их заводят всегда: отдельного «мастера
     // создания» нет намеренно — человек должен запомнить настоящий путь, а не учебный.
     return navigate({ section: 'projects' });

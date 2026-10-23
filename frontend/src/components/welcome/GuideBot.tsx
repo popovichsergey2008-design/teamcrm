@@ -12,7 +12,7 @@ import type { IconName } from '../Icon';
 import { VoiceStatus } from '../VoiceStatus';
 import { PROJECTS_CHANGED } from '../ProjectsNav';
 import { nameSuggestions, phraseDeadline, phraseTitle, type Sphere } from './phrase';
-import { answered, back as stepBack, built, canBack, canForward, initial, keyOf, starterBody, sync, TOTAL, type BotState, type Starter } from './flow';
+import { answered, at, back as stepBack, built, canBack, canForward, initial, keyOf, starterBody, sync, TOTAL, type BotState, type Starter } from './flow';
 import { Spot } from './Spot';
 
 /**
@@ -42,6 +42,10 @@ const INFO_LATER_ASK = 'Это работа не на минуту — можн�
 const NOW = 'Заполню сейчас';
 const LATER = 'Сделаю потом';
 const DONE_FILL = 'Готово, дальше';
+const LEADS = 'И последнее перед задачей: кто у тебя руководит направлениями — программированием, контентом, дизайном? Отметь их, и QEVO сам будет ставить задачи нужному руководителю. Можно пропустить и настроить потом в «Настройки → Команда».';
+const S_LEADS = at('leads');
+const S_TASK = at('task');
+const S_ASK = at('ask');
 const ASK_INTRO = 'Готово — первая задача стоит на доске со сроком. Спрашивай что угодно — голосом или текстом, а вот частые вопросы:';
 
 const SPHERES: { key: Exclude<Sphere, 'custom'>; label: string }[] = [
@@ -215,17 +219,18 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
   const toTask = (why: 'later' | 'filled') => {
     if (why === 'later') {
       note(4, user?.role === 'owner'
-        ? 'Хорошо — это можно сделать отдельно, задача не быстрая. Я оставил напоминание «Данные о проекте» в списке «Настройка QEVO». А сейчас давай создадим первую задачу!'
-        : 'Хорошо — это можно сделать отдельно, задача не быстрая. А сейчас давай создадим первую задачу!');
+        ? 'Хорошо — это можно сделать отдельно, задача не быстрая. Я оставил напоминание «Данные о проекте» в списке «Настройка QEVO».'
+        : 'Хорошо — это можно сделать отдельно, задача не быстрая.');
     } else {
-      note(4, 'Отлично! Теперь QEVO точнее поймёт, о каком проекте речь. Давай создадим первую задачу.');
+      note(4, 'Отлично! Теперь QEVO точнее поймёт, о каком проекте речь.');
       // окно «Настройки проекта» закрываем: иначе оно закрывает кнопку «Новая задача»
       document.querySelector<HTMLButtonElement>('.modal-card .drawer-head button[aria-label="Закрыть"]')?.click();
     }
-    patch({ step: 5, filling: false, mini: false });
+    patch({ step: S_LEADS, filling: false, mini: false });
     setPointSettings(false);
-    board();
   };
+  /** «Кто руководит направлениями»: настроить сейчас — «Настройки → Команда → Структура». */
+  const toTaskStep = () => { patch({ step: S_TASK, mini: false }); board(); };
 
   const fillNow = (to: InfoItem['to'] = 'settings') => {
     if (to === 'clients' && CLIENTS_ENABLED) {
@@ -242,7 +247,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
     setErr(''); setExtra(null); setNoRights(false); setPointSettings(false);
     setS((v) => stepBack(v));
     const prev = s.step - 1;
-    if (prev === 5) board();
+    if (prev === S_TASK) board();
   };
   const goForward = () => {
     if (!canForward(s) || busy) return;
@@ -250,7 +255,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
     if (key === 'team') { void leaveTeam(s); return; }
     if (key === 'info') { toTask(s.filling ? 'filled' : 'later'); return; }
     patch({ step: s.step + 1, filling: false });
-    if (s.step + 1 === 5) board();
+    if (s.step + 1 === S_TASK) board();
   };
 
   /** Фраза → задача в первой колонке со сроком (разбор команды + час из фразы). */
@@ -281,14 +286,14 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
     } finally { setAdding(false); }
   };
 
-  const toAsk = () => { askedAt.current = null; patch({ step: 6 }); };
+  const toAsk = () => { askedAt.current = null; patch({ step: S_ASK }); };
 
   // ── быстрые вопросы: настоящие действия, а не текст ──
   const canInvite = user?.role === 'owner' || user?.role === 'manager';
   const askInvite = async () => {
-    note(6, ASK_INVITE, 'me');
+    note(S_ASK, ASK_INVITE, 'me');
     if (!canInvite) {
-      note(6, 'Приглашать сотрудников может владелец или руководитель компании — попросите его, или позовите живого инженера.');
+      note(S_ASK, 'Приглашать сотрудников может владелец или руководитель компании — попросите его, или позовите живого инженера.');
       return;
     }
     try {
@@ -296,7 +301,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
       const link = `${window.location.origin}/?join=${r.token}`;
       let copied = false;
       try { await navigator.clipboard.writeText(link); copied = true; } catch { /* без доступа к буферу — ссылка на экране */ }
-      note(6, (
+      note(S_ASK, (
         <>
           {copied ? 'Ссылка-приглашение готова и уже скопирована' : 'Ссылка-приглашение готова'} — отправьте её сотрудникам.
           {s.project ? ` Проект «${s.project.name}» они увидят сразу после входа.` : ''}
@@ -311,16 +316,16 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
         </>
       ));
     } catch (e) {
-      note(6, e instanceof ApiError ? e.message : 'Не получилось сделать ссылку — попробуйте ещё раз.');
+      note(S_ASK, e instanceof ApiError ? e.message : 'Не получилось сделать ссылку — попробуйте ещё раз.');
     }
   };
 
   const askTelegram = async () => {
-    note(6, ASK_TG, 'me');
+    note(S_ASK, ASK_TG, 'me');
     try {
       const st = await api.telegramStatus();
       if (!st.botUrl) {
-        note(6, 'Telegram-бот у вашей компании ещё не подключён — позовите живого инженера, он подключит.');
+        note(S_ASK, 'Telegram-бот у вашей компании ещё не подключён — позовите живого инженера, он подключит.');
         return;
       }
       let url = st.botUrl;
@@ -329,7 +334,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
         url = `${st.botUrl}${st.botUrl.includes('?') ? '&' : '?'}start=${encodeURIComponent(code)}`;
       }
       window.open(url, '_blank', 'noopener');
-      note(6, (
+      note(S_ASK, (
         <>
           {st.linked
             ? 'Telegram уже привязан — открыл чат с ботом.'
@@ -341,13 +346,13 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
         </>
       ));
     } catch (e) {
-      note(6, e instanceof ApiError ? e.message : 'Не получилось открыть привязку — попробуйте ещё раз.');
+      note(S_ASK, e instanceof ApiError ? e.message : 'Не получилось открыть привязку — попробуйте ещё раз.');
     }
   };
 
   const askProject = () => {
-    note(6, ASK_PROJECT, 'me');
-    note(6, 'Подсветил кнопку «Новый проект». Общая доска — это тоже проект: по умолчанию его видит вся команда.');
+    note(S_ASK, ASK_PROJECT, 'me');
+    note(S_ASK, 'Подсветил кнопку «Новый проект». Общая доска — это тоже проект: по умолчанию его видит вся команда.');
     // без этого «Проекты» вернули бы на последнюю доску, а кнопка — в списке проектов
     forgetProject();
     navigate({ section: 'projects' });
@@ -415,8 +420,9 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
     ));
     pushNotes(4);
   }
-  if (s.step >= 5) { push('t', 'bot', 'Первая задача — на доске проекта: подсветил, где её ставить.'); pushNotes(5); }
-  if (s.step >= 6) { push('ask', 'bot', ASK_INTRO); pushNotes(6); }
+  if (s.step >= S_LEADS) { push('leads', 'bot', LEADS); pushNotes(S_LEADS); }
+  if (s.step >= S_TASK) { push('t', 'bot', 'Первая задача — на доске проекта: подсветил, где её ставить.'); pushNotes(S_TASK); }
+  if (s.step >= S_ASK) { push('ask', 'bot', ASK_INTRO); pushNotes(S_ASK); }
 
   return (
     <>
@@ -582,6 +588,12 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
                   <button className="wl-chip" onClick={() => toTask('later')}><Icon name="clock" size={14} /> {LATER}</button>
                 </>
               )
+            )}
+            {key === 'leads' && (
+              <>
+                {canInvite && <button className="wl-chip is-on" onClick={() => { patch({ mini: true }); navigate('/settings/team?tab=structure'); }}><Icon name="users" size={14} /> Настроить сейчас</button>}
+                <button className={`wl-chip${canInvite ? '' : ' is-on'}`} onClick={toTaskStep}><Icon name="clock" size={14} /> Пропустить</button>
+              </>
             )}
             {key === 'task' && (
               <button className="wl-chip is-on" onClick={() => { patch({ mini: false }); board(); }}>

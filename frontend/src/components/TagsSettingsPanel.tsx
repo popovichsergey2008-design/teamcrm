@@ -100,11 +100,27 @@ export function TagsSettingsPanel({ canManage, onClose }: { canManage: boolean; 
               <span>
                 Автоматически подбирать теги через QEVO AI
                 <span className="dim" style={{ display: 'block', fontSize: 12 }}>
-                  ИИ предлагает теги по тексту задачи. Пока предложения не подтвердит постановщик,
-                  задача не создаётся — молча проставленный тег хуже, чем его отсутствие.
+                  ИИ сам подбирает и ставит теги по тексту задачи — поправить можно в карточке.
                 </span>
               </span>
             </label>
+            {/* #4615, 23.10: подтверждение — по желанию компании, по умолчанию выключено */}
+            {settings.aiTagging && (
+              <label className="notify-row" style={{ cursor: canManage ? 'pointer' : 'default' }}>
+                <input
+                  type="checkbox"
+                  checked={settings.requireConfirmation}
+                  disabled={!canManage}
+                  onChange={(e) => void saveSettings({ requireConfirmation: e.target.checked })}
+                />
+                <span>
+                  Спрашивать постановщика перед созданием задачи
+                  <span className="dim" style={{ display: 'block', fontSize: 12 }}>
+                    Включите, если теги должен подтверждать человек: без этого задача не создастся.
+                  </span>
+                </span>
+              </label>
+            )}
 
             <div className="field">
               <label>Кто может заводить новые теги</label>

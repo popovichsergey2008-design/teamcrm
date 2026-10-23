@@ -5,6 +5,9 @@ import { Actor, ProactiveService } from '../proactive/proactive.service';
 import { ProactiveRepository, ProposalRow } from '../proactive/proactive.repository';
 import { fingerprint } from '../proactive/proactive-rules';
 import { AUTO_CONFIRM_DELAY_MS, confirmMessage } from './auto-task';
+import { OrgService } from '../org/org.service';
+import { directionHasLead, leadOptions } from '../org/org-rules';
+import { isSkill, Skill, SKILL_LABEL } from '../team/skills';
 
 /** Что считаем правкой постановщика: поля, которые он видит в сообщении. */
 const SNAP_SQL = "md5(concat_ws('|', t.title, t.description, t.assignee_id, t.project_id, t.deadline_at, t.priority))";
@@ -14,7 +17,7 @@ const TICK_MS = 5_000;
 
 interface DueRow {
   task_id: string; tenant_id: string; user_id: string; snap: string;
-  info: { projectWhy?: string | null; assigneeWhy?: string | null } | null;
+  info: { projectWhy?: string | null; assigneeWhy?: string | null; noLeadFor?: string | null } | null;
 }
 
 /**
@@ -37,6 +40,8 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
     private readonly db: DbService,
     private readonly proactive: ProactiveService,
     private readonly proactiveRepo: ProactiveRepository,
+    /** #4615, 23.10: «Кто отвечает за направление?» и обучение на правках. */
+    private readonly org: OrgService,
   ) {}
 
   onModuleInit(): void {
@@ -59,7 +64,7 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
   /** Запомнить: через 30 секунд спросить постановщика. Возвращает, когда придёт сообщение. */
   async schedule(
     tenantId: string, userId: string, taskId: string,
-    info: { projectWhy: string | null; assigneeWhy: string | null },
+    info: { projectWhy: string | null; assigneeWhy: string | null; noLeadFor?: string | null },
   ): Promise<string | null> {
     const row = await this.db.one<{ due_at: Date }>(
       `INSERT INTO task_auto_confirm (task_id, tenant_id, user_id, due_at, snap, info)
@@ -120,18 +125,34 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       edited, timeZone: tz,
     });
     const link = `/projects/${t.project_id}/task/${t.id}`;
+    /*
+      #4615, 23.10: у направления нет руководителя — спросить прямо здесь: «Кто отвечает
+      за <направление>?» [человек1] [человек2] [человек3]. Выбор назначает его
+      руководителем направления (создаёт или правит отдел) — следующие задачи пойдут ему.
+    */
+    const skill = isSkill(r.info?.noLeadFor) ? (r.info!.noLeadFor as Skill) : null;
+    let ask: { id: string; name: string }[] = [];
+    if (skill) {
+      const org = await this.org.snapshot(r.tenant_id).catch(() => null);
+      if (org && !directionHasLead(org, skill)) ask = leadOptions(org, skill, 3);
+    }
     const row = await this.proactive.propose({
       tenantId: r.tenant_id, userId: r.user_id, skill: 'autotask', kind: 'confirm',
       sourceType: 'task', sourceId: t.id, sourceAt: new Date(), sourceLabel: `Задача #${t.id}`, sourceLink: link,
       title: msg.title, summary: msg.summary, why: msg.why,
-      recommend: 'проверить задачу: всё ок — «Ок», нет — «Править»',
-      effect: '«Ок» отметит задачу проверенной вами; «Править» откроет её карточку.',
+      recommend: ask.length
+        ? `проверить задачу и ответить: кто отвечает за «${SKILL_LABEL[skill!]}»? — выберите человека, и такие задачи будут сразу уходить ему`
+        : 'проверить задачу: всё ок — «Ок», нет — «Править»',
+      effect: ask.length
+        ? '«Ок» отметит задачу проверенной вами; «Править» откроет её карточку; имя — назначит руководителя направления.'
+        : '«Ок» отметит задачу проверенной вами; «Править» откроет её карточку.',
       priority: 1, confidence: 0.95,
       actions: [
         { key: 'ok', label: 'Ок', risk: 'low_write', primary: true },
         { key: 'edit', label: 'Править', link },
+        ...ask.map((p) => ({ key: `lead:${p.id}`, label: `За «${SKILL_LABEL[skill!]}» — ${p.name}`, risk: 'low_write' as const })),
       ],
-      payload: { taskId: t.id, projectId: t.project_id, edited },
+      payload: { taskId: t.id, projectId: t.project_id, edited, ...(ask.length ? { skill } : {}) },
       fingerprint: fingerprint({ skill: 'autotask', sourceType: 'task', sourceId: t.id }),
       expiresAt: new Date(Date.now() + 3 * 86400_000),
     });
@@ -144,6 +165,20 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
     const projectId = String((p.payload as { projectId?: string }).projectId ?? '');
     const link = projectId ? `/projects/${projectId}/task/${taskId}` : null;
     if (action === 'edit') return { text: 'Откройте задачу и поправьте', link, keepOpen: true };
+    // #4615, 23.10: руководитель направления — из сообщения-подтверждения или карточки обучения
+    const pay = p.payload as { skill?: string; userId?: string };
+    if (action.startsWith('lead:') || action === 'lead_yes') {
+      if (!['owner', 'manager'].includes(a.role)) throw AppException.forbidden('Структуру компании меняют владелец и руководитель');
+      const skill = isSkill(pay.skill) ? pay.skill : null;
+      const userId = action === 'lead_yes' ? String(pay.userId ?? '') : action.slice(5);
+      if (!skill || !userId) throw AppException.validation('Не понял, кого назначить');
+      const d = await this.org.setDirectionLead(a.tenantId, skill, userId);
+      const name = (await this.db.one<{ name: string }>(`SELECT full_name AS name FROM users WHERE tenant_id=$1 AND id=$2`, [a.tenantId, userId]))?.name ?? 'Сотрудник';
+      const text = `Готово: ${name} — руководитель направления «${SKILL_LABEL[skill]}» (отдел «${d.departmentName}»). Такие задачи теперь сразу уходят ему.`;
+      // в сообщении-подтверждении «Ок» ещё нужен — карточка остаётся открытой
+      return { text, link: '/settings/team', keepOpen: action !== 'lead_yes' };
+    }
+    if (action === 'lead_no') return { text: 'Хорошо, оставлю как есть', link: null };
     if (action !== 'ok') throw AppException.validation('Неизвестное действие');
     const done = await this.db.one<{ id: string }>(
       `UPDATE tasks SET manager_confirmed_at = now()

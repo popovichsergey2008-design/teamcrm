@@ -1,0 +1,35 @@
+/* #4615, 23.10: структура компании в «Настройки → Команда». Грузится вместе с настройками. */
+.org-wrap { display: flex; flex-direction: column; gap: 16px; }
+.org-rule { margin: 0; font-size: var(--fs-sm, 14px); }
+.org-section { display: flex; flex-direction: column; gap: 8px; }
+.org-section .drawer-section-title { margin: 0; }
+.org-callout { flex-wrap: nowrap; align-items: flex-start; }
+.org-hint { margin: 0; font-size: var(--fs-xs); }
+.org-leads { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.org-lead { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.org-lead-name { font-weight: 600; color: var(--text); }
+.org-lead-dept { font-size: var(--fs-xs); }
+
+/* оргсхема: вложенные списки с линией слева — читается и на телефоне */
+.org-tree, .org-tree ul { list-style: none; margin: 0; padding: 0; }
+.org-tree ul { margin-left: 10px; padding-left: 12px; border-left: 2px solid var(--border); }
+.org-tree li { margin: 4px 0; }
+.org-node {
+  display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px); background: var(--bg-elev); min-width: 0;
+}
+.org-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.org-meta { font-size: var(--fs-xs); color: var(--text-mut); overflow-wrap: anywhere; }
+
+/* должности: название, уровень, порядок */
+.pos-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 190px) auto; gap: 6px; align-items: center; }
+.pos-row-tools { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.pos-new { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 190px) auto; gap: 6px; margin-bottom: 10px; }
+.dept-extra { display: flex; flex-direction: column; gap: 4px; }
+.dept-extra .chip-row { margin: 0; }
+@media (max-width: 560px) {
+  .pos-row, .pos-new { grid-template-columns: 1fr; }
+  .pos-row-tools { justify-content: flex-start; }
+  .org-leads { grid-template-columns: 1fr; }
+}
+.team-boss { margin-top: 6px; }

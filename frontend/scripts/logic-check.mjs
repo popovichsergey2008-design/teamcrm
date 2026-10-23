@@ -1512,7 +1512,7 @@ test('первая задача от Qevo-бота: срок с часом и н
 
 test('Qevo-бот #4632: «Назад»/«Вперёд» по шагам, проект один — правится, а не создаётся второй', async () => {
   const f = await load('components/welcome/flow.ts');
-  assert.equal(f.TOTAL, 6);
+  assert.equal(f.TOTAL, 7);
   let s = f.initial();
   assert.equal(f.canBack(s), false, 'с первого шага назад некуда');
   assert.equal(f.canForward(s), false, 'вперёд — только по отвеченному');
@@ -1539,12 +1539,15 @@ test('Qevo-бот #4632: «Назад»/«Вперёд» по шагам, про
   assert.equal(f.sync(s), null);
   // передумал «один → с командой»
   assert.equal(f.sync({ ...s, team: true }), 'update');
+  // #4615, 23.10: «Кто руководит направлениями» — после данных о проекте, вперёд можно всегда
+  assert.equal(f.keyOf({ ...s, step: 5 }), 'leads');
+  assert.equal(f.canForward({ ...s, step: 5 }), true, 'шаг можно пропустить');
   // шаг задачи: вперёд — только когда задача поставлена
-  s = { ...s, step: 5 };
+  s = { ...s, step: f.at('task') };
   assert.equal(f.canForward(s), false);
   s = { ...s, task: '99' };
   assert.equal(f.canForward(s), true);
-  s = { ...s, step: 6 };
+  s = { ...s, step: f.at('ask') };
   assert.equal(f.canForward(s), false, 'последний шаг');
   // сохранённое место: чужое — с начала; без проекта дальше третьего — не пускаем
   assert.equal(f.restore(null), null);
@@ -1552,6 +1555,9 @@ test('Qevo-бот #4632: «Назад»/«Вперёд» по шагам, про
   assert.equal(f.restore({ v: 1, step: 9 }), null);
   assert.equal(f.restore({ v: 1, step: 5, name: 'X', sphere: 'it', team: true, project: null }).step, 3);
   assert.equal(f.restore({ ...s, mini: true }).mini, true);
+  // сохранено до шага «Кто руководит»: старая «задача» (5) — снова задача, а не новый шаг
+  assert.equal(f.keyOf(f.restore({ ...s, lv: undefined, step: 5 })), 'task');
+  assert.equal(f.restore({ ...s, step: 5 }).step, 5, 'новая раскладка не сдвигается');
 });
 
 // ── ТЗ-34 (#4620): Отдел заботы ────────────────────────────────────────────────

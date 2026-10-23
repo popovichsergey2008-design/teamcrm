@@ -65,7 +65,7 @@ export class UsersRepository {
   listEnriched(tenantId: string) {
     return this.db.many(
       `SELECT u.id, u.email, u.full_name, u.is_active, u.position_id, u.avatar_file_id,
-              r.code AS role_code, p.name AS position_name,
+              r.code AS role_code, p.name AS position_name, p.level AS position_level, u.reports_to_user_id,
               u.can_receive_auto_tasks, u.auto_assignment_weight,
               COALESCE(
                 (SELECT array_agg(s.skill ORDER BY s.skill) FROM user_skills s WHERE s.user_id = u.id),
@@ -239,7 +239,7 @@ export class UsersRepository {
   async updateManaged(
     tenantId: string,
     id: string,
-    patch: { roleCode?: string; positionId?: string | null; isActive?: boolean },
+    patch: { roleCode?: string; positionId?: string | null; isActive?: boolean; reportsToUserId?: string | null },
   ): Promise<UserRow | null> {
     const sets: string[] = [];
     const vals: any[] = [];
@@ -256,6 +256,11 @@ export class UsersRepository {
       sets.push(`is_active = $${i++}`);
       vals.push(patch.isActive);
     }
+    if (patch.reportsToUserId !== undefined) {
+      // руководитель — только свой и действующий; чужой id даёт NULL и отказ выше
+      sets.push(`reports_to_user_id = (SELECT x.id FROM users x WHERE x.id = $${i++}::bigint AND x.tenant_id = users.tenant_id AND x.is_active)`);
+      vals.push(patch.reportsToUserId);
+    }
     if (!sets.length) return this.findById(tenantId, id);
     sets.push(`updated_at = now()`);
     vals.push(tenantId, id);
@@ -264,6 +269,19 @@ export class UsersRepository {
        RETURNING *, (SELECT code FROM roles WHERE id = role_id) AS role_code`,
       vals,
     );
+  }
+
+  /** Есть ли `target` в цепочке «кому подчиняется» от `from` вверх (защита от кольца). */
+  async reportsChainHas(tenantId: string, from: string, target: string): Promise<boolean> {
+    const row = await this.db.one<{ hit: boolean }>(
+      `WITH RECURSIVE up AS (
+         SELECT id, reports_to_user_id, 1 AS depth FROM users WHERE tenant_id=$1 AND id=$2
+         UNION ALL
+         SELECT u.id, u.reports_to_user_id, up.depth + 1 FROM users u JOIN up ON u.id = up.reports_to_user_id
+          WHERE u.tenant_id=$1 AND up.depth < 50)
+       SELECT EXISTS (SELECT 1 FROM up WHERE id = $3) AS hit`, [tenantId, from, target],
+    );
+    return !!row?.hit;
   }
 
   async create(input: {

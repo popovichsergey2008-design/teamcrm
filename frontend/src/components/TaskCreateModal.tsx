@@ -271,7 +271,11 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       }
       setTitle(t.title);
       setDescription(t.description ?? '');
-      if (t.assigneeId) { setAssigneeId(String(t.assigneeId)); setAssigneeTouched(true); setAutoNote(''); }
+      // #4615, 23.10: исполнитель по общему правилу — с причиной; названный голосом — без подписи
+      if (t.assigneeId) {
+        setAssigneeId(String(t.assigneeId)); setAssigneeTouched(!!t.assigneeNamed || t.assigneeSource === 'role');
+        setAutoNote(t.assigneeNamed || !t.assigneeWhy ? '' : `Подобран автоматически: ${t.assigneeName} — ${t.assigneeWhy}. Можно сменить.`);
+      }
       if (t.deadline) setDeadline(/^\d{4}-\d{2}-\d{2}$/.test(t.deadline) ? `${t.deadline}T18:00` : localInput(t.deadline));
       setPriority(t.priority || 'normal');
       if (t.estimateHours) setEstimate(String(t.estimateHours));
@@ -335,7 +339,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         confirmedWithoutTags: tags.confirmedWithoutTags,
         requiresApproval,
         directions: directions.length ? directions : undefined,
-        confirmWorkload: o.confirmWorkload || (early.confirmed && !o.assigneeId) || undefined,
+        // #4615, 23.10: радар перегрузки — подсказка над кнопкой, а не стоп: «Создать» создаёт
+        confirmWorkload: true,
       });
       setCreatedId(String(created.id));
       feedback('task.created');

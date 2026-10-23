@@ -13,16 +13,18 @@ import { SecretaryService } from '../secretary/secretary.service';
 import { UsersRepository } from '../users/users.repository';
 import { matchUserInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
-import { AssigneeCandidate, pickAssignee, SURE_CONFIDENCE } from './assignee-pick';
-import { Department, departmentOf, isDepartment, isSkill, Skill, SKILL_LABEL, skillsCatalog } from '../team/skills';
+import { MIN_CONFIDENCE, SURE_CONFIDENCE } from './assignee-pick';
+import { Department, departmentOf, isDepartment, isSkill, Skill, skillsCatalog } from '../team/skills';
 import { directionsFromText, listItemsCount, MAX_AUTO_DIRECTIONS, TASK_DIRECTIONS } from '../team/direction-rules';
 import {
   cleanTitle, pickApproval, pickDeadline, pickEstimate, pickPriority,
   taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
-import { DepartmentInfo, pickAutoProject, pickDepartmentLead } from './auto-task';
+import { pickAutoProject } from './auto-task';
 import { AutoConfirmService } from './auto-confirm.service';
+import { OrgService } from '../org/org.service';
+import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
@@ -64,6 +66,12 @@ export interface NlDraft {
     assigneeWhy?: string;
     /** Теги, подобранные ИИ: в автоматической постановке принимаются сами. */
     autoTags?: { id: string; name: string; color: string | null }[];
+    /** #4615, 23.10: откуда исполнитель — назван, роль, руководитель отдела, тимлид, специалист, загрузка. */
+    assigneeSource?: string;
+    /** У направления нет руководителя — в сообщении-подтверждении спросим «кто отвечает». */
+    noLeadFor?: Skill | null;
+    /** Кого выбрала модель (по оргструктуре): берётся, только если исполнитель назван ролью. */
+    modelAssigneeId?: string | null;
   };
   /**
    * Кому и почему предлагаем поручить задачу (ТЗ-10, этап 4).
@@ -141,6 +149,8 @@ export class NlService {
     private readonly workload: WorkloadGuardService,
     private readonly projectResolver: ProjectResolverService,
     private readonly autoConfirm: AutoConfirmService,
+    /** #4615, 23.10: структура компании и одно правило подбора исполнителя. */
+    private readonly org: OrgService,
   ) {}
 
   private async roleOf(tenantId: string, userId: string): Promise<string | null> {
@@ -167,7 +177,14 @@ export class NlService {
         `SELECT id, name FROM projects WHERE tenant_id=$1 AND status <> 'archived' ORDER BY created_at DESC`, [tenantId]);
     const clients = await this.db.many<{ id: string; name: string }>(
       `SELECT id, name FROM clients WHERE tenant_id=$1 ORDER BY created_at DESC`, [tenantId]).catch(() => []);
-    return { users, projects, clients };
+    // #4615, 23.10: модель понимает должности и иерархию компании — роль вместо имени
+    const org = await this.org.snapshot(tenantId).catch(() => ({ people: [], departments: [] } as Org));
+    return { users, projects, clients, org };
+  }
+
+  /** Структура для модели: только если компания её хоть как-то задала (иначе — лишние токены). */
+  private static orgInput(org: Org) {
+    return org.departments.length || org.people.some((p) => p.positionName) ? orgForModel(org) : undefined;
   }
 
 
@@ -261,16 +278,34 @@ export class NlService {
     currentProjectId?: string | null, whole?: string | null,
     opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
   ): Promise<NlDraft> {
+    const draft = await this.parseRaw(tenantId, userId, text, currentProjectId, whole, opts);
+    // #4615, 23.10: исполнитель — по одному правилу для всех путей (бот, чат, входящие, /nl/parse)
+    if (draft.task) {
+      const src = (text ?? '').trim();
+      await this.distribute(tenantId, userId, [{
+        draft, item: null, source: src, around: whole ?? null,
+        named: draft.task.assigneeNamed ? draft.task.assigneeId : null,
+      }]);
+    }
+    return draft;
+  }
+
+  private async parseRaw(
+    tenantId: string, userId: string, text: string,
+    currentProjectId?: string | null, whole?: string | null,
+    opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
+  ): Promise<NlDraft> {
     const clean = (text ?? '').trim();
     /** Общая часть надиктовки: пусто, когда поручение и есть вся команда. */
     const around = (whole ?? '').trim() && (whole ?? '').trim() !== clean ? String(whole).trim() : '';
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
-    const { users, projects, clients } = await this.context(tenantId, userId);
+    const { users, projects, clients, org } = await this.context(tenantId, userId);
     const today = new Date().toISOString().slice(0, 10);
 
     const prompt = await this.prompts.resolve(tenantId, 'nl.command', { today }, userId);
-    const system = prompt?.body ?? FALLBACK_SYSTEM;
-    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today });
+    const orgIn = NlService.orgInput(org);
+    const system = `${prompt?.body ?? FALLBACK_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT}` : ''}`;
+    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today, ...(orgIn ? { org: orgIn } : {}) });
 
     let parsed: any = {};
     let modelAnswered = false;
@@ -350,9 +385,8 @@ export class NlService {
       else if (!projectId) warnings.push('Проект не определён — выберите проект');
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
       // — тогда ищем имя в команде сами.
-      const assigneeId = idIn(t.assigneeId, userSet)
-        ?? matchUserInText(clean, users)
-        ?? (around ? matchUserInText(around, users) : null);
+      const namedId = matchUserInText(clean, users) ?? (around ? matchUserInText(around, users) : null);
+      const assigneeId = namedId ?? idIn(t.assigneeId, userSet);
       if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
       // Срочность и срок модель нередко пропускает, хотя они сказаны прямым текстом
       // («срочно», «к пятнице»), — то же самое разбирают правила.
@@ -386,6 +420,8 @@ export class NlService {
         } : undefined,
         assigneeId, assigneeName: assigneeId ? userSet.get(assigneeId)! : null,
         priority, deadline, requiresApproval, checklist, estimateHours,
+        assigneeNamed: !!namedId,
+        modelAssigneeId: idIn(t.assigneeId, userSet),
       };
     } else if (intent === 'create_deal') {
       const d = parsed.deal ?? {};
@@ -433,10 +469,11 @@ export class NlService {
     const clean = (text ?? '').trim();
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
 
-    const { users, projects, clients } = await this.context(tenantId, userId);
+    const { users, projects, clients, org } = await this.context(tenantId, userId);
     const today = new Date().toISOString().slice(0, 10);
     // Справочник отделов — модели, а не в коде промпта: список меняется, промпт нет.
-    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today, catalog: skillsCatalog() });
+    const orgIn = NlService.orgInput(org);
+    const userMsg = JSON.stringify({ text: clean, projects, users, clients, today, catalog: skillsCatalog(), ...(orgIn ? { org: orgIn } : {}) });
 
     /*
       Счёт задач и одиночный разбор идут ОДНОВРЕМЕННО.
@@ -446,12 +483,12 @@ export class NlService {
       удвоить время ответа ради редкого случая. Одиночный черновик всё равно нужен как
       запасной, поэтому считаем его сразу и отдаём, если поручение оказалось одно.
     */
-    const single = this.parse(tenantId, userId, clean, currentProjectId, null, opts);
+    const single = this.parseRaw(tenantId, userId, clean, currentProjectId, null, opts);
     // Если пачка собралась, одиночный ответ не нужен — но его отказ не должен всплыть необработанным.
     single.catch(() => undefined);
     let items: any[] = [];
     try {
-      const raw = await this.ai.generate(tenantId, MANY_SYSTEM, userMsg, 'nl_command');
+      const raw = await this.ai.generate(tenantId, `${MANY_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT.replace('assigneeId', 'assignee')}` : ''}`, userMsg, 'nl_command');
       const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
       items = Array.isArray(parsed?.tasks) ? parsed.tasks : [];
     } catch (e) {
@@ -472,7 +509,7 @@ export class NlService {
       if (byRules.length >= 2) {
         this.log.log(`команда разделена правилами на ${byRules.length}: модель не ответила`);
         const ruleDrafts = (await Promise.all(
-          byRules.map((part) => this.parse(tenantId, userId, part, currentProjectId, clean, opts).catch(() => null)),
+          byRules.map((part) => this.parseRaw(tenantId, userId, part, currentProjectId, clean, opts).catch(() => null)),
         )).filter((d): d is NlDraft => !!d?.task);
         /*
           ТЗ по пунктам без модели (задача #1363). Раньше пункты здесь только делились:
@@ -481,8 +518,8 @@ export class NlService {
           каждый пункт раздаётся по словам так же, как одиночная задача в форме.
         */
         if (ruleDrafts.length > 1) {
-          await this.distribute(tenantId, ruleDrafts.map((d, i) => ({
-            draft: d, item: null, source: byRules[i],
+          await this.distribute(tenantId, userId, ruleDrafts.map((d, i) => ({
+            draft: d, item: null, source: byRules[i], around: clean,
             named: matchUserInText(byRules[i], users) ?? matchUserInText(clean, users),
           })));
           return ruleDrafts;
@@ -490,7 +527,7 @@ export class NlService {
       }
       const one = await single;
       // Одна задача: направления и исполнитель по словам, только если человека не назвали.
-      if (one.task) await this.distribute(tenantId, [{ draft: one, item: null, source: clean, named: one.task.assigneeId }]);
+      if (one.task) await this.distribute(tenantId, userId, [{ draft: one, item: null, source: clean, around: null, named: one.task.assigneeNamed ? one.task.assigneeId : null }]);
       return [one];
     }
 
@@ -501,7 +538,7 @@ export class NlService {
       // Кусок исходной речи, из которого выросла задача: по нему человек проверяет,
       // не выдумал ли ИИ, и правит формулировку осмысленно.
       const source = String(item?.source ?? '').trim() || clean;
-      const draft = await this.parse(tenantId, userId, source, currentProjectId, clean, opts).catch(() => null);
+      const draft = await this.parseRaw(tenantId, userId, source, currentProjectId, clean, opts).catch(() => null);
       if (!draft?.task) return null;
       draft.task.title = cleanTitle(title, item?.description ? String(item.description) : null).slice(0, 255);
       if (item?.description) draft.task.description = String(item.description);
@@ -510,180 +547,104 @@ export class NlService {
       }
       // Имя, названное в команде: в самом поручении или в общей части надиктовки.
       // Для слов — только свой кусок: вся команда дала бы каждому пункту направления всего ТЗ.
+      if (item?.assignee) {
+        const fromModel = matchUserInText(String(item.assignee), users);
+        if (fromModel) draft.task.modelAssigneeId = fromModel;
+      }
       return {
-        draft, item, source: String(item?.source ?? ''),
+        draft, item, source: String(item?.source ?? ''), around: clean,
         named: matchUserInText(source, users) ?? matchUserInText(clean, users),
       };
     }));
     const routed = parsedItems.filter((x): x is NonNullable<typeof x> => !!x);
     if (!routed.length) return [await single];
-    await this.distribute(tenantId, routed);
+    await this.distribute(tenantId, userId, routed);
     return routed.map((x) => x.draft);
   }
 
   /**
-   * Раздать задачи пачки по специалистам (задача #1363).
+   * Раздать задачи по ОДНОМУ правилу (#4615, 23.10; было #1363).
    *
-   * По ОЧЕРЕДИ, а не параллельно, и с учётом уже розданного: три бэкенд-пункта ТЗ при
-   * двух бэкендерах раньше уходили одному — тому, у кого с утра было меньше задач, —
-   * потому что загрузка бралась из базы один раз на всю пачку. Теперь каждая выданная
-   * задача добавляется к загрузке получателя до подбора следующей.
+   * Названный человек или роль («тимлиду фронта», «моему руководителю») → направление
+   * задачи → отдел направления → его руководитель (постановщик сам руководит — тимлид
+   * или наименее загруженный специалист отдела) → структуры нет — прежний подбор по
+   * навыку и загрузке, с честной причиной. Только те, кто видит проект.
+   *
+   * По ОЧЕРЕДИ и с учётом уже розданного: три бэкенд-пункта ТЗ не уходят одному.
    */
   private async distribute(
-    tenantId: string,
-    list: { draft: NlDraft; item: any; source: string; named: string | null }[],
+    tenantId: string, userId: string,
+    list: { draft: NlDraft; item: any; source: string; around?: string | null; named: string | null }[],
   ): Promise<void> {
-    // Кандидаты на исполнение — один раз на всю пачку: список один и тот же.
-    const candidates = await this.autoCandidates(tenantId);
-    const members = await this.projectMembers(
-      list.map((x) => x.draft.task?.projectId).filter((p): p is string => !!p),
-    );
+    const org = await this.org.snapshot(tenantId).catch(() => ({ people: [], departments: [] } as Org));
+    const seers = await this.org.seers(tenantId, list.map((x) => x.draft.task?.projectId).filter((p): p is string => !!p));
     for (const x of list) {
-      const projectId = x.draft.task?.projectId;
-      for (const c of candidates) c.inProject = !!projectId && !!members.get(projectId)?.has(c.userId);
-      this.route(x.draft, x.item, candidates, x.named, x.source);
-      const got = candidates.find((c) => c.userId === x.draft.task?.assigneeId);
+      const t = x.draft.task;
+      if (!t) continue;
+      const { skill, confidence, department, directions } = this.route(x.draft, x.item, x.source);
+      const see = t.projectId ? seers.get(String(t.projectId)) ?? new Set<string>() : null;
+      const canSee = (u: string) => !see || see.has(String(u));
+      // роль ищем в своём куске, потом во всей надиктовке («руководителю дизайна: первое… второе…»)
+      const decided = (txt: string) => this.org.decide(org, canSee, {
+        authorId: userId, text: txt, directions: skill ? [skill, ...directions] : directions,
+        namedUserId: x.named, modelAssigneeId: t.modelAssigneeId ?? null,
+      });
+      let c = decided([t.title, t.description ?? '', x.source].join('\n'));
+      if (x.around && !x.named && (c.source === 'lead' || c.source === 'deputy' || c.source === 'member' || c.source === 'load' || c.source === 'none')) {
+        const wide = decided([x.source, x.around].join('\n'));
+        if (wide.source === 'role') c = wide;
+      }
+      t.directions = (directions.length ? directions : c.directions).filter((d) => TASK_DIRECTIONS.includes(d)).slice(0, MAX_AUTO_DIRECTIONS);
+      x.draft.routing = {
+        department, skill: c.skill ?? skill, confidence,
+        suggestedAssigneeId: c.userId, suggestedAssigneeName: c.name, reason: c.reason,
+        sure: confidence >= SURE_CONFIDENCE || c.source === 'named' || c.source === 'role' || c.source === 'lead',
+      };
+      t.assigneeNamed = c.source === 'named';
+      t.assigneeId = c.userId;
+      t.assigneeName = c.name;
+      t.assigneeWhy = c.userId ? c.reason : '';
+      t.assigneeSource = c.source;
+      t.noLeadFor = c.noLeadFor;
+      for (const w of c.warnings) if (!x.draft.warnings.includes(w)) x.draft.warnings.push(w);
+      const got = org.people.find((p) => p.id === c.userId);
       if (got) got.openTasks += 1;
     }
   }
 
-  /** Участники проектов — свой человек в проекте быстрее входит в курс дела. */
-  private async projectMembers(projectIds: string[]): Promise<Map<string, Set<string>>> {
-    const out = new Map<string, Set<string>>();
-    const ids = [...new Set(projectIds)];
-    if (!ids.length) return out;
-    const rows = await this.db.many<{ project_id: string; user_id: string }>(
-      `SELECT project_id::text, user_id::text FROM project_members WHERE project_id = ANY($1::bigint[])`, [ids],
-    ).catch(() => []);
-    for (const r of rows) {
-      if (!out.has(r.project_id)) out.set(r.project_id, new Set());
-      out.get(r.project_id)!.add(r.user_id);
-    }
-    return out;
-  }
-
   /**
-   * Кандидаты для автоподбора: только те, кому разрешено ставить задачи (ТЗ-10, разд. 36).
-   *
-   * Список нужен и подбору, и промпту; берём его раз на всю пачку. Ошибка здесь не
-   * должна ронять разбор: без кандидатов просто не будет рекомендации.
+   * Направление, отдел и уверенность для одной задачи (ТЗ-10, этап 4). Исполнителя
+   * здесь больше не выбираем — это делает одно правило в `distribute`.
    */
-  private async autoCandidates(tenantId: string): Promise<AssigneeCandidate[]> {
-    try {
-      const rows = await this.users.autoCandidates(tenantId);
-      return rows.map((r) => ({
-        userId: String(r.id), name: r.full_name,
-        skills: (r.skills as string[]) ?? [],
-        openTasks: Number(r.open_tasks ?? 0),
-        weight: Number(r.weight ?? 1),
-      }));
-    } catch (e) {
-      this.log.warn(`кандидаты для автоподбора не получены: ${(e as Error).message}`);
-      return [];
-    }
-  }
-
-  /**
-   * Отдел, направление и рекомендуемый исполнитель для одной задачи (ТЗ-10, этап 4).
-   *
-   * Исполнителя, названного в самой команде («поставь Глебу»), НЕ трогаем: явная
-   * воля человека главнее любой рекомендации. Подставляем только туда, где его нет.
-   */
-  private route(
-    draft: NlDraft, item: any, candidates: AssigneeCandidate[], namedAssigneeId: string | null, source: string,
-  ): void {
-    if (!draft.task) return;
+  private route(draft: NlDraft, item: any, source: string): { skill: Skill | null; confidence: number; department: Department; directions: Skill[] } {
     let skill: Skill | null = isSkill(item?.specialization) ? item.specialization : null;
     const raw = Number(item?.confidence);
     let confidence = Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : 0;
+    // модель не уверена — её направлению не верим (ТЗ-10, разд. 38)
+    if (skill && confidence < MIN_CONFIDENCE) skill = null;
     /*
       Направления по словам — те же правила, что в форме задачи (direction-rules.ts).
-      Модель промолчала или не назвала направление — берём главное из слов: «свободнее
-      остальных» для задачи про API честно хуже, чем бэкендер с парой задач.
+      Модель промолчала или не назвала направление — берём главное из слов.
     */
-    const byWords = directionsFromText([draft.task.title, draft.task.description ?? '', source].join('\n'));
+    const byWords = directionsFromText([draft.task?.title ?? '', draft.task?.description ?? '', source].join('\n'));
     if (!skill && byWords.length) { skill = byWords[0]; confidence = 1; }
     const department: Department = isDepartment(item?.department) && item.department !== 'unknown'
       ? item.department
       : departmentOf(skill);
-    // Отметки направлений у задачи: главное первым, только из тех, что есть в карточке.
-    draft.task.directions = [...new Set([skill, ...byWords])]
+    const directions = [...new Set([skill, ...byWords])]
       .filter((d): d is Skill => !!d && TASK_DIRECTIONS.includes(d))
       .slice(0, MAX_AUTO_DIRECTIONS);
-
-    const pick = pickAssignee({ skill, confidence }, candidates);
-    draft.routing = {
-      department, skill, confidence,
-      suggestedAssigneeId: pick.userId,
-      suggestedAssigneeName: pick.name,
-      reason: pick.reason,
-      sure: confidence >= SURE_CONFIDENCE,
-    };
-    /*
-      Кто в итоге стоит исполнителем.
-
-      Названный в команде человек («поставь Глебу») главнее всего: это прямая воля
-      постановщика. Если имени не было, берём рекомендацию — она построена на
-      направлениях и загрузке. А вот исполнителя, которого модель выбрала САМА при
-      разборе одной задачи, не оставляем: живая проверка показала, как фронтовая
-      задача уходила контентщику «потому что модель так решила», и объяснить это
-      было нечем. Нет рекомендации — задача остаётся ничьей, это видно и поправимо.
-    */
-    draft.task.assigneeNamed = !!namedAssigneeId;
-    if (namedAssigneeId) return;
-    draft.task.assigneeId = pick.userId;
-    draft.task.assigneeName = pick.name;
+    return { skill, confidence, department, directions };
   }
 
   /**
-   * Автоматическая постановка (#4615): исполнитель — руководитель отдела по направлению
-   * задачи, теги — подобранные ИИ (принимаются сами: проверку заменяет «Ок» постановщика).
-   *
-   * Названный во фразе человек главнее, но только если видит проект. Руководитель не
-   * видит проект — участник того же отдела с этим направлением; отделы не настроены —
-   * прежний подбор по навыку и загрузке, тоже только среди видящих проект.
+   * Автоматическая постановка (#4615): исполнитель уже выбран одним правилом, здесь —
+   * пометка «авто» и теги, подобранные ИИ (принимаются сами).
    */
   private async autoFill(tenantId: string, drafts: NlDraft[]): Promise<void> {
     const list = drafts.filter((d) => d.task);
     if (!list.length) return;
-    const [departments, candidates, skillRows] = await Promise.all([
-      this.departments(tenantId), this.autoCandidates(tenantId),
-      this.db.many<{ user_id: string; skills: string[] }>(
-        `SELECT s.user_id::text, array_agg(s.skill) AS skills FROM user_skills s JOIN users u ON u.id = s.user_id
-          WHERE u.tenant_id=$1 GROUP BY s.user_id`, [tenantId],
-      ).catch(() => []),
-    ]);
-    const seers = await this.projectSeers(tenantId, list.map((d) => d.task!.projectId).filter((p): p is string => !!p));
-    const skills = new Map(skillRows.map((r) => [String(r.user_id), r.skills ?? []]));
-    const load = new Map(candidates.map((c) => [c.userId, c.openTasks]));
-    const names = new Map(list[0].context.users.map((u) => [String(u.id), u.name]));
-    for (const d of list) {
-      const t = d.task!;
-      t.auto = true;
-      const see = t.projectId ? seers.get(t.projectId) ?? new Set<string>() : null;
-      const canSee = (u: string) => !!see?.has(String(u));
-      if (t.assigneeNamed && t.assigneeId) {
-        if (!see || canSee(t.assigneeId)) { t.assigneeWhy = 'назван в тексте'; continue; }
-        d.warnings.push(`${t.assigneeName ?? 'Названный исполнитель'} не видит проект «${t.projectName ?? ''}» — назначен другой`);
-      }
-      const skill = d.routing?.skill ?? t.directions?.[0] ?? null;
-      const lead = see ? pickDepartmentLead(skill, departments, {
-        canSee, skillsOf: (u) => skills.get(u) ?? [], openTasks: (u) => load.get(u) ?? 0, nameOf: (u) => names.get(u) ?? null,
-      }) : null;
-      if (lead) {
-        t.assigneeId = lead.userId; t.assigneeName = lead.name || names.get(lead.userId) || null; t.assigneeWhy = lead.reason;
-        load.set(lead.userId, (load.get(lead.userId) ?? 0) + 1);
-        continue;
-      }
-      // прежний подбор — но только среди тех, кто видит проект
-      if (t.assigneeId && see && !canSee(t.assigneeId)) {
-        const pick = pickAssignee({ skill, confidence: 1 }, candidates.filter((c) => canSee(c.userId)));
-        t.assigneeId = pick.userId; t.assigneeName = pick.name;
-        t.assigneeWhy = pick.userId ? pick.reason : '';
-      } else {
-        t.assigneeWhy = t.assigneeId ? (d.routing?.reason ?? '') : '';
-      }
-    }
+    for (const d of list) d.task!.auto = true;
     // Теги — подбором ИИ из тегов компании; не подобрались — «без тегов».
     await Promise.all(list.map(async (d) => {
       const t = d.task!;
@@ -692,46 +653,6 @@ export class NlService {
       }).catch(() => null);
       t.autoTags = (r?.suggestions ?? []).map((x: { tagId: string; name: string; color: string | null }) => ({ id: String(x.tagId), name: x.name, color: x.color ?? null }));
     }));
-  }
-
-  /** Отделы с руководителем, направлениями и участниками (#4615). */
-  private async departments(tenantId: string): Promise<DepartmentInfo[]> {
-    const rows = await this.db.many<{ id: string; name: string; lead_user_id: string | null; directions: string[] | null; member_ids: string[] | null }>(
-      `SELECT g.id::text, g.name, g.lead_user_id::text, g.directions,
-              COALESCE(array_agg(ug.user_id::text) FILTER (WHERE ug.user_id IS NOT NULL), '{}') AS member_ids
-         FROM groups g LEFT JOIN user_groups ug ON ug.group_id = g.id
-        WHERE g.tenant_id=$1 AND g.kind='department'
-        GROUP BY g.id`, [tenantId],
-    ).catch((e) => { this.log.warn(`отделы для постановки: ${(e as Error).message}`); return []; });
-    return rows.map((r) => ({
-      id: String(r.id), name: r.name, leadUserId: r.lead_user_id ? String(r.lead_user_id) : null,
-      directions: r.directions ?? [], memberIds: (r.member_ids ?? []).map(String),
-    }));
-  }
-
-  /**
-   * Кто видит проекты — те же правила, что у доступа к проекту: владелец и менеджеры
-   * компании, проект «для всех», хозяин проекта, участники. Клиентов не берём.
-   */
-  private async projectSeers(tenantId: string, projectIds: string[]): Promise<Map<string, Set<string>>> {
-    const out = new Map<string, Set<string>>();
-    const ids = [...new Set(projectIds.map(String))];
-    if (!ids.length) return out;
-    const rows = await this.db.many<{ project_id: string; user_id: string }>(
-      `SELECT p.id::text AS project_id, u.id::text AS user_id
-         FROM projects p
-         JOIN users u ON u.tenant_id = p.tenant_id AND u.is_active = TRUE
-         JOIN roles r ON r.id = u.role_id
-        WHERE p.tenant_id=$1 AND p.id = ANY($2::bigint[]) AND r.code <> 'client'
-          AND (r.code IN ('owner', 'manager') OR p.visibility = 'all' OR p.owner_user_id = u.id
-               OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = u.id))`,
-      [tenantId, ids],
-    ).catch(() => []);
-    for (const r of rows) {
-      if (!out.has(r.project_id)) out.set(r.project_id, new Set());
-      out.get(r.project_id)!.add(String(r.user_id));
-    }
-    return out;
   }
 
   /** Последний проект, где человек ставил задачи (#4615: проект без вопросов). */
@@ -755,35 +676,69 @@ export class NlService {
   async autoAssign(
     tenantId: string,
     input: { title: string; description?: string | null; projectId?: string | null; directions?: string[] | null },
+    authorId: string | null = null,
   ) {
     const text = [input.title, input.description ?? ''].join('\n');
-    const given = (input.directions ?? []).filter(isSkill);
-    const directions = given.length ? given : directionsFromText(text);
     const items = listItemsCount(String(input.description ?? ''));
-    if (!directions.length) {
-      return { directions, assigneeId: null, assigneeName: null, reason: 'по тексту направление не понять', items };
-    }
-    const candidates = await this.autoCandidates(tenantId);
-    if (input.projectId) {
-      const members = await this.db.many<{ user_id: string }>(
-        `SELECT user_id::text FROM project_members WHERE project_id=$1`, [input.projectId],
-      ).catch(() => []);
-      const inProject = new Set(members.map((m) => String(m.user_id)));
-      for (const c of candidates) c.inProject = inProject.has(c.userId);
-    }
-    // Главное направление — первое: по нему и исполнитель. Остальные видны отметками.
-    const pick = pickAssignee({ skill: directions[0] as Skill, confidence: 1 }, candidates);
-    const chosen = pick.considered.find((c) => c.userId === pick.userId);
+    /*
+      #4615, 23.10: то же правило, что в быстрой команде, — названный человек или роль,
+      руководитель отдела направления, тимлид, специалист; структуры нет — по загрузке.
+      Раньше форма брала только навык и загрузку — и «всегда подставляла Глеба».
+    */
+    const users = await this.db.many<{ id: string; name: string }>(
+      `SELECT id::text, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE`, [tenantId]).catch(() => []);
+    const c = await this.org.chooseFor(tenantId, {
+      authorId, text, projectId: input.projectId ? String(input.projectId) : null,
+      directions: input.directions ?? null, namedUserId: matchUserInText(text, users),
+    });
+    const directions = c.directions.filter((d) => TASK_DIRECTIONS.includes(d));
     return {
       directions,
-      assigneeId: pick.userId,
-      assigneeName: pick.name,
-      // Словами, почему он: направление и сколько у него уже открытых задач.
-      reason: pick.userId
-        ? `${SKILL_LABEL[directions[0] as Skill]} · открытых задач: ${chosen?.openTasks ?? 0}`
-        : pick.reason,
+      assigneeId: c.userId,
+      assigneeName: c.name,
+      reason: c.reason,
+      source: c.source,
+      noLeadFor: c.noLeadFor,
+      warnings: c.warnings,
       items,
     };
+  }
+
+  /**
+   * Исполнитель для задачи из переписки (палочка в чате): правилами по словам, а если
+   * направление не понять — классификацией модели; дальше — одно правило подбора.
+   */
+  async assigneeFor(
+    tenantId: string, authorId: string | null,
+    input: { title: string; description?: string | null; projectId?: string | null; text?: string | null },
+  ) {
+    const text = [input.title, input.description ?? '', input.text ?? ''].join('\n');
+    const users = await this.db.many<{ id: string; name: string }>(
+      `SELECT id::text, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE`, [tenantId]).catch(() => []);
+    const base = { authorId, text, projectId: input.projectId ? String(input.projectId) : null, namedUserId: matchUserInText(text, users) };
+    const c = await this.org.chooseFor(tenantId, base);
+    if (c.userId || c.skill) return c;
+    const s = await this.classify(tenantId, [input.title, input.description ?? ''].filter(Boolean).join('. '));
+    if (!s.skill || s.confidence < MIN_CONFIDENCE) return c;
+    return this.org.chooseFor(tenantId, { ...base, directions: [s.skill] });
+  }
+
+  /** Отдел и направление готовой задачи моделью (одна задача, только классификация). */
+  private async classify(tenantId: string, text: string): Promise<{ department: Department; skill: Skill | null; confidence: number }> {
+    let department: Department = 'unknown';
+    let skill: Skill | null = null;
+    let confidence = 0;
+    try {
+      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify({ text: text.slice(0, 1200), catalog: skillsCatalog() }), 'nl_command');
+      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      if (isDepartment(parsed?.department)) department = parsed.department;
+      if (isSkill(parsed?.specialization)) skill = parsed.specialization;
+      const c = Number(parsed?.confidence);
+      confidence = Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0;
+    } catch (e) {
+      this.log.warn(`классификация задачи без модели: ${(e as Error).message}`);
+    }
+    return { department, skill, confidence };
   }
 
   /**
@@ -798,42 +753,25 @@ export class NlService {
    */
   async suggestAssignee(
     tenantId: string, input: { title: string; description?: string | null; projectId?: string | null },
+    authorId: string | null = null,
   ) {
     const title = String(input.title ?? '').trim();
     if (title.length < 3) throw AppException.validation('Слишком короткое название задачи');
 
     const text = [title, input.description ? String(input.description).slice(0, 1000) : ''].filter(Boolean).join('. ');
-    let department: Department = 'unknown';
-    let skill: Skill | null = null;
-    let confidence = 0;
-    try {
-      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify({ text, catalog: skillsCatalog() }), 'nl_command');
-      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
-      if (isDepartment(parsed?.department)) department = parsed.department;
-      if (isSkill(parsed?.specialization)) skill = parsed.specialization;
-      const c = Number(parsed?.confidence);
-      confidence = Number.isFinite(c) ? Math.min(1, Math.max(0, c)) : 0;
-    } catch (e) {
-      this.log.warn(`подбор исполнителя без модели: ${(e as Error).message}`);
-    }
-
-    const candidates = await this.autoCandidates(tenantId);
-    // Свой человек в проекте быстрее входит в курс дела — это учитывает подбор.
-    if (input.projectId) {
-      const members = await this.db.many<{ user_id: string }>(
-        `SELECT user_id::text FROM project_members WHERE project_id=$1`, [input.projectId],
-      ).catch(() => []);
-      const inProject = new Set(members.map((m) => String(m.user_id)));
-      for (const c of candidates) c.inProject = inProject.has(c.userId);
-    }
-
-    const pick = pickAssignee({ skill, confidence }, candidates);
+    const { department, skill, confidence } = await this.classify(tenantId, text);
+    // #4615, 23.10: кому — одним правилом (структура компании, видимость проекта, загрузка)
+    const c = await this.org.chooseFor(tenantId, {
+      authorId, text, projectId: input.projectId ? String(input.projectId) : null,
+      directions: skill && confidence >= MIN_CONFIDENCE ? [skill] : [],
+    });
+    const unsure = !c.userId && (!skill || confidence < MIN_CONFIDENCE) && c.source === 'none';
     return {
-      department, skill, confidence,
-      suggestedAssigneeId: pick.userId,
-      suggestedAssigneeName: pick.name,
-      reason: pick.reason,
-      sure: confidence >= SURE_CONFIDENCE,
+      department, skill: c.skill ?? skill, confidence,
+      suggestedAssigneeId: c.userId,
+      suggestedAssigneeName: c.name,
+      reason: unsure ? 'не уверен в направлении — выберите исполнителя сами' : c.reason,
+      sure: confidence >= SURE_CONFIDENCE || c.source === 'lead' || c.source === 'role' || c.source === 'named',
     };
   }
 
@@ -866,7 +804,7 @@ export class NlService {
         ? { tagIds: autoTagIds, tagsConfirmed: true, confirmedWithoutTags: !autoTagIds.length }
         : { tagIds: t.tagIds, tagsConfirmed: t.tagsConfirmed, confirmedWithoutTags: t.confirmedWithoutTags });
       if (auto && t.assigneeId) {
-        const seers = await this.projectSeers(tenantId, [String(t.projectId)]);
+        const seers = await this.org.seers(tenantId, [String(t.projectId)]);
         if (!seers.get(String(t.projectId))?.has(String(t.assigneeId))) {
           throw AppException.validation('Исполнитель не видит этот проект — выберите другого', { code: 'ASSIGNEE_CANNOT_SEE_PROJECT' });
         }
@@ -882,7 +820,10 @@ export class NlService {
       const deadlineAt = exactAt ?? (/^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
         ? new Date(`${t.deadline}T18:00:00`).toISOString() // день без времени — считаем концом рабочего дня
         : undefined);
-      if (t.assigneeId && opts.interactive) {
+      // #4615, 23.10: в автоматической постановке радар перегрузки — только подсказка
+      // (карточка в ящик после создания), а не вопрос, который останавливает постановку
+      const guarded = !!opts.interactive && !auto;
+      if (t.assigneeId && guarded) {
         await this.workload.guard({ tenantId, userId }, {
           assigneeId: String(t.assigneeId), projectId: String(t.projectId),
           priority: PRIORITIES.includes(String(t.priority)) ? String(t.priority) : null,
@@ -902,11 +843,18 @@ export class NlService {
           ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
           : undefined,
         directions: Array.isArray(t.directions) ? t.directions.filter(isSkill) : undefined,
-      } as any, userId, { workloadChecked: !!opts.interactive });
+      } as any, userId, { workloadChecked: guarded });
       await this.tags.applyToNewTask(tenantId, { userId }, String(task.id), String(task.project_id), {
         tagIds: Array.isArray(t.tagIds) ? t.tagIds.map(String) : [],
         suggestedTagIds: auto ? autoTagIds : Array.isArray(t.suggestedTagIds) ? t.suggestedTagIds.map(String) : [],
       });
+      // #4615, 23.10: тегов нет и «без тегов» не сказано — ИИ ставит сам (если компания не просит подтверждать)
+      const hasTags = auto ? autoTagIds.length > 0 : Array.isArray(t.tagIds) && t.tagIds.length > 0;
+      if (!hasTags && (auto || t.confirmedWithoutTags !== true)) {
+        void this.tags.autoTagNew(tenantId, { userId }, String(task.id), String(task.project_id), {
+          title: task.title, description: task.description ?? null, checklist: Array.isArray(t.checklist) ? t.checklist.map(String) : [],
+        });
+      }
       void this.secretary.record({
         tenantId, userId, kind: 'nl_task',
         summary: `Задача из фразы: «${task.title}»`, subjectType: 'task', subjectId: task.id,
@@ -926,6 +874,8 @@ export class NlService {
         ? await this.autoConfirm.schedule(tenantId, userId, String(task.id), {
           projectWhy: t.projectHint ? String(t.projectHint).slice(0, 200) : null,
           assigneeWhy: t.assigneeWhy ? String(t.assigneeWhy).slice(0, 200) : null,
+          // у направления нет руководителя — спросим «кто отвечает» прямо в сообщении
+          noLeadFor: isSkill(t.noLeadFor) && String(task.assignee_id ?? '') === String(t.assigneeId ?? '') ? t.noLeadFor : null,
         }).catch((e) => { this.log.warn(`подтверждение постановки ${task.id}: ${(e as Error).message}`); return null; })
         : null;
       return { type: 'task', task, ...(confirmAt ? { confirmAt } : {}) };
@@ -985,8 +935,9 @@ const MANY_SYSTEM = [
   'department — код отдела или "unknown", если не относится ни к одному;',
   'specialization — направление из этого отдела или null;',
   'confidence — насколько ты уверен в этом (0..1, честно: не уверен — ставь низкое).',
+  'assignee — имя исполнителя из users, ТОЛЬКО если он назван по имени или ролью (по org); иначе null.',
   'Верни СТРОГО JSON: {"tasks":[{"title":"","description":"","checklist":[],"source":"",',
-  '"department":"","specialization":null,"confidence":0}]}',
+  '"department":"","specialization":null,"confidence":0,"assignee":null}]}',
 ].join(' ');
 
 /**

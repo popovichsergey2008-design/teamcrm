@@ -21,7 +21,7 @@ class DepartmentsDto {
 }
 
 class SkipDto {
-  @IsIn(['company', 'departments', 'team', 'project_info']) step!: StepKey;
+  @IsIn(['company', 'departments', 'team', 'project_info', 'leads']) step!: StepKey;
 }
 
 class DismissDto {

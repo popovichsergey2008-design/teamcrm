@@ -54,7 +54,7 @@ export class OnboardingRepository {
    */
   async facts(tenantId: string, ownerUserId: string): Promise<Omit<OnboardingFacts, 'companyConfirmed'>> {
     const row = await this.db.one<{
-      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null; ai_plan: boolean; project_info: boolean;
+      departments: number; teammates: number; invites: number; projects: number; tasks: number; ai_demo: string | null; ai_plan: boolean; project_info: boolean; direction_leads: boolean;
     }>(
       `SELECT
          (SELECT COUNT(*)::int FROM groups g
@@ -78,7 +78,10 @@ export class OnboardingRepository {
                   WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo
                     AND (cardinality(COALESCE(p.aliases, '{}')) > 0 OR p.owner_user_id IS NOT NULL OR p.client_id IS NOT NULL
                          OR (length(trim(COALESCE(p.description, ''))) > 0
-                             AND p.description NOT LIKE 'Первый проект, собранный Qevo-ботом%'))) AS project_info`,
+                             AND p.description NOT LIKE 'Первый проект, собранный Qevo-ботом%'))) AS project_info,
+         -- #4615, 23.10: у направления есть руководитель
+         EXISTS (SELECT 1 FROM groups g WHERE g.tenant_id = $1 AND g.kind = 'department'
+                  AND g.lead_user_id IS NOT NULL AND cardinality(COALESCE(g.directions, '{}')) > 0) AS direction_leads`,
       [tenantId, ownerUserId],
     );
     return {
@@ -90,6 +93,7 @@ export class OnboardingRepository {
       aiDemo: row?.ai_demo === 'done' || row?.ai_demo === 'skipped' ? row.ai_demo : null,
       aiPlan: !!row?.ai_plan,
       projectInfo: !!row?.project_info,
+      directionLeads: !!row?.direction_leads,
     };
   }
 

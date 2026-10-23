@@ -8,9 +8,12 @@ import type { Sphere } from './phrase';
  * при уходе с третьего шага проект ПРАВИТСЯ (ручка та же, с projectId), а не
  * создаётся второй. Ответы при этом не теряются: «Вперёд» ведёт по уже данным.
  */
-export const STEPS = ['sphere', 'name', 'team', 'info', 'task', 'ask'] as const;
+// #4615, 23.10: после «Данные о проекте» — «Кто руководит направлениями?» (можно пропустить)
+export const STEPS = ['sphere', 'name', 'team', 'info', 'leads', 'task', 'ask'] as const;
 export type StepKey = (typeof STEPS)[number];
 export const TOTAL = STEPS.length;
+/** Номер шага (1…TOTAL) по ключу. */
+export const at = (k: StepKey): number => STEPS.indexOf(k) + 1;
 
 export interface Starter { projectId: string; name: string; columns: { id: string; name: string }[]; taskIds: string[] }
 export interface Answers { sphere: Sphere | null; sphereText?: string; name: string; team: boolean | null }
@@ -28,10 +31,12 @@ export interface BotState extends Answers {
   /** Шаг «Данные о проекте»: человек ушёл заполнять — бот свёрнут и ждёт «Готово, дальше». */
   filling: boolean;
   mini: boolean;
+  /** Раскладка шагов: 2 — с шагом «Кто руководит направлениями» (сохранённые раньше сдвигаем). */
+  lv?: number;
 }
 
 export const initial = (): BotState => ({
-  v: 1, step: 1, sphere: null, name: '', team: null, project: null, built: null, task: null, filling: false, mini: false,
+  v: 1, step: 1, sphere: null, name: '', team: null, project: null, built: null, task: null, filling: false, mini: false, lv: 2,
 });
 
 export const keyOf = (s: BotState): StepKey => STEPS[Math.min(Math.max(s.step, 1), TOTAL) - 1];
@@ -42,7 +47,7 @@ export function answered(s: BotState, step = s.step): boolean {
     case 'sphere': return s.sphere !== null;
     case 'name': return s.name.trim().length > 0;
     case 'team': return s.team !== null;
-    case 'info': return s.project !== null;
+    case 'info': case 'leads': return s.project !== null;
     case 'task': return s.task !== null;
     default: return false;
   }
@@ -89,7 +94,9 @@ export function restore(raw: unknown): BotState | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Partial<BotState>;
   if (r.v !== 1 || typeof r.step !== 'number' || r.step < 1 || r.step > TOTAL) return null;
-  const s = { ...initial(), ...r } as BotState;
+  const s = { ...initial(), lv: undefined, ...r } as BotState;
+  // сохранено до шага «Кто руководит направлениями»: «задача» и «вопросы» сдвинулись на один
+  if (s.lv !== 2) { if (s.step >= at('leads')) s.step = Math.min(TOTAL, s.step + 1); s.lv = 2; }
   // без проекта дальше третьего шага не уйти — значит, сохранение недописано
   if (s.step > 3 && !s.project) s.step = 3;
   return s;

@@ -46,7 +46,8 @@ describe('онбординг владельца (e2e)', () => {
     const O = await owner('ob1');
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
 
-    expect(view.total).toBe(9);
+    expect(view.total).toBe(10);
+    expect(step(view, 'leads')).toMatchObject({ done: false, required: false });
     expect(view.done).toBe(1);
     expect(step(view, 'workspace').done).toBe(true);
     expect(view.completed).toBe(false);

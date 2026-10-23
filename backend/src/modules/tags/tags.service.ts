@@ -83,11 +83,11 @@ export class TagsService {
     const next = await this.repo.saveSettings(tenantId, {
       ai_tagging: dto.aiTagging ?? current.ai_tagging,
       /*
-        Подтверждение нельзя выключить отдельно, пока включена сама разметка: это
-        превратило бы ИИ в того, кто ставит теги за людей, а весь смысл механизма — в
-        обратном. Выключают его вместе с разметкой (ТЗ, п. 40).
+        #4615, 23.10: заказчик — «на тегах подтверждения, он должен всё автоматом
+        делать». По умолчанию теги ИИ ставит сам; подтверждение компания включает
+        здесь по желанию (раньше оно было принудительным).
       */
-      require_confirmation: (dto.aiTagging ?? current.ai_tagging) ? true : (dto.requireConfirmation ?? current.require_confirmation),
+      require_confirmation: dto.requireConfirmation ?? current.require_confirmation,
       who_can_create: dto.whoCanCreate ?? current.who_can_create,
     });
     return this.settingsView(next);
@@ -291,6 +291,32 @@ export class TagsService {
     }
     if (suggested.length || chosen.length) {
       await this.repo.recordFeedback({ tenantId, taskId, userId: user.userId, suggested, confirmed: chosen });
+    }
+  }
+
+  /**
+   * Теги без подтверждения (#4615, 23.10): задача создана, а тегов человек не выбрал и
+   * «без тегов» сознательно не сказал — ИИ подбирает и ставит сам. Только если компания
+   * не требует подтверждения; молчание модели задачу не трогает. Зовут человеческие
+   * пути (форма, быстрая команда, бот, чат) — импорты и повторы сюда не ходят.
+   */
+  async autoTagNew(
+    tenantId: string, user: { userId: string }, taskId: string, projectId: string | null,
+    task: { title: string; description?: string | null; checklist?: string[]; projectName?: string | null },
+  ): Promise<string[]> {
+    try {
+      const s = await this.repo.settings(tenantId);
+      if (!s.ai_tagging || s.require_confirmation) return [];
+      if ((await this.repo.ofTask(tenantId, taskId)).length) return [];
+      const r = await this.suggest(tenantId, task);
+      const ids = (r.suggestions ?? []).map((x: { tagId: string }) => String(x.tagId)).slice(0, 5);
+      if (!ids.length) return [];
+      await this.setForTask(tenantId, user, taskId, projectId, ids.map((tagId) => ({ tagId, source: 'ai' })));
+      await this.repo.recordFeedback({ tenantId, taskId, userId: user.userId, suggested: ids, confirmed: ids });
+      return ids;
+    } catch (e) {
+      this.log.warn(`теги задачи ${taskId} сами не поставились: ${(e as Error).message}`);
+      return [];
     }
   }
 

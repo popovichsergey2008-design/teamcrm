@@ -12,7 +12,7 @@
  * есть значение по умолчанию, и «не трогал» от «оставил как есть» по данным не отличить.
  */
 
-export type StepKey = 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'project_info' | 'task';
+export type StepKey = 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'project_info' | 'leads' | 'task';
 
 /** Что известно про организацию на самом деле. */
 export interface OnboardingFacts {
@@ -34,6 +34,8 @@ export interface OnboardingFacts {
    * клиент хотя бы у одного проекта. Описание, которое собрал Qevo-бот, не считается.
    */
   projectInfo?: boolean;
+  /** #4615, 23.10: хотя бы у одного направления есть руководитель (отдел с руководителем и направлениями). */
+  directionLeads?: boolean;
 }
 
 export interface OnboardingStep {
@@ -96,6 +98,12 @@ const TITLES: Record<StepKey, { title: string; hint: string; required: boolean }
     hint: 'Описание, ключевые слова, ответственный, клиент и его контакты. Чем полнее — тем точнее QEVO сам ставит задачи из встреч и чатов.',
     required: false,
   },
+  // #4615, 23.10: без руководителей направлений задачи уходят наименее загруженному
+  leads: {
+    title: 'Кто руководит направлениями?',
+    hint: 'Руководитель отдела и его направления: программные задачи — руководителю разработки, контент — руководителю контента. Тогда QEVO ставит задачи нужному человеку сам.',
+    required: false,
+  },
   task: {
     title: 'Поставить первую задачу',
     hint: 'Вручную, голосом или командой — как удобнее.',
@@ -122,6 +130,7 @@ export function buildSteps(facts: OnboardingFacts, skipped: readonly string[] = 
     team: facts.teammates > 0 || facts.invites > 0,
     project: facts.projects > 0,
     project_info: !!facts.projectInfo,
+    leads: !!facts.directionLeads,
     task: facts.tasks > 0,
   };
 

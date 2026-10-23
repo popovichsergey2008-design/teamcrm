@@ -93,7 +93,8 @@ export class TagsRepository {
       `SELECT ai_tagging, require_confirmation, who_can_create FROM tag_settings WHERE tenant_id=$1`,
       [tenantId],
     );
-    return row ?? { ai_tagging: true, require_confirmation: true, who_can_create: 'all' };
+    // #4615, 23.10: по умолчанию теги ставятся сами, без подтверждения
+    return row ?? { ai_tagging: true, require_confirmation: false, who_can_create: 'all' };
   }
 
   async saveSettings(tenantId: string, s: TagSettingsRow): Promise<TagSettingsRow> {

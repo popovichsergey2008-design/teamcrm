@@ -504,14 +504,15 @@ export class ChatTaskDraftService {
       if (peer) return { userId: String(peer.user_id), reason: 'личная переписка — адресат сообщения', detail: { source: 'dm' } };
     }
     try {
-      const s = await this.nl.suggestAssignee(tenantId, {
+      // #4615, 23.10: одно правило — роль/имя, руководитель отдела направления, тимлид, специалист, загрузка
+      const s = await this.nl.assigneeFor(tenantId, draft.author_id ? String(draft.author_id) : null, {
         title: task.title, description: task.description, projectId: task.projectId,
       });
-      if (!s.suggestedAssigneeId) return { userId: null, reason: null, detail: { source: 'none' } };
+      if (!s.userId) return { userId: null, reason: null, detail: { source: 'none', why: s.reason } };
       return {
-        userId: String(s.suggestedAssigneeId),
-        reason: s.reason ? `ИИ: ${s.reason}` : 'подобран по навыкам и загрузке',
-        detail: { source: 'routing', department: s.department, skill: s.skill, confidence: s.confidence },
+        userId: String(s.userId),
+        reason: s.reason || 'подобран по навыкам и загрузке',
+        detail: { source: 'routing', rule: s.source, skill: s.skill, noLeadFor: s.noLeadFor },
       };
     } catch (e) {
       this.log.warn(`подбор исполнителя для черновика не вышел: ${(e as Error).message}`);

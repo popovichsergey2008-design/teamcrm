@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { OrgService } from '../org/org.service';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -53,6 +54,8 @@ export class AuthService {
     /** Базовый набор тегов новой организации: без него первый же фильтр пустой. */
     private readonly tags: TagsService,
     private readonly qa: QaSwitchRepository,
+    /** #4615, 23.10: готовые должности новой компании (Генеральный директор, Руководитель отдела…). */
+    @Optional() private readonly org?: OrgService,
   ) {}
 
   private orgRefs(rows: any[]): OrgRef[] {
@@ -90,6 +93,7 @@ export class AuthService {
     // Пять базовых тегов — в стороне от регистрации: сбой в них не должен мешать
     // человеку войти, а список тегов он увидит в первой же задаче.
     void this.tags.seedDefaults(String(user.tenant_id));
+    await this.org?.seedDefaults(String(user.tenant_id));
     const tokens = await this.issueTokens(user, meta);
     const orgs = this.orgRefs(await this.users.membershipsByAccount(user.account_id as string));
     return { user: toPublicUser(user), organizations: orgs, ...tokens };
@@ -171,6 +175,7 @@ export class AuthService {
     });
 
     void this.tags.seedDefaults(String(user.tenant_id));
+    await this.org?.seedDefaults(String(user.tenant_id));
     return this.sessionFor(user, meta);
   }
 
@@ -209,6 +214,7 @@ export class AuthService {
       return res.rows[0];
     });
     void this.tags.seedDefaults(String(member.tenant_id));
+    void this.org?.seedDefaults(String(member.tenant_id));
     const tokens = await this.issueTokens(member, meta);
     return { user: toPublicUser(member), ...tokens };
   }

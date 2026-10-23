@@ -178,12 +178,12 @@ export class NlController {
    */
   @Post('auto-assign')
   autoAssign(@CurrentUser() u: AuthUser, @Body() dto: AutoAssignDto) {
-    return this.nl.autoAssign(u.tenantId, dto);
+    return this.nl.autoAssign(u.tenantId, dto, u.userId);
   }
 
   @Post('suggest-assignee')
   suggestAssignee(@CurrentUser() u: AuthUser, @Body() dto: SuggestDto) {
-    return this.nl.suggestAssignee(u.tenantId, dto);
+    return this.nl.suggestAssignee(u.tenantId, dto, u.userId);
   }
 
   @Post('apply')

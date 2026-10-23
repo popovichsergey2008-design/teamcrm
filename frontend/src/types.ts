@@ -296,7 +296,7 @@ export interface Industry {
 
 /** Один шаг пути владельца. */
 export interface OnboardingStep {
-  key: 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'project_info' | 'task';
+  key: 'workspace' | 'ai_plan' | 'ai_demo' | 'company' | 'departments' | 'team' | 'project' | 'project_info' | 'leads' | 'task';
   title: string;
   hint: string;
   done: boolean;

@@ -125,6 +125,7 @@ export class UsersService {
     patch: {
       roleCode?: Role; positionId?: string | null; groupIds?: string[]; isActive?: boolean;
       skills?: string[]; canReceiveAutoTasks?: boolean; autoAssignmentWeight?: number;
+      reportsToUserId?: string | null;
     },
     actor?: { actorId: string; actorRole: string },
   ): Promise<PublicUser> {
@@ -173,11 +174,21 @@ export class UsersService {
     if (patch.positionId && !(await this.positions.exists(tenantId, patch.positionId))) {
       throw AppException.validation('Должность не найдена');
     }
+    // кому подчиняется: свой сотрудник, не он сам и без кольца «А → Б → А»
+    if (patch.reportsToUserId) {
+      if (String(patch.reportsToUserId) === String(id)) throw AppException.validation('Сотрудник не может подчиняться сам себе');
+      const boss = /^\d+$/.test(String(patch.reportsToUserId)) ? await this.repo.findById(tenantId, String(patch.reportsToUserId)) : null;
+      if (!boss || !boss.is_active) throw AppException.validation('Руководитель не найден среди сотрудников');
+      if (await this.repo.reportsChainHas(tenantId, String(patch.reportsToUserId), String(id))) {
+        throw AppException.validation('Так получится кольцо: этот руководитель сам подчиняется сотруднику');
+      }
+    }
 
     const updated = await this.repo.updateManaged(tenantId, id, {
       roleCode: patch.roleCode,
       positionId: patch.positionId,
       isActive: patch.isActive,
+      reportsToUserId: patch.reportsToUserId,
     });
     if (patch.groupIds !== undefined) await this.groups.setUserGroups(tenantId, id, patch.groupIds);
     // Направления и автоназначение (ТЗ-10, этап 3): чужие значения до базы не доходят.
@@ -207,6 +218,8 @@ export class UsersService {
       isActive: u.is_active,
       positionId: u.position_id,
       positionName: u.position_name,
+      positionLevel: u.position_level ?? null,
+      reportsToUserId: u.reports_to_user_id ? String(u.reports_to_user_id) : null,
       // человека узнают по лицу: где показываем имя — показываем и аватар
       avatarUrl: u.avatar_file_id ? `/api/files/${u.avatar_file_id}` : null,
       groups: byUser.get(String(u.id)) ?? [],

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, request } from '../lib/api';
 import { ASSIGNABLE_ROLES, roleLabel } from '../lib/labels';
 import { MONETIZATION_ENABLED } from '../config';
 import { useAuth } from '../state/auth';
@@ -14,8 +14,15 @@ import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { CareEmpty } from './care/CareEmpty';
 import { DIRECTIONS } from './DirectionsPicker';
+import { loadOrg, OrgStructure, OrgView } from './team/OrgStructure';
 
-type Tab = 'people' | 'positions' | 'groups';
+type Tab = 'people' | 'structure' | 'positions' | 'groups';
+/** #4615, 23.10: уровни иерархии — набор фиксированный, названия должностей свои. */
+const LEVELS: [string, string][] = [
+  ['ceo', 'Руководитель компании'], ['head', 'Руководитель отдела'], ['deputy', 'Заместитель / тимлид'],
+  ['specialist', 'Специалист'], ['intern', 'Стажёр'],
+];
+const levelOptions = LEVELS.map(([v, l]) => <option key={v} value={v}>{l}</option>);
 const roleOptions = ASSIGNABLE_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>);
 
 /** kind приходит из базы по-английски — в интерфейсе он не нужен в таком виде. */
@@ -41,7 +48,9 @@ const plural = (n: number, one: string, few: string, many: string) => {
 
 export function TeamPanel({ onClose }: { onClose: () => void }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
-  const [tab, setTab] = useState<Tab>('people');
+  // из чек-листа «Кто руководит направлениями?» приходят сразу во вкладку структуры
+  const [tab, setTab] = useState<Tab>(() => (new URLSearchParams(window.location.search).get('tab') === 'structure' ? 'structure' : 'people'));
+  const [org, setOrg] = useState<OrgView | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -90,6 +99,12 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
     setPositions(await api.listPositions().catch(() => []));
     setGroups(await api.listGroups().catch(() => []));
     setLinks(await api.listInviteLinks().catch(() => []));
+    setOrg(await loadOrg().catch(() => null));
+  };
+  /** Кому подчиняется по умолчанию (руководитель отдела) — подпись в выборе «Подчиняется». */
+  const managerName = (id: string) => {
+    const m = org?.people.find((p) => p.id === String(id))?.managerId;
+    return m ? org?.people.find((p) => p.id === m)?.name ?? '' : '';
   };
   useEffect(() => { reload(); }, []);
 
@@ -154,7 +169,34 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
 
   // --- positions ---
   const [newPos, setNewPos] = useState('');
-  const addPos = async () => { if (!newPos.trim()) return; try { await api.createPosition(newPos.trim()); setNewPos(''); reload(); } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); } };
+  const [newLevel, setNewLevel] = useState('specialist');
+  const addPos = async () => {
+    if (!newPos.trim()) return;
+    try { await request('POST', '/positions', { name: newPos.trim(), level: newLevel }); setNewPos(''); reload(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+  };
+  /** Переименовать или сменить уровень: по уровню подбор понимает, кто руководит. */
+  const savePos = async (id: string, patch: { name?: string; level?: string }) => {
+    try { await request('PATCH', `/positions/${id}`, patch); toastSaved(); reload(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Не сохранилось'); reload(); }
+  };
+  const movePos = async (i: number, dir: -1 | 1) => {
+    const ids = positions.map((p) => String(p.id));
+    const j = i + dir;
+    if (j < 0 || j >= ids.length) return;
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    setPositions(ids.map((id) => positions.find((p) => String(p.id) === id)));
+    try { await request('POST', '/positions/reorder', { ids }); } catch { reload(); }
+  };
+  const removePos = async (p: any) => {
+    const n = Number(p.holders ?? 0);
+    if (!(await confirmAction({
+      title: `Удалить должность «${p.name}»?`,
+      description: n ? `Её занимают ${plural(n, 'человек', 'человека', 'человек')} — у них должность станет пустой.` : undefined,
+      danger: true,
+    }))) return;
+    try { await api.deletePosition(p.id); reload(); } catch (e) { flash(e instanceof ApiError ? e.message : 'Не удалось удалить'); }
+  };
 
   // --- groups ---
   const [newGroup, setNewGroup] = useState({ name: '', kind: 'group' });
@@ -188,14 +230,22 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
     #4615: руководитель и направления отдела. Задача из быстрой команды по направлению
     (бэкенд, контент, дизайн…) уходит руководителю того отдела, где отмечено направление.
   */
-  const saveGroup = async (id: string, patch: { leadUserId?: string | null; directions?: string[] }) => {
+  const saveGroup = async (id: string, patch: { leadUserId?: string | null; directions?: string[]; parentId?: string | null }) => {
     setGroups((list) => list.map((g) => (String(g.id) !== String(id) ? g : {
       ...g,
       ...(patch.leadUserId !== undefined ? { lead_user_id: patch.leadUserId } : {}),
       ...(patch.directions ? { directions: patch.directions } : {}),
+      ...(patch.parentId !== undefined ? { parent_id: patch.parentId } : {}),
     })));
-    try { await api.updateGroup(id, patch); toastSaved(); }
+    try { await request('PATCH', `/groups/${id}`, patch); toastSaved(); setOrg(await loadOrg().catch(() => null)); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Не удалось сохранить отдел'); await reload(); }
+  };
+  /** Заместитель / тимлид отдела: ему уходят задачи, которые раздаёт сам руководитель. */
+  const toggleDeputy = async (groupId: string, userId: string, on: boolean) => {
+    setBusyGroup(`${groupId}:${userId}`);
+    try { await request('PATCH', `/groups/${groupId}/members/${userId}`, { role: on ? 'member' : 'deputy' }); await reload(); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Не сохранилось'); }
+    finally { setBusyGroup(''); }
   };
   const departments = groups.filter((g) => g.kind === 'department');
   const noLeads = departments.length === 0 || !departments.some((g) => g.lead_user_id);
@@ -216,10 +266,13 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
         </p>
         <div className="tabs">
           <button className={`tab ${tab === 'people' ? 'active' : ''}`} onClick={() => setTab('people')}>Сотрудники</button>
+          <button className={`tab ${tab === 'structure' ? 'active' : ''}`} onClick={() => setTab('structure')}>Структура</button>
           <button className={`tab ${tab === 'positions' ? 'active' : ''}`} onClick={() => setTab('positions')}>Должности</button>
           <button className={`tab ${tab === 'groups' ? 'active' : ''}`} onClick={() => setTab('groups')}>Отделы и группы</button>
         </div>
         {msg && <div className="dim">{msg}</div>}
+
+        {tab === 'structure' && <OrgStructure org={org} onChanged={reload} />}
 
         {tab === 'people' && (
           <>
@@ -339,8 +392,21 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="drawer-grid2">
                   <OptionSelect className="input" value={u.role} onChange={(e) => patchUser(u.id, { role: e.target.value })}>{roleOptions}</OptionSelect>
-                  <OptionSelect className="input" value={u.positionId ?? ''} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</OptionSelect>
+                  <OptionSelect className="input" value={u.positionId ?? ''} aria-label={`Должность: ${u.fullName}`} onChange={(e) => patchUser(u.id, { positionId: e.target.value || null })}><option value="">— должность —</option>{positions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</OptionSelect>
                 </div>
+                {/* #4615, 23.10: кому подчиняется — по умолчанию руководитель его отдела */}
+                <label className="field team-boss">
+                  <span className="dim">Подчиняется</span>
+                  <OptionSelect
+                    className="input"
+                    value={u.reportsToUserId ?? ''}
+                    aria-label={`Кому подчиняется ${u.fullName}`}
+                    onChange={(e) => patchUser(u.id, { reportsToUserId: e.target.value || null })}
+                  >
+                    <option value="">{u.reportsToUserId ? 'по отделу' : `по отделу${managerName(u.id) ? ` — ${managerName(u.id)}` : ' — не задан'}`}</option>
+                    {users.filter((x) => String(x.id) !== String(u.id) && x.isActive).map((x) => <option key={x.id} value={String(x.id)}>{x.fullName}</option>)}
+                  </OptionSelect>
+                </label>
                 {/*
                   Чем человек занимается (ТЗ-10, этап 3).
 
@@ -455,10 +521,38 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
 
         {tab === 'positions' && (
           <>
-            <div className="team-rate" style={{ marginBottom: 12 }}>
-              <input className="input" placeholder="Новая должность" value={newPos} onChange={(e) => setNewPos(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPos()} />
-              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={addPos}>+</button>
+            {/*
+              #4615, 23.10: должности компании — свои названия («Тимлид фронтенда»,
+              «Арт-директор»), у каждой уровень иерархии из короткого списка. По уровню
+              QEVO понимает, кто руководит, и ставит задачи по структуре.
+            */}
+            <p className="dim">
+              Названия — свои, уровень — из списка: по нему QEVO понимает, кто кем руководит.
+            </p>
+            <div className="pos-new">
+              <input className="input" placeholder="Новая должность, например «Тимлид фронтенда»" aria-label="Название новой должности" value={newPos} onChange={(e) => setNewPos(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPos()} />
+              <OptionSelect className="input" value={newLevel} aria-label="Уровень новой должности" onChange={(e) => setNewLevel(e.target.value)}>{levelOptions}</OptionSelect>
+              <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={addPos}>Добавить</button>
             </div>
+            {positions.map((p, i) => (
+              <div key={p.id} className="team-row pos-row">
+                <input
+                  className="input"
+                  defaultValue={p.name}
+                  key={`${p.id}:${p.name}`}
+                  aria-label={`Название должности «${p.name}»`}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== p.name) void savePos(p.id, { name: v }); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                />
+                <OptionSelect className="input" value={p.level ?? 'specialist'} aria-label={`Уровень должности «${p.name}»`} onChange={(e) => void savePos(p.id, { level: e.target.value })}>{levelOptions}</OptionSelect>
+                <span className="pos-row-tools">
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={i === 0} onClick={() => void movePos(i, -1)} title="Выше" aria-label={`Поднять «${p.name}»`}><Icon name="arrow-up" size={14} /></button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={i === positions.length - 1} onClick={() => void movePos(i, 1)} title="Ниже" aria-label={`Опустить «${p.name}»`}><Icon name="arrow-down" size={14} /></button>
+                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void removePos(p)}>Удалить</button>
+                </span>
+              </div>
+            ))}
+            <div className="drawer-section-title">Кто пишет новости</div>
             {/*
               Право публиковать новости — на должности, а не на человеке: при смене
               пресс-секретаря оно переезжает вместе с должностью, и не надо вспоминать,
@@ -484,7 +578,6 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                     />
                     Пишет новости
                   </label>
-                  <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={async () => { await api.deletePosition(p.id); reload(); }}>Удалить</button>
                 </span>
               </div>
             ))}
@@ -551,6 +644,43 @@ export function TeamPanel({ onClose }: { onClose: () => void }) {
                           {users.map((u) => <option key={u.id} value={String(u.id)}>{u.fullName}</option>)}
                         </OptionSelect>
                       </label>
+                      {/* #4615, 23.10: тимлиды/заместители и вышестоящий отдел */}
+                      {members.some((u) => String(u.id) !== String(g.lead_user_id ?? '')) && (
+                        <div className="dept-extra">
+                          <span className="dim">Заместители / тимлиды — им уходят задачи, которые раздаёт сам руководитель</span>
+                          <div className="chip-row">
+                            {members.filter((u) => String(u.id) !== String(g.lead_user_id ?? '')).map((u) => {
+                              const on = (u.groups ?? []).some((x: any) => String(x.id) === String(g.id) && x.role === 'deputy');
+                              return (
+                                <button
+                                  key={u.id}
+                                  className={`group-chip ${on ? 'group-chip-on' : ''}`}
+                                  aria-pressed={on}
+                                  disabled={busyGroup === `${g.id}:${u.id}`}
+                                  onClick={() => void toggleDeputy(g.id, u.id, on)}
+                                  title={on ? `Снять: ${u.fullName} — не тимлид` : `${u.fullName} — тимлид / заместитель`}
+                                >
+                                  {u.fullName}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {departments.length > 1 && (
+                        <label className="dim" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          Входит в отдел
+                          <OptionSelect
+                            className="input"
+                            value={g.parent_id ? String(g.parent_id) : ''}
+                            aria-label={`Вышестоящий отдел для «${g.name}»`}
+                            onChange={(e) => void saveGroup(g.id, { parentId: e.target.value || null })}
+                          >
+                            <option value="">— верхний уровень —</option>
+                            {departments.filter((x) => String(x.id) !== String(g.id)).map((x) => <option key={x.id} value={String(x.id)}>{x.name}</option>)}
+                          </OptionSelect>
+                        </label>
+                      )}
                       <div className="dim">Направления — задачи по ним уходят руководителю</div>
                       <div className="directions-picker" role="group" aria-label={`Направления отдела «${g.name}»`}>
                         {DIRECTIONS.map(([code, label]) => {

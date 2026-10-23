@@ -140,7 +140,7 @@ export function TaskTagsField({ task, value, onChange, compact, mode = 'create' 
       <div className="tags-head">
         <label>Теги</label>
         {settings?.aiTagging && (
-          <span className="dim tags-ai-note">{asking ? 'ИИ подбирает теги…' : 'ИИ подбирает, подтверждаете вы'}</span>
+          <span className="dim tags-ai-note">{asking ? 'ИИ подбирает теги…' : gated ? 'ИИ подбирает, подтверждаете вы' : 'ИИ подбирает сам'}</span>
         )}
       </div>
 
