@@ -130,6 +130,32 @@
 }
 .nav-collapse:hover { background: var(--hover); color: var(--text); }
 
+/*
+  Колокольчик центра уведомлений (#4655). На широком экране — в левой панели рядом с
+  аккаунтом; на узком (панелей слева и справа нет) — сверху справа поверх экрана.
+*/
+.notif-bell {
+  position: relative; display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px;
+  background: none; border: none; color: var(--text-dim); cursor: pointer; border-radius: var(--radius-sm);
+}
+.notif-bell:hover { background: var(--hover); color: var(--text); }
+.notif-bell:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.notif-bell-badge {
+  position: absolute; top: -3px; right: -7px; min-width: 14px; height: 16px; padding: 0 3px;
+  border-radius: 8px; background: var(--fill-danger); color: var(--on-fill);
+  font-size: calc(10px * var(--fs-scale)); font-weight: 700; line-height: 16px; text-align: center;
+  border: 2px solid var(--bg-elev); box-sizing: content-box; pointer-events: none;
+}
+.nav-collapsed .nav-bell { order: 2; }
+.notif-bell-float { display: none; }
+@media (max-width: 900px) {
+  /* ниже шторок и окон (у них 50+): открытая карточка задачи не прячет крестик под значком */
+  .notif-bell-float {
+    display: grid; position: fixed; z-index: 45; top: calc(var(--safe-top, 0px) + 10px); right: 10px;
+    width: 36px; height: 36px; background: var(--bg-elev); border: 1px solid var(--border-2); color: var(--text);
+  }
+}
+
 .nav-search {
   display: flex; align-items: center; gap: var(--sp-2); width: 100%;
   padding: 0 10px; border-radius: var(--radius-sm); cursor: pointer;

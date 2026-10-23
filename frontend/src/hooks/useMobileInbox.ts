@@ -5,6 +5,7 @@ import { getSocket } from '../lib/socket';
 import { navigate, parsePath } from '../lib/router';
 import { playMessageChime } from '../lib/sound';
 import { platform, isNativeShell } from '../platform';
+import { setCenterUnread } from '../lib/notification-center';
 
 const CURSOR_KEY = 'teamcrm.inbox-cursor';
 /** Оболочка сообщает о push, пришедшем при открытом приложении. */
@@ -65,8 +66,14 @@ export function useMobileInbox(signedIn: boolean): void {
   }, [signedIn]);
 }
 
-/** Щелчок по уведомлению: отметить прочитанным до него и перейти. */
+/**
+ * Щелчок по уведомлению: отметить прочитанным ЕГО и перейти.
+ *
+ * Раньше гасилось всё «до него» — пока ящик был лишь шторкой телефона, это было
+ * одно и то же. В центре уведомлений (#4655) щелчок по свежей всплывашке не должен
+ * молча прочитывать за человека десяток старых записей, которых он не видел.
+ */
 export function openInboxItem(id: string | undefined, path: string | undefined): void {
-  if (id) void api.mobileNotificationsRead(id).catch(() => undefined);
+  if (id) void api.notificationsRead([id]).then((r) => setCenterUnread(r.unread)).catch(() => undefined);
   if (path) navigate(parsePath(path));
 }

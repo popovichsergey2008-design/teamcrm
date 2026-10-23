@@ -7,6 +7,8 @@ import {
   taskReturnedLetter, taskBlockedLetter, taskStatusLetter, taskMergedLetter, feedAnnouncementLetter, feedMentionLetter,
   inviteLetter,
 } from './mail.templates';
+import { NotificationCenter } from './center.service';
+import { centerKey } from './center-rules';
 
 /**
  * Почтовые уведомления по задачам.
@@ -14,12 +16,16 @@ import {
  * Доменные сервисы зовут эти методы и не ждут результата: письмо не должно
  * задерживать ответ пользователю и тем более ронять действие, если почта легла.
  * Поэтому здесь всё завершается постановкой в очередь, а ошибки только логируются.
+ *
+ * Каждое событие по задаче сначала ложится в центр уведомлений (#4655) — всем
+ * участникам, кроме автора, — а уже потом уходит письмом тем, кому письмо положено.
+ * Ключ строки центра и письма один: письмо в воркере пристёгивается к записи центра.
  */
 @Injectable()
 export class NotificationsService {
   private readonly log = new Logger('Notifications');
 
-  constructor(private readonly repo: NotificationsRepository) {}
+  constructor(private readonly repo: NotificationsRepository, private readonly center: NotificationCenter) {}
 
   /** Базовый адрес для ссылок в письмах: письмо бесполезно, если ссылка ведёт в никуда. */
   private baseUrl(): string {
@@ -76,7 +82,7 @@ export class NotificationsService {
           tenantId, userId: r.id, toEmail: r.email,
           subject: letter.subject, text: letter.text, html: letter.html,
           eventKey,
-          dedupKey: `${eventKey}:${taskId}:${r.id}:${dedupSuffix}`,
+          dedupKey: centerKey(eventKey, taskId, r.id, dedupSuffix),
         });
       }
     } catch (e) {
@@ -194,7 +200,8 @@ export class NotificationsService {
     }
   }
 
-  taskCreated(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
+  async taskCreated(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
+    await this.center.task({ tenantId, taskId, kind: 'created', actorId, mailKey: 'task.created', suffix: 'new' });
     return this.fanout(tenantId, taskId, 'task.created', actorId, 'new', taskCreatedLetter);
   }
 
@@ -208,6 +215,10 @@ export class NotificationsService {
   async taskMerged(
     tenantId: string, primaryId: string, secondaryId: string, actorId: string | null, userIds: string[],
   ): Promise<void> {
+    await this.center.task({
+      tenantId, taskId: primaryId, kind: 'merged', actorId, targets: userIds,
+      mailKey: 'task.status', suffix: `merge${secondaryId}`, details: { mergedFrom: String(secondaryId) },
+    });
     try {
       const [card, actorName] = await Promise.all([
         this.repo.taskCard(tenantId, primaryId),
@@ -239,7 +250,7 @@ export class NotificationsService {
           tenantId, userId: person.id, toEmail: person.email,
           subject: letter.subject, text: letter.text, html: letter.html,
           eventKey: 'task.status',
-          dedupKey: `merge:${secondaryId}:${primaryId}:${person.id}`,
+          dedupKey: centerKey('task.status', primaryId, person.id, `merge${secondaryId}`),
         });
       }
     } catch (e) {
@@ -248,10 +259,11 @@ export class NotificationsService {
   }
 
   /** Ключ повтора — id комментария: каждый комментарий это отдельное письмо. */
-  taskCommented(
+  async taskCommented(
     tenantId: string, taskId: string, actorId: string | null,
     commentId: string, comment: string,
   ): Promise<void> {
+    await this.center.comment(tenantId, taskId, actorId, commentId, comment);
     return this.fanout(tenantId, taskId, 'task.commented', actorId, `c${commentId}`,
       (ctx, unsub) => taskCommentedLetter({ ...ctx, comment }, unsub));
   }
@@ -269,6 +281,10 @@ export class NotificationsService {
   ): Promise<void> {
     // Записал в наблюдатели сам себя — письмо об этом не нужно.
     if (String(userId) === String(actorId ?? '')) return;
+    await this.center.task({
+      tenantId, taskId, kind: 'participant', actorId, targets: [userId],
+      mailKey: 'task.created', suffix: `part${role}`, details: { participantRole: role },
+    });
     try {
       const [card, person] = await Promise.all([
         this.repo.taskCard(tenantId, taskId),
@@ -292,7 +308,7 @@ export class NotificationsService {
         tenantId, userId: person.id, toEmail: person.email,
         subject: letter.subject, text: letter.text, html: letter.html,
         eventKey: 'task.created',
-        dedupKey: `part:${taskId}:${userId}:${role}`,
+        dedupKey: centerKey('task.created', taskId, person.id, `part${role}`),
       });
     } catch (e) {
       this.log.warn(`участник ${userId} задачи ${taskId}: ${(e as Error).message}`);
@@ -306,8 +322,10 @@ export class NotificationsService {
    * в чужой очереди. Без этого письма согласование превращается в тихую яму — работа
    * сдана, но никто об этом не знает.
    */
-  approvalRequested(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
-    return this.fanout(tenantId, taskId, 'task.status', actorId, `ap${taskId}:${Date.now()}`,
+  async approvalRequested(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
+    const suffix = `ap${taskId}:${Date.now()}`;
+    await this.center.task({ tenantId, taskId, kind: 'approval', actorId, mailKey: 'task.status', suffix });
+    return this.fanout(tenantId, taskId, 'task.status', actorId, suffix,
       (ctx, unsub) => taskApprovalLetter(ctx, unsub));
   }
 
@@ -318,32 +336,47 @@ export class NotificationsService {
    * не самому просящему. Дату форматируем здесь, а не в шаблоне: в письме она должна
    * быть человеческой — «среда, 23 сентября, 17:00», а не меткой времени.
    */
-  deadlineShiftAsked(tenantId: string, taskId: string, actorId: string | null, to: Date): Promise<void> {
+  async deadlineShiftAsked(tenantId: string, taskId: string, actorId: string | null, to: Date): Promise<void> {
     const shiftTo = humanMoment(to);
-    return this.fanout(tenantId, taskId, 'task.status', actorId, `ds${taskId}:${to.getTime()}`,
+    const suffix = `ds${taskId}:${to.getTime()}`;
+    await this.center.task({
+      tenantId, taskId, kind: 'shift_asked', actorId, mailKey: 'task.status', suffix, details: { shiftTo: to.toISOString() },
+    });
+    return this.fanout(tenantId, taskId, 'task.status', actorId, suffix,
       (ctx, unsub) => deadlineShiftAskLetter({ ...ctx, shiftTo }, unsub));
   }
 
   /** Ответ постановщика по переносу — тому, кто просил (и остальным участникам). */
-  deadlineShiftDecided(
+  async deadlineShiftDecided(
     tenantId: string, taskId: string, actorId: string | null, to: Date, approved: boolean,
     askedBy: string | null,
   ): Promise<void> {
     const shiftTo = humanMoment(to);
     // askedBy в ключе: два решения по одной задаче в один день — два письма, а не одно
-    return this.fanout(tenantId, taskId, 'task.status', actorId, `dd${taskId}:${askedBy ?? '-'}:${Date.now()}`,
+    const suffix = `dd${taskId}:${askedBy ?? '-'}:${Date.now()}`;
+    await this.center.task({
+      tenantId, taskId, kind: 'shift_decided', actorId, targets: askedBy ? [askedBy] : [],
+      mailKey: 'task.status', suffix, details: { shiftTo: to.toISOString(), approved },
+    });
+    return this.fanout(tenantId, taskId, 'task.status', actorId, suffix,
       (ctx, unsub) => deadlineShiftDecidedLetter({ ...ctx, shiftTo, approved }, unsub));
   }
 
   /** Исполнитель ответил «есть блокер» — постановщику и наблюдателям, сразу. */
-  followupBlocked(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
-    return this.fanout(tenantId, taskId, 'task.status', actorId, `fb${taskId}:${Date.now()}`,
+  async followupBlocked(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
+    const suffix = `fb${taskId}:${Date.now()}`;
+    await this.center.task({ tenantId, taskId, kind: 'blocked', actorId, mailKey: 'task.status', suffix });
+    return this.fanout(tenantId, taskId, 'task.status', actorId, suffix,
       (ctx, unsub) => taskBlockedLetter(ctx, unsub));
   }
 
   /** Работу вернули: исполнителю нужно знать не только «нет», но и почему. */
-  approvalReturned(tenantId: string, taskId: string, actorId: string | null, reason: string): Promise<void> {
-    return this.fanout(tenantId, taskId, 'task.status', actorId, `ar${taskId}:${Date.now()}`,
+  async approvalReturned(tenantId: string, taskId: string, actorId: string | null, reason: string): Promise<void> {
+    const suffix = `ar${taskId}:${Date.now()}`;
+    await this.center.task({
+      tenantId, taskId, kind: 'returned', actorId, mailKey: 'task.status', suffix, details: { reason: reason.slice(0, 300) },
+    });
+    return this.fanout(tenantId, taskId, 'task.status', actorId, suffix,
       (ctx, unsub) => taskReturnedLetter({ ...ctx, reason }, unsub));
   }
 
@@ -353,10 +386,14 @@ export class NotificationsService {
    * занят первым закрытием, и вернувшуюся в работу и снова сданную работу никто не видел.
    * Один перенос — одна запись в ленте — одно уведомление.
    */
-  taskStatusChanged(
+  async taskStatusChanged(
     tenantId: string, taskId: string, actorId: string | null,
     to: string, closed: boolean, moveId: string,
   ): Promise<void> {
+    await this.center.task({
+      tenantId, taskId, kind: closed ? 'closed' : 'status', actorId, mailKey: 'task.status', suffix: `m${moveId}`,
+      details: { status: to },
+    });
     return this.fanout(tenantId, taskId, 'task.status', actorId, `m${moveId}`,
       (ctx, unsub) => taskStatusLetter({ ...ctx, to, closed }, unsub));
   }

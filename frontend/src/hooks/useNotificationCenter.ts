@@ -1,0 +1,48 @@
+import { useEffect } from 'react';
+import { api } from '../lib/api';
+import { getSocket } from '../lib/socket';
+import { showToast } from '../lib/notifications';
+import { setCenterUnread } from '../lib/notification-center';
+import { isNativeShell } from '../platform';
+
+/**
+ * Центр уведомлений (#4655): счётчик на значке живьём и всплывашка о событии по задаче.
+ *
+ * Сервер кладёт запись в историю и говорит об этом по сокету (`inbox.item`); прочтение
+ * на любом устройстве — `inbox.read`. На оба пересчитываем число: оно одно на все
+ * значки. Всплывашка — только в браузере: в приложении на телефоне её показывает
+ * ящик оболочки (useMobileInbox), второй такой же не нужно. Щелчок по ней ведёт
+ * к задаче, а погасшая всплывашка остаётся в центре непрочитанной строкой.
+ */
+export function useNotificationCenter(signedIn: boolean): void {
+  useEffect(() => {
+    if (!signedIn) { setCenterUnread(0); return; }
+    let alive = true;
+    let timer = 0;
+    const load = () => {
+      // события приходят пачкой (комментарий + упоминание) — спрашиваем один раз
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        api.notificationUnread().then((r) => { if (alive) setCenterUnread(r.unread); }).catch(() => undefined);
+      }, 150);
+    };
+    load();
+    const socket = getSocket();
+    const onItem = (p: { id?: string; title?: string; body?: string; path?: string; toast?: boolean }) => {
+      load();
+      if (p?.toast && p.title && !isNativeShell()) {
+        showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path });
+      }
+    };
+    socket.on('inbox.item', onItem);
+    socket.on('inbox.read', load);
+    socket.on('connect', load);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+      socket.off('inbox.item', onItem);
+      socket.off('inbox.read', load);
+      socket.off('connect', load);
+    };
+  }, [signedIn]);
+}

@@ -397,7 +397,7 @@ export class PulseService {
           break;
         case 'TASK_RESCHEDULE':
           await this.need(a, 'task.edit', 'Нет права менять задачу');
-          await this.forecastSvc.setEstimateDeadline(a.tenantId, String(x.taskId), { deadline: String(x.deadline) });
+          await this.forecastSvc.setEstimateDeadline(a.tenantId, String(x.taskId), { deadline: String(x.deadline) }, a.userId);
           await this.activity.log(a.tenantId, String(x.taskId), a.userId, 'deadline_shifted', { to: x.deadline, via: 'pulse' });
           text = 'Срок перенесён.';
           break;

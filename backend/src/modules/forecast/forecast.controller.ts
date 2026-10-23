@@ -73,7 +73,7 @@ export class ForecastController {
       await this.service.setEstimateDeadline(user.tenantId, id, {
         estimate: dto.estimateHours,
         deadline: dto.deadlineAt,
-      });
+      }, user.userId);
     }
     return this.service.assign(user.tenantId, id, dto.assigneeId, user.userId, dto.confirmOverload === true);
   }

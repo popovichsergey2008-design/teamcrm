@@ -34,6 +34,20 @@ export class InboxRepository {
     return i.mailId ? this.db.one<InboxRow>(`SELECT * FROM notification_inbox WHERE mail_id=$1`, [i.mailId]) : null;
   }
 
+  /**
+   * Письмо о задаче нашло свою строку центра (#4655): та же запись, теперь с письмом.
+   * Строки нет — событие этому человеку центр не адресовал (например, о его же
+   * действии), и ящику с push'ем здесь делать нечего.
+   */
+  attachMail(userId: string, dedupKey: string, mailId: string) {
+    return this.db.one<InboxRow>(
+      `UPDATE notification_inbox SET mail_id = COALESCE(mail_id, $3)
+        WHERE user_id=$1 AND dedup_key=$2
+        RETURNING *`,
+      [userId, dedupKey, mailId],
+    );
+  }
+
   /** Всё после курсора, по порядку: клиент догоняет то, что push не донёс. */
   after(userId: string, afterId: string | null, limit: number) {
     return this.db.many<InboxRow>(
@@ -62,6 +76,9 @@ export class InboxRepository {
       `UPDATE notification_inbox SET read_at=now()
         WHERE tenant_id=$1 AND ($2::bigint IS NULL OR user_id=$2::bigint) AND read_at IS NULL
           AND path ~ ('/task/' || $3::text || '([/?#]|$)')
+          -- «задачу завершили» и есть новость о закрытии: гасить её вместе с остальными
+          -- значило бы, что о закрытой задаче центр никогда не скажет (#4655)
+          AND ($2::bigint IS NOT NULL OR event_key <> 'task.closed')
        RETURNING user_id::text`,
       [tenantId, userId, String(taskId)],
     );
