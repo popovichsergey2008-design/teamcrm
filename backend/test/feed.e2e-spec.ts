@@ -186,7 +186,12 @@ describe('Новости (e2e)', () => {
     expect(k.can.edit).toBe(false);
 
     // получатель узнаёт без почты — запись в ящике уведомлений
-    const inbox = await db.many(`SELECT * FROM notification_inbox WHERE user_id = $1 AND event_key = 'feed.kudos'`, [gleb.id]);
+    // уведомление уходит в фоне (void thank) — ждём его, а не читаем сразу: иначе тест через раз падает гонкой
+    let inbox: any[] = [];
+    for (let i = 0; i < 30 && !inbox.length; i++) {
+      inbox = await db.many(`SELECT * FROM notification_inbox WHERE user_id = $1 AND event_key = 'feed.kudos'`, [gleb.id]);
+      if (!inbox.length) await new Promise((r) => setTimeout(r, 100));
+    }
     expect(inbox).toHaveLength(1);
     expect(inbox[0].path).toBe(`/news/${k.id}`);
 
