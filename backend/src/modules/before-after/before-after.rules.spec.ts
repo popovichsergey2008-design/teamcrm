@@ -1,7 +1,8 @@
 import {
-  descriptionImageIds, descriptionText, edits, fingerprint, hasProblems, headline, matchShots, mentionedNumber,
-  pageUrls, parseChange, parseCheck, parseSplit, remarksText, resultMessage, seesImages, settleVerdict, Shot,
-  sideOf, splitItems, summarize,
+  autoWorthy, descriptionCallsExample, descriptionImageContext, descriptionImageIds, descriptionText, edits,
+  fingerprint, hasProblems, headline, initialRole, kindByRules, looksVisual, matchShots, mentionedNumber,
+  needsResult, pageUrls, parseChange, parseCheck, parseSplit, points, remarksText, resultMessage, ruleRole,
+  saysExample, seesImages, settleVerdict, Shot, sideOf, splitItems, summarize,
 } from './before-after.rules';
 import { urlAllowed } from './page-shot';
 
@@ -155,8 +156,41 @@ describe('«Было/стало»: ответ модели и вердикт', (
     n: 1, verdict, reason, from: null, to: null, beforeShots: [], afterShots: [],
   });
 
-  it('без «стало» — «результат не приложен», что бы ни сказала модель', () => {
-    expect(settleVerdict({ model: m('fixed'), hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: false }).verdict).toBe('no_result');
+  it('без «стало» — «результат не приложен»; но мнение модели «выполнено» не глушим — «стоит посмотреть»', () => {
+    expect(settleVerdict({ model: m('unclear'), hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: false }).verdict).toBe('no_result');
+    expect(settleVerdict({ model: m('not_fixed'), hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: false }).verdict).toBe('no_result');
+    expect(settleVerdict({ model: null, hasModel: false, modelSees: false, hasAfterShots: false, hasAfterOther: false }).verdict).toBe('no_result');
+    // #4657: модель сочла пункт подтверждённым по снимкам — показываем её объяснение, решает человек
+    const r = settleVerdict({ model: m('fixed', 'на снимке 2 отчёт с блоками «Было/Стало»'), hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: false });
+    expect(r.verdict).toBe('unclear');
+    expect(r.reason).toMatch(/ИИ считает, что пункт выполнен: на снимке 2 отчёт/);
+    // без причины — не мнение, а пустое слово: остаётся «без результата»
+    expect(settleVerdict({ model: m('fixed', ''), hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: false }).verdict).toBe('no_result');
+  });
+
+  it('чек-лист приёмки: без модели — проверить по отчёту исполнителя, без отчёта — без результата', () => {
+    const eyes = settleVerdict({ model: null, hasModel: false, modelSees: false, hasAfterShots: false, hasAfterOther: true, kind: 'functional' });
+    expect(eyes).toEqual({ verdict: 'eyes', reason: 'ИИ не подключён — проверьте пункт по отчёту исполнителя сами.' });
+    expect(settleVerdict({ model: null, hasModel: false, modelSees: false, hasAfterShots: false, hasAfterOther: false, kind: 'functional' }).reason)
+      .toMatch(/не написал, что проверил/);
+  });
+
+  it('разбор: тип задачи и роли снимков — только известные номера и роли, не результат исполнителя', () => {
+    const raw = JSON.stringify({
+      kind: 'functional',
+      shot_roles: [
+        { shot: 1, role: 'example' }, { shot: 2, role: 'reference' }, { shot: 3, role: 'after' },
+        { shot: 9, role: 'example' }, { shot: 1, role: 'before' }, { shot: 4, role: 'example' },
+      ],
+      items: [{ n: 1, verdict: 'unclear', reason: 'нет' }],
+    });
+    // снимок 4 — результат исполнителя: его роль модели не решать
+    const r = parseCheck(raw, 1, 4, (n) => n !== 4);
+    expect(r?.kind).toBe('functional');
+    expect(r?.roles).toEqual([{ shot: 1, role: 'example' }, { shot: 2, role: 'reference' }]);
+    expect(parseCheck(JSON.stringify({ kind: 'странный', items: [{ n: 1, verdict: 'fixed' }] }), 1)?.kind).toBeNull();
+    // старый промпт (клон компании) ролей не знает — разбор не ломается
+    expect(parseCheck('{"items":[{"n":1,"verdict":"fixed","reason":"да"}]}', 1)?.roles).toEqual([]);
   });
 
   it('без модели — «проверьте глазами», без выдумок', () => {
@@ -197,8 +231,9 @@ describe('«Было/стало»: итог и сообщения', () => {
   it('две не внесены — «нашли ошибки: 2 из 6»', () => {
     const s = summarize(v('fixed', 'fixed', 'not_fixed', 'fixed', 'not_fixed', 'unclear'));
     expect(hasProblems(s)).toBe(true);
-    expect(resultMessage(s, 'ai')).toBe('Посмотрите, мы проверили и нашли ошибки: 2 из 6 правок не внесены.');
-    expect(headline(s)).toBe('Мы проверили 6 правок: 3 исправлено, 2 не внесено, 1 — проверьте');
+    expect(resultMessage(s, 'ai')).toBe('Посмотрите, мы проверили и нашли ошибки: 2 из 6 правок не внесены; ещё 1 стоит посмотреть.');
+    expect(headline(s)).toBe('Мы проверили 6 правок: 3 исправлено, 2 не внесено, 1 стоит посмотреть');
+    expect(resultMessage(summarize(v('fixed', 'not_fixed')), 'ai')).toBe('Посмотрите, мы проверили и нашли ошибки: 1 из 2 правок не внесены.');
   });
 
   it('без модели не притворяемся проверившими', () => {
@@ -206,7 +241,35 @@ describe('«Было/стало»: итог и сообщения', () => {
   });
 
   it('ошибок нет, но есть непонятные — так и говорим', () => {
-    expect(resultMessage(summarize(v('fixed', 'unclear')), 'ai')).toMatch(/1 из 2 правок нужно посмотреть глазами/);
+    expect(resultMessage(summarize(v('fixed', 'unclear')), 'ai')).toMatch(/ошибок не нашли, но 1 из 2 правок стоит посмотреть глазами/);
+  });
+
+  it('«нашли ошибки» — только при невнесённых; без результата у всех — «проверять нечего»', () => {
+    const none = summarize(v('no_result', 'no_result', 'no_result', 'no_result'));
+    expect(hasProblems(none)).toBe(false);
+    expect(needsResult(none)).toBe(true);
+    for (const mode of ['ai', 'eyes'] as const) {
+      for (const kind of ['visual', 'functional'] as const) {
+        expect(resultMessage(none, mode, kind)).toBe('Исполнитель пока не приложил результат — проверять нечего.');
+      }
+    }
+    expect(headline(none)).toBe('4 правки — результат пока не приложен');
+    expect(headline(none, 'functional')).toBe('Чек-лист приёмки, 4 пункта: 4 без результата');
+  });
+
+  it('смешанный случай — честно по числам, без слова «ошибки»', () => {
+    const s = summarize(v('fixed', 'fixed', 'no_result', 'unclear'));
+    expect(resultMessage(s, 'ai')).toBe('Посмотрите, что получилось: 2 исправлено, 1 без результата, 1 стоит посмотреть.');
+    expect(resultMessage(s, 'ai', 'functional')).toBe('Посмотрите, что получилось: 2 подтверждено, 1 без результата, 1 стоит посмотреть.');
+    const eyes = resultMessage(summarize(v('eyes', 'no_result')), 'eyes');
+    expect(eyes).toBe('Мы собрали отчёт «было/стало» по 2 правкам — ИИ не подключён, сравните снимки глазами. По 1 из 2 правок результат пока не приложен.');
+    for (const msg of [resultMessage(s, 'ai'), eyes]) expect(msg).not.toMatch(/ошибк/);
+  });
+
+  it('чек-лист приёмки: «подтверждено», пункты, а не правки', () => {
+    expect(resultMessage(summarize(v('fixed', 'fixed')), 'ai', 'functional')).toBe('Посмотрите, мы проверили: 2 из 2 пунктов подтверждены отчётом исполнителя.');
+    expect(resultMessage(summarize(v('eyes')), 'eyes', 'functional')).toMatch(/чек-лист приёмки по одному пункту — ИИ не подключён/);
+    expect([1, 3, 5, 21].map(points)).toEqual(['1 пункт', '3 пункта', '5 пунктов', '21 пункт']);
   });
 
   it('склонение «правка»', () => {
@@ -221,6 +284,8 @@ describe('«Было/стало»: итог и сообщения', () => {
     ]);
     expect(t).toBe('По отчёту «было/стало» не внесены правки:\n2. Иконка — иконка прежняя\n3. Отступ — Результат не приложен');
     expect(remarksText([{ n: 1, title: 'А', verdict: 'fixed', reason: '' }])).toBe('');
+    // одни «без результата» — не «не внесены»
+    expect(remarksText([{ n: 1, title: 'А', verdict: 'no_result', reason: '' }])).toBe('По отчёту «было/стало» нет результата по пунктам:\n1. А');
   });
 
   it('отпечаток: те же материалы — тот же, другие — другой', () => {
@@ -246,5 +311,151 @@ describe('«Было/стало»: снимок страницы', () => {
     expect(await urlAllowed('file:///etc/passwd', resolve)).toBe(false);
     expect(await urlAllowed('https://example.com/', resolve)).toBe(true);
     expect(await urlAllowed('data:image/png;base64,AAAA', resolve)).toBe(true);
+  });
+});
+
+describe('«Было/стало»: роль снимка постановщика', () => {
+  it('слова «образец»: пример, макет, как должно, по аналогии — да; «например» и стрелки — нет', () => {
+    for (const t of ['Пример отчёта', 'образец страницы', 'макет', 'как должно выглядеть', 'Так должно быть', 'по аналогии с главной', 'референс', 'для примера']) {
+      expect([t, saysExample(t)]).toEqual([t, true]);
+    }
+    for (const t of ['например, заголовок', 'стрелкой показал, где поправить', 'было так', '', null]) {
+      expect([t, saysExample(t)]).toEqual([t, false]);
+    }
+  });
+
+  it('описание называет вложения образцом — только когда в одной фразе и «образец», и «скрин/вложение»', () => {
+    expect(descriptionCallsExample('Сделать отчёт. Образец отчёта — на скринах во вложении.')).toBe(true);
+    expect(descriptionCallsExample('Скрины ниже — для примера, как должно получиться')).toBe(true);
+    expect(descriptionCallsExample('Сделать по образцу. Скрин ошибки во вложении.')).toBe(false);
+    expect(descriptionCallsExample('Поменять подзаголовок, скрин во вложении')).toBe(false);
+  });
+
+  it('текст рядом с картинкой описания: подряд идущие картинки делят подпись', () => {
+    const html = '<p>Образец отчёта:</p><img data-file-id="1"><img data-file-id="2"><p>Поменять заголовок</p><img data-file-id="3">';
+    const ctx = descriptionImageContext(html);
+    expect(ctx.get('1')).toBe('Образец отчёта:');
+    expect(ctx.get('2')).toBe('Образец отчёта: Поменять заголовок');
+    expect(ctx.get('3')).toBe('Поменять заголовок');
+    expect(ruleRole({ context: ctx.get('1') })).toBe('example');
+    expect(ruleRole({ context: ctx.get('3') })).toBe('before');
+  });
+
+  it('по умолчанию — «было», как раньше; общая фраза описания делает образцом снимок без подписи', () => {
+    expect(ruleRole({ context: null })).toBe('before');
+    expect(ruleRole({ context: 'вот тут поправить', descriptionCallsExample: false })).toBe('before');
+    expect(ruleRole({ context: null, descriptionCallsExample: true })).toBe('example');
+  });
+
+  it('роль руками главнее всего; результат исполнителя без ручной правки — «стало»', () => {
+    expect(initialRole('before', 'after', 'before')).toEqual({ role: 'after', by: 'manual' });
+    expect(initialRole('after', 'none', 'before')).toEqual({ role: 'none', by: 'manual' });
+    expect(initialRole('after', null, 'example')).toEqual({ role: 'after', by: 'rule' });
+    expect(initialRole('before', null, 'example')).toEqual({ role: 'example', by: 'rule' });
+    expect(initialRole('before', undefined, 'before')).toEqual({ role: 'before', by: 'rule' });
+  });
+});
+
+describe('«Было/стало»: правка вида или приёмка функции', () => {
+  it('правки текста и вида узнаём, критерии приёмки — нет', () => {
+    for (const t of ['Подзаголовок блока «Возможности»', 'Заменить «А» на «Б»', 'Иконка карточки «Задача из сообщения»', 'Поправить отступы в шапке', 'Убрать кнопку «Скачать»']) {
+      expect([t, looksVisual(t)]).toEqual([t, true]);
+    }
+    for (const t of ['Открыть завершённую задачу и запустить проверку', 'Убедиться, что формируется отчёт с блоками «Было» и «Стало»',
+      'Проверить итог: «Посмотрите, мы проверили и нашли/не нашли ошибки»', 'Принять/отклонить работу', 'Экспорт в CSV работает']) {
+      expect([t, looksVisual(t)]).toEqual([t, false]);
+    }
+  });
+
+  it('есть снимки «было» — визуальные правки; нет и пункты не похожи на правки — приёмка функции', () => {
+    expect(kindByRules([{ title: 'Убедиться, что отчёт строится' }], 1)).toBe('visual');
+    expect(kindByRules([{ title: 'Убедиться, что отчёт строится' }, { title: 'Принять работу' }], 0)).toBe('functional');
+    expect(kindByRules([{ title: 'Убедиться, что отчёт строится' }, { title: 'Иконка карточки' }], 0)).toBe('visual');
+  });
+});
+
+describe('«Было/стало»: автозапуск после сдачи', () => {
+  const x = [{}];
+  it('нужен результат: снимок «стало» или отчёт исполнителя при снимках «было»; образцы — не в счёт', () => {
+    expect(autoWorthy({ before: [], after: x, afterMessages: [], afterDocs: [] })).toBe(true);
+    expect(autoWorthy({ before: x, after: [], afterMessages: x, afterDocs: [] })).toBe(true);
+    expect(autoWorthy({ before: x, after: [], afterMessages: [], afterDocs: x })).toBe(true);
+    // одни снимки постановщика без слова исполнителя — проверять нечего
+    expect(autoWorthy({ before: x, after: [], afterMessages: [], afterDocs: [] })).toBe(false);
+    // образцы в before не попадают — и без картинок «было» задача проверяется кнопкой
+    expect(autoWorthy({ before: [], after: [], afterMessages: x, afterDocs: [] })).toBe(false);
+  });
+});
+
+/**
+ * Случай с прода (#4657, отчёт 3): постановщик приложил три скрина — макет желаемого
+ * отчёта «QEVO — правки на сайте: до и после», — а пункты взяты из чек-листа и это
+ * критерии приёмки функции. Исполнитель ничего не приложил и не написал. Прежний код
+ * положил скрины в «Было» пункта 2, поставил всем «без результата» и написал «нашли
+ * ошибки», перебив модель, которая сочла пункт 2 подтверждённым.
+ */
+describe('#4657: три скрина-образца и четыре пункта приёмки', () => {
+  const titles = [
+    'Открыть завершённую задачу и запустить проверку «было/стало»',
+    'Убедиться, что формируется отчёт с блоками «Было» и «Стало» по каждому пункту',
+    'Проверить итог: «Посмотрите, мы проверили и нашли/не нашли ошибки»',
+    'Принять или отклонить работу из отчёта',
+  ];
+  const items = titles.map((title) => ({ title }));
+  const shots = ['1226', '1227', '1228'].map((id) => shot(id, { by: 'Константин', name: `4657_${id}.png` }));
+  const nothing = { hasAfterShots: false, hasAfterOther: false };
+
+  it('без модели и без подписей: итог — «результат не приложен», без слова «ошибки», сам не запускается', () => {
+    const roles = shots.map(() => ruleRole({ context: null }));
+    expect(roles).toEqual(['before', 'before', 'before']);
+    const verdicts = items.map(() => settleVerdict({ model: null, hasModel: false, modelSees: false, ...nothing, kind: kindByRules(items, 3) }));
+    expect(verdicts.every((v) => v.verdict === 'no_result')).toBe(true);
+    const s = summarize(verdicts);
+    const msg = resultMessage(s, 'eyes', kindByRules(items, 3));
+    expect(msg).toBe('Исполнитель пока не приложил результат — проверять нечего.');
+    expect(msg).not.toMatch(/ошибк/);
+    expect(hasProblems(s)).toBe(false);
+    expect(autoWorthy({ before: shots, after: [], afterMessages: [], afterDocs: [] })).toBe(false);
+  });
+
+  it('описание называет скрины образцом — правила кладут их в образцы, задача — приёмка функции', () => {
+    const roles = shots.map(() => ruleRole({ context: null, descriptionCallsExample: descriptionCallsExample('Образец отчёта — на скринах во вложении.') }));
+    expect(roles).toEqual(['example', 'example', 'example']);
+    expect(kindByRules(items, 0)).toBe('functional');
+  });
+
+  it('модель: снимки — образец, задача — приёмка; её «пункт 2 подтверждён» — «стоит посмотреть», а не «без результата»', () => {
+    const answer = JSON.stringify({
+      kind: 'functional',
+      shot_roles: [{ shot: 1, role: 'example' }, { shot: 2, role: 'example' }, { shot: 3, role: 'example' }],
+      items: [
+        { n: 1, verdict: 'unclear', reason: 'Нет подтверждения запуска.' },
+        { n: 2, verdict: 'fixed', reason: 'На снимках сформирован графический отчёт с блоками «Было/Стало».' },
+        { n: 3, verdict: 'unclear', reason: 'Итоговой фразы не видно.' },
+        { n: 4, verdict: 'unclear', reason: 'Кнопок не видно.' },
+      ],
+      summary: 'Сформирован сам графический отчёт (пункт 2 подтверждён).',
+    });
+    const parsed = parseCheck(answer, 4, 3, () => true)!;
+    expect(parsed.kind).toBe('functional');
+    expect(parsed.roles.map((r) => r.role)).toEqual(['example', 'example', 'example']);
+
+    const verdicts = items.map((_, i) => settleVerdict({
+      model: parsed.items.find((m) => m.n === i + 1) ?? null, hasModel: true, modelSees: true, ...nothing, kind: parsed.kind!,
+    }));
+    expect(verdicts.map((v) => v.verdict)).toEqual(['no_result', 'unclear', 'no_result', 'no_result']);
+    expect(verdicts[1].reason).toMatch(/ИИ считает, что пункт выполнен/);
+    const s = summarize(verdicts);
+    const msg = resultMessage(s, 'ai', 'functional');
+    expect(msg).toBe('Посмотрите, что получилось: 3 без результата, 1 стоит посмотреть.');
+    expect(msg).not.toMatch(/ошибк/);
+    expect(headline(s, 'functional')).toBe('Чек-лист приёмки, 4 пункта: 3 без результата, 1 стоит посмотреть');
+  });
+
+  it('исполнитель отписался словами — в приёмке это «стало», скринов не требуем', () => {
+    const m = { n: 1, verdict: 'fixed' as const, reason: 'Исполнитель пишет, что запустил проверку на задаче #12.', from: null, to: null, beforeShots: [], afterShots: [] };
+    expect(settleVerdict({ model: m, hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: true, kind: 'functional' }).verdict).toBe('fixed');
+    expect(resultMessage(summarize([{ verdict: 'fixed' }, { verdict: 'fixed' }, { verdict: 'fixed' }, { verdict: 'fixed' }]), 'ai', 'functional'))
+      .toBe('Посмотрите, мы проверили: 4 из 4 пунктов подтверждены отчётом исполнителя.');
   });
 });

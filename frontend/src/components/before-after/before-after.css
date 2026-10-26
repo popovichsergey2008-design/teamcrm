@@ -75,12 +75,21 @@
   display: flex; align-items: center; justify-content: center; min-height: 96px; padding: var(--sp-3);
   border: 1px dashed var(--border-2); border-radius: var(--radius); color: var(--text-dim); font-size: var(--fs-sm); text-align: center;
 }
+/* роль снимка и образцы постановщика (#4657, доработка) */
+.ba-role { align-self: flex-start; max-width: 100%; }
+.ba-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: var(--sp-3); margin-top: var(--sp-3); }
+.ba-examples { border-style: dashed; }
+.ba-flush { margin-left: 0; }
+.ba-report { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; }
+.ba-check { margin: var(--sp-2) 0 0 34px; }
+.ba-others > summary { cursor: pointer; }
+.ba-others[open] > summary { margin-bottom: var(--sp-1); }
 .ba-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* телефон: колонки друг под другом — рядом снимок становится маркой */
 @media (max-width: 720px) {
   .ba-cols { grid-template-columns: minmax(0, 1fr); }
-  .ba-change, .ba-detail, .ba-reason { margin-left: 0; }
+  .ba-change, .ba-detail, .ba-reason, .ba-check { margin-left: 0; }
   .ba-item { padding: var(--sp-3); }
   .ba-actions { width: 100%; }
 }

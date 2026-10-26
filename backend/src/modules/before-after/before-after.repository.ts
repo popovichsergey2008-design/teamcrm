@@ -254,6 +254,102 @@ export class BeforeAfterRepository {
     );
   }
 
+  // ───── роли снимков руками ─────
+
+  /** Роли, которые люди выбрали руками: главнее модели и правил. */
+  shotRoles(tenantId: string, taskId: string) {
+    return this.db.many<{ file_id: string; role: 'before' | 'example' | 'after' | 'none' }>(
+      `SELECT file_id::text, role FROM task_check_shot_roles WHERE tenant_id = $1 AND task_id = $2 ORDER BY file_id`,
+      [tenantId, taskId],
+    );
+  }
+
+  /**
+   * Поставить роль снимку (null — вернуть «как решит система»). Только снимку этой
+   * задачи: чужой файл — false, как несуществующий.
+   */
+  async setShotRole(tenantId: string, taskId: string, fileId: string, role: string | null, userId: string): Promise<boolean> {
+    if (!/^\d+$/.test(String(fileId))) return false;
+    const own = await this.db.one<{ ok: number }>(
+      `SELECT 1 AS ok FROM task_attachments WHERE tenant_id = $1 AND task_id = $2 AND file_id = $3 LIMIT 1`,
+      [tenantId, taskId, fileId],
+    );
+    if (!own) return false;
+    if (!role) {
+      await this.db.query(`DELETE FROM task_check_shot_roles WHERE tenant_id = $1 AND task_id = $2 AND file_id = $3`, [tenantId, taskId, fileId]);
+      return true;
+    }
+    await this.db.query(
+      `INSERT INTO task_check_shot_roles (tenant_id, task_id, file_id, role, set_by)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (task_id, file_id) DO UPDATE SET role = EXCLUDED.role, set_by = EXCLUDED.set_by, set_at = now()`,
+      [tenantId, taskId, fileId, role, userId],
+    );
+    return true;
+  }
+
+  // ───── отметки по отчёту ─────
+
+  /**
+   * Отметить «попросили результат» — один раз на отчёт и не чаще раза в сутки по задаче:
+   * повторное нажатие (или второй человек) сообщение исполнителю не дублирует.
+   * true — отметили сейчас, можно писать исполнителю.
+   */
+  async markAskedResult(tenantId: string, taskId: string, reportId: string, userName: string): Promise<boolean> {
+    if (!/^\d+$/.test(String(reportId))) return false;
+    const r = await this.db.one<{ id: string }>(
+      `UPDATE task_check_reports r
+          SET summary = r.summary || jsonb_build_object('askedResult', jsonb_build_object('by', $4::text, 'at', now()))
+        WHERE r.tenant_id = $1 AND r.task_id = $2 AND r.id = $3 AND r.status = 'ready'
+          AND r.summary->'askedResult' IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM task_check_reports o
+             WHERE o.tenant_id = $1 AND o.task_id = $2 AND o.summary->'askedResult' IS NOT NULL
+               AND (o.summary->'askedResult'->>'at')::timestamptz > now() - interval '1 day')
+        RETURNING r.id::text`,
+      [tenantId, taskId, reportId, userName],
+    );
+    return !!r;
+  }
+
+  /** Сообщение не ушло — снимаем отметку, чтобы можно было попросить ещё раз. */
+  async unmarkAskedResult(tenantId: string, reportId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE task_check_reports SET summary = summary - 'askedResult' WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, reportId],
+    );
+  }
+
+  /** «Проверено» у пункта чек-листа приёмки — отметка постановщика в самом отчёте. */
+  async setChecked(tenantId: string, taskId: string, reportId: string, n: number, checked: boolean, userName: string): Promise<boolean> {
+    if (!/^\d+$/.test(String(reportId))) return false;
+    const r = checked
+      ? await this.db.one<{ id: string }>(
+        `UPDATE task_check_reports
+            SET summary = jsonb_set(summary, '{checked}',
+                  COALESCE(summary->'checked', '{}'::jsonb) || jsonb_build_object($4::text, jsonb_build_object('by', $5::text, 'at', now())))
+          WHERE tenant_id = $1 AND task_id = $2 AND id = $3 AND status = 'ready'
+          RETURNING id::text`,
+        [tenantId, taskId, reportId, String(n), userName],
+      )
+      : await this.db.one<{ id: string }>(
+        `UPDATE task_check_reports SET summary = summary #- ARRAY['checked', $4::text]
+          WHERE tenant_id = $1 AND task_id = $2 AND id = $3 AND status = 'ready'
+          RETURNING id::text`,
+        [tenantId, taskId, reportId, String(n)],
+      );
+    return !!r;
+  }
+
+  /** Имя человека — для подписи отметок в отчёте. */
+  async userName(tenantId: string, userId: string): Promise<string | null> {
+    const r = await this.db.one<{ full_name: string | null }>(
+      `SELECT full_name FROM users WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, userId],
+    );
+    return r?.full_name ?? null;
+  }
+
   /** Сообщение помощника в обсуждение задачи — как у «Проверить ИИ». */
   async aiComment(tenantId: string, taskId: string, authorId: string, body: string): Promise<string | null> {
     const r = await this.db.one<{ id: string }>(

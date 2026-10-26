@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { randomUUID } from 'crypto';
 import { trackBackground } from '../../common/background-work';
 import { ProjectViewer } from '../../common/access/project-visibility';
@@ -15,9 +16,10 @@ import { renderBeforeAfterHtml } from './before-after.html';
 import { CHECK_FALLBACK, CHECK_PROMPT, SPLIT_FALLBACK, SPLIT_PROMPT } from './before-after.prompt';
 import { BeforeAfterRepository, CheckTaskRow, ReportRow } from './before-after.repository';
 import {
-  CheckItem, descriptionImageIds, descriptionText, fingerprint, hasProblems, headline, isImage, ItemSource,
-  matchShots, MaterialFile, ModelItem, pageUrls, parseChange, parseCheck, parseSplit, RawItem, remarksText,
-  resultMessage, seesImages, settleVerdict, Shot, sideOf, splitItems, summarize,
+  ASK_RESULT_TEXT, autoWorthy, CheckItem, CheckKind, descriptionCallsExample, descriptionImageContext, descriptionImageIds,
+  descriptionText, fingerprint, hasProblems, headline, initialRole, isImage, ItemSource, kindByRules, MANUAL_ROLES,
+  ManualRole, matchShots, MaterialFile, ModelItem, needsResult, pageUrls, parseChange, parseCheck, parseSplit, RawItem,
+  remarksText, resultMessage, ruleRole, seesImages, settleVerdict, Shot, sideOf, splitItems, summarize,
 } from './before-after.rules';
 import { PageShooter } from './page-shot';
 
@@ -52,8 +54,13 @@ interface Collected {
   checklist: { text: string; done: boolean }[];
   description: string | null;
   descText: string;
+  /** Снимки по ролям: «было», «стало», образцы постановщика, справка и «не относится». */
   before: Shot[];
   after: Shot[];
+  examples: Shot[];
+  others: Shot[];
+  /** Роли, выбранные руками: fileId → роль. */
+  manual: Record<string, ManualRole>;
   sizes: Map<string, number>;
   afterDocs: { fileId: string; name: string; mime: string; size: number }[];
   afterMessages: { id: string; author: string | null; body: string; at: Date }[];
@@ -86,7 +93,6 @@ function toDto(r: ReportRow): ReportDto {
 }
 
 const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
-
 /**
  * Отчёт «было/стало» (#4657).
  *
@@ -115,6 +121,7 @@ export class BeforeAfterService {
   private readonly timers = new Map<string, { timer: NodeJS.Timeout; done: () => void }>();
 
   constructor(
+    private readonly moduleRef: ModuleRef,
     private readonly repo: BeforeAfterRepository,
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
@@ -139,16 +146,79 @@ export class BeforeAfterService {
     ]);
     const lastReady = rows.find((r) => r.status === 'ready');
     return {
-      task: this.taskMeta(task, viewer),
+      task: this.taskMeta(task, viewer, collected.doers),
       versions: rows.map((r) => ({
         id: r.id, version: Number(r.version), status: r.status, trigger: r.trigger,
         createdAt: r.created_at, requestedBy: r.requested_by_name, summary: r.summary ?? {},
       })),
       current: current ? toDto(current) : null,
-      /** Материалы поменялись после последней готовой проверки — повод проверить заново. */
+      /** Материалы (или роли снимков) поменялись после последней готовой проверки — повод пересобрать. */
       changed: lastReady ? lastReady.fingerprint !== collected.fp : null,
-      materials: { before: collected.before.length, after: collected.after.length, messages: collected.afterMessages.length },
+      materials: {
+        before: collected.before.length, after: collected.after.length, examples: collected.examples.length,
+        messages: collected.afterMessages.length,
+      },
+      /** Роли, выбранные руками, — переключатель у снимка показывает их сразу, до пересборки. */
+      roles: collected.manual,
     };
+  }
+
+  /**
+   * Роль снимка руками: «Было / Образец / Стало / Не относится» (null — как решит система).
+   *
+   * Менять может постановщик, исполнитель и соисполнители, руководство. Отчёт сам не
+   * пересобирается: роль входит в отпечаток, вкладка предложит «Пересобрать отчёт».
+   */
+  async setShotRole(tenantId: string, taskId: string, fileId: string, role: string | null, viewer: ProjectViewer) {
+    if (viewer.role === 'client') throw AppException.forbidden('Доступно сотрудникам компании');
+    const task = await this.repo.visibleTask(tenantId, taskId, viewer);
+    if (!task) throw AppException.notFound('Задача не найдена');
+    const doers = await this.repo.doers(tenantId, task.id, task.assignee_id);
+    if (!this.taskMeta(task, viewer, doers).canSetRoles) {
+      throw AppException.forbidden('Роль снимка меняют постановщик, исполнитель или руководитель');
+    }
+    if (role !== null && !MANUAL_ROLES.includes(role as ManualRole)) throw AppException.validation('Неизвестная роль снимка');
+    const ok = await this.repo.setShotRole(tenantId, task.id, fileId, role, String(viewer.userId));
+    if (!ok) throw AppException.notFound('Снимок не найден в задаче');
+    return { fileId: String(fileId), role };
+  }
+
+  /**
+   * «Попросить результат»: комментарий исполнителю в обсуждение задачи — один раз на
+   * отчёт и не чаще раза в сутки по задаче, сколько бы раз ни нажали.
+   */
+  async askResult(tenantId: string, taskId: string, reportId: string, viewer: ProjectViewer) {
+    if (viewer.role === 'client') throw AppException.forbidden('Доступно сотрудникам компании');
+    const task = await this.repo.visibleTask(tenantId, taskId, viewer);
+    if (!task) throw AppException.notFound('Задача не найдена');
+    const row = await this.repo.get(tenantId, task.id, reportId);
+    if (!row || row.status !== 'ready') throw AppException.notFound('Готовый отчёт не найден');
+    const name = (await this.repo.userName(tenantId, String(viewer.userId))) ?? '—';
+    if (!(await this.repo.markAskedResult(tenantId, task.id, row.id, name))) return { sent: false };
+    try {
+      // карточка задачи зависит от задач, задачи — от нас: берём её лениво, без цикла импортов
+      const { TaskCardService } = await import('../taskcard/taskcard.service');
+      const cards = this.moduleRef.get(TaskCardService, { strict: false });
+      await cards.addComment(tenantId, task.id, String(viewer.userId), ASK_RESULT_TEXT, false);
+    } catch (e) {
+      await this.repo.unmarkAskedResult(tenantId, row.id).catch(() => undefined);
+      throw e;
+    }
+    return { sent: true };
+  }
+
+  /** «Проверено» у пункта чек-листа приёмки: ставит постановщик или руководство. */
+  async setChecked(tenantId: string, taskId: string, reportId: string, n: number, checked: boolean, viewer: ProjectViewer) {
+    const task = await this.repo.visibleTask(tenantId, taskId, viewer);
+    if (!task) throw AppException.notFound('Задача не найдена');
+    if (!this.taskMeta(task, viewer, []).canCheck) throw AppException.forbidden('Отмечать пункты может постановщик или руководитель');
+    const row = await this.repo.get(tenantId, task.id, reportId);
+    if (!row || row.status !== 'ready') throw AppException.notFound('Готовый отчёт не найден');
+    if (!Number.isInteger(n) || n < 1 || n > (row.items ?? []).length) throw AppException.validation('Нет такого пункта');
+    const name = (await this.repo.userName(tenantId, String(viewer.userId))) ?? '—';
+    await this.repo.setChecked(tenantId, task.id, row.id, n, checked, name);
+    const fresh = await this.repo.get(tenantId, task.id, row.id);
+    return fresh ? toDto(fresh) : toDto(row);
   }
 
   async get(tenantId: string, taskId: string, reportId: string, viewer: ProjectViewer): Promise<ReportDto> {
@@ -220,8 +290,7 @@ export class BeforeAfterService {
     // Проверять некому: постановщика нет или задачу сдаёт он сам — смотрит своими глазами.
     if (!task.created_by || (actorId && String(actorId) === String(task.created_by))) return null;
     const collected = await this.collect(tenantId, task);
-    // «Было/стало» — про снимки: задача без единой картинки проверяется кнопкой, а не сама.
-    if (!collected.before.length && !collected.after.length) return null;
+    if (!autoWorthy(collected)) return null;
 
     const latest = await this.repo.latest(tenantId, taskId);
     if (latest?.status === 'running') return null;
@@ -246,6 +315,7 @@ export class BeforeAfterService {
     const loose = (report.summary.loose ?? {}) as { before?: Shot[]; after?: Shot[] };
     for (const it of report.items) for (const s of [...it.before, ...it.after]) ids.add(s.fileId);
     for (const s of [...(loose.before ?? []), ...(loose.after ?? [])]) ids.add(s.fileId);
+    for (const s of (report.summary.examples ?? []) as Shot[]) ids.add(s.fileId);
     const images = new Map<string, string>();
     let total = 0;
     for (const id of ids) {
@@ -269,9 +339,11 @@ export class BeforeAfterService {
 
   // ───────────── сбор материалов ─────────────
 
-  private taskMeta(task: CheckTaskRow, viewer: ProjectViewer) {
+  private taskMeta(task: CheckTaskRow, viewer: ProjectViewer, doers: string[]) {
     const isCreator = !!task.created_by && String(task.created_by) === String(viewer.userId);
     const pending = task.approval_state === 'pending';
+    const lead = viewer.role === 'owner' || viewer.role === 'manager';
+    const staff = viewer.role !== 'client';
     return {
       id: task.id, title: task.title, projectId: task.project_id,
       approvalPending: pending,
@@ -279,6 +351,12 @@ export class BeforeAfterService {
       canDecide: pending && (isCreator || viewer.role === 'owner'),
       isCreator,
       closed: !!task.closed_at,
+      /** Роль снимка руками: постановщик, исполнитель и соисполнители, руководство. */
+      canSetRoles: staff && (isCreator || lead || doers.includes(String(viewer.userId))),
+      /** «Проверено» в чек-листе приёмки — для постановщика (и руководства). */
+      canCheck: staff && (isCreator || lead),
+      /** «Попросить результат» — любому сотруднику, кроме самого исполнителя. */
+      canAsk: staff && !doers.includes(String(viewer.userId)),
     };
   }
 
@@ -289,16 +367,22 @@ export class BeforeAfterService {
    * исполнитель и соисполнители — результат; задача «сам себе» — по времени.
    */
   private async collect(tenantId: string, task: CheckTaskRow): Promise<Collected> {
-    const [checklistRows, attachments, comments, doers, agent, firstMove] = await Promise.all([
+    const [checklistRows, attachments, comments, doers, agent, firstMove, roleRows] = await Promise.all([
       this.repo.checklist(tenantId, task.id),
       this.repo.attachments(tenantId, task.id),
       this.repo.comments(tenantId, task.id),
       this.repo.doers(tenantId, task.id, task.assignee_id),
       this.repo.agentOutput(tenantId, task.id),
       this.repo.firstTransition(tenantId, task.id),
+      this.repo.shotRoles(tenantId, task.id),
     ]);
     const checklist = checklistRows.map((c) => ({ text: String(c.text ?? ''), done: !!c.is_done }));
     const descImages = descriptionImageIds(task.description);
+    const descContext = descriptionImageContext(task.description);
+    const manual: Record<string, ManualRole> = {};
+    for (const r of roleRows) if (MANUAL_ROLES.includes(r.role)) manual[String(r.file_id)] = r.role;
+    // описание прямо называет вложения образцом («образец отчёта — на скринах»)
+    const descSaysExample = descriptionCallsExample(descriptionText(task.description));
     const people = {
       creatorId: task.created_by,
       doers: new Set(doers),
@@ -309,6 +393,8 @@ export class BeforeAfterService {
 
     const before: Shot[] = [];
     const after: Shot[] = [];
+    const examples: Shot[] = [];
+    const others: Shot[] = [];
     const sizes = new Map<string, number>();
     const afterDocs: Collected['afterDocs'] = [];
     for (const a of attachments) {
@@ -319,12 +405,25 @@ export class BeforeAfterService {
       const side = sideOf(f, people);
       sizes.set(f.fileId, Number(a.size_bytes) || 0);
       if (isImage(f.mime)) {
+        const inDesc = people.descriptionFiles.has(f.fileId);
         const shot: Shot = {
           fileId: f.fileId, name: f.name, mime: f.mime, by: f.uploaderName, at: iso(f.at),
-          origin: people.descriptionFiles.has(f.fileId) ? 'description' : f.caption != null ? 'comment' : 'attachment',
+          origin: inDesc ? 'description' : f.caption != null ? 'comment' : 'attachment',
           caption: f.caption ? f.caption.replace(/\s+/g, ' ').trim().slice(0, 300) : null,
         };
-        (side === 'before' ? before : after).push(shot);
+        // роль: руками → результат исполнителя → правила по словам рядом со снимком
+        const rule = ruleRole({
+          context: inDesc ? descContext.get(f.fileId) : f.caption,
+          // общая фраза описания — только для снимков без собственной подписи
+          descriptionCallsExample: descSaysExample && (inDesc ? !descContext.get(f.fileId) : !f.caption?.trim()),
+        });
+        const r = initialRole(side, manual[f.fileId], rule);
+        shot.role = r.role;
+        shot.roleBy = r.by;
+        if (r.role === 'before') before.push(shot);
+        else if (r.role === 'after') after.push(shot);
+        else if (r.role === 'example') examples.push(shot);
+        else others.push(shot);
       } else if (side === 'after' && !/^video\//i.test(f.mime) && detectKind(f.name, f.mime)) {
         // документ исполнителя или агента — его текст и есть результат
         afterDocs.push({ fileId: f.fileId, name: f.name, mime: f.mime, size: Number(a.size_bytes) || 0 });
@@ -356,9 +455,15 @@ export class BeforeAfterService {
       c: checklist.map((c) => [c.text, c.done]),
       b: before.map((s) => s.fileId), a: after.map((s) => s.fileId), ad: afterDocs.map((d) => d.fileId),
       m: afterMessages.map((m) => m.id), u: urls,
+      // роли руками и образцы: поменял человек роль — «Пересобрать отчёт» даст новую версию.
+      // Пусто — ключей нет: у старых отчётов отпечаток не меняется от одной выкладки.
+      ...(examples.length || others.length || Object.keys(manual).length
+        ? { e: examples.map((s) => s.fileId), o: others.map((s) => s.fileId), r: manual }
+        : {}),
     });
     return {
-      checklist, description: task.description, descText, before, after, sizes, afterDocs, afterMessages, urls, fp, doers,
+      checklist, description: task.description, descText, before, after, examples, others, manual,
+      sizes, afterDocs, afterMessages, urls, fp, doers,
     };
   }
 
@@ -400,7 +505,8 @@ export class BeforeAfterService {
         : [];
       const afterAll = [...c.after, ...pageShots];
 
-      // 3. Привязка снимков к пунктам
+      // 3. Привязка снимков к пунктам. Образцы и справка к пунктам не привязываются:
+      // это не «было», и пункт «без результата» они не делают.
       const b = matchShots(raw, c.before);
       const a = matchShots(raw, afterAll);
       const items: CheckItem[] = raw.map((r, i) => ({
@@ -410,16 +516,19 @@ export class BeforeAfterService {
       }));
       let looseBefore = b.loose;
       let looseAfter = a.loose;
+      let examples = [...c.examples];
+      let others = [...c.others];
 
-      // 4. Модель сравнивает
+      // 4. Модель сравнивает — и заодно называет роль снимков постановщика и тип задачи
       const afterText = await this.afterText(tenantId, c);
       let modelItems = new Map<number, ModelItem>();
       let modelAnswered = false;
       let modelSees = false;
       let model: string | null = null;
       let modelSummary = '';
+      let modelKind: CheckKind | null = null;
       if (hasModel) {
-        const res = await this.askModel(tenantId, task, items, looseBefore, looseAfter, afterText, c, actorId);
+        const res = await this.askModel(tenantId, task, items, looseBefore, looseAfter, examples, afterText, c, actorId);
         inputTokens += res.input; outputTokens += res.output;
         model = res.model;
         if (res.parsed) {
@@ -427,9 +536,29 @@ export class BeforeAfterService {
           modelSees = seesImages(res.model);
           modelSummary = res.parsed.summary;
           modelItems = new Map(res.parsed.items.map((m) => [m.n, m]));
+          // роли снимков — только если модель их видела; руками выбранное она не трогает
+          if (modelSees) {
+            modelKind = res.parsed.kind;
+            for (const r of res.parsed.roles) {
+              const shot = res.shown[r.shot - 1]?.shot;
+              if (!shot || shot.roleBy === 'manual' || shot.role === 'after' || shot.role === r.role) continue;
+              for (const it of items) it.before = it.before.filter((s) => s !== shot);
+              looseBefore = looseBefore.filter((s) => s !== shot);
+              examples = examples.filter((s) => s !== shot);
+              others = others.filter((s) => s !== shot);
+              shot.role = r.role;
+              shot.roleBy = 'model';
+              if (r.role === 'before') looseBefore.push(shot);
+              else if (r.role === 'example') examples.push(shot);
+              else others.push(shot);
+            }
+          } else if (res.parsed.kind) {
+            // тип задачи можно понять и по тексту, без картинок
+            modelKind = res.parsed.kind;
+          }
           // модель разложила снимки «без привязки» — переносим их к пунктам
           const take = (loose: Shot[], nums: number[], side: 'before' | 'after') => {
-            const picked = nums.map((n) => res.shown[n - 1]).filter((s) => s && s.side === side && loose.includes(s.shot)).map((s) => s.shot);
+            const picked = nums.map((n) => res.shown[n - 1]).filter((s) => s && s.shot.role === side && loose.includes(s.shot)).map((s) => s.shot);
             return { picked, rest: loose.filter((s) => !picked.includes(s)) };
           };
           for (const it of items) {
@@ -444,6 +573,8 @@ export class BeforeAfterService {
           notes.push('ИИ ответил непонятно — пункты отмечены «проверьте глазами».');
         }
       }
+      const beforeCount = looseBefore.length + items.reduce((n, it) => n + it.before.length, 0);
+      const kind: CheckKind = modelKind ?? kindByRules(items, beforeCount);
 
       // 5. Вердикты — за кодом
       const hasAfterOther = !!afterText.trim() || looseAfter.length > 0;
@@ -451,15 +582,21 @@ export class BeforeAfterService {
         const m = modelItems.get(it.n) ?? null;
         const v = settleVerdict({
           model: m, hasModel: hasModel && modelAnswered, modelSees,
-          hasAfterShots: it.after.length > 0, hasAfterOther,
+          hasAfterShots: it.after.length > 0, hasAfterOther, kind,
         });
         it.verdict = v.verdict;
         it.reason = v.reason;
         if (!it.change && m && (m.from || m.to)) it.change = { from: m.from, to: m.to };
       }
-      if (!hasModel) notes.push('ИИ не подключён — отчёт собран без проверки: сравните снимки глазами. Подключить: Интеграции → ИИ.');
-      else if (modelAnswered && !modelSees && (c.before.length || afterAll.length)) {
+      if (!hasModel) {
+        notes.push(kind === 'functional'
+          ? 'ИИ не подключён — отчёт собран без проверки: сверьте пункты с отчётом исполнителя сами. Подключить: Интеграции → ИИ.'
+          : 'ИИ не подключён — отчёт собран без проверки: сравните снимки глазами. Подключить: Интеграции → ИИ.');
+      } else if (modelAnswered && !modelSees && (c.before.length || c.examples.length || afterAll.length)) {
         notes.push(`Модель${model ? ` ${model}` : ''} не умеет смотреть снимки — пункты со снимками проверьте глазами.`);
+      }
+      if (examples.length) {
+        notes.push(`Снимки постановщика (${examples.length}) — образец того, как должно быть, а не исходный вид: показаны отдельно. Ошиблись — поменяйте роль у снимка и пересоберите отчёт.`);
       }
 
       const s = summarize(items);
@@ -467,14 +604,18 @@ export class BeforeAfterService {
       await this.repo.finish(tenantId, reportId, {
         items,
         summary: {
-          ...s, headline: headline(s), message: resultMessage(s, mode), itemsSource: source,
-          loose: { before: looseBefore, after: looseAfter }, notes, modelSummary,
+          ...s, kind, headline: headline(s, kind), message: resultMessage(s, mode, kind), itemsSource: source,
+          loose: { before: looseBefore, after: looseAfter }, examples, others, notes, modelSummary,
           afterMessages: c.afterMessages.length, afterDocs: c.afterDocs.map((d) => d.name),
+          // отчёт исполнителя словами — в чек-листе приёмки это и есть «стало»
+          afterReport: c.afterMessages.slice(-5).map((m) => ({
+            author: m.author, at: iso(m.at), body: m.body.replace(/\s+/g, ' ').trim().slice(0, 500),
+          })),
         },
         mode, model, inputTokens, outputTokens,
       });
       this.realtime.emitScoped(tenantId, task.project_id, 'task.before_after', { taskId: task.id, reportId, status: 'ready' }, false);
-      if (trigger === 'auto') await this.notify(tenantId, task, actorId, s, mode, items, c.doers);
+      if (trigger === 'auto') await this.notify(tenantId, task, actorId, s, mode, kind, items, c.doers);
     } catch (e) {
       this.log.warn(`отчёт «было/стало» по задаче ${task.id}: ${(e as Error).message}`);
       await this.repo.fail(tenantId, reportId, 'Проверка не удалась — попробуйте ещё раз').catch(() => undefined);
@@ -520,15 +661,17 @@ export class BeforeAfterService {
    *
    * Снимки идут парами по пунктам — сначала «было», потом «стало», — затем без
    * привязки. Каждый подписан тем же номером, что и в запросе: иначе модель не скажет,
-   * какой из десяти снимков свежий и к чему он.
+   * какой из десяти снимков свежий и к чему он. Образцы постановщика идут последними
+   * (side=example): модель может назвать их «было», а «было» — образцом.
    */
   private async askModel(
     tenantId: string, task: CheckTaskRow, items: CheckItem[], looseBefore: Shot[], looseAfter: Shot[],
-    afterText: string, c: Collected, actorId: string | null,
+    examples: Shot[], afterText: string, c: Collected, actorId: string | null,
   ) {
-    const order: { shot: Shot; side: 'before' | 'after'; item: number | null }[] = [];
+    type Side = 'before' | 'after' | 'example';
+    const order: { shot: Shot; side: Side; item: number | null }[] = [];
     const seen = new Set<string>();
-    const add = (shot: Shot, side: 'before' | 'after', item: number | null) => {
+    const add = (shot: Shot, side: Side, item: number | null) => {
       if (seen.has(`${side}:${shot.fileId}`)) return;
       seen.add(`${side}:${shot.fileId}`);
       order.push({ shot, side, item });
@@ -539,9 +682,10 @@ export class BeforeAfterService {
     }
     for (const s of looseBefore) add(s, 'before', null);
     for (const s of looseAfter) add(s, 'after', null);
+    for (const s of examples) add(s, 'example', null);
 
     const images: { mime: string; base64: string }[] = [];
-    const shown: { shot: Shot; side: 'before' | 'after'; item: number | null }[] = [];
+    const shown: { shot: Shot; side: Side; item: number | null }[] = [];
     const notShown: string[] = [];
     for (const o of order) {
       if (images.length >= MAX_IMAGES) { notShown.push(`${o.shot.name} (лишний — показали ${MAX_IMAGES})`); continue; }
@@ -563,6 +707,7 @@ export class BeforeAfterService {
       shots: shown.map((s, i) => ({
         номер: i + 1, side: s.side, item: s.item, имя: s.shot.name, кто: s.shot.by ?? '—', когда: s.shot.at,
         подпись: s.shot.caption ?? null, страница: s.shot.url ?? null,
+        ...(s.shot.roleBy === 'manual' ? { role_fixed: true } : {}),
       })),
       after_text: afterText.slice(0, 9000) || null,
       // модель должна знать, чего она НЕ видела: иначе решит, что видела всё
@@ -574,10 +719,12 @@ export class BeforeAfterService {
     try {
       const res = await this.ai.generateWithModel(tenantId, system, user, BEFORE_AFTER_FEATURE, {
         images, promptVersionId: prompt?.versionId ?? null, model: prompt?.model ?? null,
-        params: { max_tokens: 2500, ...(prompt?.params ?? {}) },
+        params: { max_tokens: 3000, ...(prompt?.params ?? {}) },
       });
       return {
-        parsed: res.degraded ? null : parseCheck(res.text, items.length),
+        // роль — только снимку постановщика и только если её не задал человек
+        parsed: res.degraded ? null : parseCheck(res.text, items.length, shown.length,
+          (n) => shown[n - 1]?.side !== 'after' && shown[n - 1]?.shot.roleBy !== 'manual'),
         model: res.model, shown,
         input: Math.ceil((system.length + user.length) / 4), output: Math.ceil(res.text.length / 4),
       };
@@ -628,7 +775,7 @@ export class BeforeAfterService {
         });
         out.push({
           fileId: String(f.id), name: f.file_name, mime: 'image/jpeg', by: 'QEVO', at: new Date().toISOString(),
-          origin: 'page', caption: `Снимок страницы ${got.finalUrl}`, url: got.finalUrl,
+          origin: 'page', caption: `Снимок страницы ${got.finalUrl}`, url: got.finalUrl, role: 'after', roleBy: 'rule',
         });
       } catch (e) {
         await this.plan.releaseWeb(tenantId, reservation);
@@ -641,15 +788,16 @@ export class BeforeAfterService {
 
   /**
    * Итог автопроверки: сообщение помощника в обсуждение, постановщику — в ящик и
-   * push; исполнителю — только когда нашли ошибки, чтобы успел исправить до того,
-   * как постановщик посмотрит.
+   * push; исполнителю — когда нашли ошибки (успеть исправить до того, как постановщик
+   * посмотрит) или по пунктам нет результата (приложить). «Ошибки» — только про
+   * невнесённые пункты: нехватку материалов так не называем.
    */
   private async notify(
     tenantId: string, task: CheckTaskRow, actorId: string | null, s: ReturnType<typeof summarize>, mode: 'ai' | 'eyes',
-    items: CheckItem[], doers: string[],
+    kind: CheckKind, items: CheckItem[], doers: string[],
   ): Promise<void> {
-    const message = resultMessage(s, mode);
-    const remarks = remarksText(items);
+    const message = resultMessage(s, mode, kind);
+    const remarks = hasProblems(s) || needsResult(s) ? remarksText(items) : '';
     const path = `/projects/${task.project_id}/task/${task.id}/check`;
     const author = actorId ?? task.created_by;
     if (author) {
@@ -664,12 +812,15 @@ export class BeforeAfterService {
     if (task.created_by) {
       await this.push.personal({ tenantId, userId: String(task.created_by), eventKey: 'task.before_after', title, body: message, path });
     }
-    if (hasProblems(s)) {
+    if (hasProblems(s) || needsResult(s)) {
+      const hint = hasProblems(s)
+        ? 'Исправьте до того, как постановщик посмотрит.'
+        : 'Приложите, как стало, — скрин или ссылку по пунктам без результата.';
       for (const d of doers) {
         if (task.created_by && String(d) === String(task.created_by)) continue;
         await this.push.personal({
           tenantId, userId: String(d), eventKey: 'task.before_after', title,
-          body: `${message} Исправьте до того, как постановщик посмотрит.`, path,
+          body: `${message} ${hint}`, path,
         });
       }
     }
