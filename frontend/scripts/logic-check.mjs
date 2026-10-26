@@ -1836,6 +1836,77 @@ test('черновики задач: несколько, свои, старый 
   delete globalThis.localStorage;
 });
 
+// ── Инфоцентр проекта (#4659) ─────────────────────────────────────────────────
+test('Инфоцентр: бейдж «ИИ обновил» склоняет и молчит о нулях', async () => {
+  const h = await load('lib/hub.ts');
+  assert.equal(h.addedSummary({ decisions: 2, links: 1, files: 0, contacts: 0, notes: 0 }), '+2 решения, +1 ссылка');
+  assert.equal(h.addedSummary({ decisions: 5, links: 11, files: 21, contacts: 3, notes: 1 }), '+5 решений, +11 ссылок, +21 файл, +3 контакта, +1 заметка');
+  assert.equal(h.addedSummary({ decisions: 0, links: 0, files: 0, contacts: 0, notes: 0 }), '');
+  assert.equal(h.addedSummary(null), '');
+  assert.equal(h.addedTotal({ decisions: 2, links: 1 }), 3);
+});
+
+test('Инфоцентр: значок по категории, без неё — по виду записи', async () => {
+  const h = await load('lib/hub.ts');
+  assert.equal(h.itemIcon({ kind: 'link', category: 'design' }), 'edit');
+  assert.equal(h.itemIcon({ kind: 'link', category: 'repo' }), 'folder');
+  assert.equal(h.itemIcon({ kind: 'link', category: 'site' }), 'monitor');
+  assert.equal(h.itemIcon({ kind: 'file', category: null }), 'paperclip');
+  assert.equal(h.itemIcon({ kind: 'file', category: 'brand' }), 'image');
+  assert.equal(h.itemIcon({ kind: 'contact', category: null }), 'user');
+  assert.equal(h.itemIcon({ kind: 'link', category: 'неизвестная' }), 'link');
+  assert.equal(h.categoryLabel('knowledge', 'spec'), 'ТЗ и спецификации');
+  assert.equal(h.categoryLabel('passport', 'нет такой'), '');
+});
+
+test('Инфоцентр: в мини-карточке сначала закреплённые, потом свежие', async () => {
+  const h = await load('lib/hub.ts');
+  const items = [
+    { id: 'a', pinned: false, createdAt: '2026-10-20T10:00:00Z' },
+    { id: 'b', pinned: true, createdAt: '2026-10-01T10:00:00Z' },
+    { id: 'c', pinned: false, createdAt: '2026-10-25T10:00:00Z' },
+    { id: 'd', pinned: false, createdAt: '2026-10-22T10:00:00Z' },
+  ];
+  assert.deepEqual(h.shortlist(items, 3).map((x) => x.id), ['b', 'c', 'd']);
+  assert.equal(items[0].id, 'a', 'исходный список не трогаем');
+});
+
+test('Инфоцентр: ссылки только http(s), категория угадывается по адресу и имени файла', async () => {
+  const h = await load('lib/hub.ts');
+  assert.equal(h.safeHref('javascript:alert(1)'), null);
+  assert.equal(h.safeHref(' https://figma.com/x '), 'https://figma.com/x');
+  assert.equal(h.normalizeUrl('figma.com/file/1'), 'https://figma.com/file/1');
+  assert.equal(h.normalizeUrl('javascript:alert(1)'), null);
+  assert.equal(h.normalizeUrl('mailto:a@b.ru'), null);
+  assert.equal(h.normalizeUrl('просто текст'), null);
+  assert.deepEqual(h.guessLinkCategory('https://www.figma.com/file/1'), { section: 'knowledge', category: 'design' });
+  assert.deepEqual(h.guessLinkCategory('https://github.com/org/repo'), { section: 'knowledge', category: 'repo' });
+  assert.deepEqual(h.guessLinkCategory('https://api.site.ru/swagger/index.html'), { section: 'knowledge', category: 'api' });
+  assert.deepEqual(h.guessLinkCategory('https://docs.google.com/document/d/1'), { section: 'knowledge', category: 'doc' });
+  assert.deepEqual(h.guessLinkCategory('https://t.me/qevo_news'), { section: 'passport', category: 'social' });
+  assert.deepEqual(h.guessLinkCategory('https://t.me/qevo_bot'), { section: 'passport', category: 'bot' });
+  assert.deepEqual(h.guessLinkCategory('https://site.ru/admin/login'), { section: 'passport', category: 'admin' });
+  assert.equal(h.guessFileCategory('ТЗ на сайт v2.docx'), 'spec');
+  assert.equal(h.guessFileCategory('Брендбук QEVO.pdf'), 'brand');
+  assert.equal(h.guessFileCategory('logo.svg'), 'brand');
+  assert.equal(h.guessFileCategory('Регламент выгрузки.pdf'), 'regulation');
+  assert.equal(h.guessFileCategory('отчёт.xlsx'), 'doc');
+  assert.equal(h.hostOf('https://www.figma.com/a'), 'figma.com');
+  assert.equal(h.hostOf('не адрес'), '');
+});
+
+test('Инфоцентр: откуда взял ИИ и кто запускает сбор', async () => {
+  const h = await load('lib/hub.ts');
+  assert.equal(h.originPath({ type: 'meeting', id: '7' }), '/meetings/7');
+  assert.equal(h.originPath({ type: 'chat_message', id: '9', chatId: '3' }), '/chat/3?m=9');
+  assert.equal(h.originPath({ type: 'task', id: '5', projectId: '2' }), '/projects/2/task/5');
+  assert.equal(h.originPath(null), null);
+  assert.equal(h.originLabel({ type: 'meeting', id: '1' }), 'из созвона');
+  assert.equal(h.canCollect('manager', '1', null), true);
+  assert.equal(h.canCollect('member', '1', '1'), true);
+  assert.equal(h.canCollect('member', '1', '2'), false);
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
