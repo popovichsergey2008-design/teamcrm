@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
-import { AiService } from '../ai/ai.service';
+import { AiService, FastOpts } from '../ai/ai.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TagsRepository } from './tags.repository';
 import { canCreateTag, confidenceBand, findSimilarTag, TagCreatePolicy, tagsGatePassed } from './tag-rules';
@@ -210,9 +210,10 @@ export class TagsService {
   async suggest(
     tenantId: string,
     input: { title: string; description?: string | null; checklist?: string[]; projectName?: string | null },
+    /** #4666: короткая постановка — быстрая модель и потолок по времени. */
+    fast?: FastOpts,
   ) {
-    const settings = await this.repo.settings(tenantId);
-    const tags = await this.repo.list(tenantId, false);
+    const [settings, tags] = await Promise.all([this.repo.settings(tenantId), this.repo.list(tenantId, false)]);
     if (!settings.ai_tagging || !tags.length) return { suggestions: [], maybe: [], proposed: null, aiTagging: settings.ai_tagging };
 
     const payload = {
@@ -227,7 +228,7 @@ export class TagsService {
 
     let parsed: any = null;
     try {
-      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify(payload), 'nl_command');
+      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify(payload), 'nl_command', fast);
       parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
     } catch (e) {
       // Модель молчит — человек просто выберет теги сам. Отказывать в создании задачи

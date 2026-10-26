@@ -1668,10 +1668,12 @@ export const api = {
    * минутами и упирается в любой таймаут по пути. Сервер сохраняет аудио и отвечает
    * сразу, а дальше мы спрашиваем, как дела.
    */
-  voiceStart: async (blob: Blob, currentProjectId?: string | null): Promise<VoiceJob> => {
+  /** auto — #4666: черновики сразу с автозаполнением, окну не нужен второй разбор. */
+  voiceStart: async (blob: Blob, currentProjectId?: string | null, auto?: boolean): Promise<VoiceJob> => {
     const fd = new FormData();
     fd.append('audio', blob, 'voice.webm');
     if (currentProjectId) fd.append('currentProjectId', String(currentProjectId));
+    if (auto) fd.append('auto', '1');
     const res = await fetch(`${BASE}/nl/voice`, {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},

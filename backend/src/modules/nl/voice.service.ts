@@ -5,11 +5,31 @@ import { FilesService } from '../files/files.service';
 import { extractAudioChunks } from '../meetings/audio.util';
 import { NlService } from './nl.service';
 import { VoiceJobRow, VoiceRepository } from './voice.repository';
+import { DiagService } from '../diagnostics/diag.service';
+import { trackBackground } from '../../common/background-work';
+import { isHallucination } from '../ai/stt-hallucinations';
+import { isShortCommand, NlTiming, wordCount } from './fast-path';
 
 /** Предел Whisper на один запрос — 25 МБ; берём с запасом, дальше режем сами. */
 const CHUNK_THRESHOLD = 20 * 1024 * 1024;
 /** Куски по три минуты: даже плотный битрейт даёт файл заметно меньше предела. */
 const CHUNK_SECONDS = 180;
+/**
+ * #4666: короткая запись (команда в несколько слов — десятки КБ) обрабатывается, пока
+ * открыт сам запрос загрузки: ответ приходит уже с готовой задачей, без опроса
+ * «как дела» каждые две секунды. Не успели — как раньше: запись сохранена, окно спросит.
+ */
+export const SYNC_MAX_BYTES = 400 * 1024;
+export const SYNC_WAIT_MS = Number(process.env.NL_VOICE_SYNC_WAIT_MS ?? 9000);
+/** До этого размера распознаём быстрой моделью (короткая речь, один запрос). */
+const FAST_STT_MAX_BYTES = 1024 * 1024;
+
+/** Обещание с потолком: не успело — `fallback`, само оно доживает в фоне. */
+function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let t: NodeJS.Timeout | undefined;
+  const late = new Promise<T>((r) => { t = setTimeout(() => r(fallback), Math.max(0, ms)); });
+  return Promise.race([p, late]).finally(() => clearTimeout(t));
+}
 
 /**
  * Голосовая постановка задач: длинная запись без потерь.
@@ -32,6 +52,7 @@ export class VoiceService {
     private readonly files: FilesService,
     private readonly ai: AiService,
     private readonly nl: NlService,
+    private readonly diag: DiagService,
   ) {}
 
   /**
@@ -43,9 +64,11 @@ export class VoiceService {
     tenantId: string, userId: string,
     file: { buffer: Buffer; originalname: string; mimetype: string },
     currentProjectId?: string | null,
+    opts: { auto?: boolean } = {},
   ) {
     if (!file?.buffer?.length) throw AppException.validation('Аудио не получено');
 
+    const t0 = Date.now();
     const stored = await this.files.upload({
       tenantId, userId,
       buffer: file.buffer,
@@ -58,7 +81,16 @@ export class VoiceService {
     });
 
     const job = await this.repo.create(tenantId, userId, String(stored.id));
-    void this.run(job, file.buffer, file.originalname || 'voice.webm', currentProjectId ?? null);
+    const timing: NlTiming = { bytes: file.buffer.length, storeMs: Date.now() - t0 };
+    const work = trackBackground(this.run(job, file.buffer, file.originalname || 'voice.webm', currentProjectId ?? null, { auto: opts.auto === true, timing }));
+    // #4666: короткую запись дожидаемся в этом же запросе — без опроса и его пауз
+    if (file.buffer.length <= SYNC_MAX_BYTES && SYNC_WAIT_MS > 0) {
+      const done = await within(work.then(() => true), SYNC_WAIT_MS, false);
+      if (done) {
+        const fresh = await this.repo.find(tenantId, userId, String(job.id)).catch(() => null);
+        if (fresh) return this.view(fresh);
+      }
+    }
     return this.view({ ...job, status: 'queued' });
   }
 
@@ -85,7 +117,7 @@ export class VoiceService {
     for await (const part of stream) chunks.push(Buffer.from(part));
 
     await this.repo.setStatus(job.id, 'queued', null);
-    void this.run(job, Buffer.concat(chunks), file.file_name || 'voice.webm', currentProjectId ?? null);
+    void trackBackground(this.run(job, Buffer.concat(chunks), file.file_name || 'voice.webm', currentProjectId ?? null));
     return this.view({ ...job, status: 'queued', error: null });
   }
 
@@ -95,23 +127,55 @@ export class VoiceService {
    * Ошибку не глотаем и не теряем: она сохраняется в записи человеческим языком,
    * а сама запись остаётся — с неё можно начать заново одной кнопкой.
    */
-  private async run(job: VoiceJobRow, audio: Buffer, fileName: string, currentProjectId: string | null) {
+  private async run(
+    job: VoiceJobRow, audio: Buffer, fileName: string, currentProjectId: string | null,
+    opts: { auto?: boolean; timing?: NlTiming } = {},
+  ) {
+    const timing: NlTiming = opts.timing ?? { bytes: audio.length };
+    const t0 = Date.now();
     try {
       await this.repo.setStatus(job.id, 'transcribing');
-      const { text, seconds } = await this.transcribe(job.tenant_id, audio, fileName);
+      const tStt = Date.now();
+      const { text, seconds, model } = await this.transcribe(job.tenant_id, audio, fileName);
+      Object.assign(timing, { sttMs: Date.now() - tStt, sttModel: model, chars: text.length, words: wordCount(text) });
       if (!text.trim()) {
+        timing.result = 'no_speech';
         await this.repo.setStatus(job.id, 'error', 'Речь не распознана. Проверьте ключ OpenAI в «Интеграции → ИИ».');
+        return;
+      }
+      // на тишине Whisper сочиняет «Продолжение следует…» — это не поручение
+      if (text.length <= 40 && isHallucination({ start: 0, end: 0, text })) {
+        timing.result = 'hallucination';
+        await this.repo.setStatus(job.id, 'error', 'Не расслышал — скажите ещё раз, ближе к микрофону.');
         return;
       }
       await this.repo.setTranscript(job.id, text, seconds);
 
       await this.repo.setStatus(job.id, 'parsing');
-      const drafts = await this.nl.parseMany(job.tenant_id, job.user_id, text, currentProjectId);
+      /*
+        #4666: окно в авто-режиме ждёт черновики С автозаполнением (проект, руководитель,
+        теги) — собираем их сразу здесь. Раньше здесь шёл обычный разбор, а окно, получив
+        расшифровку, запускало его ЗАНОВО с авто — второй долгий этап того же самого.
+      */
+      const fast = isShortCommand(text);
+      const drafts = await this.nl.parseMany(job.tenant_id, job.user_id, text, currentProjectId, {
+        auto: opts.auto === true, fast, timing,
+      });
       await this.repo.setDrafts(job.id, drafts);
+      timing.result = 'ready';
     } catch (e) {
       const msg = (e as Error).message || 'Неизвестная ошибка';
+      timing.result = 'error';
       this.log.warn(`запись ${job.id}: ${msg}`);
       await this.repo.setStatus(job.id, 'error', humanError(msg)).catch(() => undefined);
+    } finally {
+      // Длительности и размер — без содержимого: видно, где теряется время (#4666)
+      timing.runMs = Date.now() - t0;
+      timing.auto = opts.auto === true;
+      this.diag.write({
+        tenantId: job.tenant_id, scope: 'app', refId: `voice:${job.id}`, userId: job.user_id,
+        side: 'server', event: 'voice.timing', data: timing,
+      });
     }
   }
 
@@ -121,10 +185,11 @@ export class VoiceService {
    * Порог по размеру, а не по времени: Whisper ограничен именно им, а сколько минут
    * поместится в 20 МБ, зависит от того, как браузер сжал звук.
    */
-  private async transcribe(tenantId: string, audio: Buffer, fileName: string): Promise<{ text: string; seconds: number | null }> {
+  private async transcribe(tenantId: string, audio: Buffer, fileName: string): Promise<{ text: string; seconds: number | null; model: string }> {
     if (audio.length <= CHUNK_THRESHOLD) {
       const hint = await this.nl.speechHint(tenantId).catch(() => undefined);
-      return { text: (await this.ai.transcribeAudio(tenantId, audio, fileName, hint)) || '', seconds: null };
+      const r = await this.ai.transcribeAudioWithModel(tenantId, audio, fileName, hint, { fast: audio.length <= FAST_STT_MAX_BYTES });
+      return { text: (r.text || '').trim(), seconds: null, model: r.model };
     }
 
     const hint = await this.nl.speechHint(tenantId).catch(() => undefined);
@@ -135,7 +200,7 @@ export class VoiceService {
       // а выигрыш в минуту здесь никого не спасает.
       parts.push((await this.ai.transcribeAudio(tenantId, chunk.buffer, chunk.name, hint)) || '');
     }
-    return { text: parts.join(' ').replace(/\s+/g, ' ').trim(), seconds: durationSec };
+    return { text: parts.join(' ').replace(/\s+/g, ' ').trim(), seconds: durationSec, model: 'whisper-1' };
   }
 
   private view(job: VoiceJobRow) {

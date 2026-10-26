@@ -1,4 +1,5 @@
 import { dropHallucinations } from './stt-hallucinations';
+import { hedge, HedgeRun } from './hedge';
 import { createHash } from 'crypto';
 import { Logger } from '@nestjs/common';
 
@@ -21,6 +22,18 @@ export interface GenerateOpts {
    * в теле запроса живут ниже, в самих вызовах.
    */
   images?: { mime: string; base64: string }[];
+  /**
+   * #4666: человек ждёт ответа на экране — быстрые модели внахлёст (Kimi без
+   * рассуждения, gpt-4o-mini, …) вместо «думающей» K3. См. hedge.ts.
+   */
+  fast?: boolean;
+  /** Отмена запроса: вызывающий поставил потолок по времени и уже не ждёт. */
+  signal?: AbortSignal;
+}
+
+/** Распознавание речи: короткая команда — быстрой моделью (#4666). */
+export interface TranscribeOpts {
+  fast?: boolean;
 }
 
 /** Реплика стенограммы: время от начала записи + текст. */
@@ -36,7 +49,7 @@ export interface AiProvider {
   lastModel?: string;
   transcribe(audioRefOrText: string): Promise<string>;
   /** Транскрипция загруженного аудио-буфера (веб-запись голоса) → текст. '' если реальный Whisper недоступен. */
-  transcribeAudio(audio: Buffer, filename: string, hint?: string): Promise<string>;
+  transcribeAudio(audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts): Promise<string>;
   /**
    * Транскрипция С ТАЙМКОДАМИ (стенограмма встречи). Куски длинной записи нарезает
    * вызывающий: у Whisper лимит 25 МБ на запрос. [] — распознавание недоступно.
@@ -288,6 +301,7 @@ export class RealAiProvider implements AiProvider {
 
   private async kimiChat(
     model: string, system: string, user: string, maxTokens: number, images: { mime: string; base64: string }[] = [],
+    signal?: AbortSignal,
   ): Promise<string> {
     // K3 мультимодальный: картинки — тем же форматом image_url, что у OpenAI
     const content: unknown = images.length
@@ -301,7 +315,7 @@ export class RealAiProvider implements AiProvider {
       headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
       body: this.kimiBody(model, system, content, maxTokens),
       // рассуждение K3 занимает время: ждём дольше, чем обычную модель
-      signal: AbortSignal.timeout(Number(process.env.KIMI_TIMEOUT_MS ?? 180_000)),
+      signal: withSignal(AbortSignal.timeout(Number(process.env.KIMI_TIMEOUT_MS ?? 180_000)), signal),
     });
     const json: any = await res.json().catch(() => ({}));
     if (json?.error) throw new Error(typeof json.error === 'string' ? json.error : (json.error.message || JSON.stringify(json.error)));
@@ -327,6 +341,7 @@ export class RealAiProvider implements AiProvider {
   private async chatCompletion(
     url: string, key: string, model: string, system: string, user: string, maxTokens: number,
     extraHeaders: Record<string, string> = {}, images: { mime: string; base64: string }[] = [],
+    signal?: AbortSignal,
   ): Promise<string> {
     // Картинки идут списком блоков рядом с текстом — формат OpenAI и OpenRouter общий.
     const content: unknown = images.length
@@ -342,6 +357,7 @@ export class RealAiProvider implements AiProvider {
         model, max_tokens: maxTokens,
         messages: [{ role: 'system', content: system }, { role: 'user', content }],
       }),
+      ...(signal ? { signal } : {}),
     });
     const json: any = await res.json().catch(() => ({}));
     if (json?.error) throw new Error(typeof json.error === 'string' ? json.error : (json.error.message || JSON.stringify(json.error)));
@@ -352,6 +368,7 @@ export class RealAiProvider implements AiProvider {
   private async anthropicChat(
     model: string, system: string, user: string, maxTokens: number,
     images: { mime: string; base64: string }[] = [],
+    signal?: AbortSignal,
   ): Promise<string> {
     // У Anthropic картинка — блок с base64-источником; порядок «сначала снимки,
     // потом вопрос» модель понимает лучше, чем наоборот.
@@ -365,6 +382,7 @@ export class RealAiProvider implements AiProvider {
       method: 'POST',
       headers: { 'x-api-key': this.anthropicKey!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }),
+      ...(signal ? { signal } : {}),
     });
     const json: any = await res.json().catch(() => ({}));
     if (json?.error) throw new Error(json.error?.message || JSON.stringify(json.error));
@@ -380,12 +398,30 @@ export class RealAiProvider implements AiProvider {
     return this.whisper(Buffer.from(audio), 'audio.ogg');
   }
 
-  async transcribeAudio(audio: Buffer, filename: string, hint?: string): Promise<string> {
+  async transcribeAudio(audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts): Promise<string> {
     if (!this.openaiKey) return '';
     // словарь нужен и короткой команде: без него «QEVO» слышится как «Тим Сирей»,
     // а сотрудник, записанный в базе латиницей, превращается в кого-то другого
+    /*
+      #4666: короткая команда — быстрой моделью распознавания (gpt-4o-mini-transcribe):
+      отвечает быстрее и реже сочиняет «Продолжение следует…» на коротком клипе.
+      Модель не принята ключом — тот же клип в whisper-1, человек ничего не замечает.
+    */
+    const fastModel = process.env.STT_FAST_MODEL ?? 'gpt-4o-mini-transcribe';
+    if (opts?.fast && fastModel && fastModel !== 'whisper-1') {
+      try {
+        const json = await this.whisperRaw(audio, filename || 'audio.webm', 'json', hint, fastModel);
+        if (typeof json?.text === 'string') { this.lastSttModel = fastModel; return json.text; }
+      } catch (e) {
+        providerLog.warn(`быстрое распознавание ${fastModel}: ${(e as Error).message} — whisper-1`);
+      }
+    }
+    this.lastSttModel = 'whisper-1';
     return this.whisper(audio, filename || 'audio.webm', hint);
   }
+
+  /** Чем распознали последнюю запись — для журнала таймингов. */
+  lastSttModel?: string;
 
   async transcribeSegments(audio: Buffer, filename: string, hint?: string): Promise<TranscriptSegment[]> {
     if (!this.openaiKey) return [];
@@ -415,10 +451,10 @@ export class RealAiProvider implements AiProvider {
    * как контекст и заметно реже коверкает то, чего не ожидает: «на Юру» вместо
    * «на евро», «стенограмма» вместо «синаграмма».
    */
-  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json', hint?: string): Promise<any> {
+  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json', hint?: string, model = 'whisper-1'): Promise<any> {
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(audio)]), filename);
-    form.append('model', 'whisper-1');
+    form.append('model', model);
     form.append('response_format', format);
     form.append('language', 'ru');
     if (hint) form.append('prompt', hint.slice(0, 880)); // Whisper читает не больше ~224 токенов
@@ -426,7 +462,8 @@ export class RealAiProvider implements AiProvider {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.openaiKey!}` },
       body: form,
-      signal: AbortSignal.timeout(300_000), // час записи режется на куски, но каждый кусок — минуты
+      // час записи режется на куски, но каждый кусок — минуты; короткой команде столько не надо
+      signal: AbortSignal.timeout(model === 'whisper-1' ? 300_000 : 20_000),
     });
     if (!res.ok) throw new Error(`Whisper HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
     return res.json();
@@ -477,7 +514,17 @@ export class RealAiProvider implements AiProvider {
   }
 
   async generate(system: string, user: string, opts?: GenerateOpts): Promise<string> {
+    if (opts?.fast) {
+      try {
+        return await this.generateFast(system, user, opts);
+      } catch (e) {
+        // потолок вышел — дальше правила у вызывающего; не вышел — обычный путь
+        if (opts.signal?.aborted) throw e;
+        providerLog.warn(`быстрые модели не ответили: ${(e as Error).message} — обычный путь`);
+      }
+    }
     const maxTokens = opts?.maxTokens ?? 1500;
+    const sig = opts?.signal;
     const model = opts?.model || this.brainModel || '';
     const isOpenRouter = model.includes('/'); // id вида vendor/model[:free] → OpenRouter
     const OR_URL = 'https://openrouter.ai/api/v1/chat/completions';
@@ -490,17 +537,19 @@ export class RealAiProvider implements AiProvider {
     const attempts: { name: string; usedModel: string; run: () => Promise<string> }[] = [];
     const kimiModel = this.kimiModelFor(model);
     const kimiFirst = this.kimiFirst(model);
-    if (kimiFirst) attempts.push({ name: `kimi(${kimiModel})`, usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs) });
-    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH, imgs) });
-    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, imgs) });
-    if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
+    if (kimiFirst) attempts.push({ name: `kimi(${kimiModel})`, usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs, sig) });
+    if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH, imgs, sig) });
+    if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, imgs, sig) });
+    if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs, sig) });
     // фолбэки на любой доступный ключ
-    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, imgs) });
-    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens, imgs) });
-    if (this.kimiKey && !kimiFirst) attempts.push({ name: 'kimi(fallback)', usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs) });
-    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', usedModel: isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH, imgs) });
+    if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, imgs, sig) });
+    if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens, imgs, sig) });
+    if (this.kimiKey && !kimiFirst) attempts.push({ name: 'kimi(fallback)', usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs, sig) });
+    if (this.openrouterKey) attempts.push({ name: 'openrouter(fallback)', usedModel: isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', run: () => this.chatCompletion(OR_URL, this.openrouterKey!, isOpenRouter ? model : 'meta-llama/llama-3.3-70b-instruct:free', system, user, maxTokens, ORH, imgs, sig) });
 
     for (const a of attempts) {
+      // вызывающий больше не ждёт — не перебираем остальные ключи впустую
+      if (sig?.aborted) throw new Error('timeout');
       try {
         const t = await a.run();
         if (t && t.trim()) { this.lastModel = a.usedModel; return t; }
@@ -511,6 +560,32 @@ export class RealAiProvider implements AiProvider {
     }
     this.lastModel = 'mock-llm'; // ни один бэкенд не ответил — работает заглушка
     return new MockAiProvider().generate(system, user, opts);
+  }
+
+  /**
+   * Быстрый ответ (#4666): быстрые модели внахлёст, первая непустая побеждает.
+   *
+   * Kimi остаётся первым, если он основной у компании, — но без рассуждения
+   * (KIMI_FAST_MODEL, по умолчанию K2.6 с thinking disabled). Через AI_FAST_HEDGE_MS
+   * без ответа параллельно спрашиваем gpt-4o-mini / Haiku: человек ждёт на экране,
+   * а лишний короткий запрос стоит доли цента.
+   */
+  private async generateFast(system: string, user: string, opts: GenerateOpts): Promise<string> {
+    const maxTokens = opts.maxTokens ?? 600;
+    const kimiFast = process.env.KIMI_FAST_MODEL || 'kimi-k2.6';
+    const runs: HedgeRun[] = [];
+    const kimi: HedgeRun | null = this.kimiKey
+      ? { name: `kimi(${kimiFast})`, usedModel: kimiFast, run: (s) => this.kimiChat(kimiFast, system, user, maxTokens, [], s) }
+      : null;
+    const others: HedgeRun[] = [];
+    if (this.openaiKey) others.push({ name: 'openai(gpt-4o-mini)', usedModel: 'gpt-4o-mini', run: (s) => this.chatCompletion('https://api.openai.com/v1/chat/completions', this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, [], s) });
+    if (this.anthropicKey) others.push({ name: 'anthropic(haiku)', usedModel: 'claude-3-5-haiku-latest', run: (s) => this.anthropicChat('claude-3-5-haiku-latest', system, user, maxTokens, [], s) });
+    if (this.openrouterKey && !this.openaiKey) others.push({ name: 'openrouter(gpt-4o-mini)', usedModel: 'openai/gpt-4o-mini', run: (s) => this.chatCompletion('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey!, 'openai/gpt-4o-mini', system, user, maxTokens, { 'HTTP-Referer': 'https://qevo.one', 'X-Title': 'QEVO' }, [], s) });
+    if (kimi && this.kimiFirst(opts.model || this.brainModel || '')) runs.push(kimi, ...others);
+    else runs.push(...others, ...(kimi ? [kimi] : []));
+    const r = await hedge(runs, Number(process.env.AI_FAST_HEDGE_MS ?? 700), opts.signal);
+    this.lastModel = r.usedModel;
+    return r.text;
   }
 
   /** Читает SSE-поток fetch-ответа, вызывая onData для каждого data-события (JSON). */
@@ -611,4 +686,9 @@ export class RealAiProvider implements AiProvider {
     const vec = json?.data?.[0]?.embedding;
     return Array.isArray(vec) && vec.length === EMBED_DIM ? vec : null;
   }
+}
+
+/** Свой таймаут запроса плюс отмена вызывающим (если она есть). */
+function withSignal(own: AbortSignal, outer?: AbortSignal): AbortSignal {
+  return outer ? AbortSignal.any([own, outer]) : own;
 }

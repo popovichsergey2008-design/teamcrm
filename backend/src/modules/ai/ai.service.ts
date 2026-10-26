@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiGateway, AiPriority } from './ai-gateway';
+import { deadlineSignal, rejectAfter } from './hedge';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { RedisService } from '../../cache/redis.service';
 import { DbService } from '../../database/db.service';
-import { AiProvider, KIMI_DEFAULT_MODEL, MockAiProvider, RealAiProvider, TranscriptSegment } from './ai.provider';
+import { AiProvider, KIMI_DEFAULT_MODEL, MockAiProvider, RealAiProvider, TranscribeOpts, TranscriptSegment } from './ai.provider';
 import { AiSettingsService } from './ai-settings.service';
 import { PromptsService } from '../prompts/prompts.service';
 import { maskPII } from './pii';
@@ -13,6 +14,13 @@ import { StandupPackage, validateStandupPackage } from './standup-schema';
 
 const CACHE_TTL = 3600;
 const estimateTokens = (s: string) => Math.ceil(s.length / 4);
+
+/** #4666: быстрый ответ для того, кто ждёт на экране, и потолок по времени. */
+export interface FastOpts {
+  fast?: boolean;
+  timeoutMs?: number;
+  maxTokens?: number;
+}
 
 /**
  * Единая точка egress к LLM/Whisper (master → AI-слой). Маскирование PII встроено
@@ -124,8 +132,19 @@ export class AiService {
   }
 
   /** Веб-запись голоса (аудио-буфер) → текст через Whisper (mock → '' при отсутствии ключа). */
-  transcribeAudio(tenantId: string, audio: Buffer, filename: string, hint?: string): Promise<string> {
-    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint));
+  transcribeAudio(tenantId: string, audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts): Promise<string> {
+    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint, opts));
+  }
+
+  /**
+   * То же, но с моделью распознавания — для журнала таймингов (#4666).
+   */
+  async transcribeAudioWithModel(
+    tenantId: string, audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts,
+  ): Promise<{ text: string; model: string }> {
+    const { provider } = await this.providerFor(tenantId);
+    const text = await provider.transcribeAudio(audio, filename, hint, opts);
+    return { text, model: (provider as { lastSttModel?: string }).lastSttModel ?? (provider.name === 'mock' ? 'mock-stt' : 'whisper-1') };
   }
 
   /**
@@ -169,7 +188,7 @@ export class AiService {
       promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown>;
       /** Скриншоты к запросу: без них проверить «сделано» по картинке невозможно. */
       images?: { mime: string; base64: string }[];
-    },
+    } & FastOpts,
   ): Promise<string> {
     return (await this.generateWithModel(tenantId, system, user, feature, opts)).text;
   }
@@ -183,15 +202,28 @@ export class AiService {
     opts?: {
       promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown>;
       images?: { mime: string; base64: string }[];
-    },
+    } & FastOpts,
   ): Promise<{ text: string; model: string; degraded: boolean }> {
     const { provider, brainModel } = await this.providerFor(tenantId);
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
-    const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
-    const text = await this.gateway.run(this.priorityOf(feature), () => provider.generate(system, masked, {
-      model: opts?.model || undefined, maxTokens, images: opts?.images,
-    }));
+    const maxTokens = opts?.maxTokens
+      ?? (typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined);
+    /*
+      #4666: потолок по времени. Человек ждёт на экране — не успела модель, отказ
+      «timeout», и вызывающий собирает ответ правилами. Запрос к модели отменяется.
+    */
+    const dl = opts?.timeoutMs ? deadlineSignal(opts.timeoutMs) : null;
+    let text: string;
+    try {
+      const work = this.gateway.run(this.priorityOf(feature), () => provider.generate(system, masked, {
+        model: opts?.model || undefined, maxTokens, images: opts?.images,
+        ...(opts?.fast ? { fast: true } : {}), ...(dl ? { signal: dl.signal } : {}),
+      }));
+      text = dl ? await rejectAfter(work, dl.signal) : await work;
+    } finally {
+      dl?.cancel();
+    }
     // Пишем ту модель, которая ОТВЕТИЛА, а не ту, которую просили: при отказе
     // выбранной модели включается фолбэк, и отчёт о расходе показывал бы красивую
     // неправду — «работает gpt-5», хотя отвечала совсем другая.

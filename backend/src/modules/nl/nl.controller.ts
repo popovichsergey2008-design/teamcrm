@@ -9,6 +9,8 @@ import { AiService } from '../ai/ai.service';
 import { NlService } from './nl.service';
 import { VoiceService } from './voice.service';
 import { BatchService } from './batch.service';
+import { isShortCommand } from './fast-path';
+import { isHallucination } from '../ai/stt-hallucinations';
 
 class ParseDto {
   @IsString() @MaxLength(2000) text!: string;
@@ -79,8 +81,12 @@ export class NlController {
     // словарь компании: без него названия и имена латиницей превращаются в похожие
     // по звучанию русские слова — «QEVO» в «Тим Сирей», «Boris» в «Борисом»
     const hint = await this.nl.speechHint(u.tenantId).catch(() => undefined);
-    const text = await this.ai.transcribeAudio(u.tenantId, file.buffer, file.originalname || 'audio.webm', hint);
-    return { text: (text || '').trim() };
+    // #4666: короткая фраза — быстрой моделью распознавания (не принята — whisper-1)
+    const text = ((await this.ai.transcribeAudio(u.tenantId, file.buffer, file.originalname || 'audio.webm', hint, {
+      fast: file.buffer.length <= 1024 * 1024,
+    })) || '').trim();
+    // «Продолжение следует…» на тишине — не речь человека
+    return { text: text.length <= 40 && isHallucination({ start: 0, end: 0, text }) ? '' : text };
   }
 
   /**
@@ -95,9 +101,11 @@ export class NlController {
     @CurrentUser() u: AuthUser,
     @UploadedFile() file?: Express.Multer.File,
     @Body('currentProjectId') currentProjectId?: string,
+    /** #4666: окно в авто-режиме — черновики сразу с автозаполнением, без второго разбора. */
+    @Body('auto') auto?: string,
   ) {
     if (!file) throw AppException.validation('Аудио не получено');
-    return this.voice.accept(u.tenantId, u.userId, file, currentProjectId ?? null);
+    return this.voice.accept(u.tenantId, u.userId, file, currentProjectId ?? null, { auto: auto === '1' || auto === 'true' });
   }
 
   /** Как идут дела с записью: расшифровка, разбор, готово или ошибка с причиной. */
@@ -118,7 +126,7 @@ export class NlController {
 
   @Post('parse')
   parse(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, null, { currentKind: dto.currentKind });
+    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, null, { currentKind: dto.currentKind, fast: isShortCommand(dto.text) });
   }
 
   /**
@@ -130,7 +138,10 @@ export class NlController {
    */
   @Post('parse-many')
   parseMany(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, { currentKind: dto.currentKind, auto: dto.auto === true });
+    // #4666: короткая фраза — быстрый путь (одна задача, быстрая модель с потолком, теги параллельно)
+    return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, {
+      currentKind: dto.currentKind, auto: dto.auto === true, fast: isShortCommand(dto.text),
+    });
   }
 
   /** Надиктованная встреча → заполненный черновик события (ничего не создаёт). */

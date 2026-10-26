@@ -25,8 +25,19 @@ import { pickAutoProject } from './auto-task';
 import { AutoConfirmService } from './auto-confirm.service';
 import { OrgService } from '../org/org.service';
 import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
+import { fastTitleFrom, NL_FAST_BUDGET_MS, NL_FAST_MAX_TOKENS, NlTiming } from './fast-path';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
+
+/** Как разбирать: обстановка, авто-постановка и быстрый путь короткой фразы (#4666). */
+export interface ParseOpts {
+  currentKind?: 'board' | 'last';
+  auto?: boolean;
+  /** Короткая фраза: одна задача, быстрая модель с потолком по времени, теги параллельно. */
+  fast?: boolean;
+  /** Куда записать длительности этапов (журнал таймингов). */
+  timing?: NlTiming;
+}
 const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
 export interface NlDraft {
@@ -162,9 +173,16 @@ export class NlService {
    * (ТЗ-31, §23): модель не должна даже предлагать проект, которого человек не видит.
    */
   private async context(tenantId: string, userId?: string) {
-    const users = await this.db.many<{ id: string; name: string }>(
-      `SELECT id, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name`, [tenantId]);
-    const role = userId ? await this.roleOf(tenantId, userId) : null;
+    // #4666: запросы независимы — одновременно, а не цепочкой
+    const [users, role, clients, org] = await Promise.all([
+      this.db.many<{ id: string; name: string }>(
+        `SELECT id, full_name AS name FROM users WHERE tenant_id=$1 AND is_active=TRUE ORDER BY full_name`, [tenantId]),
+      userId ? this.roleOf(tenantId, userId) : Promise.resolve(null),
+      this.db.many<{ id: string; name: string }>(
+        `SELECT id, name FROM clients WHERE tenant_id=$1 ORDER BY created_at DESC`, [tenantId]).catch(() => []),
+      // #4615, 23.10: модель понимает должности и иерархию компании — роль вместо имени
+      this.org.snapshot(tenantId).catch(() => ({ people: [], departments: [] } as Org)),
+    ]);
     const projects = userId && role
       ? (await this.projectResolver.candidates(tenantId, { userId, role })).map((p) => ({
         id: p.id, name: p.name,
@@ -175,10 +193,6 @@ export class NlService {
       }))
       : await this.db.many<{ id: string; name: string }>(
         `SELECT id, name FROM projects WHERE tenant_id=$1 AND status <> 'archived' ORDER BY created_at DESC`, [tenantId]);
-    const clients = await this.db.many<{ id: string; name: string }>(
-      `SELECT id, name FROM clients WHERE tenant_id=$1 ORDER BY created_at DESC`, [tenantId]).catch(() => []);
-    // #4615, 23.10: модель понимает должности и иерархию компании — роль вместо имени
-    const org = await this.org.snapshot(tenantId).catch(() => ({ people: [], departments: [] } as Org));
     return { users, projects, clients, org };
   }
 
@@ -276,7 +290,7 @@ export class NlService {
   async parse(
     tenantId: string, userId: string, text: string,
     currentProjectId?: string | null, whole?: string | null,
-    opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
+    opts: ParseOpts = {},
   ): Promise<NlDraft> {
     const draft = await this.parseRaw(tenantId, userId, text, currentProjectId, whole, opts);
     // #4615, 23.10: исполнитель — по одному правилу для всех путей (бот, чат, входящие, /nl/parse)
@@ -293,30 +307,45 @@ export class NlService {
   private async parseRaw(
     tenantId: string, userId: string, text: string,
     currentProjectId?: string | null, whole?: string | null,
-    opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
+    opts: ParseOpts = {},
   ): Promise<NlDraft> {
     const clean = (text ?? '').trim();
     /** Общая часть надиктовки: пусто, когда поручение и есть вся команда. */
     const around = (whole ?? '').trim() && (whole ?? '').trim() !== clean ? String(whole).trim() : '';
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
-    const { users, projects, clients, org } = await this.context(tenantId, userId);
+    const tCtx = Date.now();
+    const [{ users, projects, clients, org }, prompt] = await Promise.all([
+      this.context(tenantId, userId),
+      this.prompts.resolve(tenantId, 'nl.command', { today: new Date().toISOString().slice(0, 10) }, userId),
+    ]);
     const today = new Date().toISOString().slice(0, 10);
+    if (opts.timing) opts.timing.contextMs = Date.now() - tCtx;
 
-    const prompt = await this.prompts.resolve(tenantId, 'nl.command', { today }, userId);
     const orgIn = NlService.orgInput(org);
     const system = `${prompt?.body ?? FALLBACK_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT}` : ''}`;
     const userMsg = JSON.stringify({ text: clean, projects, users, clients, today, ...(orgIn ? { org: orgIn } : {}) });
 
     let parsed: any = {};
     let modelAnswered = false;
+    const tModel = Date.now();
+    let modelFail: string | null = null;
     try {
-      const raw = await this.ai.generate(tenantId, system, userMsg, 'nl_command', {
-        promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params,
-      });
+      /*
+        #4666: короткая фраза — быстрая модель без рассуждения и потолок по времени.
+        Не успела — заголовок правилами ниже: короткую задачу человек не должен ждать.
+      */
+      const raw = await this.ai.generate(tenantId, system, userMsg, 'nl_command', opts.fast
+        ? { promptVersionId: prompt?.versionId, fast: true, timeoutMs: NL_FAST_BUDGET_MS, maxTokens: NL_FAST_MAX_TOKENS }
+        : { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params });
       parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
       modelAnswered = true;
     } catch (e) {
+      modelFail = /timeout/i.test((e as Error).message) ? 'timeout' : 'error';
       this.log.warn(`parse failed: ${(e as Error).message}`);
+    }
+    if (opts.timing) {
+      opts.timing.modelMs = Date.now() - tModel;
+      opts.timing.model = modelAnswered ? 'ok' : modelFail ?? 'error';
     }
 
     // Модель не ответила (нет ключа, кончились деньги, вернула мусор) — человек всё
@@ -324,7 +353,10 @@ export class NlService {
     // Раньше на этом месте показывалось «Не понял команду», и голосовая постановка
     // целиком зависела от чужой доступности.
     if (!modelAnswered) {
-      parsed = { intent: 'create_task', confidence: 0.4, task: { title: taskTitleFrom(clean) }, note: 'ИИ недоступен — собрал по вашей фразе' };
+      parsed = opts.fast
+        // #4666: короткая фраза — имя исполнителя и срок из названия срезаем, они в своих полях
+        ? { intent: 'create_task', confidence: 0.4, task: { title: fastTitleFrom(clean, users.map((u) => u.name)) }, note: 'Собрал по вашей фразе' }
+        : { intent: 'create_task', confidence: 0.4, task: { title: taskTitleFrom(clean) }, note: 'ИИ недоступен — собрал по вашей фразе' };
     }
 
     const warnings: string[] = [];
@@ -454,17 +486,33 @@ export class NlService {
    */
   async parseMany(
     tenantId: string, userId: string, text: string, currentProjectId?: string | null,
-    opts: { currentKind?: 'board' | 'last'; auto?: boolean } = {},
+    opts: ParseOpts = {},
   ): Promise<NlDraft[]> {
+    const t0 = Date.now();
+    /*
+      #4666: у короткой фразы теги подбираем ОДНОВРЕМЕННО с разбором — по самой фразе,
+      с тем же потолком по времени. Раньше это был ещё один вызов модели после разбора.
+    */
+    const early = opts.auto && opts.fast
+      ? this.tags.suggest(tenantId, { title: (text ?? '').trim() }, { fast: true, timeoutMs: NL_FAST_BUDGET_MS })
+        .catch(() => null)
+      : null;
     const drafts = await this.parseManyInner(tenantId, userId, text, currentProjectId, opts);
+    const t1 = Date.now();
     // #4615: проект уже выбран в разборе; здесь — руководитель отдела и теги
-    if (opts.auto) await this.autoFill(tenantId, drafts);
+    if (opts.auto) await this.autoFill(tenantId, drafts, early);
+    if (opts.timing) {
+      Object.assign(opts.timing, {
+        path: opts.fast ? 'fast' : 'full', parseMs: t1 - t0, tagsWaitMs: Date.now() - t1,
+        drafts: drafts.length, totalParseMs: Date.now() - t0,
+      });
+    }
     return drafts;
   }
 
   private async parseManyInner(
     tenantId: string, userId: string, text: string, currentProjectId: string | null | undefined,
-    opts: { currentKind?: 'board' | 'last'; auto?: boolean },
+    opts: ParseOpts,
   ): Promise<NlDraft[]> {
     const clean = (text ?? '').trim();
     if (clean.length < 3) throw AppException.validation('Слишком короткая команда');
@@ -486,6 +534,16 @@ export class NlService {
     const single = this.parseRaw(tenantId, userId, clean, currentProjectId, null, opts);
     // Если пачка собралась, одиночный ответ не нужен — но его отказ не должен всплыть необработанным.
     single.catch(() => undefined);
+    /*
+      #4666: короткая фраза — одно поручение. Счёт задач моделью ей не нужен: это был
+      второй долгий вызов, которого ждал человек. Явные «и второе…» ловят правила
+      (isShortCommand), поэтому сюда приходит только одна задача.
+    */
+    if (opts.fast) {
+      const one = await single;
+      if (one.task) await this.distribute(tenantId, userId, [{ draft: one, item: null, source: clean, around: null, named: one.task.assigneeNamed ? one.task.assigneeId : null }]);
+      return [one];
+    }
     let items: any[] = [];
     try {
       const raw = await this.ai.generate(tenantId, `${MANY_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT.replace('assigneeId', 'assignee')}` : ''}`, userMsg, 'nl_command');
@@ -641,14 +699,15 @@ export class NlService {
    * Автоматическая постановка (#4615): исполнитель уже выбран одним правилом, здесь —
    * пометка «авто» и теги, подобранные ИИ (принимаются сами).
    */
-  private async autoFill(tenantId: string, drafts: NlDraft[]): Promise<void> {
+  private async autoFill(tenantId: string, drafts: NlDraft[], early: Promise<any> | null = null): Promise<void> {
     const list = drafts.filter((d) => d.task);
     if (!list.length) return;
     for (const d of list) d.task!.auto = true;
     // Теги — подбором ИИ из тегов компании; не подобрались — «без тегов».
     await Promise.all(list.map(async (d) => {
       const t = d.task!;
-      const r = await this.tags.suggest(tenantId, {
+      // #4666: короткая фраза — теги уже подбираются параллельно разбору
+      const r = early && list.length === 1 ? await early : await this.tags.suggest(tenantId, {
         title: t.title, description: t.description, checklist: t.checklist, projectName: t.projectName,
       }).catch(() => null);
       t.autoTags = (r?.suggestions ?? []).map((x: { tagId: string; name: string; color: string | null }) => ({ id: String(x.tagId), name: x.name, color: x.color ?? null }));

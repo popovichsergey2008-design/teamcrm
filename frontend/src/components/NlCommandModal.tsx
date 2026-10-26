@@ -22,6 +22,7 @@ import { Select } from './ui/select';
 import { feedback } from '../lib/feedback';
 import { AutoSummary, DeadlineChips } from './NlAutoTask';
 import { effectiveDeadline } from '../lib/auto-task';
+import { diag } from '../lib/diag';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
 interface CreatedTask {
@@ -197,13 +198,56 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
    * уложиться в таймаут: сервер сохраняет аудио и отвечает сразу, а мы следим
    * за обработкой и показываем, на каком она шаге.
    */
+  /**
+   * Замер голосовой постановки (#4666): от «Остановить» до черновика и до задачи.
+   * Серверная часть — `voice.timing` в журнале, эта — что увидел человек.
+   */
+  const voiceT = useRef<{ stop: number; sent?: number; ready?: number; polls: number; sync?: boolean; id?: string; bytes?: number } | null>(null);
+
   const sendRecording = async (blob: Blob) => {
     setMsg(''); setDrafts([]); setDone([]);
+    voiceT.current = { stop: performance.now(), polls: 0, bytes: blob.size };
     try {
-      setJob(await api.voiceStart(blob, currentKind === 'board' ? currentProjectId : null));
+      // #4666: в авто-режиме сервер сразу собирает черновик с автозаполнением, а короткую
+      // запись разбирает, пока открыт этот запрос, — ответ приходит уже с задачей
+      const first = await api.voiceStart(blob, currentKind === 'board' ? currentProjectId : null, !manual);
+      if (voiceT.current) Object.assign(voiceT.current, { sent: performance.now(), id: first.id, sync: first.status === 'ready' });
+      if (first.status === 'ready') onJobReady(first);
+      else if (first.status === 'error') feedback('error');
+      setJob(first);
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : 'Не удалось отправить запись');
     }
+  };
+
+  /** Запись разобрана: черновики показываем сразу, второй разбор — только если сервер старый. */
+  const onJobReady = (next: VoiceJob) => {
+    const list = next.tasks ?? [];
+    if (!manual && next.transcript) {
+      if (list.some((d: any) => d?.task?.auto)) {
+        // #4666: черновики уже с автозаполнением — разбирать заново нечего
+        parsedFor.current = next.transcript.trim();
+        setText(next.transcript);
+        setDrafts(list); setDone([]); setHeard(next.transcript);
+        if (!touched.current) setDeadline(list.find((d: any) => d.task?.deadline)?.task.deadline ?? null);
+      } else {
+        // #4615: расшифровка готова — разбор с автозаполнением идёт сам
+        setText(next.transcript);
+        void autoParse(next.transcript);
+      }
+    } else {
+      setDrafts(list);
+      setHeard(next.transcript ?? '');
+    }
+    const t = voiceT.current;
+    if (t && !t.ready) {
+      t.ready = performance.now();
+      diag('app', 'voice.client', t.id ? `voice:${t.id}` : undefined, {
+        bytes: t.bytes, uploadMs: Math.round((t.sent ?? t.ready) - t.stop), readyMs: Math.round(t.ready - t.stop),
+        polls: t.polls, sync: !!t.sync, drafts: list.length, auto: !manual,
+      });
+    }
+    feedback('ai.completed');
   };
 
   const voice = useVoiceInput(() => undefined, { onBlob: (blob) => void sendRecording(blob) });
@@ -213,24 +257,18 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   // аудио идёт минутами, и человек должен видеть движение, а не замерший экран.
   useEffect(() => {
     if (!job || job.status === 'ready' || job.status === 'error') return;
+    // #4666: первые секунды спрашиваем часто — короткая фраза готова за пару секунд,
+    // и пауза опроса сама по себе была заметной частью ожидания
+    const age = voiceT.current ? performance.now() - voiceT.current.stop : Infinity;
     const t = setTimeout(async () => {
       try {
+        if (voiceT.current) voiceT.current.polls += 1;
         const next = await api.voiceStatus(job.id);
         setJob(next);
-        if (next.status === 'ready') {
-          if (!manual && next.transcript) {
-            // #4615: расшифровка готова — разбор с автозаполнением идёт сам
-            setText(next.transcript);
-            void autoParse(next.transcript);
-          } else {
-            setDrafts(next.tasks ?? []);
-            setHeard(next.transcript ?? '');
-          }
-          feedback('ai.completed');
-        }
+        if (next.status === 'ready') onJobReady(next);
         if (next.status === 'error') feedback('error');
       } catch { /* следующий заход попробует снова: сеть моргает, запись цела */ }
-    }, 2000);
+    }, age < 20_000 ? 600 : 2000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job]);
@@ -466,6 +504,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           const res: any = await api.nlApply(autoBody(d));
           setDone((x) => [...x, i]);
           if (res?.task) { feedback('task.created'); remember(d, res.task); }
+          const vt = voiceT.current;
+          if (vt?.ready) diag('app', 'voice.created', vt.id ? `voice:${vt.id}` : undefined, { createdMs: Math.round(performance.now() - vt.stop) });
         } catch (e) {
           const w = workloadOf(e);
           if (w) patchDraft(i, { error: null, workload: w });
