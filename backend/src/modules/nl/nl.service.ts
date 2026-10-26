@@ -947,7 +947,8 @@ export class NlService {
       }
       // #4615: через 30 секунд — «Задача поставлена, проверьте» (запись в базе, а не таймер);
       // #4665: и для остальных путей, где задачу разобрала модель (opts.confirm)
-      const source: ConfirmSource | null = auto ? (t.voice === true ? 'quick_voice' : 'quick_text') : opts.confirm ?? null;
+      // путь, назвавший себя (Telegram-бот #4619), главнее догадки «быстрая команда»
+      const source: ConfirmSource | null = opts.confirm ?? (auto ? (t.voice === true ? 'quick_voice' : 'quick_text') : null);
       const confirmAt = source
         ? await this.autoConfirm.schedule(tenantId, userId, String(task.id), {
           projectWhy: auto && t.projectHint ? String(t.projectHint).slice(0, 200) : null,

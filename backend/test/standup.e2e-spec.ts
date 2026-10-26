@@ -190,7 +190,9 @@ describe('TEAMCRM Этап 3 — AI Standup (e2e)', () => {
   }, 30000);
 
   it('невалидный дейлик (нет задач) → parse_failed', async () => {
-    await http.post('/api/telegram/webhook').send(textUpdate('просто поболтать без задач')).expect(201);
+    // #4619, этап 4: текст без ссылки на задачу бот сперва спрашивает «задача или дейлик» —
+    // /daily говорит это сразу, и текст после команды идёт прежним путём дейлика
+    await http.post('/api/telegram/webhook').send(textUpdate('/daily просто поболтать без задач')).expect(201);
     await sleep(800);
     const id = await latestSubmissionId();
     const status = await pollStatus(id!, ['parse_failed', 'awaiting_confirmation']);

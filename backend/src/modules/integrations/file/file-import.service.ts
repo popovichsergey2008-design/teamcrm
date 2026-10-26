@@ -188,6 +188,11 @@ export class FileImportService {
       }
     }
 
+    // Доски перенесены — бот не предложит переезд на 4-й день (#4619, этап 4)
+    if (stats.created > 0) {
+      await this.db.query(`UPDATE tenants SET boards_imported_at = COALESCE(boards_imported_at, now()) WHERE id = $1`, [tenantId])
+        .catch(() => undefined);
+    }
     // Файл больше не нужен: держать чужую выгрузку в Redis дольше необходимого незачем.
     await this.redis.del(PARK_KEY(tenantId, input.token));
     this.log.log(`импорт из файла: создано ${stats.created}, обновлено ${stats.updated}, пропущено ${stats.skipped}`);

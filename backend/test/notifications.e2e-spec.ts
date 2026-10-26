@@ -131,7 +131,7 @@ describe('Почтовые уведомления (e2e)', () => {
     // получает письма, которые нечем выключить.
     expect(prefs.map((p: any) => p.eventKey).sort()).toEqual([
       'chat.direct', 'feed.announcement', 'feed.mention',
-      'task.commented', 'task.created', 'task.own', 'task.status', 'telegram.mirror',
+      'task.commented', 'task.created', 'task.own', 'task.status', 'telegram.focus', 'telegram.mirror',
     ]);
     // По умолчанию письма приходят — кроме одного: о СВОИХ действиях их нет.
     // Поставил задачу, перенёс карточку, написал комментарий — человек и так знает,

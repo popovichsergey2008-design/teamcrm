@@ -29,6 +29,8 @@ export const BOT_COMMANDS = [
   { command: 'start', description: 'Начать' },
   { command: 'example', description: 'Проверить на готовом примере' },
   { command: 'login', description: 'Открыть QEVO без пароля' },
+  { command: 'task', description: 'Поставить задачу (сотрудникам)' },
+  { command: 'daily', description: 'Прислать дейлик (сотрудникам)' },
 ];
 
 /** Шаг 1 ТЗ: приветствие и три кнопки. */
@@ -52,7 +54,7 @@ export function welcomeBack(name: string | null, daysLeft: number | null, base: 
   return {
     text: [
       `С возвращением${name ? `, ${name}` : ''}! Ваш QEVO на связи.`,
-      'Присылайте дейлик текстом или голосом — разложу по доске.',
+      'Перешлите сообщение клиента или надиктуйте поручение — поставлю задачу на доску. Дейлик — командой /daily.',
       ...(daysLeft !== null ? [`Пробный период: ${daysLeftText(daysLeft)}.`] : []),
     ].join('\n'),
     markup: rows(cb('Открыть мой QEVO', 'b:op'), appButton('Доска в Telegram (Mini App)', `${base}/tg/board`)),
@@ -173,3 +175,73 @@ export function moveFrom(): { text: string; markup: Keyboard } {
 export const MOVE_ACCEPTED = 'Заявка принята! Инженер QEVO напишет вам здесь, в Telegram, в течение 24 часов и пришлёт план переезда.';
 export const MOVE_REPEAT = 'Заявка на переезд уже у инженера — он напишет вам в течение 24 часов.';
 export const SOMETHING_WRONG = 'Что-то пошло не так — попробуйте ещё раз через минуту.';
+
+// ───────────── рабочий бот для команды (этап 4) ─────────────
+
+/** Голос/текст без явного выбора: задача или дейлик. */
+export function askTaskOrDaily(): { text: string; markup: Keyboard } {
+  return {
+    text: 'Что сделать с этим сообщением?\nВыбор запомню на 10 минут — следующие сообщения разложу так же.',
+    markup: { inline_keyboard: [[cb('Поставить задачу', 'b:tq'), cb('Это мой дейлик', 'b:dq')]] },
+  };
+}
+export const ASK_EXPIRED = 'Сообщение уже не помню — пришлите его ещё раз.';
+export const DAILY_MODE = 'Жду дейлик: присылайте текстом или голосом в ближайшие 10 минут.';
+export const TASK_MODE = 'Жду поручения: перешлите сообщение или надиктуйте — поставлю задачей. Режим — на 10 минут.';
+export const TASK_VOICE_TOO_LONG = 'Голосовое длиннее 5 минут — для поручения это много. Запишите короче или пришлите как дейлик (/daily).';
+export const TASK_VOICE_FAILED = 'Не расслышал голосовое. Запишите ещё раз или напишите поручение текстом.';
+export const TASK_NOT_PARSED = 'Не нашёл здесь поручения. Напишите, что и кому сделать — например: «Аня, пришли счёт клиенту до завтра».';
+export const TASK_NO_PROJECT = 'Не понял, в какой проект поставить задачу. Назовите проект в сообщении или поставьте задачу в QEVO.';
+
+/** Карточка поставленной задачи: Mini App и «Отменить». */
+export function taskButtons(taskId: string, base: string): Keyboard {
+  return {
+    inline_keyboard: [
+      [appButton('Открыть в Mini App', `${base}/tg/task/${taskId}`)],
+      [cb('Отменить', `b:ux:${taskId}`)],
+    ],
+  };
+}
+export const TASK_CANCELLED = 'Задача отменена — она в корзине QEVO.';
+export const TASK_CANCEL_LATE = 'Отменить можно только свою задачу в первые 10 минут. Удалить её можно в QEVO.';
+
+/** Сдача работы на проверку: две кнопки и карточка в Mini App. */
+export function approvalAsk(c: { taskId: string; title: string; who: string | null; project: string; base: string }): { text: string; markup: Keyboard } {
+  return {
+    text: [
+      `📥 Работа сдана на проверку: «${c.title}»`,
+      `Исполнитель: ${c.who ?? 'не назначен'} · Проект: ${c.project}`,
+    ].join('\n'),
+    markup: {
+      inline_keyboard: [
+        [cb('Принять работу', `b:ap:${c.taskId}`), cb('Вернуть на доработку', `b:rw:${c.taskId}`)],
+        [appButton('Открыть задачу', `${c.base}/tg/task/${c.taskId}`)],
+      ],
+    },
+  };
+}
+export const approved = (title: string) => `✅ Работа принята: «${title}». Задача закрыта.`;
+export const returned = (title: string) => `↩️ Вернул на доработку: «${title}». Исполнитель увидит причину.`;
+export const RETURN_ASK = 'Напишите ответом, что доработать, — передам исполнителю вместе с возвратом.';
+export const NOT_PENDING = 'Эта задача уже не ждёт проверки.';
+export const NOT_YOURS = 'Принять или вернуть работу может постановщик задачи или владелец.';
+export const TASK_GONE = 'Задача не найдена.';
+
+/** Утренний фокус: три строки и куда пойти. */
+export function focusMessage(text: string, base: string): { text: string; markup: Keyboard } {
+  return {
+    text,
+    markup: rows({ text: 'Открыть Фокус дня', url: `${base}/focus` }, appButton('Доска в Telegram', `${base}/tg/board`)),
+  };
+}
+
+/** 4-й день пробного периода: досок не переносили — предложить инженера. */
+export function moveOffer(): { text: string; markup: Keyboard } {
+  return {
+    text: [
+      'Старые проекты всё ещё в другой системе?',
+      'Инженер QEVO бесплатно перенесёт доски, задачи и комментарии из Битрикс24, YouGile или Jira за сутки.',
+    ].join('\n'),
+    markup: rows(cb('Подключить инженера для переноса', 'b:mv')),
+  };
+}

@@ -179,11 +179,13 @@ export class NotificationsRepository {
     /** Получателя-пользователя может не быть: приглашённый ещё не заведён. */
     tenantId: string; userId: string | null; toEmail: string; subject: string;
     text: string; html: string; eventKey: string; dedupKey: string;
+    /** В Telegram об этом событии уже ушло своё сообщение (#4619) — копию письма туда не дублируем. */
+    telegramDone?: boolean;
   }): Promise<void> {
     await this.db.query(
-      `INSERT INTO mail_outbox (tenant_id, user_id, to_email, subject, body_text, body_html, event_key, dedup_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (dedup_key) DO NOTHING`,
-      [i.tenantId, i.userId, i.toEmail, i.subject.slice(0, 255), i.text, i.html, i.eventKey, i.dedupKey.slice(0, 160)],
+      `INSERT INTO mail_outbox (tenant_id, user_id, to_email, subject, body_text, body_html, event_key, dedup_key, tg_sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $9::boolean THEN now() END) ON CONFLICT (dedup_key) DO NOTHING`,
+      [i.tenantId, i.userId, i.toEmail, i.subject.slice(0, 255), i.text, i.html, i.eventKey, i.dedupKey.slice(0, 160), i.telegramDone === true],
     );
   }
 

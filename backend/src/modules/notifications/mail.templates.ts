@@ -53,6 +53,13 @@ export const MIRROR_EVENT_TITLE = 'Дублировать уведомления
 export const CHAT_DIRECT_KEY = 'chat.direct';
 export const CHAT_DIRECT_TITLE = 'Личные сообщения и упоминания — в Telegram';
 
+/**
+ * «Фокус дня» в 09:30 руководителю в Telegram (#4619, этап 4): три строки — главные
+ * задачи, кто рискует сроком, созвоны. Только владельцу и руководителю; по умолчанию включён.
+ */
+export const TG_FOCUS_KEY = 'telegram.focus';
+export const TG_FOCUS_TITLE = 'Фокус дня в 09:30 — в Telegram';
+
 // Цвета бренда QEVO: тёплая светлая гамма интерфейса и синие логотипа (#193B91 → #15B8CD).
 const BRAND = {
   ink: '#211d18',

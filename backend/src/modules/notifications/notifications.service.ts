@@ -25,7 +25,18 @@ import { centerKey } from './center-rules';
 export class NotificationsService {
   private readonly log = new Logger('Notifications');
 
+  /**
+   * Сдача работы в Telegram с кнопками «Принять / Вернуть» (#4619, этап 4). Модуль бота
+   * регистрируется сам (он зависит от задач, а задачи — от уведомлений). Отдаёт, кому
+   * сообщение с кнопками ушло: им копию этого письма в Telegram не дублируем.
+   */
+  private approvalTelegram: ((tenantId: string, taskId: string, actorId: string | null) => Promise<string[]>) | null = null;
+
   constructor(private readonly repo: NotificationsRepository, private readonly center: NotificationCenter) {}
+
+  onApprovalRequested(h: (tenantId: string, taskId: string, actorId: string | null) => Promise<string[]>): void {
+    this.approvalTelegram = h;
+  }
 
   /** Базовый адрес для ссылок в письмах: письмо бесполезно, если ссылка ведёт в никуда. */
   private baseUrl(): string {
@@ -53,6 +64,8 @@ export class NotificationsService {
     tenantId: string, taskId: string, eventKey: EventKey, actorId: string | null,
     dedupSuffix: string,
     render: (ctx: TaskCtx, unsubscribeUrl: string) => Letter,
+    /** Кому в Telegram уже ушло своё сообщение об этом событии — копию письма туда не шлём. */
+    telegramDone: string[] = [],
   ): Promise<void> {
     try {
       const [card, recipients] = await Promise.all([
@@ -83,6 +96,7 @@ export class NotificationsService {
           subject: letter.subject, text: letter.text, html: letter.html,
           eventKey,
           dedupKey: centerKey(eventKey, taskId, r.id, dedupSuffix),
+          telegramDone: telegramDone.includes(String(r.id)),
         });
       }
     } catch (e) {
@@ -325,8 +339,11 @@ export class NotificationsService {
   async approvalRequested(tenantId: string, taskId: string, actorId: string | null): Promise<void> {
     const suffix = `ap${taskId}:${Date.now()}`;
     await this.center.task({ tenantId, taskId, kind: 'approval', actorId, mailKey: 'task.status', suffix });
+    const telegramDone = this.approvalTelegram
+      ? await this.approvalTelegram(tenantId, taskId, actorId).catch(() => [] as string[])
+      : [];
     return this.fanout(tenantId, taskId, 'task.status', actorId, suffix,
-      (ctx, unsub) => taskApprovalLetter(ctx, unsub));
+      (ctx, unsub) => taskApprovalLetter(ctx, unsub), telegramDone);
   }
 
   /**

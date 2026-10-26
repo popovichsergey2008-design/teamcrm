@@ -9,7 +9,7 @@ import {
   EVENT_TITLE, EventKey, FEED_ANNOUNCEMENT_KEY, FEED_ANNOUNCEMENT_TITLE,
   CHAT_DIRECT_KEY, CHAT_DIRECT_TITLE,
   FEED_MENTION_KEY, FEED_MENTION_TITLE, MIRROR_EVENT_KEY, MIRROR_EVENT_TITLE,
-  OWN_EVENT_KEY, OWN_EVENT_TITLE,
+  OWN_EVENT_KEY, OWN_EVENT_TITLE, TG_FOCUS_KEY, TG_FOCUS_TITLE,
 } from './mail.templates';
 
 /**
@@ -21,7 +21,7 @@ import {
 const EVENT_KEYS = Object.keys(EVENT_TITLE) as EventKey[];
 const ALL_KEYS: string[] = [
   ...EVENT_KEYS, FEED_ANNOUNCEMENT_KEY, FEED_MENTION_KEY, OWN_EVENT_KEY, MIRROR_EVENT_KEY,
-  CHAT_DIRECT_KEY,
+  CHAT_DIRECT_KEY, TG_FOCUS_KEY,
 ];
 const TITLE: Record<string, string> = {
   ...EVENT_TITLE,
@@ -30,6 +30,7 @@ const TITLE: Record<string, string> = {
   [OWN_EVENT_KEY]: OWN_EVENT_TITLE,
   [MIRROR_EVENT_KEY]: MIRROR_EVENT_TITLE,
   [CHAT_DIRECT_KEY]: CHAT_DIRECT_TITLE,
+  [TG_FOCUS_KEY]: TG_FOCUS_TITLE,
 };
 
 class PrefDto {
@@ -48,7 +49,9 @@ export class NotificationsController {
   @Roles('owner', 'manager', 'member')
   async prefs(@CurrentUser() u: AuthUser) {
     const saved = new Map((await this.repo.listPrefs(u.tenantId, u.userId)).map((p) => [p.event_key, p.enabled]));
-    return ALL_KEYS.map((key) => ({
+    // «Фокус дня» в Telegram приходит только руководителям — остальным переключатель ни к чему
+    const lead = u.role === 'owner' || u.role === 'manager';
+    return ALL_KEYS.filter((key) => key !== TG_FOCUS_KEY || lead).map((key) => ({
       eventKey: key,
       title: TITLE[key],
       // «Письма о моих собственных действиях» по умолчанию ВЫКЛЮЧЕНЫ: человек знает,

@@ -20,6 +20,7 @@ import {
 } from './bot-rules';
 import * as T from './bot-texts';
 import { TelegramBotRepository } from './telegram-bot.repository';
+import { TelegramBotWorkService } from './telegram-bot-work.service';
 
 /** Пробный период (решение 26.10): 7 дней сразу + 7 за ответ о размере команды. */
 const TRIAL_DAYS = 7;
@@ -70,6 +71,7 @@ export class TelegramBotService {
     private readonly tasks: TasksService,
     private readonly invites: InvitesService,
     private readonly leads: LeadsService,
+    private readonly work: TelegramBotWorkService,
   ) {
     this.base = (config.get<string>('APP_BASE_URL') || 'https://app.qevo.one').replace(/\/+$/, '');
     this.perUserDaily = Number(config.get<string>('TG_DEMO_PER_USER_DAILY')) || 5;
@@ -90,12 +92,23 @@ export class TelegramBotService {
     const actor = from?.id ? await this.telegram.resolveActor(from.id) : null;
     const route = routeUpdate(update, !!actor);
 
-    // кнопки дейлика и всё от привязанного сотрудника — прежним путём
+    // кнопки дейлика и клиентская ссылка — прежним путём
     if (route.kind === 'standup_callback') {
       this.answer(update.callback_query);
       return this.standup.handleTelegramUpdate(update);
     }
-    if (route.kind === 'staff' || route.kind === 'client_start') return this.standup.handleTelegramUpdate(update);
+    if (route.kind === 'client_start') return this.standup.handleTelegramUpdate(update);
+    // привязанный сотрудник (этап 4): пересылка/поручение → задача, дейлик — по правилу staffIntent
+    if (route.kind === 'staff' && actor) {
+      try {
+        return await this.work.onStaffMessage(update, actor);
+      } catch (e) {
+        this.log.warn(`сотрудник, обновление ${uid}: ${(e as Error).message}`);
+        void this.say(String(update?.message?.chat?.id ?? from.id), { text: T.SOMETHING_WRONG });
+        return;
+      }
+    }
+    if (route.kind === 'staff') return this.standup.handleTelegramUpdate(update);
     if (route.kind === 'ignore') return;
 
     const who: Who = {
@@ -110,7 +123,7 @@ export class TelegramBotService {
       switch (route.kind) {
         case 'bot_callback':
           this.answer(update.callback_query);
-          return await this.onButton(who, route.data, startedAt);
+          return await this.onButton(who, route.data, startedAt, update.callback_query?.message?.message_id ?? null);
         case 'link_code': {
           const linked = await this.telegram.tryLink(who.tgId, route.code);
           return this.say(who.chatId, {
@@ -142,8 +155,10 @@ export class TelegramBotService {
     return this.say(who.chatId, T.welcomeBack(who.firstName, days, this.base));
   }
 
-  private async onButton(who: Who, data: string, startedAt: number): Promise<void> {
+  private async onButton(who: Who, data: string, startedAt: number, cbMessageId: number | null = null): Promise<void> {
     const [, action, arg = ''] = data.split(':');
+    // рабочие кнопки сотрудника: задача/дейлик, «Отменить», «Принять / Вернуть»
+    if (await this.work.onButton(who.tgId, who.chatId, action, arg, typeof cbMessageId === 'number' ? cbMessageId : null)) return;
     switch (action) {
       case 'ex': return this.example(who, startedAt);
       case 'ag': return this.say(who.chatId, { text: T.AGAIN });

@@ -25,8 +25,10 @@ type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'cli
 const TG_MIRROR = 'telegram.mirror';
 /** Ключ «личка и упоминания в Telegram» — тоже свойство канала, не повод для письма. */
 const TG_DIRECT = 'chat.direct';
+/** «Фокус дня» в 09:30 в Telegram (#4619) — только у руководителей, API отдаёт его им одним. */
+const TG_FOCUS = 'telegram.focus';
 /** Поводы, которые живут в разделе Telegram, а не в списке писем. */
-const TG_KEYS: readonly string[] = [TG_MIRROR, TG_DIRECT];
+const TG_KEYS: readonly string[] = [TG_MIRROR, TG_DIRECT, TG_FOCUS];
 
 export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -341,8 +343,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
               </div>
               <div className="dim" style={{ fontSize: 12, marginBottom: 6 }}>
                 {tgLinked
-                  ? 'Бот пишет вам в личный чат: те же уведомления, что и на почту, плюс дейлики голосом или текстом. Переписку видите только вы.'
-                  : 'Привяжите Telegram, чтобы сдавать дейлики боту (голосом или текстом) и получать уведомления в чат, не дожидаясь письма.'}
+                  ? 'Бот пишет вам в личный чат: те же уведомления, что и на почту, плюс задачи из пересланных сообщений и голосовых и дейлики (/daily). Переписку видите только вы.'
+                  : 'Привяжите Telegram, чтобы ставить задачи пересылкой и голосом, сдавать дейлики боту и получать уведомления в чат, не дожидаясь письма.'}
               </div>
 
               {/* Дубль уведомлений и личные сообщения — свойство канала, поэтому переключатели

@@ -91,6 +91,7 @@ export const CONFIRM_SOURCES = {
   commitment: 'из обещания в переписке',
   chat_analysis: 'из разбора переписки',
   standup: 'из утренней сводки',
+  telegram: 'из Telegram-бота',
 } as const;
 export type ConfirmSource = keyof typeof CONFIRM_SOURCES;
 export const isConfirmSource = (v: unknown): v is ConfirmSource => typeof v === 'string' && Object.prototype.hasOwnProperty.call(CONFIRM_SOURCES, v);

@@ -141,7 +141,12 @@ export class MorningVoiceService implements OnModuleInit {
       fingerprint: fp,
       expiresAt: zonedTime(tomorrowOf(now, tz), '00:00', tz),
     });
-    if (row && audio) await this.telegram.voice(tenantId, userId, audio, 'Утренний бриф QEVO').catch(() => false);
+    if (row && audio && (await this.telegram.voice(tenantId, userId, audio, 'Утренний бриф QEVO').catch(() => false))) {
+      // бриф дошёл в Telegram — «Фокус дня» в 09:30 там же не дублирует утро (#4619, этап 4)
+      await this.db.query(
+        `INSERT INTO secretary_sent (user_id, kind, ref) VALUES ($1, 'morning_tg', $2) ON CONFLICT DO NOTHING`, [userId, today],
+      ).catch(() => undefined);
+    }
     return row ? String(row.id) : null;
   }
 
