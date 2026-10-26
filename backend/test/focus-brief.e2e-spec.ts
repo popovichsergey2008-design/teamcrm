@@ -55,7 +55,13 @@ describe('ТЗ-27 — брифинг «Фокуса дня» (e2e)', () => {
     const first = (await http.get('/api/focus/today').set(H(tok)).expect(200)).body.data;
     expect(first.enabled).toBe(true);
     expect(first.brief.enabled).toBe(true);
-    const gen = (await http.post('/api/focus/today/brief/generate').set(H(tok)).expect(201)).body.data;
+    // GET выше мог уже запустить сборку в фоне — тогда generate честно отвечает «собирается»;
+    // ждём готовности, а не рассчитываем на скорость машины CI
+    let gen = (await http.post('/api/focus/today/brief/generate').set(H(tok)).expect(201)).body.data;
+    for (let i = 0; i < 40 && gen.status === 'generating'; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      gen = (await http.post('/api/focus/today/brief/generate').set(H(tok)).expect(201)).body.data;
+    }
     expect(gen.status).toBe('ready');
     // 2. Брифинг говорит о той же задаче, что стоит в тройке, — со ссылкой-источником
     expect(gen.text).toContain('Проверить мобильный вход');
