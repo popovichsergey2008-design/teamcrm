@@ -505,7 +505,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
                     )}
                   </span>
                   <span className="ui-cell ui-cell-dim" role="cell">{t.project_name}</span>
-                  <span className="ui-cell" role="cell"><Badge tone="outline">{t.column_name}</Badge></span>
+                  <span className="ui-cell" role="cell"><Badge tone="outline" className="tasks-v2-status" title={t.column_name}><span>{t.column_name}</span></Badge></span>
                   <span className="tasks-v2-who" role="cell">
                     {who ? (
                       <>
