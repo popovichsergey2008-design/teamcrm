@@ -333,6 +333,9 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 /* обрезаем по ячейке: номер и приоритет не вылезают в соседний столбец ни при какой ширине */
 .tasks-v2-title { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
 .tasks-v2-title .ui-badge { flex: none; }
+/* длинное имя колонки («В работе над макетом») — с многоточием, а не срезанным словом */
+.tasks-v2-status { max-width: 100%; }
+.tasks-v2-status > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tasks-v2-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .tasks-v2-id { color: var(--text-mut); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; flex: none; }
 .tasks-v2-done-icon { color: var(--ok); flex: none; }

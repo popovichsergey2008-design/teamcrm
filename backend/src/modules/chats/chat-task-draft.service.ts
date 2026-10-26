@@ -18,9 +18,33 @@ import { ChatTaskDraftRepository, DraftRow } from './chat-task-draft.repository'
 
 type Viewer = { userId: string; role: string };
 /** Задача из нескольких: то, что разбор нашёл отдельным поручением (ТЗ-26, §9). */
-interface SplitItem {
+export interface SplitItem {
   title: string; description: string | null; assigneeId: string | null; deadline: string | null;
   checklist: string[]; priority: string; taskId?: string | null;
+}
+
+/**
+ * Правка разложенных ИИ поручений человеком (#4645): название, исполнитель, срок.
+ *
+ * Состав не меняется — пунктов столько же, сколько было; уже созданный (после обрыва)
+ * пункт не трогаем: по нему повтор досоздаёт недостающие. Пустое название оставляет
+ * прежнее. null — правка не подходит (другой состав), черновик остаётся как был.
+ */
+export function editSplit(was: unknown, incoming: unknown[]): SplitItem[] | null {
+  const old: SplitItem[] = Array.isArray(was) ? was : [];
+  if (!old.length || incoming.length !== old.length) return null;
+  return old.map((it, i) => {
+    if (it.taskId) return it;
+    const x = (incoming[i] ?? {}) as Record<string, unknown>;
+    const title = x.title !== undefined ? String(x.title ?? '').trim().slice(0, 255) : '';
+    const day = String(x.deadline ?? '');
+    return {
+      ...it,
+      title: title || it.title,
+      assigneeId: x.assigneeId !== undefined ? (x.assigneeId ? String(x.assigneeId) : null) : it.assigneeId,
+      deadline: x.deadline !== undefined ? (/^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null) : it.deadline,
+    };
+  });
 }
 
 /**
@@ -635,6 +659,15 @@ export class ChatTaskDraftService {
       // Правим только галочки: список файлов задаёт сообщение, а не клиент.
       const wanted = new Map(body.files.map((f: any) => [String(f?.fileId), f?.include !== false]));
       next.files = (draft.files ?? []).map((f) => ({ ...f, include: wanted.get(String(f.fileId)) ?? f.include }));
+    }
+    /*
+      Несколько поручений (#4645): то, что разложил ИИ, человек правит до «Создать» —
+      название, исполнителя и срок каждой задачи. Состав и уже созданные пункты (после
+      обрыва) не трогаем: по ним повтор досоздаёт недостающие.
+    */
+    if (Array.isArray(body.split)) {
+      const split = editSplit((draft.analysis as any)?.split, body.split);
+      if (split) next.analysis = { ...(draft.analysis ?? {}), split };
     }
     const projectNow = next.projectId !== undefined ? next.projectId : draft.project_id;
     if (draft.status !== 'created') next.status = projectNow ? 'ready' : 'needs_clarification';

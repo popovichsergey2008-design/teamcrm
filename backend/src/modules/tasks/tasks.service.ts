@@ -898,6 +898,7 @@ export class TasksService {
       // чужая просьба о переносе этим решением исчерпана — висеть ей незачем
       if (task.deadline_shift_to) await this.repo.clearDeadlineShift(tenantId, id);
       await this.shiftRecurrence(tenantId, task, target);
+      await this.pushDeadlineOut(tenantId, task);
       const logId = await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: target.toISOString() });
       void this.center.task({
         tenantId, taskId: String(id), kind: 'deadline', actorId: actor.userId, suffix: `s${logId}`,
@@ -974,6 +975,7 @@ export class TasksService {
     if (approve) {
       await this.repo.setDeadline(tenantId, id, to);
       await this.shiftRecurrence(tenantId, task, to);
+      await this.pushDeadlineOut(tenantId, task);
     }
     await this.repo.clearDeadlineShift(tenantId, id);
     await this.repo.stampTransition(tenantId, id, actor.userId, 'MANUAL').catch(() => undefined);
@@ -1003,6 +1005,7 @@ export class TasksService {
     this.assertCanDecide(task, actor);
     await this.repo.setDeadline(tenantId, id, to);
     await this.shiftRecurrence(tenantId, task, to);
+    await this.pushDeadlineOut(tenantId, task);
     const logId = await this.activity.log(tenantId, id, actor.userId, 'deadline_shifted', { to: to.toISOString(), source: 'chat' });
     void this.center.task({
       tenantId, taskId: String(id), kind: 'deadline', actorId: actor.userId, suffix: `s${logId}`, details: { deadline: to.toISOString() },
@@ -1025,6 +1028,18 @@ export class TasksService {
    * срок на ту же дату и писал это в журнал — у людей загоралась красная единица на
    * задаче, в которой ничего не изменилось, а просроченная задача так и висела.
    */
+  /**
+   * Новый срок — и во внешнюю систему, откуда пришёл проект (#4652).
+   *
+   * Поле «Срок» в карточке (/plan) выгрузку ставило, а перенос «Сделал — срок на
+   * среду», решение по просьбе о переносе и перенос из переписки — нет. У проекта из
+   * YouGile/Битрикс24 там оставалась прежняя дата, и встречная синхронизация при
+   * следующей правке задачи на той стороне могла вернуть её сюда.
+   */
+  private async pushDeadlineOut(tenantId: string, task: TaskRow): Promise<void> {
+    await this.outbox.enqueue(tenantId, String(task.project_id), 'task.update', String(task.id));
+  }
+
   private async shiftRecurrence(tenantId: string, task: TaskRow, to: Date): Promise<void> {
     if (!task.recurrence_id) return;
     const rule = await this.recurrence.byTask(tenantId, String(task.id));

@@ -46,6 +46,6 @@ export function settleEdits<T extends object>(edits: Partial<T>, sent: Partial<T
 
 function same(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  // чек-лист — массив строк; сравниваем по содержимому, не по ссылке
-  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+  // чек-лист и разложенные поручения — массивы; сравниваем по содержимому, не по ссылке
+  return Array.isArray(a) && Array.isArray(b) && JSON.stringify(a) === JSON.stringify(b);
 }

@@ -7,9 +7,15 @@
 .mtt-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .mtt-chip { border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .mtt-chip:hover { border-color: var(--accent); color: var(--accent); }
-.mtt-split-list { margin: 4px 0 0; padding-left: 20px; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px; }
+.mtt-split-list { margin: 4px 0 0; padding-left: 20px; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 10px; }
+/* #4645: задача из нескольких поручений правится тут же — название, исполнитель, срок */
+.mtt-split-item { display: flex; flex-direction: column; gap: 6px; }
+.mtt-split-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.mtt-split-meta > * { flex: 1 1 140px; min-width: 0; }
 .mtt-ask-row { display: flex; gap: 6px; }
 .mtt-ask-row .input { flex: 1; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .mtt-steps li.now svg { animation: none; } }
 /* ТЗ-31: определитель сомневается — подпись заметнее обычной */
 .mtt-project-warn { color: var(--warn); font-weight: 500; }
+/* поля в ряд (исполнитель, срок, приоритет) — по верху: подсказка под исполнителем не сдвигает соседей */
+.mtt-drawer .drawer-row:has(> .field) { align-items: flex-start; }

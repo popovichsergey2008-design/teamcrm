@@ -40,6 +40,9 @@ export interface MessageTaskDraft {
   split?: { title: string; assigneeId: string | null; deadline: string | null; checklist: string[] }[];
 }
 
+/** Одна из задач, на которые ИИ разложил сообщение (§9). */
+type SplitItem = NonNullable<MessageTaskDraft['split']>[number];
+
 /** Голосовое у черновика: расшифровка и кому фрагмент откроется без доступа к чату. */
 interface VoiceInfo { fileId: string; transcript: string | null; transcriptStatus: string | null; error: 'no_stt' | 'stt' | null; gap: string[] }
 
@@ -167,7 +170,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
     setBusy(true); setErr('');
     try {
       const r = await api.askMessageTaskDraft(draft.draftId);
-      setDraft(r.draft); setAsked(true);
+      take(r); setAsked(true);
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Вопрос не отправился'); }
     finally { setBusy(false); }
   };
@@ -480,11 +483,42 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                 <label>В сообщении {draft.split!.length} {draft.split!.length < 5 ? 'поручения' : 'поручений'}</label>
                 <label className="notify-row"><input type="radio" checked={mode === 'split'} onChange={() => setMode('split')} /> Создать {draft.split!.length} {draft.split!.length < 5 ? 'отдельные задачи' : 'отдельных задач'}</label>
                 <label className="notify-row"><input type="radio" checked={mode === 'single'} onChange={() => setMode('single')} /> Создать одну задачу с чек-листом</label>
+                {/* #4645: каждую из задач, разложенных ИИ, можно поправить до «Создать» */}
                 {mode === 'split' && (
                   <ol className="mtt-split-list">
-                    {draft.split!.map((x, i) => (
-                      <li key={i}>{x.title}{x.assigneeId ? <span className="dim"> · {ctx.users.find((u) => u.id === String(x.assigneeId))?.name ?? ''}</span> : null}{x.deadline ? <span className="dim"> · до {x.deadline}</span> : null}</li>
-                    ))}
+                    {draft.split!.map((x, i) => {
+                      const put = (part: Partial<SplitItem>) => draft.split!.map((y, k) => (k === i ? { ...y, ...part } : y));
+                      return (
+                        <li key={i} className="mtt-split-item">
+                          <input
+                            className="input"
+                            value={x.title}
+                            aria-label={`Название задачи ${i + 1}`}
+                            maxLength={255}
+                            onChange={(e) => edit({ split: put({ title: e.target.value }) })}
+                            onBlur={() => void patch({ split: draft.split })}
+                          />
+                          <div className="mtt-split-meta">
+                            <OptionSelect
+                              className="input"
+                              aria-label={`Исполнитель задачи ${i + 1}`}
+                              value={x.assigneeId ?? ''}
+                              onChange={(e) => void patch({ split: put({ assigneeId: e.target.value || null }) })}
+                            >
+                              <option value="">— не назначен —</option>
+                              {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            </OptionSelect>
+                            <input
+                              className="input"
+                              type="date"
+                              aria-label={`Срок задачи ${i + 1}`}
+                              value={x.deadline ?? ''}
+                              onChange={(e) => void patch({ split: put({ deadline: e.target.value || null }) })}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
               </div>
