@@ -1,0 +1,14 @@
+[Unit]
+Description=Firewall for QEVO company site containers (no access to CRM)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# сети сайта создаёт docker compose при старте стека — даём ему подняться
+ExecStartPre=/bin/sleep 20
+ExecStart=/bin/bash /opt/qevo-site/firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
