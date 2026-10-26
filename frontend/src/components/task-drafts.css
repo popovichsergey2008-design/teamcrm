@@ -1,0 +1,25 @@
+/* #4668 черновики постановки и #4664 файлы к новой задаче. Грузится вместе с окнами постановки. */
+.tdo {
+  display: flex; flex-direction: column; gap: 8px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--accent-soft);
+  font-size: var(--fs-sm); color: var(--text);
+}
+.tdo-head { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.tdo-head > svg { flex: none; margin-top: 2px; }
+.tdo-text { min-width: 0; overflow-wrap: anywhere; }
+.tdo-meta { color: var(--text-mut); font-size: var(--fs-xs); }
+.tdo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.tdo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tdo-item { display: flex; align-items: center; gap: 4px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.tdo-open {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center;
+  padding: 6px 8px; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.tdo-open:hover { background: var(--bg-elev-2); }
+.tdo-open:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.tdo-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tdo-open .tdo-meta { grid-column: 2; }
+.tff { display: flex; flex-direction: column; }
+.tff-note { margin-top: 6px; font-size: var(--fs-xs); }
+.file-pick.is-disabled { opacity: .55; pointer-events: none; }

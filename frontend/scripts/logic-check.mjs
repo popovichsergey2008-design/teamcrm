@@ -1798,6 +1798,44 @@ test('черновик из сообщения: правки человека п
   assert.deepEqual(settleEdits({ checklist: ['a', 'b'] }, { checklist: ['a', 'b'] }), {});
 });
 
+test('черновики задач: несколько, свои, старый переносится, пустой не хранится (#4668)', async () => {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  globalThis.window = { dispatchEvent() {}, addEventListener() {}, removeEventListener() {} };
+  const base = {
+    kind: 'form', projectId: '1', columnId: '2', columnName: 'К', description: '', assigneeId: '', managerId: '',
+    priority: 'normal', deadline: '', estimate: '', directions: [], requiresApproval: true,
+  };
+  const now = Date.now();
+  // черновик до #4668 — без id, один на браузер
+  store.set('teamcrm.taskDraft', JSON.stringify({ ...base, userId: '7', title: 'старый', savedAt: new Date(now - 3000).toISOString() }));
+  const d = await load('lib/task-draft.ts');
+  assert.equal(d.listDrafts('7').length, 1, 'старый черновик не теряется');
+  assert.ok(d.listDrafts('7')[0].id, 'и получает свой id');
+  assert.equal(store.has('teamcrm.taskDraft'), false);
+
+  d.saveDraft({ ...base, id: 'a', userId: '7', title: 'первая', savedAt: new Date(now - 2000).toISOString() });
+  d.saveDraft({ ...base, id: 'b', userId: '7', title: '', text: 'голосом: позвонить', kind: 'quick', savedAt: new Date(now - 1000).toISOString() });
+  d.saveDraft({ ...base, id: 'c', userId: '8', title: 'чужая', savedAt: new Date(now).toISOString() });
+  const mine = d.listDrafts('7');
+  assert.deepEqual(mine.map((x) => x.id).slice(0, 2), ['b', 'a'], 'свежие сверху, чужих нет');
+  assert.equal(d.draftLabel(mine[0]), 'голосом: позвонить', 'у быстрой — фраза вместо названия');
+  // всё стёрли — черновик пропадает, а не висит пустым
+  d.saveDraft({ ...base, id: 'a', userId: '7', title: '  ', savedAt: new Date(now).toISOString() });
+  assert.equal(d.listDrafts('7').some((x) => x.id === 'a'), false);
+  d.removeDraft('b');
+  assert.equal(d.listDrafts('7').some((x) => x.id === 'b'), false);
+  // старше 30 дней не показываем
+  d.saveDraft({ ...base, id: 'old', userId: '9', title: 'давно', savedAt: new Date(now - 31 * 86400e3).toISOString() });
+  assert.equal(d.listDrafts('9').length, 0);
+  delete globalThis.window;
+  delete globalThis.localStorage;
+});
+
 // ── запуск ────────────────────────────────────────────────────────────────────
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });

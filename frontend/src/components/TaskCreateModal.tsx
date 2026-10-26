@@ -7,13 +7,16 @@ import { TaskTagsField } from './TaskTagsField';
 import { confirmTags, EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
 import { navigate } from '../lib/router';
 import { overlayProps } from '../lib/overlay';
-import { clearDraft, draftHasContent, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
+import { newDraftId, openDraft, removeDraft, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
+import { loadDraftFiles, saveDraftFiles } from '../lib/draft-files';
+import { describeFailures, mergeFiles, pastedImages, uploadTaskFiles } from '../lib/task-files';
+import { TaskFilesField } from './TaskFilesField';
+import { TaskDraftsOffer, useOtherDrafts } from './TaskDraftsOffer';
 import { useAuth } from '../state/auth';
 import { SuggestAssignee } from './SuggestAssignee';
 import { localInput, useWorkloadCheck, workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
 import { DirectionsPicker } from './DirectionsPicker';
 import { NlCommandModal } from './NlCommandModal';
-import { isAnonymousClipboardName, screenshotName } from '../lib/attachments';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -62,7 +65,8 @@ const PRIORITY_OPTIONS = [
  */
 export function TaskCreateModal({ projectId, columnId, columnName, users, defaultManagerId, onClose, onCreated, draft }: Props) {
   const { user } = useAuth();
-  const [title, setTitle] = useState(draft?.title ?? '');
+  // разбор голоса сорвался в прошлый раз — сказанное возвращается в название (#4668)
+  const [title, setTitle] = useState(draft?.title || draft?.speech || '');
   const [assigneeId, setAssigneeId] = useState(draft?.assigneeId ?? '');
   /*
     Автоподбор (задачи #1295, #1363): по словам в названии и описании отмечаем
@@ -108,7 +112,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     места, где рождается задача, — иначе правила в форме, в быстрой команде и в чате
     неизбежно разойдутся.
   */
-  const [tags, setTags] = useState<TagsValue>(EMPTY_TAGS);
+  // теги из черновика возвращаются выбранными, но подтверждает их постановщик заново
+  const [tags, setTags] = useState<TagsValue>(draft?.tagIds?.length ? { ...EMPTY_TAGS, tagIds: draft.tagIds } : EMPTY_TAGS);
   const [tagSettings, setTagSettings] = useState<TagSettings | null>(null);
   /** После голоса теги подтверждаются сами: человек наговорил задачу и не должен ничего дожимать (#4618). */
   const autoTags = useRef(false);
@@ -134,8 +139,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     неё пунктам не к чему прикрепиться.
   */
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
-  const [tplId, setTplId] = useState('');
-  const [tplChecklist, setTplChecklist] = useState<string[]>([]);
+  const [tplId, setTplId] = useState(draft?.tplId ?? '');
+  const [tplChecklist, setTplChecklist] = useState<string[]>(draft?.checklist ?? []);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   /**
@@ -149,30 +154,58 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [files, setFiles] = useState<File[]>([]);
   /** Задача уже создана, но файлы не долетели: второй раз её создавать нельзя. */
   const [createdId, setCreatedId] = useState<string | null>(null);
+  /** Какой файл сейчас уходит: «2 из 3 — макет.png». */
+  const [uploadNote, setUploadNote] = useState('');
 
   /*
-    Черновик (#1534): набранное сохраняется по мере ввода. Окно закрыли не той
-    кнопкой — появится «Черновик», и всё вернётся одним нажатием. Пока окно открыто,
-    кнопку прячем: она дублировала бы само окно.
+    Черновик (#1534, #4668): набранное сохраняется по мере ввода — все поля, теги,
+    чек-лист и выбранные файлы. Окно закрыли не той кнопкой, обновили страницу,
+    приложение вылетело — при следующем открытии окно предложит продолжить. Пока окно
+    открыто, плавающую кнопку «Черновик» прячем: она дублировала бы само окно.
   */
   useEffect(() => {
     setDraftEditing(true);
     return () => setDraftEditing(false);
   }, []);
-  // пустое новое окно не должно стирать прежний черновик: трогаем его, только когда
-  // окно открыто из черновика или в нём уже что-то набрали
-  const ownsDraft = useRef(!!draft);
+  const draftId = useRef(draft?.id || newDraftId());
+  /** Последняя распознанная фраза: сорвётся разбор или вкладка — сказанное останется в черновике. */
+  const [speech, setSpeech] = useState(draft?.speech ?? '');
+  /** Файлы черновика, которые не удалось вернуть: их называем и просим выбрать заново. */
+  const [lostDraftFiles, setLostDraftFiles] = useState<string[]>([]);
+  const filesReady = useRef(!draft?.fileNames?.length);
+  useEffect(() => {
+    if (!draft?.fileNames?.length) return;
+    const names = draft.fileNames;
+    void loadDraftFiles(draft.id).then((back) => {
+      setFiles((cur) => (cur.length ? cur : back));
+      const have = new Set(back.map((f) => f.name));
+      setLostDraftFiles(names.filter((n) => !have.has(n)));
+      filesReady.current = true;
+    });
+  }, [draft]);
   useEffect(() => {
     if (createdId || !user?.id) return; // задача уже есть — черновик больше не нужен
-    if (!ownsDraft.current && !draftHasContent({ title, description })) return;
-    ownsDraft.current = true;
     const t = window.setTimeout(() => saveDraft({
+      id: draftId.current, kind: 'form',
       userId: String(user.id), projectId: String(projectId), columnId: String(columnId), columnName,
       title, description, assigneeId, managerId, priority, deadline, estimate, directions, requiresApproval,
+      tagIds: tags.tagIds, checklist: tplChecklist, tplId, speech,
+      fileNames: files.map((f) => f.name),
       savedAt: new Date().toISOString(),
     }), 400);
     return () => window.clearTimeout(t);
-  }, [user?.id, projectId, columnId, columnName, title, description, assigneeId, managerId, priority, deadline, estimate, directions, requiresApproval, createdId]);
+  }, [user?.id, projectId, columnId, columnName, title, description, assigneeId, managerId, priority, deadline, estimate, directions, requiresApproval, tags.tagIds, tplChecklist, tplId, speech, files, createdId]);
+  // файлы — отдельно и только когда их набор сменился: класть их в базу на каждую букву незачем
+  useEffect(() => {
+    if (createdId || !filesReady.current) return;
+    void saveDraftFiles(draftId.current, files);
+  }, [files, createdId]);
+  /** Другие черновики — предложение «Продолжить» в начале пустого окна. */
+  const otherDrafts = useOtherDrafts(user?.id, draftId.current);
+  const pickDraft = (d: TaskDraft) => {
+    onClose();
+    openDraft(d, (pid) => navigate({ section: 'projects', projectId: pid }));
+  };
   /**
    * Возможные дубли по набранному названию.
    *
@@ -198,15 +231,6 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     }, 600);
     return () => clearTimeout(t);
   }, [title, description]);
-
-  const addFiles = (list: FileList | File[] | null) => {
-    if (!list?.length) return;
-    // одноимённые не копим: человек выбирает файл дважды чаще, чем прикладывает два одинаковых
-    setFiles((prev) => {
-      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
-      return [...prev, ...Array.from(list).filter((f) => !seen.has(`${f.name}:${f.size}`))];
-    });
-  };
 
   /**
    * Применить шаблон к форме.
@@ -299,7 +323,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       setVoiceBusy(false);
     }
   };
-  const voice = useVoiceInput((text) => { void fillFromSpeech(text); });
+  const voice = useVoiceInput((text) => { setSpeech(text); void fillFromSpeech(text); });
   const voiceState = voice.recording ? 'rec' : voice.transcribing || voiceBusy ? 'busy' : 'idle';
 
   /** Страж нагрузки (ТЗ-21): сервер предупредил о перегрузе — человек выбирает вариант. */
@@ -344,7 +368,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       });
       setCreatedId(String(created.id));
       feedback('task.created');
-      clearDraft(); // задача создана — черновик своё отслужил
+      removeDraft(draftId.current); // задача создана — черновик своё отслужил
       /*
         Пункты чек-листа из шаблона — по порядку и по одному: отдельной ручки «создать
         чек-лист целиком» нет, а параллельная отправка перемешала бы порядок.
@@ -359,11 +383,9 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       if (tplId) void api.useTaskTemplate(tplId).catch(() => undefined);
       // Файлы грузим по одному и по порядку: параллельная отправка десятка вложений
       // с телефона рвётся на середине, и понять, что именно не долетело, нельзя.
-      const failed: string[] = [];
-      for (const f of files) {
-        try { await api.uploadAttachment(String(created.id), f); }
-        catch { failed.push(f.name); }
-      }
+      const failed = await uploadTaskFiles(String(created.id), files, (i, n, name) => setUploadNote(
+        i < n ? `Загружаю файлы: ${i + 1} из ${n} — ${name}` : '',
+      ));
       if (lostItems.length) {
         setErr(`Задача создана (#${created.id}), но не добавились пункты чек-листа: ${lostItems.join('; ')}. Допишите их в карточке, на вкладке «Чек-лист».`);
         setBusy(false);
@@ -371,7 +393,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       }
       if (failed.length) {
         // задача уже создана — предлагать «создать» второй раз нельзя, это дубль
-        setErr(`Задача создана (#${created.id}), но не загрузились файлы: ${failed.join(', ')}. Прикрепите их в карточке, на вкладке «Файлы».`);
+        setErr(`Задача создана (#${created.id}), но не загрузились файлы: ${describeFailures(failed)}. Прикрепите их в карточке, на вкладке «Файлы».`);
         setBusy(false);
         return;
       }
@@ -421,13 +443,11 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         слой забирает вставку себе — и это окно тоже умеет её принимать.
       */
       onPaste={(e) => {
-        const images = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'));
-        if (!images.length) return;
-        e.preventDefault();
         // «image.png» из буфера — это дата и время снимка, иначе в списке десяток одинаковых имён
-        addFiles(images.map((f) => (isAnonymousClipboardName(f.name)
-          ? new File([f], screenshotName(new Date(), f.type), { type: f.type })
-          : f)));
+        const images = pastedImages(e.clipboardData);
+        if (!images.length || createdId) return;
+        e.preventDefault();
+        setFiles((prev) => mergeFiles(prev, images));
       }}
       onKeyDown={(e) => { if (e.key === 'Escape' && !busy) { e.stopPropagation(); onClose(); } }}
       {...overlayProps(onClose)}
@@ -442,6 +462,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         </header>
 
         <div className="ui-modal-body">
+          {!draft && !title && !description && <TaskDraftsOffer drafts={otherDrafts} onPick={pickDraft} />}
           <div className={`tc-voice tc-voice-${voiceState}`}>
             <button
               type="button"
@@ -625,41 +646,14 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
 
           {/* Файлы прямо здесь: задача без исходников — это вопрос «а где макет?»
               через десять минут после постановки. */}
-          <Field label="Файлы" hint="Необязательно. Снимок экрана можно вставить сюда по Ctrl+V">
-            <div
-              className="file-drop tc-drop"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-            >
-              <label className="ui-btn ui-btn-outline ui-btn-sm file-pick">
-                <Icon name="paperclip" size={15} /> Выбрать файлы
-                <input
-                  className="file-pick-input"
-                  type="file"
-                  multiple
-                  aria-label="Выбрать файлы для задачи"
-                  onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
-                />
-              </label>
-              <span className="ui-cell-dim">или перетащите сюда</span>
-            </div>
-            {files.length > 0 && (
-              <div className="file-picked">
-                {files.map((f, i) => (
-                  <span key={`${f.name}-${i}`} className="people-chip">
-                    <Icon name="file" size={12} /> {f.name}
-                    <button
-                      className="people-chip-x"
-                      onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
-                      title="Убрать файл"
-                      aria-label={`Убрать ${f.name}`}
-                    >
-                      <Icon name="close" size={11} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
+          <Field label="Файлы" hint="Необязательно. Прикрепятся сразу после создания задачи">
+            <TaskFilesField
+              files={files}
+              onChange={setFiles}
+              disabled={busy || !!createdId}
+              progress={uploadNote}
+              restored={lostDraftFiles.filter((n) => !files.some((f) => f.name === n))}
+            />
           </Field>
 
         </div>

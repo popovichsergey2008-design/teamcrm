@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
 import { Icon } from './Icon';
 import { TaskCardWindow } from './TaskCardWindow';
 import { TaskTagsField } from './TaskTagsField';
@@ -23,6 +23,12 @@ import { feedback } from '../lib/feedback';
 import { AutoSummary, DeadlineChips } from './NlAutoTask';
 import { effectiveDeadline } from '../lib/auto-task';
 import { diag } from '../lib/diag';
+import { newDraftId, openDraft, removeDraft, saveDraft, setDraftEditing, type TaskDraft } from '../lib/task-draft';
+import { loadDraftFiles, saveDraftFiles } from '../lib/draft-files';
+import { describeFailures, mergeFiles, pastedImages, uploadTaskFiles } from '../lib/task-files';
+import { TaskFilesField } from './TaskFilesField';
+import { TaskDraftsOffer, useOtherDrafts } from './TaskDraftsOffer';
+import { useAuth } from '../state/auth';
 
 /** Что создали в этом заходе — для итоговой страницы: куда ушло и как открыть. */
 interface CreatedTask {
@@ -55,7 +61,7 @@ const JOB_LABEL: Record<VoiceJob['status'], string> = {
   error: 'Не получилось',
 };
 
-export function NlCommandModal({ onClose, initialText, autoRecord, currentProjectId, currentKind = 'board', onCreated }: {
+export function NlCommandModal({ onClose, initialText, autoRecord, currentProjectId, currentKind = 'board', onCreated, draft: fromDraft }: {
   onClose: () => void;
   /** Текст, набранный в командной строке: переспрашивать уже сформулированное незачем. */
   initialText?: string;
@@ -70,8 +76,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   currentKind?: 'board' | 'last';
   /** Задача создана — показать её вместо перезагрузки всего приложения. */
   onCreated?: (projectId: string, taskId: string) => void;
+  /** Черновик, с которого продолжаем (#4668): фраза, срок, файлы, незаконченная расшифровка. */
+  draft?: TaskDraft | null;
 }) {
-  const [text, setText] = useState(initialText ?? '');
+  const [text, setText] = useState(initialText ?? fromDraft?.text ?? fromDraft?.speech ?? '');
   /**
    * Черновики. Их может быть несколько: в длинной надиктовке человек раздаёт работу
    * пачкой — «Глебу форму, Юрию страницу, Алине тексты», — и делать из этого одну
@@ -110,8 +118,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   */
   const [manual, setManual] = useState(false);
   /** Срок, выбранный чипом (или услышанный во фразе, пока чип не трогали). */
-  const [deadline, setDeadline] = useState<string | null>(null);
-  const touched = useRef(false);
+  const [deadline, setDeadline] = useState<string | null>(fromDraft?.quickDeadline ?? null);
+  const touched = useRef(!!fromDraft?.quickDeadline);
   const [thinking, setThinking] = useState(false);
   /** Для какого текста черновики актуальны: изменили фразу — разбор пойдёт заново. */
   const parsedFor = useRef('');
@@ -119,6 +127,16 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   /** Какой текст сейчас разбирается: расшифровка уже ушла — второй раз не шлём. */
   const pending = useRef('');
   const [autoNote, setAutoNote] = useState(false);
+  /*
+    #4664: файлы прямо в первом окне. Автоматическая постановка (#4615) стала окном
+    по умолчанию, а прикрепить файл в ней было нельзя — только после «Править поля».
+    Файлы ждут здесь и уходят сразу после создания задачи; несколько задач из одной
+    фразы — файлы прикрепляются к каждой.
+  */
+  const [files, setFiles] = useState<File[]>([]);
+  /** Какой файл сейчас уходит: «2 из 3 — макет.png». */
+  const [fileNote, setFileNote] = useState('');
+  const progress = (i: number, n: number, name: string) => setFileNote(i < n ? `Загружаю файлы: ${i + 1} из ${n} — ${name}` : '');
 
   /** Разбор в фоне: пауза в наборе или готовая расшифровка — без кнопки «Разобрать». */
   const autoParse = async (raw: string): Promise<any[] | null> => {
@@ -329,14 +347,9 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
    * отправленных разом с телефона, рвётся на середине, и потом не понять, что
    * именно не долетело.
    */
-  const uploadFiles = async (taskId: string, list: File[]): Promise<string[]> => {
-    const failed: string[] = [];
-    for (const f of list) {
-      try { await api.uploadAttachment(taskId, f); }
-      catch { failed.push(f.name); }
-    }
-    return failed;
-  };
+  const uploadFiles = async (taskId: string, list: File[]): Promise<string[]> => (
+    (await uploadTaskFiles(taskId, list, progress)).map((f) => describeFailures([f]))
+  );
 
   const applyOne = async (draft: any, index: number, over: Record<string, unknown> = {}) => {
     if (Object.keys(over).length) draft = { ...draft, task: { ...draft.task, ...over } };
@@ -362,6 +375,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       // Одна задача — сразу открываем её. Когда задач несколько, человек ещё работает
       // со списком, и уводить его с экрана нельзя.
       if (drafts.length === 1 && res?.task && onCreated) {
+        finishDraft();
         onCreated(String(res.task.project_id ?? res.task.projectId), String(res.task.id));
         onClose();
       }
@@ -506,6 +520,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           if (res?.task) { feedback('task.created'); remember(d, res.task); }
           const vt = voiceT.current;
           if (vt?.ready) diag('app', 'voice.created', vt.id ? `voice:${vt.id}` : undefined, { createdMs: Math.round(performance.now() - vt.stop) });
+          const lost = res?.task && files.length ? await uploadFiles(String(res.task.id), files) : [];
+          if (lost.length) setMsg(`Задача поставлена, но не загрузились файлы: ${lost.join('; ')}. Прикрепите их в карточке, на вкладке «Файлы».`);
         } catch (e) {
           const w = workloadOf(e);
           if (w) patchDraft(i, { error: null, workload: w });
@@ -521,7 +537,12 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         });
         setDone((x) => [...x, ...tasks.map(({ i }) => i)]);
         if (batch.created) feedback('task.created', { count: batch.created });
-        if (batch.failedCount) setMsg(`Поставлено ${batch.created} из ${batch.requested}. Что не получилось — на странице пакета.`);
+        const lost: string[] = [];
+        for (const t of files.length ? batch.tasks : []) lost.push(...await uploadFiles(String(t.taskId), files));
+        const lostNote = lost.length ? ` Не загрузились файлы: ${[...new Set(lost)].join('; ')}. Прикрепите их в карточках.` : '';
+        if (batch.failedCount || lostNote) {
+          setMsg(`${batch.failedCount ? `Поставлено ${batch.created} из ${batch.requested}. Что не получилось — на странице пакета.` : ''}${lostNote}`.trim());
+        }
         setCreated((x) => [...x, ...batch.tasks.map((t) => ({
           taskId: String(t.taskId), projectId: String(t.projectId), title: t.title,
           projectName: t.projectName, assigneeName: t.assigneeName, deadline: t.deadlineAt,
@@ -573,6 +594,94 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   useEffect(() => {
     if (stage === 'compose' && !busy && drafts.length > 1 && created.length > 1 && readyCount === 0) setStage('done');
   }, [stage, busy, drafts.length, created.length, readyCount]);
+
+  /*
+    Черновик (#4668): фраза, расшифровка записи, срок и файлы сохраняются по ходу.
+    Окно закрыли, страница обновилась, приложение вылетело посреди расшифровки —
+    при следующем открытии сказанное вернётся, а незаконченная обработка записи
+    продолжится с того же места (аудио уже на сервере).
+  */
+  const { user } = useAuth();
+  const draftId = useRef(fromDraft?.id || newDraftId());
+  const finished = useRef(false);
+  const finishDraft = () => { finished.current = true; removeDraft(draftId.current); };
+  useEffect(() => {
+    setDraftEditing(true);
+    return () => setDraftEditing(false);
+  }, []);
+  const filesReady = useRef(!fromDraft?.fileNames?.length);
+  const [lostDraftFiles, setLostDraftFiles] = useState<string[]>([]);
+  useEffect(() => {
+    if (!fromDraft) return;
+    const names = fromDraft.fileNames ?? [];
+    if (names.length) {
+      void loadDraftFiles(fromDraft.id).then((back) => {
+        setFiles((cur) => (cur.length ? cur : back));
+        const have = new Set(back.map((f) => f.name));
+        setLostDraftFiles(names.filter((n) => !have.has(n)));
+        filesReady.current = true;
+      });
+    }
+    // запись ушла, а окно закрылось до расшифровки — подхватываем ту же обработку
+    if (fromDraft.voiceJobId && !fromDraft.text) {
+      api.voiceStatus(fromDraft.voiceJobId).then((j) => {
+        if (j.status === 'ready' && j.transcript) setText(j.transcript);
+        else setJob(j);
+      }).catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // все файлы окна: общие и разложенные по черновикам «Править поля»
+  const allFiles = drafts.reduce<File[]>((acc, d) => mergeFiles(acc, d.files), files);
+  const voiceJobId = job && job.status !== 'ready' ? job.id : undefined;
+  useEffect(() => {
+    if (stage === 'done') { finishDraft(); return; }
+    if (finished.current || !user?.id) return;
+    const t = window.setTimeout(() => saveDraft({
+      id: draftId.current, kind: 'quick', userId: String(user.id),
+      projectId: currentKind === 'board' && currentProjectId ? String(currentProjectId) : '',
+      columnId: '', columnName: '', title: '', description: '', assigneeId: '', managerId: '',
+      priority: 'normal', deadline: '', estimate: '', directions: [], requiresApproval: true,
+      text, quickDeadline: touched.current ? deadline : null, voiceJobId,
+      fileNames: allFiles.map((f) => f.name),
+      savedAt: new Date().toISOString(),
+    }), 400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, text, deadline, voiceJobId, allFiles.length, allFiles.map((f) => f.name).join('|'), stage]);
+  useEffect(() => {
+    if (finished.current || !filesReady.current) return;
+    void saveDraftFiles(draftId.current, allFiles);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allFiles.length, allFiles.map((f) => `${f.name}:${f.size}`).join('|')]);
+  const otherDrafts = useOtherDrafts(user?.id, draftId.current);
+  const pickDraft = (d: TaskDraft) => {
+    onClose();
+    openDraft(d, (projectId) => navigate({ section: 'projects', projectId }));
+  };
+  /** Снимок из буфера — в файлы задачи, а не в переписку позади окна. */
+  const onPaste = (e: ClipboardEvent) => {
+    const images = pastedImages(e.clipboardData);
+    if (!images.length || busy) return;
+    // в подробном режиме у каждой задачи свои файлы — снимок ложится в первую
+    const first = manual ? drafts.findIndex((d) => d.intent === 'create_task') : -1;
+    if (manual && first < 0) return;
+    e.preventDefault();
+    if (manual) patchDraft(first, { files: mergeFiles(drafts[first].files ?? [], images) });
+    else setFiles((prev) => mergeFiles(prev, images));
+  };
+  /** «Править поля»: общие файлы переезжают в черновики — там у каждой задачи свои. */
+  const toManual = () => {
+    setDrafts((list) => list.map((d) => (d.intent === 'create_task' ? { ...d, files: mergeFiles(d.files ?? [], files) } : d)));
+    setFiles([]);
+    setManual(true);
+  };
+  /** Назад в автоматический режим: черновики пересоберутся из фразы, файлы — снова общие. */
+  const toAuto = () => {
+    setFiles(allFiles);
+    parsedFor.current = '';
+    setManual(false);
+  };
 
   /** Открыть одну из созданных: карточка задачи на её доске. */
   /*
@@ -654,6 +763,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               size="sm"
               onClick={() => {
               requestId.current = newChangeId();
+              draftId.current = newDraftId(); finished.current = false; setFiles([]);
               setStage('compose'); setDrafts([]); setDone([]); setCreated([]); setText(''); setHeard(''); setMsg('');
               parsedFor.current = ''; touched.current = false; setDeadline(null); setAutoNote(false);
             }}
@@ -672,7 +782,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     const needDue = taskDrafts.some(({ d }) => !d.task.deadlineAt && !dueOf(d));
     return (
       <div className="drawer-overlay" {...overlayProps(onClose)}>
-        <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()}>
+        <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()} onPaste={onPaste}>
           <div className="nl-v2-head">
             <h2 className="ui-modal-title"><Icon name="zap" size={20} /> Новая задача</h2>
             <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
@@ -680,6 +790,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           <div className="nl-v2-sub">
             Напишите или скажите, что сделать. Проект, исполнителя, теги и приоритет система подставит сама — вам остаётся срок.
           </div>
+          {!fromDraft && !text && !recording && !job && <TaskDraftsOffer drafts={otherDrafts} onPick={pickDraft} />}
           <textarea
             className="ui-textarea"
             rows={3}
@@ -699,6 +810,15 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           )}
           <div className="nla-label" id="nla-due">Срок</div>
           <DeadlineChips value={deadline} onChange={chooseDeadline} />
+          <div className="nla-label">Файлы</div>
+          <TaskFilesField
+            files={files}
+            onChange={setFiles}
+            disabled={busy}
+            progress={fileNote}
+            hint={taskDrafts.length > 1 ? 'прикрепятся к каждой задаче' : undefined}
+            restored={lostDraftFiles.filter((n) => !allFiles.some((f) => f.name === n))}
+          />
           {thinking && (
             <div className="nla-thinking" role="status"><span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> Разбираю…</div>
           )}
@@ -744,7 +864,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               {!busy && <Icon name="check" size={15} />} {taskDrafts.length > 1 ? `Поставить ${taskDrafts.length} ${plural(taskDrafts.length, 'задачу', 'задачи', 'задач')}` : 'Поставить задачу'}
             </Button>
             {taskDrafts.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={() => setManual(true)} title="Подробный предпросмотр: все поля задачи">
+              <Button variant="ghost" size="sm" onClick={toManual} title="Подробный предпросмотр: все поля задачи">
                 <Icon name="edit" size={14} /> Править поля
               </Button>
             )}
@@ -757,7 +877,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
 
   return (
     <div className="drawer-overlay" {...overlayProps(onClose)}>
-      <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()}>
+      <aside className="drawer nl-v2" onClick={(e) => e.stopPropagation()} onPaste={onPaste}>
         <div className="nl-v2-head">
           <h2 className="ui-modal-title"><Icon name="zap" size={20} /> Новая задача</h2>
           <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
@@ -812,7 +932,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           <Button variant="primary" className="nl-parse" onClick={() => void parse()} disabled={recording || working} loading={busy}>
             {!busy && <Icon name="sparkles" size={15} />} {busy ? 'Разбираю…' : 'Разобрать'}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => { parsedFor.current = ''; setManual(false); }} title="Поставить автоматически: вы выбираете только срок">
+          <Button variant="ghost" size="sm" onClick={toAuto} title="Поставить автоматически: вы выбираете только срок">
             <Icon name="zap" size={14} /> Автоматически
           </Button>
         </div>

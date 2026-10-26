@@ -741,11 +741,37 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * человеку «сервер обновляется, повторите», чем молча сделать что-то дважды.
  */
 /** Отправка формы с файлом (multipart): конверт ответа тот же, что у request. */
-async function upload<T>(path: string, fields: Record<string, string | Blob>): Promise<T> {
+async function upload<T>(
+  path: string, fields: Record<string, string | Blob | Blob[] | undefined>, signal?: AbortSignal, retried = false,
+): Promise<T> {
   const fd = new FormData();
-  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
-  const res = await fetch(apiUrl(path), { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
-  const env = await res.json().catch(() => ({ ok: false }));
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined) continue;
+    for (const one of Array.isArray(v) ? v : [v]) fd.append(k, one);
+  }
+  const access = tokens.access;
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), { method: 'POST', headers: access ? { Authorization: `Bearer ${access}` } : {}, body: fd, signal });
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    throw new ApiError('OFFLINE', 'Нет связи с сервером — файл не отправлен');
+  }
+  const env = await res.json().catch(() => null);
+  /*
+    #4664: access-токен живёт 15 минут. Карточку или форму держат открытой дольше —
+    и файл отбивался 401 «Upload error», хотя сессия жива. Обновляем и шлём ещё раз.
+  */
+  if (res.status === 401 && !retried && env?.error?.code !== 'SESSION_REVOKED') {
+    await tryRefresh(access);
+    return upload<T>(path, fields, signal, true);
+  }
+  // nginx на слишком большой файл или на выкладке отвечает HTML, а не конвертом
+  if (!env) {
+    if (res.status === 413) throw new ApiError('PAYLOAD_TOO_LARGE', 'Файл слишком большой для загрузки');
+    if (res.status >= 502 && res.status <= 504) throw new ApiError('UNAVAILABLE', 'Сервер обновляется — повторите через несколько секунд');
+    throw new ApiError('INTERNAL', `Не удалось отправить файл (${res.status})`);
+  }
   if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Не удалось отправить файл', env.error?.details);
   return env.data as T;
 }
@@ -928,13 +954,8 @@ export const api = {
   deleteComment: (taskId: string, cid: string) => request<any>('DELETE', `/tasks/${taskId}/comments/${cid}`),
   listAttachments: (taskId: string) => request<any[]>('GET', `/tasks/${taskId}/attachments`),
   deleteAttachment: (taskId: string, aid: string) => request<any>('DELETE', `/tasks/${taskId}/attachments/${aid}`),
-  uploadAttachment: async (taskId: string, file: File) => {
-    const fd = new FormData(); fd.append('file', file);
-    const res = await fetch(apiUrl(`/api/tasks/${taskId}/attachments`), { method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd });
-    const env = await res.json();
-    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Upload error');
-    return env.data;
-  },
+  uploadAttachment: (taskId: string, file: File) =>
+    upload<any>(`/api/tasks/${taskId}/attachments`, { file }),
   /**
    * «Проверить задачу с помощью ИИ»: сверяет постановку с тем, что показали в задаче.
    *
@@ -3006,18 +3027,11 @@ export const api = {
     taskId: string, file: File | File[], body: string, replyToId?: string, replyExcerpt?: string,
     threadRootId?: string | null, signal?: AbortSignal,
   ) => {
-    const fd = new FormData();
-    for (const f of Array.isArray(file) ? file : [file]) fd.append('files', f);
-    if (body) fd.append('body', body);
-    if (replyToId) fd.append('replyToId', replyToId);
-    if (replyExcerpt) fd.append('replyExcerpt', replyExcerpt);
-    if (threadRootId) fd.append('threadRootId', threadRootId);
-    const res = await fetch(apiUrl(`/api/tasks/${taskId}/comments/file`), {
-      method: 'POST', headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}, body: fd, signal,
-    });
-    const env = await res.json();
-    if (!env.ok) throw new ApiError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Файл не отправлен');
-    return env.data;
+    // общий загрузчик: обновит истёкший токен и переведёт ответ nginx в понятную ошибку (#4664)
+    return upload<any>(`/api/tasks/${taskId}/comments/file`, {
+      files: Array.isArray(file) ? file : [file],
+      body: body || undefined, replyToId, replyExcerpt, threadRootId: threadRootId || undefined,
+    }, signal);
   },
 
   /**
