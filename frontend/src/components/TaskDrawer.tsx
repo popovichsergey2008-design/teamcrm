@@ -499,6 +499,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
   /** Описание правится по кнопке: по умолчанию его читают, а не редактируют. */
   const [editingDesc, setEditingDesc] = useState(false);
+  /** Фраза, из которой агент завёл задачу, — целиком (#4670): подсказки по наведению на телефоне нет. */
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [descBusy, setDescBusy] = useState(false);
 
   /**
@@ -1092,8 +1094,16 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                   }}
                   title={fromMessage.body}
                 >
-                  «{fromMessage.body.slice(0, 80)}»
+                  «{sourceOpen || fromMessage.body.length <= 80 ? fromMessage.body : `${fromMessage.body.slice(0, 80).trimEnd()}…`}»
                 </button>
+                {fromMessage.body.length > 80 && (
+                  <>
+                    {' '}
+                    <button className="link-btn" aria-expanded={sourceOpen} onClick={() => setSourceOpen((v) => !v)}>
+                      {sourceOpen ? 'Свернуть' : 'Ещё'}
+                    </button>
+                  </>
+                )}
                 {/* Отзыв о задаче, которую завёл агент (ТЗ-12, разд. 59), и отмена его ошибки:
                     окно — сутки, права проверит сервер. */}
                 {task.created_by_ai && (

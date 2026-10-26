@@ -226,7 +226,15 @@ export function navigate(to: Route | string, opts: { replace?: boolean } = {}) {
 export function useRoute(): Route {
   const [route, setRoute] = useState<Route>(() => parsePath(window.location.pathname));
   useEffect(() => {
-    const sync = () => setRoute(parsePath(window.location.pathname));
+    // Адрес тот же — маршрут прежний (шаг «Назад» с записи открытой картинки, #4667):
+    // новый объект с теми же полями перерисовал бы весь экран без причины.
+    const here = () => window.location.pathname + window.location.search;
+    let last = here();
+    const sync = () => {
+      if (here() === last) return;
+      last = here();
+      setRoute(parsePath(window.location.pathname));
+    };
     window.addEventListener('popstate', sync);
     window.addEventListener(NAV_EVENT, sync);
     return () => {

@@ -14,7 +14,7 @@
 .nla-sum-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-xs); color: var(--text-mut); }
 .nla-sum-head > span { display: inline-flex; align-items: center; gap: 5px; }
 .nla-title { font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-.nla-desc { font-size: var(--fs-sm, 14px); color: var(--text); white-space: pre-line; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.nla-desc { font-size: var(--fs-sm, 14px); color: var(--text); white-space: pre-line; overflow-wrap: anywhere; }
 .nla-facts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 2px 0 0; font-size: var(--fs-sm, 14px); }
 .nla-facts dt { color: var(--text-mut); }
 .nla-facts dd { margin: 0; color: var(--text); min-width: 0; overflow-wrap: anywhere; }

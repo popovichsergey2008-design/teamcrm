@@ -177,7 +177,7 @@ export function FocusZen({ session, onOpenTask }: {
             {task?.description && (
               <details className="zen-dod">
                 <summary>Что нужно сделать</summary>
-                <p>{task.description.slice(0, 900)}{task.description.length > 900 ? '…' : ''}</p>
+                <p>{task.description}</p>
               </details>
             )}
             {checks.length > 0 && (

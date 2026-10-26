@@ -1,0 +1,4 @@
+/* Обрезка в несколько строк с раскрытием (#4670): сколько строк — задаёт компонент. */
+.clamp-text.is-clamped { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+/* «Ещё» — под пальцем: на телефоне высота строки маловата для попадания. */
+.clamp-text-more { align-self: flex-start; min-height: 28px; padding: 2px 0; font-size: var(--fs-sm, 14px); }
