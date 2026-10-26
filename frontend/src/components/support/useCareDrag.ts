@@ -216,6 +216,8 @@ export function useCareDrag<T extends HTMLElement>(key: string, { media, ignore,
     paint(next);
     commit(next);
   };
+  // встроенное «перетащить картинку/текст» отменяет наш сдвиг (pointercancel) — кружок с аватаром не двигался
+  const onDragStart = (e: React.DragEvent<HTMLElement>) => { if (on.current) e.preventDefault(); };
   const onDoubleClick = (e: React.MouseEvent<HTMLElement>) => {
     if (ignore && (e.target as Element).closest?.(ignore)) return;
     reset();
@@ -226,7 +228,7 @@ export function useCareDrag<T extends HTMLElement>(key: string, { media, ignore,
     moved,
     reset,
     onKeyDown,
-    handlers: { onPointerDown, onPointerMove, onPointerUp: end, onPointerCancel: end, onClickCapture },
+    handlers: { onPointerDown, onPointerMove, onPointerUp: end, onPointerCancel: end, onClickCapture, onDragStart },
     onDoubleClick,
   };
 }

@@ -81,7 +81,7 @@
 .care-bubble {
   position: fixed; right: calc(56px + 14px); bottom: 18px; z-index: 57;
   width: 60px; height: 60px; padding: 0; border: none; border-radius: 50%; background: none;
-  cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent;
+  cursor: grab; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
 }
 .care-bubble:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 .care-bubble-ring {
@@ -94,7 +94,8 @@
   width: 52px; height: 52px; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
   background: linear-gradient(var(--accent-soft), var(--accent-soft)) var(--bg-elev); color: var(--text); font-size: 16px; font-weight: 700;
 }
-.care-bubble-face img { width: 100%; height: 100%; object-fit: cover; }
+/* картинку не тащит сам браузер: его «перетащить изображение» отменяло наш сдвиг кружка (pointercancel) */
+.care-bubble-face img, .care-face img { width: 100%; height: 100%; object-fit: cover; -webkit-user-drag: none; pointer-events: none; }
 .care-bubble-pct {
   position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); padding: 1px 6px;
   border: 1px solid var(--border-2); border-radius: 999px; background: var(--bg-elev); color: var(--text);
