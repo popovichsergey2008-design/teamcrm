@@ -710,7 +710,11 @@ export class TasksService {
     // и закрытая снова, второго уведомления не давала — ключ «эта задача, эта колонка»
     // уже был занят первым закрытием, и человек о повторной сдаче не узнавал.
     if (String(task.column_id) !== String(dto.columnId)) {
-      void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name), moveId);
+      // Сдача на проверку уже ушла письмом «сдана на проверку» (и в Telegram — с кнопками
+      // «Принять / Вернуть», #4619) тем же людям; второе «статус изменён» было дублем.
+      if (!needsApproval) {
+        void this.notify.taskStatusChanged(tenantId, id, actorId, column.name, isDoneColumn(column.name), moveId);
+      }
       // задача закрыта — напоминания о ней в шторке больше не нужны никому
       if (isDoneColumn(column.name)) void this.push.taskSeen(tenantId, id, null);
     }
