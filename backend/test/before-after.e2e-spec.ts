@@ -134,4 +134,83 @@ describe('Было/стало (e2e)', () => {
       .send({ tenantName: 'Чужие', email: `baa_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.get(`/api/tasks/${task.id}/before-after`).set(H(alien.accessToken)).expect(404);
   });
+
+  /**
+   * Случай #4657: постановщик приложил ОБРАЗЕЦ желаемого результата, а пункты — критерии
+   * приёмки функции. Образец не «было», итог — не «нашли ошибки»; сдача без результата
+   * отчёт сама не собирает; роль снимка можно поправить руками, а «Попросить результат»
+   * пишет исполнителю один раз.
+   */
+  it('образец постановщика и чек-лист приёмки: без «ошибок», роль руками, «Попросить результат» один раз', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Образец', email: `bae_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Константин' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const email = `baed_${uniq()}@t.test`;
+    const doerUser = (await http$.post('/api/users').set(O).send({ email, fullName: 'Исполнитель', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const D = H((await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.put('/api/handoff-gate').set(O).send({ checklist: false, comment: false, attachment: false }).expect(200);
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Функции' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const done = board.columns.find((c: any) => c.name === 'Готово').id;
+    const task = (await http$.post('/api/tasks').set(O).send({
+      projectId: project.id, assigneeId: String(doerUser.id), title: 'Отчёт «было/стало»',
+      description: '<p>Нужен отчёт по задаче. Образец отчёта — на скринах во вложении.</p>',
+    }).expect(201)).body.data;
+    for (const text of [
+      'Открыть завершённую задачу и запустить проверку',
+      'Убедиться, что формируется отчёт с блоками «Было» и «Стало»',
+      'Проверить итог',
+      'Принять или отклонить работу',
+    ]) await http$.post(`/api/tasks/${task.id}/checklist`).set(O).send({ text }).expect(201);
+    const file = (await http$.post(`/api/tasks/${task.id}/attachments`).set(O)
+      .attach('file', png, { filename: '4657_1226.png', contentType: 'image/png' }).expect(201)).body.data;
+    const fileId = String(file.file_id ?? file.fileId ?? file.id);
+
+    // сдача без результата — сама не проверяет: образец «стало» не считается
+    await http$.post(`/api/tasks/${task.id}/move`).set(D).send({ columnId: done, position: 0 }).expect(201);
+    await new Promise((r) => setTimeout(r, 600));
+    expect((await http$.get(`/api/tasks/${task.id}/before-after`).set(O).expect(200)).body.data.versions).toHaveLength(0);
+
+    await http$.post(`/api/tasks/${task.id}/before-after`).set(O).expect(201);
+    const o = await settle(task.id, O, (x) => x.current?.status === 'ready');
+    const r = o.current;
+    expect(r.items).toHaveLength(4);
+    expect(r.summary.message).not.toMatch(/ошибк/);
+    expect(o.task.canSetRoles).toBe(true);
+    if (!(await ai.hasModel(owner.user.tenantId))) {
+      // правила: описание называет вложение образцом — оно отдельно, а не в «Было»
+      expect(r.summary.examples.map((s: any) => s.fileId)).toEqual([fileId]);
+      expect(r.items.every((i: any) => !i.before.length && i.verdict === 'no_result')).toBe(true);
+      expect(r.summary.kind).toBe('functional');
+      expect(r.summary.message).toBe('Исполнитель пока не приложил результат — проверять нечего.');
+    }
+
+    // роль руками: «Было» — отпечаток другой, отчёт предлагает пересобрать
+    await http$.put(`/api/tasks/${task.id}/before-after/shots/${fileId}`).set(O).send({ role: 'before' }).expect(200);
+    await http$.put(`/api/tasks/${task.id}/before-after/shots/${fileId}`).set(O).send({ role: 'чепуха' }).expect(400);
+    const o2 = (await http$.get(`/api/tasks/${task.id}/before-after`).set(O).expect(200)).body.data;
+    expect(o2.roles).toEqual({ [fileId]: 'before' });
+    expect(o2.changed).toBe(true);
+    await http$.post(`/api/tasks/${task.id}/before-after`).set(O).expect(201);
+    const o3 = await settle(task.id, O, (x) => x.current?.version === 2 && x.current?.status === 'ready');
+    const shots = [...o3.current.items.flatMap((i: any) => i.before), ...(o3.current.summary.loose?.before ?? [])];
+    expect(shots.map((s: any) => [s.fileId, s.roleBy])).toEqual([[fileId, 'manual']]);
+    expect(o3.current.summary.examples ?? []).toHaveLength(0);
+    // чужой файл — как несуществующий
+    await http$.put(`/api/tasks/${task.id}/before-after/shots/999999999`).set(O).send({ role: 'none' }).expect(404);
+
+    // «Попросить результат» — один раз
+    const first = (await http$.post(`/api/tasks/${task.id}/before-after/${o3.current.id}/ask-result`).set(O).expect(201)).body.data;
+    const second = (await http$.post(`/api/tasks/${task.id}/before-after/${o3.current.id}/ask-result`).set(O).expect(201)).body.data;
+    expect([first.sent, second.sent]).toEqual([true, false]);
+    const comments = (await http$.get(`/api/tasks/${task.id}/comments`).set(O).expect(200)).body.data;
+    expect(comments.filter((c: any) => /Приложите, пожалуйста, как стало/.test(String(c.body)))).toHaveLength(1);
+
+    // «Проверено» у пункта — постановщик ставит, исполнитель нет
+    const checked = (await http$.put(`/api/tasks/${task.id}/before-after/${o3.current.id}/checked`).set(O).send({ n: 2, checked: true }).expect(200)).body.data;
+    expect(Object.keys(checked.summary.checked)).toEqual(['2']);
+    await http$.put(`/api/tasks/${task.id}/before-after/${o3.current.id}/checked`).set(D).send({ n: 2, checked: false }).expect(403);
+    const unchecked = (await http$.put(`/api/tasks/${task.id}/before-after/${o3.current.id}/checked`).set(O).send({ n: 2, checked: false }).expect(200)).body.data;
+    expect(unchecked.summary.checked).toEqual({});
+  });
 });

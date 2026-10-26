@@ -24,6 +24,30 @@ export type Side = 'before' | 'after';
  */
 export type Verdict = 'fixed' | 'not_fixed' | 'unclear' | 'no_result' | 'eyes';
 
+/**
+ * Роль снимка в отчёте (#4657, жалоба заказчика: «скрины давались как пример, а он
+ * думает, что это „было“»).
+ *
+ * - `before` — текущий вид, часто со стрелками и обводками: колонка «Было»;
+ * - `example` — образец или макет того, как должно стать: показываем отдельно
+ *   («Образец от постановщика»), в «Было» не кладём, пункт он «без результата» не делает;
+ * - `reference` — просто справка; `none` — человек сказал «не относится»;
+ * - `after` — результат: колонка «Стало».
+ *
+ * Кто решил: правила, модель или человек руками. Человек главнее модели, модель — правил.
+ */
+export type ShotRole = 'before' | 'example' | 'reference' | 'after' | 'none';
+/** Роли, которые человек выбирает руками во вкладке: «Было / Образец / Стало / Не относится». */
+export type ManualRole = 'before' | 'example' | 'after' | 'none';
+export const MANUAL_ROLES: readonly ManualRole[] = ['before', 'example', 'after', 'none'];
+export type RoleBy = 'rule' | 'model' | 'manual';
+/**
+ * Что за задача: `visual` — правки текста и вида, сравниваем снимки; `functional` —
+ * пункты это критерии приёмки функции, результат — код и выкладка, снимков «стало»
+ * не требуем: отчёт — чек-лист приёмки.
+ */
+export type CheckKind = 'visual' | 'functional';
+
 export interface Shot {
   fileId: string;
   name: string;
@@ -37,6 +61,9 @@ export interface Shot {
   caption?: string | null;
   /** Адрес страницы — у снимков, которые сделали мы. */
   url?: string | null;
+  /** Роль снимка; у старых отчётов её нет — значит, по стороне. */
+  role?: ShotRole;
+  roleBy?: RoleBy;
 }
 
 export interface RawItem {
@@ -120,6 +147,24 @@ export function descriptionText(html: string | null | undefined): string {
 /** id картинок описания по порядку. */
 export function descriptionImageIds(html: string | null | undefined): string[] {
   return descriptionLines(html).map((l) => IMG_TOKEN.exec(l)?.[1]).filter((x): x is string => !!x);
+}
+
+/**
+ * Текст рядом с каждой картинкой описания: ближайшая строка до неё (подряд идущие
+ * картинки делят одну подпись — «Образец отчёта:» и три скрина) и строка сразу после.
+ */
+export function descriptionImageContext(html: string | null | undefined): Map<string, string> {
+  const lines = descriptionLines(html);
+  const out = new Map<string, string>();
+  lines.forEach((l, i) => {
+    const id = IMG_TOKEN.exec(l)?.[1];
+    if (!id) return;
+    let prev = '';
+    for (let j = i - 1; j >= 0; j--) if (!IMG_TOKEN.test(lines[j])) { prev = lines[j]; break; }
+    const next = lines[i + 1] && !IMG_TOKEN.test(lines[i + 1]) ? lines[i + 1] : '';
+    out.set(id, `${prev} ${next}`.trim());
+  });
+  return out;
 }
 
 const LIST_LINE = /^(?:\d{1,2}\s*[.)]|[-–—•*·▪●])\s+(.+)$/;
@@ -272,6 +317,79 @@ export function sideOf(f: MaterialFile, p: People): Side {
 
 export const isImage = (mime: string | null | undefined) => /^image\/(png|jpe?g|webp|gif)$/i.test(String(mime ?? ''));
 
+// ───────────── роль снимка постановщика ─────────────
+
+/**
+ * Слова «это образец»: пример, образец, макет, как должно, так должно, референс, по аналогии.
+ * «Например» — не образец: перед «пример» не должно быть букв.
+ */
+const EXAMPLE_RE = /(?<!\p{L})(?:пример\p{L}*|образ(?:ец|ц\p{L}*)|макет\p{L}*|мокап\p{L}*|mock-?up|референс\p{L}*|reference|как\s+должн\p{L}*|так\s+должн\p{L}*|по\s+аналогии)/iu;
+/** Слова про приложенные картинки — «образец на скринах», «во вложении — макет». */
+const ATTACH_RE = /(?<!\p{L})(?:скрин\p{L}*|скриншот\p{L}*|снимк\p{L}*|снимок|вложени\p{L}*|прилож\p{L}*|картинк\p{L}*|изображени\p{L}*|ниже|файл\p{L}*)/iu;
+
+/** Говорит ли текст, что картинка — образец. */
+export function saysExample(text: string | null | undefined): boolean {
+  return EXAMPLE_RE.test(String(text ?? ''));
+}
+
+/**
+ * Описание задачи прямо называет вложения образцом: в одной строке есть и «пример /
+ * образец / макет…», и «скрин / вложение / картинка…» («Образец отчёта — на скринах»).
+ */
+export function descriptionCallsExample(descText: string | null | undefined): boolean {
+  return String(descText ?? '').split(/\n|(?<=[.!?])\s+/).some((l) => saysExample(l) && ATTACH_RE.test(l));
+}
+
+/**
+ * Роль снимка постановщика по правилам (без модели).
+ *
+ * Стрелки и обводки мы не распознаём, поэтому решают только слова: подпись снимка или
+ * строка описания рядом с ним говорит «пример/образец/макет…» — образец; описание
+ * называет вложения образцом — образец; иначе, как и раньше, «было».
+ */
+export function ruleRole(input: { context?: string | null; descriptionCallsExample?: boolean }): 'before' | 'example' {
+  if (saysExample(input.context)) return 'example';
+  if (input.descriptionCallsExample) return 'example';
+  return 'before';
+}
+
+/**
+ * Итоговая роль снимка до ответа модели: руками — главнее всего; результат исполнителя
+ * без ручной правки — «стало»; материалы постановщика — по правилам.
+ */
+export function initialRole(side: Side, manual: ManualRole | null | undefined, rule: 'before' | 'example'): { role: ShotRole; by: RoleBy } {
+  if (manual) return { role: manual, by: 'manual' };
+  if (side === 'after') return { role: 'after', by: 'rule' };
+  return { role: rule, by: 'rule' };
+}
+
+// ───────────── визуальная правка или приёмка функции ─────────────
+
+/** Пункт начинается с проверки: «Открыть…», «Убедиться, что…», «Проверить…», «Принять/отклонить». */
+const ACCEPT_START = /^(?:открыть|открыв|запустить|запуск|убедиться|проверить|проверка|принять|отклонить|протестировать|тест|нажать|зайти|войти|выбрать|дождаться|сдать|перевести|создать|отправить|загрузить|посмотреть|сравнить)(?!\p{L})/iu;
+/** Глагол правки текста или вида. */
+const EDIT_VERB = /(?<!\p{L})(?:замени\p{L}*|поменя\p{L}*|измени\p{L}*|исправ\p{L}*|убра\p{L}*|удали\p{L}*|переименов\p{L}*|сдвину\p{L}*|выровня\p{L}*|перекрас\p{L}*|увеличи\p{L}*|уменьши\p{L}*|поправ\p{L}*|скры\p{L}*)/iu;
+/** Что правят на экране. */
+const UI_NOUN = /(?<!\p{L})(?:заголов\p{L}*|подзаголов\p{L}*|иконк\p{L}*|кнопк\p{L}*|текст\p{L}*|надпис\p{L}*|цвет\p{L}*|шрифт\p{L}*|отступ\p{L}*|логотип\p{L}*|картинк\p{L}*|фон\p{L}*|баннер\p{L}*|карточк\p{L}*|подпис\p{L}*|опечатк\p{L}*|вёрстк\p{L}*|верстк\p{L}*|правк\p{L}*|блок[аеиуо]?м?|страниц\p{L}*|сайт\p{L}*)(?!\p{L})/iu;
+
+/** Похож ли пункт на правку текста или вида (а не на критерий приёмки функции). */
+export function looksVisual(text: string | null | undefined): boolean {
+  const t = String(text ?? '').trim();
+  if (!t) return false;
+  if (parseChange(t)) return true;
+  if (ACCEPT_START.test(t)) return false;
+  return EDIT_VERB.test(t) || UI_NOUN.test(t);
+}
+
+/**
+ * Тип задачи по правилам: снимков «было» нет и ни один пункт не похож на правку текста
+ * или вида — это приёмка функции. Иначе — визуальные правки, как раньше.
+ */
+export function kindByRules(items: { title: string; detail?: string | null }[], beforeShots: number): CheckKind {
+  if (beforeShots > 0) return 'visual';
+  return items.some((i) => looksVisual(i.title) || looksVisual(i.detail)) ? 'visual' : 'functional';
+}
+
 // ───────────── к какому пункту снимок ─────────────
 
 const STOP = new Set(['было', 'стало', 'надо', 'нужно', 'чтобы', 'сделать', 'этот', 'этой', 'этого', 'который', 'которая', 'также', 'тоже', 'будет',
@@ -349,8 +467,27 @@ export interface ModelItem {
   afterShots: number[];
 }
 
-/** Разбор ответа проверяющей модели. Не JSON или пусто — null: честная неудача лучше выдумки. */
-export function parseCheck(raw: string, itemCount: number): { items: ModelItem[]; summary: string } | null {
+export interface ModelShotRole { shot: number; role: 'before' | 'example' | 'reference' }
+
+export interface ParsedCheck {
+  items: ModelItem[];
+  summary: string;
+  /** Тип задачи по мнению модели; не сказала или сказала непонятно — null, решат правила. */
+  kind: CheckKind | null;
+  /** Роли снимков постановщика: только известные номера, только известные роли. */
+  roles: ModelShotRole[];
+}
+
+/**
+ * Разбор ответа проверяющей модели. Не JSON или пусто — null: честная неудача лучше выдумки.
+ *
+ * `shotCount` — сколько снимков ей показали; роль снимка с чужим номером отбрасываем,
+ * `canRole(n)` — можно ли модели решать роль этого снимка (результат исполнителя и
+ * роль, выбранную человеком руками, она не переопределяет).
+ */
+export function parseCheck(
+  raw: string, itemCount: number, shotCount = 0, canRole: (n: number) => boolean = () => true,
+): ParsedCheck | null {
   const text = String(raw ?? '');
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
@@ -381,7 +518,20 @@ export function parseCheck(raw: string, itemCount: number): { items: ModelItem[]
     });
   }
   if (!items.length) return null;
-  return { items, summary: str(obj.summary, 400) ?? '' };
+  const k = String(obj.kind ?? '').toLowerCase();
+  const kind: CheckKind | null = k === 'visual' || k === 'functional' ? k : null;
+  const roles: ModelShotRole[] = [];
+  const roleSeen = new Set<number>();
+  const rawRoles = Array.isArray(obj.shot_roles ?? obj.shotRoles) ? (obj.shot_roles ?? obj.shotRoles) as Record<string, unknown>[] : [];
+  for (const r of rawRoles) {
+    const n = Number(r?.shot ?? r?.n);
+    const role = String(r?.role ?? '').toLowerCase();
+    if (!Number.isInteger(n) || n < 1 || n > shotCount || roleSeen.has(n) || !canRole(n)) continue;
+    if (role !== 'before' && role !== 'example' && role !== 'reference') continue;
+    roleSeen.add(n);
+    roles.push({ shot: n, role });
+  }
+  return { items, summary: str(obj.summary, 400) ?? '', kind, roles };
 }
 
 /**
@@ -400,9 +550,11 @@ export function seesImages(model: string | null | undefined): boolean {
 }
 
 /**
- * Последнее слово о вердикте — за кодом.
+ * Последнее слово о вердикте — за кодом, но мнение модели не глушим молча.
  *
  * - нет ни одного материала «стало» по пункту и нет общих — «результат не приложен»;
+ *   но если модель с объяснением считает пункт выполненным (видела образец, отчёт),
+ *   показываем «стоит посмотреть» с её словами: пусть решит человек;
  * - смотреть было некому (нет модели) — «проверьте глазами»;
  * - модель не видит картинок, а у пункта, кроме картинок, ничего — «проверьте глазами»;
  * - «не исправлено» без причины — не вывод, а «не удалось проверить».
@@ -415,14 +567,24 @@ export function settleVerdict(input: {
   hasAfterShots: boolean;
   /** Есть текст «стало» (отчёт исполнителя, документ агента) или общие снимки «стало». */
   hasAfterOther: boolean;
+  kind?: CheckKind;
 }): { verdict: Verdict; reason: string } {
+  const functional = input.kind === 'functional';
   if (!input.hasAfterShots && !input.hasAfterOther) {
-    return { verdict: 'no_result', reason: 'Нет ни снимка, ни отчёта исполнителя по этому пункту.' };
+    const m = input.model;
+    if (input.hasModel && m && m.verdict === 'fixed' && m.reason) {
+      return { verdict: 'unclear', reason: `ИИ считает, что пункт выполнен: ${m.reason} Результата исполнителя в задаче нет — посмотрите сами.` };
+    }
+    return {
+      verdict: 'no_result',
+      reason: functional ? 'Исполнитель не написал, что проверил этот пункт, и не приложил результат.' : 'Нет ни снимка, ни отчёта исполнителя по этому пункту.',
+    };
   }
   if (!input.hasModel || !input.model) {
+    const what = functional ? 'проверьте пункт по отчёту исполнителя сами' : 'сравните снимки сами';
     return {
       verdict: 'eyes',
-      reason: input.hasModel ? 'ИИ не ответил по этому пункту — сравните снимки сами.' : 'ИИ не подключён — сравните снимки сами.',
+      reason: input.hasModel ? `ИИ не ответил по этому пункту — ${what}.` : `ИИ не подключён — ${what}.`,
     };
   }
   if (!input.modelSees && input.hasAfterShots && !input.hasAfterOther) {
@@ -431,6 +593,19 @@ export function settleVerdict(input: {
   const m = input.model;
   if (m.verdict === 'not_fixed' && !m.reason) return { verdict: 'unclear', reason: 'Не удалось понять по материалам.' };
   return { verdict: m.verdict, reason: m.reason || (m.verdict === 'fixed' ? 'По материалам видно, что правка внесена.' : 'Не удалось понять по материалам.') };
+}
+
+/**
+ * Стоит ли проверять самим после сдачи.
+ *
+ * Нужен результат: снимок «стало» — или отчёт исполнителя (сообщение, документ) при
+ * снимках «было». Образцы постановщика ни «стало», ни «было» не считаются: задача с
+ * одними макетами и без единого слова исполнителя дала бы отчёт «результат не
+ * приложен» (#4657). Задача без единой картинки — по кнопке, а не сама.
+ */
+export function autoWorthy(c: { before: unknown[]; after: unknown[]; afterMessages: unknown[]; afterDocs: unknown[] }): boolean {
+  if (c.after.length) return true;
+  return c.before.length > 0 && (c.afterMessages.length > 0 || c.afterDocs.length > 0);
 }
 
 // ───────────── итог и сообщения ─────────────
@@ -446,12 +621,20 @@ export function summarize(items: { verdict: Verdict }[]): CheckSummary {
   return s;
 }
 
-/** «1 правка», «2 правки», «5 правок». */
-export function edits(n: number): string {
+function plural(n: number, one: string, few: string, many: string): string {
   const d = n % 10;
   const dd = n % 100;
-  const w = d === 1 && dd !== 11 ? 'правка' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'правки' : 'правок';
-  return `${n} ${w}`;
+  return d === 1 && dd !== 11 ? one : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? few : many;
+}
+
+/** «1 правка», «2 правки», «5 правок». */
+export function edits(n: number): string {
+  return `${n} ${plural(n, 'правка', 'правки', 'правок')}`;
+}
+
+/** «1 пункт», «2 пункта», «5 пунктов» — для чек-листа приёмки. */
+export function points(n: number): string {
+  return `${n} ${plural(n, 'пункт', 'пункта', 'пунктов')}`;
 }
 
 /** «из 1 правки», «из 6 правок» — после «из» всегда родительный падеж. */
@@ -459,46 +642,83 @@ export function ofEdits(n: number): string {
   return `из ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'правки' : 'правок'}`;
 }
 
-/** Строка над отчётом: «Мы проверили 6 правок: 4 исправлено, 2 — проверьте». */
-export function headline(s: CheckSummary): string {
-  const parts: string[] = [];
-  if (s.fixed) parts.push(`${s.fixed} исправлено`);
-  if (s.notFixed) parts.push(`${s.notFixed} не внесено`);
-  if (s.noResult) parts.push(`${s.noResult} без результата`);
-  if (s.check) parts.push(`${s.check} — проверьте`);
-  return `Мы проверили ${edits(s.total)}: ${parts.join(', ') || 'нечего сравнивать'}`;
+/** «из 1 пункта», «из 6 пунктов». */
+export function ofPoints(n: number): string {
+  return `из ${n} ${n % 10 === 1 && n % 100 !== 11 ? 'пункта' : 'пунктов'}`;
 }
 
-/** Нашли ли ошибки: невнесённая правка или правка без результата. */
-export function hasProblems(s: CheckSummary): boolean {
-  return s.notFixed + s.noResult > 0;
+/** Части итога: «2 исправлено, 1 не внесено, 1 без результата, 1 стоит посмотреть». */
+function parts(s: CheckSummary, kind: CheckKind): string[] {
+  const out: string[] = [];
+  if (s.fixed) out.push(`${s.fixed} ${kind === 'functional' ? 'подтверждено' : 'исправлено'}`);
+  if (s.notFixed) out.push(`${s.notFixed} ${kind === 'functional' ? 'не выполнено' : 'не внесено'}`);
+  if (s.noResult) out.push(`${s.noResult} без результата`);
+  if (s.check) out.push(`${s.check} стоит посмотреть`);
+  return out;
+}
+
+/** Строка над отчётом: «Мы проверили 6 правок: 4 исправлено, 2 стоит посмотреть». */
+export function headline(s: CheckSummary, kind: CheckKind = 'visual'): string {
+  const p = parts(s, kind);
+  if (kind === 'functional') return `Чек-лист приёмки, ${points(s.total)}${p.length ? `: ${p.join(', ')}` : ''}`;
+  if (s.total && s.noResult === s.total) return `${edits(s.total)} — результат пока не приложен`;
+  return `Мы проверили ${edits(s.total)}: ${p.join(', ') || 'нечего сравнивать'}`;
 }
 
 /**
- * Сообщение по итогам — то, ради чего заказчик просил функцию: «Посмотрите, мы
- * проверили и нашли/не нашли ошибки». Без модели не притворяемся проверившими.
+ * Нашли ли ошибки: только невнесённая правка. «Результата нет» — не ошибка в работе,
+ * а нехватка материалов: так и говорим, без слова «ошибки».
  */
-export function resultMessage(s: CheckSummary, mode: 'ai' | 'eyes'): string {
-  const bad = s.notFixed + s.noResult;
-  if (bad > 0) {
-    const what = s.notFixed && s.noResult
-      ? `${s.notFixed} из ${s.total} не внесены, по ${s.noResult} нет результата`
-      : s.notFixed ? `${s.notFixed} ${ofEdits(s.total)} не внесены` : `по ${s.noResult} ${ofEdits(s.total)} результат не приложен`;
-    return `Посмотрите, мы проверили и нашли ошибки: ${what}.`;
-  }
-  if (mode === 'eyes') return `Мы собрали отчёт «было/стало» по ${s.total === 1 ? 'одной правке' : `${s.total} правкам`} — ИИ не подключён, сравните снимки глазами.`;
-  if (s.check > 0) return `Посмотрите, мы проверили: ошибок не нашли, но ${s.check} ${ofEdits(s.total)} нужно посмотреть глазами.`;
-  return `Посмотрите, мы проверили и не нашли ошибок: ${s.fixed} ${ofEdits(s.total)} внесены.`;
+export function hasProblems(s: CheckSummary): boolean {
+  return s.notFixed > 0;
 }
 
-/** Замечания исполнителю по невнесённым пунктам — для «Вернуть на доработку». */
+/** Есть ли что попросить у исполнителя: пункты без результата. */
+export function needsResult(s: CheckSummary): boolean {
+  return s.noResult > 0;
+}
+
+/** Текст «Попросить результат» — комментарий исполнителю в обсуждение задачи. */
+export const ASK_RESULT_TEXT = 'Приложите, пожалуйста, как стало — скрин или ссылку, чтобы проверить по пунктам';
+
+/**
+ * Сообщение по итогам — то, ради чего заказчик просил функцию: «Посмотрите, мы
+ * проверили и нашли/не нашли ошибки». Честно:
+ * - «нашли ошибки» — ТОЛЬКО когда есть невнесённые пункты;
+ * - у всех пунктов нет результата — «проверять нечего», а не «ошибки»;
+ * - смешанный случай — по числам: «2 исправлено, 1 без результата, 1 стоит посмотреть»;
+ * - без модели не притворяемся проверившими.
+ */
+export function resultMessage(s: CheckSummary, mode: 'ai' | 'eyes', kind: CheckKind = 'visual'): string {
+  const fn = kind === 'functional';
+  const of = fn ? ofPoints : ofEdits;
+  if (s.total && s.noResult === s.total) return 'Исполнитель пока не приложил результат — проверять нечего.';
+  if (s.notFixed > 0) {
+    const rest = [s.noResult ? `${s.noResult} без результата` : '', s.check ? `${s.check} стоит посмотреть` : ''].filter(Boolean);
+    return `Посмотрите, мы проверили и нашли ошибки: ${s.notFixed} ${of(s.total)} ${fn ? 'не выполнены' : 'не внесены'}`
+      + `${rest.length ? `; ещё ${rest.join(', ')}` : ''}.`;
+  }
+  if (mode === 'eyes') {
+    const head = fn
+      ? `Мы собрали чек-лист приёмки по ${s.total === 1 ? 'одному пункту' : `${s.total} пунктам`} — ИИ не подключён, проверьте пункты по отчёту исполнителя.`
+      : `Мы собрали отчёт «было/стало» по ${s.total === 1 ? 'одной правке' : `${s.total} правкам`} — ИИ не подключён, сравните снимки глазами.`;
+    return s.noResult ? `${head} По ${s.noResult} ${of(s.total)} результат пока не приложен.` : head;
+  }
+  if (s.noResult > 0) return `Посмотрите, что получилось: ${parts(s, kind).join(', ')}.`;
+  if (s.check > 0) return `Посмотрите, мы проверили: ошибок не нашли, но ${s.check} ${of(s.total)} стоит посмотреть глазами.`;
+  return fn
+    ? `Посмотрите, мы проверили: ${s.fixed} ${of(s.total)} подтверждены отчётом исполнителя.`
+    : `Посмотрите, мы проверили и не нашли ошибок: ${s.fixed} ${of(s.total)} внесены.`;
+}
+
+/** Замечания исполнителю — для «Вернуть на доработку»: невнесённые пункты и пункты без результата. */
 export function remarksText(items: { n: number; title: string; verdict: Verdict; reason: string }[]): string {
   const bad = items.filter((i) => i.verdict === 'not_fixed' || i.verdict === 'no_result');
   if (!bad.length) return '';
-  return [
-    'По отчёту «было/стало» не внесены правки:',
-    ...bad.map((i) => `${i.n}. ${i.title}${i.reason ? ` — ${i.reason}` : ''}`),
-  ].join('\n');
+  const head = bad.some((i) => i.verdict === 'not_fixed')
+    ? 'По отчёту «было/стало» не внесены правки:'
+    : 'По отчёту «было/стало» нет результата по пунктам:';
+  return [head, ...bad.map((i) => `${i.n}. ${i.title}${i.reason ? ` — ${i.reason}` : ''}`)].join('\n');
 }
 
 // ───────────── ссылки для снимка страницы ─────────────
