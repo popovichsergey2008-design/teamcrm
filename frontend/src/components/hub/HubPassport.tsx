@@ -575,7 +575,7 @@ function DecisionsTab({ ctx }: { ctx: Ctx }) {
     <>
       <ul className="hub-list hub-decisions">{items.map((d) => <DecisionRow key={d.id} d={d} />)}</ul>
       {items.length < total && (
-        <Button variant="outline" size="sm" className="hub-add" disabled={busy} onClick={() => void load(items[items.length - 1]?.decidedAt)}>
+        <Button variant="outline" size="sm" className="hub-add" disabled={busy} onClick={() => void load(items[items.length - 1]?.id)}>
           Показать ещё ({total - items.length})
         </Button>
       )}

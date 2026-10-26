@@ -119,8 +119,8 @@ export class ProjectHubRepository {
       `INSERT INTO project_hub_items (tenant_id, project_id, section, kind, category, title, url, file_id, body, contact,
                                       source, origin, run_id, created_by, updated_by,
                                       sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13,$14,$14,
-               (SELECT COALESCE(min(sort_order), 0) - 1 FROM project_hub_items WHERE project_id = $2 AND section = $3))
+       VALUES ($1,$2,$3::text,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12::jsonb,$13,$14,$14,
+               (SELECT COALESCE(min(sort_order), 0) - 1 FROM project_hub_items WHERE project_id = $2 AND section = $3::text))
        ON CONFLICT (tenant_id, project_id, url) WHERE url IS NOT NULL AND removed_at IS NULL DO NOTHING
        RETURNING id::text`,
       [i.tenantId, i.projectId, i.section, i.kind, i.category, i.title, i.url, i.fileId, i.body,
@@ -264,7 +264,7 @@ export class ProjectHubRepository {
                 d.source_sec::text, d.speaker
            FROM ${from}
           WHERE ${where}
-            AND ($8::bigint IS NULL OR d.id < $8::bigint)
+            AND ($8::bigint IS NULL OR (d.decided_at, d.id) < (SELECT b.decided_at, b.id FROM decisions b WHERE b.tenant_id = $1 AND b.id = $8::bigint))
           ORDER BY d.decided_at DESC, d.id DESC
           LIMIT $9`,
         [...base, o.before ?? null, Math.min(Math.max(o.limit ?? 20, 1), 100)],
