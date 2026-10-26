@@ -86,20 +86,56 @@ function fmtDeadline(v: Date | string | null, tz?: string | null): string {
   }
 }
 
+/** Сообщение-подтверждение в разных местах: карточка ящика, центр уведомлений, push, Telegram. */
+export interface ConfirmMessage {
+  /** Заголовок карточки и строки центра: «Задача поставлена от вас: #N «…»». */
+  title: string;
+  /** Пункты по порядку — то, что разобрала нейросеть: тег, проект, исполнитель, срок, приоритет. */
+  fields: [string, string][];
+  /** Текст под заголовком в карточке ящика и Telegram: по строке на пункт. */
+  summary: string;
+  /** Одной строкой — для push и всплывашки, где места на одну строку. */
+  short: string;
+  why: string;
+}
+
 /**
- * «Задача поставлена: #N «…». Исполнитель — …, проект — …, срок — …, приоритет — …,
- * теги — …. Проверьте, всё ли ок.» Заголовок карточки — первая фраза, остальное — текст.
+ * Подтверждение постановки (#4665): структурированный список, чтобы постановщик
+ * с одного взгляда видел, не ошиблась ли нейросеть при разборе.
+ *
+ *   Задача поставлена от вас: #42 «Поправить форму входа»
+ *   • Тег: Баг, Сайт
+ *   • Проект: Сайт (открытая доска)
+ *   • Исполнитель: Глеб (руководитель отдела «Разработка»)
+ *   • Срок: 23 октября
+ *   • Приоритет: обычный
+ *   Проверьте, всё ли верно: «Ок» — подтвердить, «Править» — открыть задачу.
  */
-export function confirmMessage(f: ConfirmFacts): { title: string; summary: string; why: string } {
-  const title = `Задача поставлена: #${f.taskId} «${f.title}»`;
+export function confirmMessage(f: ConfirmFacts): ConfirmMessage {
+  const name = `#${f.taskId} «${f.title}»`;
+  const title = `Задача поставлена от вас: ${name}`;
   const why = (x?: string | null) => (x && x.trim() ? ` (${x.trim()})` : '');
-  const fields = [
-    `Исполнитель — ${f.assigneeName ? `${f.assigneeName}${why(f.assigneeWhy)}` : 'не назначен'}`,
-    `проект — ${f.projectName ? `${f.projectName}${why(f.projectWhy)}` : 'не выбран'}`,
-    `срок — ${fmtDeadline(f.deadlineAt, f.timeZone)}`,
-    `приоритет — ${PRIORITY_RU[f.priority] ?? PRIORITY_RU.normal}`,
-    `теги — ${f.tags.length ? f.tags.join(', ') : 'без тегов'}`,
-  ].join(', ');
-  const summary = `${fields}. ${f.edited ? 'Вы уже поправили задачу — проверьте, всё ли ок.' : 'Проверьте, всё ли ок.'}`;
-  return { title: title.slice(0, 200), summary, why: 'Задача поставлена автоматически по вашему тексту — проект, исполнителя, теги и приоритет выбрала система.' };
+  const fields: [string, string][] = [
+    [f.tags.length > 1 ? 'Теги' : 'Тег', f.tags.length ? f.tags.join(', ') : 'без тега'],
+    ['Проект', f.projectName ? `${f.projectName}${why(f.projectWhy)}` : 'не выбран'],
+    ['Исполнитель', f.assigneeName ? `${f.assigneeName}${why(f.assigneeWhy)}` : 'не назначен'],
+    ['Срок', fmtDeadline(f.deadlineAt, f.timeZone)],
+    ['Приоритет', PRIORITY_RU[f.priority] ?? PRIORITY_RU.normal],
+  ];
+  const check = f.edited
+    ? 'Вы уже поправили задачу — проверьте, всё ли верно: «Ок» — подтвердить, «Править» — открыть задачу.'
+    : 'Проверьте, всё ли верно: «Ок» — подтвердить, «Править» — открыть задачу.';
+  // «Задача поставлена от вас: …» — заголовок: карточка, центр и Telegram показывают его над списком
+  const summary = [...fields.map(([k, v]) => `• ${k}: ${v}`), check].join('\n');
+  // в одну строку — без «почему»: на экране блокировки и во всплывашке важны сами значения
+  const bare = (v: string | null | undefined, empty: string) => (v && v.trim() ? v.trim() : empty);
+  const short = [
+    `${fields[0][0]}: ${fields[0][1]}`,
+    `Проект: ${bare(f.projectName, 'не выбран')}`,
+    `Исполнитель: ${bare(f.assigneeName, 'не назначен')}`,
+  ].join(' · ');
+  return {
+    title: title.slice(0, 200), fields, summary, short,
+    why: 'Задача поставлена автоматически по вашему тексту — проект, исполнителя, теги и приоритет выбрала нейросеть.',
+  };
 }

@@ -217,7 +217,10 @@ function Row({ it, onOpen }: { it: CenterItem; onOpen: (it: CenterItem) => void 
     if (d.status) lines.push(['Статус', d.status]);
     if (it.eventKey === 'task.priority') lines.push(['Приоритет', d.priority ? PRIORITY[d.priority] ?? d.priority : 'без приоритета']);
   }
-  const quote = d.comment || d.reason || (!d.phrase ? it.body : '');
+  // #4665: «Задача поставлена от вас» — пункты разбора нейросети готовыми строками
+  const fields = Array.isArray(d.fields) ? d.fields.filter((f) => Array.isArray(f) && f.length === 2) : [];
+  lines.push(...fields);
+  const quote = d.comment || d.reason || (!d.phrase && !fields.length ? it.body : '');
   return (
     <li>
       <a

@@ -22,13 +22,16 @@ export class InboxRepository {
   async record(i: {
     tenantId: string; userId: string; mailId: string | null; eventKey: string;
     title: string; body: string; path: string | null;
+    /** #4665: задача и подробности — строка центра уведомлений рисует по ним пункты. */
+    taskId?: string | null; details?: Record<string, unknown> | null;
   }): Promise<InboxRow | null> {
     const inserted = await this.db.one<InboxRow>(
-      `INSERT INTO notification_inbox (tenant_id, user_id, mail_id, event_key, title, body, path)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO notification_inbox (tenant_id, user_id, mail_id, event_key, title, body, path, task_id, details)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::bigint,$9::jsonb)
        ON CONFLICT (mail_id) WHERE mail_id IS NOT NULL DO NOTHING
        RETURNING *`,
-      [i.tenantId, i.userId, i.mailId, i.eventKey, i.title.slice(0, 255), i.body.slice(0, 500), i.path],
+      [i.tenantId, i.userId, i.mailId, i.eventKey, i.title.slice(0, 255), i.body.slice(0, 500), i.path,
+        i.taskId ?? null, i.details ? JSON.stringify(i.details) : null],
     );
     if (inserted) return inserted;
     return i.mailId ? this.db.one<InboxRow>(`SELECT * FROM notification_inbox WHERE mail_id=$1`, [i.mailId]) : null;

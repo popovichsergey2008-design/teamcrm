@@ -12,7 +12,7 @@ import { AutoConfirmService } from '../src/modules/nl/auto-confirm.service';
 /**
  * #4615 «Автоматическое создание задач через нейросеть»: фраза → задача без вопросов
  * (проект, руководитель отдела по направлению, теги, приоритет) → через 30 секунд
- * карточка постановщику «Задача поставлена… Проверьте» → «Ок» отмечает задачу.
+ * карточка постановщику «Задача поставлена от вас… Проверьте» → «Ок» отмечает задачу.
  * Время подменяем: сообщение отправляет проход с «сейчас + 31 с».
  */
 describe('Автоматическая постановка задачи (e2e)', () => {
@@ -95,13 +95,22 @@ describe('Автоматическая постановка задачи (e2e)',
     const inbox = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items;
     const card = inbox.find((p: any) => p.skill === 'autotask');
     expect(card).toBeTruthy();
-    expect(card.title).toBe(`Задача поставлена: #${taskId} «${applied.task.title}»`);
-    expect(card.summary).toContain('Исполнитель — Глеб Руководитель');
-    expect(card.summary).toContain('проект — Сайт');
-    expect(card.summary).toContain('срок — 15 января');
-    expect(card.summary).toContain('приоритет — обычный');
-    expect(card.summary).toContain('теги — без тегов');
-    expect(card.summary).toContain('Проверьте, всё ли ок.');
+    // #4665: список по пунктам — «от вас», тег, проект, исполнитель
+    expect(card.title).toBe(`Задача поставлена от вас: #${taskId} «${applied.task.title}»`);
+    expect(card.summary).toContain('• Тег: без тега');
+    expect(card.summary).toContain('• Проект: Сайт');
+    expect(card.summary).toContain('• Исполнитель: Глеб Руководитель');
+    expect(card.summary).toContain('• Срок: 15 января');
+    expect(card.summary).toContain('• Приоритет: обычный');
+    expect(card.summary).toContain('Проверьте, всё ли верно');
+    // и строка в центре уведомлений (колокольчик) — с пунктами и задачей
+    const center = (await http$.get('/api/notifications/center').set(O).expect(200)).body.data.items
+      .find((n: any) => n.eventKey === 'task.auto_confirm');
+    expect(center).toBeTruthy();
+    expect(center.title).toBe(card.title);
+    expect(center.path).toBe(`/secretary/${card.id}`);
+    expect(String(center.task?.id)).toBe(taskId);
+    expect(center.details.fields.map((f: string[]) => f[0])).toEqual(['Тег', 'Проект', 'Исполнитель', 'Срок', 'Приоритет']);
     expect(card.actions.map((a: any) => a.label)).toEqual(['Ок', 'Править']);
     expect(card.actions[1].link).toBe(`/projects/${site.id}/task/${taskId}`);
 

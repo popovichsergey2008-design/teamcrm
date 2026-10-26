@@ -21,14 +21,16 @@ interface DueRow {
 }
 
 /**
- * «Задача поставлена — проверьте» через 30 секунд после автоматической постановки (#4615).
+ * «Задача поставлена от вас — проверьте» через 30 секунд после автоматической постановки (#4615).
  *
  * Отложенная запись в базе, а не setTimeout: перезапуск сервера посреди этих 30 секунд
  * не теряет сообщение, а два API при выкатке (blue/green) не пришлют его дважды —
  * строку забирает тот, кто первым отметил её отправленной.
  *
- * Сообщение — карточка ящика секретаря (там же push и Telegram по общим правилам) с
- * кнопками «Ок» (задача подтверждена постановщиком) и «Править» (открыть карточку).
+ * Сообщение — карточка ящика секретаря с кнопками «Ок» (задача подтверждена
+ * постановщиком) и «Править» (открыть карточку) + строка в центре уведомлений со
+ * всплывашкой, push и Telegram. С #4665 оно не подчиняется правилам подсказок
+ * секретаря (выключатели, лимит, «больше не предлагать») — см. ProactiveService.proposeDirect.
  */
 @Injectable()
 export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
@@ -155,7 +157,10 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       payload: { taskId: t.id, projectId: t.project_id, edited, ...(ask.length ? { skill } : {}) },
       fingerprint: fingerprint({ skill: 'autotask', sourceType: 'task', sourceId: t.id }),
       expiresAt: new Date(Date.now() + 3 * 86400_000),
+      // #4665: ответ на действие самого постановщика — доходит всегда (центр, всплывашка, push, Telegram)
+      direct: { eventKey: 'task.auto_confirm', taskId: t.id, short: msg.short, fields: msg.fields },
     });
+    if (!row) this.log.warn(`задача ${t.id}: сообщение-подтверждение не создано`);
     return !!row;
   }
 
