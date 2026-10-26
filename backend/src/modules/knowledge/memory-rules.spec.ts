@@ -1,4 +1,4 @@
-import { clock, ftsQuery, groupLines, memoryLink } from './memory-rules';
+import { clock, ftsQuery, groupLines, hubSectionLabel, memoryLink } from './memory-rules';
 
 describe('вторая память: правила', () => {
   it('запрос по словам: значимые слова через ИЛИ, с приставкой', () => {
@@ -13,6 +13,15 @@ describe('вторая память: правила', () => {
     expect(memoryLink('comment', '9', '3', { taskId: '44' })).toBe('/projects/3/task/44');
     expect(memoryLink('decision', '2', null, { meetingId: '7', sec: 60 })).toBe('/meetings/7?t=60');
     expect(memoryLink('regulation', '1', null, null)).toBeNull();
+    // запись Инфоцентра (#4659) — на доску проекта с открытым Инфоцентром
+    expect(memoryLink('hub', '12', '3', null)).toBe('/projects/3?hub=12');
+    expect(memoryLink('hub', '12', null, null)).toBeNull();
+  });
+
+  it('подпись раздела Инфоцентра для текста в памяти', () => {
+    expect(hubSectionLabel('knowledge', 'design')).toBe('база знаний / дизайн');
+    expect(hubSectionLabel('passport', null)).toBe('паспорт');
+    expect(hubSectionLabel('team', 'нечто')).toBe('команда');
   });
 
   it('нарезка: фрагменты по размеру, якорь — первая строка, автор — если один', () => {

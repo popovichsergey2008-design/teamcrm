@@ -179,6 +179,8 @@ export class AiService {
     if (feature.startsWith('support')) return 'support';
     if (feature === 'embedding') return 'index';
     if (feature.includes('summary') || feature.includes('digest') || feature.includes('standup')) return 'background';
+    // утренний разбор Инфоцентра (#4659) никто не ждёт на экране — уступает людям
+    if (feature === 'hub_librarian') return 'background';
     return 'user';
   }
 

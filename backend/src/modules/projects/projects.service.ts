@@ -5,6 +5,7 @@ import { ProjectRow, ProjectsRepository } from './projects.repository';
 import { CreateProjectDto } from './projects.dto';
 import { IntegrationOutboxService } from '../integrations/outbox/integration-outbox.service';
 import { TaskReadsRepository } from '../tasks/task-reads.repository';
+import { Q_EMBEDDINGS, RabbitMQService } from '../../messaging/rabbitmq.service';
 
 /** client-представление проекта — без budget (фича №9). */
 function toClientProject(row: ProjectRow) {
@@ -31,7 +32,18 @@ export class ProjectsService {
     private readonly realtime: RealtimeService,
     private readonly outbox: IntegrationOutboxService,
     private readonly reads: TaskReadsRepository,
+    private readonly mq: RabbitMQService,
   ) {}
+
+  /**
+   * Паспорт проекта — в память заново (#4659, этап 0): иначе после правки описания или
+   * ключевых слов ИИ отвечал бы по старому тексту. Очередью напрямую, а не через
+   * KnowledgeService: модуль знаний сам зависит от многого, и петля импортов не нужна.
+   */
+  reindex(tenantId: string, projectId: string) {
+    void Promise.resolve(this.mq.publish(Q_EMBEDDINGS, { tenantId, sourceType: 'project', sourceId: String(projectId) }))
+      .catch(() => undefined);
+  }
 
   /**
    * Список проектов с числом новых событий в МОИХ задачах.
@@ -107,6 +119,7 @@ export class ProjectsService {
       исполнитель задачи. Люди с задачами в проекте попадают в список сразу.
     */
     if (patch.visibility === 'members') await this.repo.seedMembersFromTasks(tenantId, id);
+    if (patch.name !== undefined || patch.description !== undefined || patch.aliases !== undefined) this.reindex(tenantId, id);
     this.realtime.emit(tenantId, id, 'project.updated', { id, name: row?.name, visibility: row?.visibility });
     return row;
   }

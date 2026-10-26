@@ -52,6 +52,7 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'brain', title: 'Ответы по базе знаний', where: 'Поиск по смыслу, вопросы к базе', group: 'knowledge' },
   { key: 'embedding', title: 'Индексация задач и документов', where: 'Фоном, при изменении данных', group: 'knowledge' },
   { key: 'knowledge_summary', title: 'Сводка по документу', where: 'База знаний', group: 'knowledge' },
+  { key: 'hub_librarian', title: 'ИИ-библиотекарь Инфоцентра проекта', where: 'Доска проекта → Инфоцентр, каждое утро в 08:00 и «Собрать сейчас»', group: 'knowledge' },
 
   { key: 'news_highlight', title: 'Новости: хайлайт дня и выводы недели', where: 'Новости — текст из фактов, модель только шлифует', group: 'service' },
   { key: 'bitrix_route', title: 'Разбор импорта из Битрикс24', where: 'Интеграции → Битрикс24', group: 'service' },

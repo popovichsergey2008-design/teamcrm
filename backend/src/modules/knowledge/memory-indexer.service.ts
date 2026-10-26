@@ -56,7 +56,9 @@ export class MemoryIndexer implements OnModuleInit {
       ['kb_decision', 'decisions', 'decision', 'revoked_at IS NULL'],
       ['kb_news', 'feed_posts', 'news', `deleted_at IS NULL AND status = 'published'`],
       ['kb_client_note', 'client_notes', 'client_note', 'deleted_at IS NULL AND NOT is_private'],
-      ['kb_project', 'projects', 'project', 'TRUE'],
+      // v2 (#4659): разовая переиндексация — в памяти появились описание, ключевые слова,
+      // миссия и аудитория; дальше правка проекта сама ставит его в очередь
+      ['kb_project_v2', 'projects', 'project', 'TRUE'],
       ['kb_meeting_v2', 'meetings', 'meeting', `status = 'done'`],
       // разовая переиндексация старого: у фрагментов появятся дата, автор и ссылка
       ['kb_task_v2', 'tasks', 'task', 'deleted_at IS NULL'],

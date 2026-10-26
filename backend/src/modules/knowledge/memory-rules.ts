@@ -5,12 +5,26 @@
 
 export type MemoryType =
   | 'task' | 'comment' | 'regulation' | 'gdoc' | 'meeting' | 'file'
-  | 'chat' | 'decision' | 'news' | 'client_note' | 'project';
+  | 'chat' | 'decision' | 'news' | 'client_note' | 'project' | 'hub';
 
 export const TYPE_LABEL: Record<MemoryType, string> = {
   task: 'Задача', comment: 'Комментарий', regulation: 'Регламент', gdoc: 'Документ', meeting: 'Встреча', file: 'Файл',
   chat: 'Переписка', decision: 'Решение', news: 'Новость', client_note: 'Клиент', project: 'Проект',
+  hub: 'Инфоцентр',
 };
+
+/** Подпись раздела и категории записи Инфоцентра (#4659) — для текста в памяти. */
+const HUB_SECTION: Record<string, string> = { passport: 'паспорт', team: 'команда', knowledge: 'база знаний' };
+const HUB_CATEGORY: Record<string, string> = {
+  site: 'сайт', app: 'приложение', admin: 'админка', social: 'соцсети', bot: 'бот',
+  spec: 'ТЗ и спецификации', brand: 'брендбук', design: 'дизайн', repo: 'репозиторий', api: 'API',
+  regulation: 'регламент', doc: 'документ', contractor: 'подрядчик', client: 'заказчик',
+};
+export function hubSectionLabel(section: string, category: string | null): string {
+  const s = HUB_SECTION[section] ?? section;
+  const c = category && HUB_CATEGORY[category];
+  return c ? `${s} / ${c}` : s;
+}
 
 /** Куда вести из ответа. Якорь уточняет: секунда записи, сообщение, задача. */
 export interface Anchor {
@@ -58,6 +72,8 @@ export function memoryLink(type: string, sourceId: string, scope: string | null,
     case 'news': return `/news/${sourceId}`;
     case 'client_note': return anchor.clientId ? `/clients/${anchor.clientId}` : null;
     case 'project': return `/projects/${sourceId}`;
+    // запись Инфоцентра — на доску проекта, Инфоцентр открывается по ?hub=
+    case 'hub': return scope ? `/projects/${scope}?hub=${sourceId}` : null;
     default: return null;
   }
 }

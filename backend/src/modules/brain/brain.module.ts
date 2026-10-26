@@ -8,5 +8,7 @@ import { BrainRepository } from './brain.repository';
   imports: [KnowledgeModule],
   controllers: [BrainController],
   providers: [BrainService, BrainRepository],
+  // Инфоцентр проекта (#4659) спрашивает тот же мозг в рамках проекта
+  exports: [BrainService],
 })
 export class BrainModule {}

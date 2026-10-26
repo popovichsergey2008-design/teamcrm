@@ -43,6 +43,7 @@ import { InvitesModule } from './modules/team/invites.module';
 import { AccountModule } from './modules/account/account.module';
 import { TaskCardModule } from './modules/taskcard/taskcard.module';
 import { BeforeAfterModule } from './modules/before-after/before-after.module';
+import { ProjectHubModule } from './modules/project-hub/project-hub.module';
 import { TagsModule } from './modules/tags/tags.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -135,6 +136,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     AccountModule,
     TaskCardModule,
     BeforeAfterModule,
+    ProjectHubModule,
     TagsModule,
     TemplatesModule,
     OnboardingModule,

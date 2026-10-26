@@ -8,7 +8,7 @@ import { AiService } from '../ai/ai.service';
 import { maskPII } from '../ai/pii';
 import { KnowledgeRepository } from './knowledge.repository';
 import { FilesService } from '../files/files.service';
-import { Anchor, clock, ftsQuery, groupLines, Line, memoryLink, MemoryType, Part, TYPE_LABEL } from './memory-rules';
+import { Anchor, clock, ftsQuery, groupLines, hubSectionLabel, Line, memoryLink, MemoryType, Part, TYPE_LABEL } from './memory-rules';
 import { MemoryFilters } from './knowledge.repository';
 
 export type SourceType = MemoryType;
@@ -66,17 +66,32 @@ export class KnowledgeService implements OnModuleInit {
     if (msg.sourceType === 'decision') return this.loadDecision(msg.tenantId, msg.sourceId);
     if (msg.sourceType === 'news') return this.loadNews(msg.tenantId, msg.sourceId);
     if (msg.sourceType === 'client_note') return this.loadClientNote(msg.tenantId, msg.sourceId);
+    if (msg.sourceType === 'hub') return this.loadHubItem(msg.tenantId, msg.sourceId);
     if (msg.sourceType === 'project') {
-      // описания у проекта нет — память знает имя, клиента и срок сдачи: «когда сдаём X»
+      /*
+        Паспорт проекта (#4659, этап 0): имя, клиент, срок — и то, ради чего его заполняют:
+        о чём проект, другие названия, миссия и аудитория. Раньше в память попадали только
+        имя и срок, и на «для кого мы делаем X» отвечать было нечем. Правка паспорта или
+        настроек проекта ставит его на переиндексацию.
+      */
       const r = await this.db.one<any>(
-        `SELECT p.name, p.created_at, p.target_date::text AS target, c.name AS client
+        `SELECT p.name, p.created_at, p.target_date::text AS target, c.name AS client,
+                p.description, p.aliases, p.mission, p.audience
            FROM projects p LEFT JOIN clients c ON c.id = p.client_id
           WHERE p.tenant_id=$1 AND p.id=$2`,
         [msg.tenantId, msg.sourceId],
       );
       if (!r) return null;
-      const text = [`Проект «${r.name}»`, r.client ? `клиент: ${r.client}` : null, r.target ? `срок сдачи: ${r.target}` : null]
+      const head = [`Проект «${r.name}»`, r.client ? `клиент: ${r.client}` : null, r.target ? `срок сдачи: ${r.target}` : null]
         .filter(Boolean).join(', ');
+      const aliases = (r.aliases ?? []).filter(Boolean);
+      const text = [
+        head,
+        aliases.length ? `Другие названия и ключевые слова: ${aliases.join(', ')}` : null,
+        r.mission?.trim() ? `Миссия: ${r.mission.trim()}` : null,
+        r.description?.trim() ? `О проекте: ${r.description.trim()}` : null,
+        r.audience?.trim() ? `Целевая аудитория и позиционирование: ${r.audience.trim()}` : null,
+      ].filter(Boolean).join('\n');
       return { text, accessScope: msg.sourceId, title: `Проект: ${r.name}`, sourceAt: r.created_at };
     }
     if (msg.sourceType === 'task') {
@@ -249,6 +264,33 @@ ${extracted.text}`,
         decisionId: id, chatId: d.chat_id ?? undefined, messageId: d.source_message_id ?? undefined, meetingId: d.meeting_id ?? undefined,
       },
       sourceAt: d.decided_at, chatId,
+    };
+  }
+
+  /**
+   * Запись Инфоцентра проекта (#4659): ссылка, файл, контакт или заметка — в память
+   * проекта, видна тем же, кто видит проект. Убранная запись из памяти уходит.
+   */
+  private async loadHubItem(tenantId: string, id: string): Promise<Loaded | null> {
+    const r = await this.db.one<any>(
+      `SELECT i.section, i.kind, i.category, i.title, i.url, i.body, i.contact, i.project_id::text,
+              i.created_at, i.created_by::text, p.name AS project, f.file_name
+         FROM project_hub_items i
+         JOIN projects p ON p.id = i.project_id
+         LEFT JOIN files f ON f.id = i.file_id
+        WHERE i.tenant_id = $1 AND i.id = $2 AND i.removed_at IS NULL`,
+      [tenantId, id],
+    );
+    if (!r) return null;
+    const c = r.contact ?? {};
+    const text = [
+      `Инфоцентр проекта «${r.project}», ${hubSectionLabel(r.section, r.category)}: ${r.title}`,
+      r.url, r.file_name ? `Файл: ${r.file_name}` : null, r.body,
+      r.kind === 'contact' ? [c.name, c.role, c.phone, c.email, c.telegram].filter(Boolean).join(', ') : null,
+    ].filter((x) => x && String(x).trim()).join('\n');
+    return {
+      text, accessScope: r.project_id, title: `Инфоцентр: ${String(r.title).slice(0, 200)}`,
+      sourceAt: r.created_at, authorId: r.created_by, staffOnly: true,
     };
   }
 
