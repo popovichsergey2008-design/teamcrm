@@ -68,11 +68,11 @@ function ConsentHost({ intro, accept, onDone }: {
         </ul>
         <p>
           Подробно — в{' '}
-          <a href={LEGAL['remote-support'].path} target="_blank" rel="noopener" onClick={showPolicy} aria-expanded={doc}>Политике удалённой поддержки</a>
+          <a href={LEGAL['remote-support'].path} target="_blank" rel="noopener" onClick={showPolicy} aria-expanded={doc}>Политике удалённой технической поддержки</a>
           {' '}(редакция от {LEGAL['remote-support'].date}, {LEGAL['remote-support'].version}).
         </p>
         {doc && (
-          <div className="legal-dialog-body remote-consent-doc" tabIndex={0} role="region" aria-label="Текст Политики удалённой поддержки">
+          <div className="legal-dialog-body remote-consent-doc" tabIndex={0} role="region" aria-label="Текст Политики удалённой технической поддержки">
             <LegalDoc kind="remote-support" inDialog />
           </div>
         )}

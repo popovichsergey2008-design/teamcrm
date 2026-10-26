@@ -52,7 +52,7 @@ describe('#4675 — согласие с Политикой конфиденци�
       .send({ ...body, acceptPrivacy: true }).expect(201)).body.data;
     const rows = await consentsOf(String(owner.user.id));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ policy: 'privacy', version: 'v1', user_agent: 'e2e-browser', context: { flow: 'register' } });
+    expect(rows[0]).toMatchObject({ policy: 'privacy', version: 'v2', user_agent: 'e2e-browser', context: { flow: 'register' } });
     expect(rows[0].ip).toBeTruthy();
   }, 30000);
 

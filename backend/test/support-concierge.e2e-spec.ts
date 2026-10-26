@@ -118,12 +118,12 @@ describe('ТЗ-29 — консьерж-поддержка (e2e)', () => {
     await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(O).send({ via: 'access', grantId }).expect(404);
     await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(M).send({ via: 'nowhere' }).expect(400);
     const given = (await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(M).set('User-Agent', 'e2e-agent').send({ via: 'access', grantId }).expect(201)).body.data;
-    expect(given).toMatchObject({ active: true, version: 'v1' });
+    expect(given).toMatchObject({ active: true, version: 'v2' });
     const row = await db.one<{ version: string; user_agent: string; ip: string | null; context: any }>(
       `SELECT version, user_agent, ip, context FROM policy_consents WHERE policy = 'remote_support' AND context->>'conversationId' = $1::text ORDER BY id DESC LIMIT 1`,
       [String(conv.id)],
     );
-    expect(row).toMatchObject({ version: 'v1', user_agent: 'e2e-agent' });
+    expect(row).toMatchObject({ version: 'v2', user_agent: 'e2e-agent' });
     expect(row!.ip).toBeTruthy();
     expect(row!.context).toMatchObject({ via: 'access', grantId: String(grantId) });
     const granted =(await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(proj.id) }).expect(201)).body.data;

@@ -1,18 +1,19 @@
-/** Пункт списка: строка или строка с вложенным нумерованным списком. */
-export type LegalItem = string | { text: string; ordered: string[] };
-
-export interface LegalSection {
-  heading: string;
-  items?: LegalItem[];
-  /** Абзац без списка — для «Главное в одной фразе». */
-  text?: string;
-}
+/**
+ * Документ политики (#4675) — блоки в порядке документа, текст дословный.
+ *
+ * Внутри строк: `**жирное**` и `[[privacy|текст]]` / `[[remote-support|текст]]` —
+ * ссылка на другой наш документ. Ничего другого разметкой не считается.
+ */
+export type LegalBlock =
+  | { h: string }
+  | { p: string }
+  | { ul: string[] }
+  | { ol: string[] }
+  | { table: { head: string[]; rows: string[][] } };
 
 export interface LegalDocument {
   title: string;
-  /** Подзаголовок в скобках у названия, если есть («Онлайн-помощь»). */
-  subtitle?: string;
-  /** Строки шапки под названием: оператор, сервис. */
-  lead: string[];
-  sections: LegalSection[];
+  /** Строка редакции — как в документе («Редакция от 26 октября 2026 г.»). */
+  edition: string;
+  blocks: LegalBlock[];
 }

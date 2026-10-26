@@ -10,7 +10,7 @@ import { AppException } from '../../common/http/app-exception';
  * человек читает. Поменяли текст — поднимите версию в ОБОИХ местах, иначе в журнал
  * ляжет не та редакция, с которой человек соглашался.
  */
-export const POLICY_VERSIONS = { privacy: 'v1', remote_support: 'v1' } as const;
+export const POLICY_VERSIONS = { privacy: 'v2', remote_support: 'v2' } as const;
 export type PolicyKind = keyof typeof POLICY_VERSIONS;
 
 /**
