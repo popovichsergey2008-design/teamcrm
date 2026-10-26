@@ -166,8 +166,10 @@ describe('Было/стало (e2e)', () => {
       .attach('file', png, { filename: '4657_1226.png', contentType: 'image/png' }).expect(201)).body.data;
     const fileId = String(file.file_id ?? file.fileId ?? file.id);
 
-    // сдача без результата — сама не проверяет: образец «стало» не считается
-    await http$.post(`/api/tasks/${task.id}/move`).set(D).send({ columnId: done, position: 0 }).expect(201);
+    // сдача без результата — сама не проверяет: образец «стало» не считается.
+    // Чек-лист здесь — критерии приёмки, их отмечает постановщик: сдаче он не мешает
+    await http$.patch(`/api/tasks/${task.id}/checklist-required`).set(O).send({ required: false }).expect(200);
+    await http$.post(`/api/tasks/${task.id}/move`).set(D).send({ columnId: done, position: 0, confirmGate: true }).expect(201);
     await new Promise((r) => setTimeout(r, 600));
     expect((await http$.get(`/api/tasks/${task.id}/before-after`).set(O).expect(200)).body.data.versions).toHaveLength(0);
 
