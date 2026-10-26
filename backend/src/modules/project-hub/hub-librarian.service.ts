@@ -12,6 +12,8 @@ import { ProjectHubRepository } from './project-hub.repository';
 import { decisionOut, HubUser, itemOut, ProjectHubService, runOut } from './project-hub.service';
 
 const DAY_MS = 24 * 3600_000;
+/** Первый сбор проекта — за месяц: иначе новый Инфоцентр пуст, пока не накопится свежее. */
+const FIRST_DAYS = 30;
 /** Местный час утреннего прогона (ТЗ: «каждое утро в 08:00»). */
 const MORNING_HOUR = 8;
 /** Сколько проектов за один тик: остальные дождутся следующего, через 5 минут. */
@@ -64,7 +66,7 @@ export class HubLibrarianService {
   async tick(now = new Date()): Promise<number> {
     let done = 0;
     for (const p of (await this.repo.dueProjects(now, MORNING_HOUR)).slice(0, PER_TICK)) {
-      const from = new Date(now.getTime() - DAY_MS);
+      const from = await this.windowFrom(p.tenant_id, p.project_id, now);
       const runId = await this.repo.claimAuto(p.tenant_id, p.project_id, p.local_date, from, now);
       if (!runId) continue; // занял другой экземпляр
       await this.process(p.tenant_id, p.project_id, runId, from, now);
@@ -78,7 +80,7 @@ export class HubLibrarianService {
     const p = await this.hub.access(u, projectId);
     if (!this.hub.isBoss(u, p)) throw AppException.forbidden('Собрать сейчас может руководство или ответственный за проект');
     const now = new Date();
-    const from = new Date(now.getTime() - DAY_MS);
+    const from = await this.windowFrom(u.tenantId, projectId, now);
     const runId = await this.repo.startManual(u.tenantId, projectId, u.userId, from, now);
     if (!runId) throw AppException.conflict('Библиотекарь уже собирает этот проект — подождите минуту');
     await this.process(u.tenantId, projectId, runId, from, now);
@@ -93,6 +95,12 @@ export class HubLibrarianService {
       decisions: decisions.items.map(decisionOut),
       status: run.status,
     };
+  }
+
+  /** Начало окна: сутки, а пока первого сбора за месяц не было — месяц. */
+  private async windowFrom(tenantId: string, projectId: string, now: Date): Promise<Date> {
+    const days = (await this.repo.hadBackfill(tenantId, projectId)) ? 1 : FIRST_DAYS;
+    return new Date(now.getTime() - days * DAY_MS);
   }
 
   /** Один прогон проекта. Ошибка не роняет тик — прогон помечается «failed». */
@@ -116,7 +124,7 @@ export class HubLibrarianService {
       this.repo.project(tenantId, projectId),
       this.repo.chatFinds(tenantId, projectId, from, to),
       this.repo.meetings(tenantId, projectId, from, to),
-      this.repo.closedTasks(tenantId, projectId, from, to),
+      this.repo.tasks(tenantId, projectId, from, to),
       this.repo.known(tenantId, projectId),
       this.repo.projectSites(tenantId, projectId),
       this.repo.decisionsCount(tenantId, projectId, from, to),
@@ -148,7 +156,8 @@ export class HubLibrarianService {
     }
     for (const t of tasks) {
       const origin: Origin = { type: 'task', id: String(t.id), taskId: String(t.id) };
-      finds.push({ text: `${t.title}\n${t.description ?? ''}`, origin });
+      finds.push({ text: `${t.title}\n${t.description ?? ''}`, files: t.files ?? [], origin });
+      if (t.description) addSource(`Задача «${t.title}»: ${t.description}`, origin);
       for (const c of t.comments ?? []) {
         const co: Origin = { type: 'comment', id: String(c.id), taskId: String(t.id) };
         finds.push({ text: c.body ?? '', files: c.files ?? [], origin: co });

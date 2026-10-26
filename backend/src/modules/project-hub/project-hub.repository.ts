@@ -287,6 +287,17 @@ export class ProjectHubRepository {
 
   // ── прогоны и бейдж ──
 
+  /** Был ли уже первый сбор за месяц: без него Инфоцентр собирает историю, а не одни сутки. */
+  async hadBackfill(tenantId: string, projectId: string): Promise<boolean> {
+    const r = await this.db.one<{ ok: boolean }>(
+      `SELECT EXISTS (SELECT 1 FROM hub_librarian_runs
+                       WHERE tenant_id = $1 AND project_id = $2 AND status = 'done'
+                         AND window_end - window_start >= interval '20 days') AS ok`,
+      [tenantId, projectId],
+    );
+    return !!r?.ok;
+  }
+
   lastRun(tenantId: string, projectId: string): Promise<HubRunRow | null> {
     return this.db.one<HubRunRow>(
       `SELECT ${RUN_COLS} FROM hub_librarian_runs r
@@ -438,13 +449,21 @@ export class ProjectHubRepository {
     );
   }
 
-  /** Задачи проекта, закрытые за сутки: описание и комментарии людей с файлами. */
-  closedTasks(tenantId: string, projectId: string, from: Date, to: Date): Promise<{
+  /**
+   * Задачи проекта, которые за окно создали, меняли или закрыли: описание, вложения и
+   * комментарии людей с файлами. Раньше брали только закрытые — а ТЗ и макеты лежат
+   * как раз в описаниях и вложениях открытых задач, и Инфоцентр оставался пустым.
+   */
+  tasks(tenantId: string, projectId: string, from: Date, to: Date): Promise<{
     id: string; title: string; description: string | null;
+    files: { id: string; name: string; contentType: string | null }[];
     comments: { id: string; body: string | null; files: { id: string; name: string; contentType: string | null }[] }[];
   }[]> {
     return this.db.many(
       `SELECT t.id::text, t.title, t.description,
+              COALESCE((SELECT json_agg(json_build_object('id', f.id::text, 'name', f.file_name, 'contentType', f.content_type) ORDER BY f.id)
+                          FROM task_attachments ta JOIN files f ON f.id = ta.file_id
+                         WHERE ta.task_id = t.id), '[]'::json) AS files,
               COALESCE((SELECT json_agg(json_build_object('id', x.id::text, 'body', x.body, 'files', x.files) ORDER BY x.id)
                           FROM (SELECT c.id, c.body,
                                        COALESCE((SELECT json_agg(json_build_object('id', f.id::text, 'name', f.file_name, 'contentType', f.content_type)
@@ -456,9 +475,10 @@ export class ProjectHubRepository {
                                  ORDER BY c.id DESC LIMIT 50) x), '[]'::json) AS comments
          FROM tasks t
         WHERE t.tenant_id = $1 AND t.project_id = $2 AND t.deleted_at IS NULL
-          AND t.closed_at >= $3 AND t.closed_at < $4
-        ORDER BY t.id
-        LIMIT 50`,
+          AND ((t.created_at >= $3 AND t.created_at < $4) OR (t.updated_at >= $3 AND t.updated_at < $4)
+               OR (t.closed_at >= $3 AND t.closed_at < $4))
+        ORDER BY t.id DESC
+        LIMIT 200`,
       [tenantId, projectId, from, to],
     );
   }
