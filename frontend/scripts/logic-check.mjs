@@ -1796,6 +1796,10 @@ test('черновик из сообщения: правки человека п
   assert.deepEqual(settleEdits({ description: 'моё2' }, { description: 'моё' }), { description: 'моё2' });
   // чек-лист сравнивается по содержимому
   assert.deepEqual(settleEdits({ checklist: ['a', 'b'] }, { checklist: ['a', 'b'] }), {});
+  // разложенные поручения — массив объектов, тоже по содержимому (иначе правка «висит» вечно)
+  const split = [{ title: 'Тарифы', assigneeId: '9', deadline: null }];
+  assert.deepEqual(settleEdits({ split }, { split: split.map((x) => ({ ...x })) }), {});
+  assert.deepEqual(settleEdits({ split: [{ ...split[0], title: 'Тарифы!' }] }, { split }), { split: [{ ...split[0], title: 'Тарифы!' }] });
 });
 
 test('черновики задач: несколько, свои, старый переносится, пустой не хранится (#4668)', async () => {
