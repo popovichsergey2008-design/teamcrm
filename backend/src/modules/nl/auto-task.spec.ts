@@ -32,27 +32,46 @@ describe('#4615 автоматическая постановка: правил�
     });
   });
 
-  describe('сообщение-подтверждение', () => {
-    it('по тексту документа: что, кому, где, когда, приоритет, теги и «проверьте»', () => {
-      const m = confirmMessage({
-        taskId: '42', title: 'Поправить форму входа', assigneeName: 'Глеб', projectName: 'Сайт',
-        deadlineAt: '2026-10-23T15:00:00.000Z', priority: 'normal', tags: ['Баг', 'Сайт'],
-        projectWhy: 'открытая доска', assigneeWhy: 'руководитель отдела «Разработка»', edited: false, timeZone: 'Europe/Moscow',
-      });
-      expect(m.title).toBe('Задача поставлена: #42 «Поправить форму входа»');
-      expect(m.summary).toBe('Исполнитель — Глеб (руководитель отдела «Разработка»), проект — Сайт (открытая доска), '
-        + 'срок — 23 октября, приоритет — обычный, теги — Баг, Сайт. Проверьте, всё ли ок.');
+  describe('сообщение-подтверждение (#4665: список по пунктам)', () => {
+    const facts = {
+      taskId: '42', title: 'Поправить форму входа', assigneeName: 'Глеб', projectName: 'Сайт',
+      deadlineAt: '2026-10-23T15:00:00.000Z', priority: 'normal', tags: ['Баг', 'Сайт'],
+      projectWhy: 'открытая доска', assigneeWhy: 'руководитель отдела «Разработка»', edited: false, timeZone: 'Europe/Moscow',
+    };
+
+    it('«задача поставлена от вас», тег, проект, исполнитель — по строке на пункт', () => {
+      const m = confirmMessage(facts);
+      expect(m.title).toBe('Задача поставлена от вас: #42 «Поправить форму входа»');
+      expect(m.summary).toBe([
+        '• Теги: Баг, Сайт',
+        '• Проект: Сайт (открытая доска)',
+        '• Исполнитель: Глеб (руководитель отдела «Разработка»)',
+        '• Срок: 23 октября',
+        '• Приоритет: обычный',
+        'Проверьте, всё ли верно: «Ок» — подтвердить, «Править» — открыть задачу.',
+      ].join('\n'));
+      expect(m.fields.map(([k]) => k)).toEqual(['Теги', 'Проект', 'Исполнитель', 'Срок', 'Приоритет']);
     });
 
-    it('без тегов и срока; уже поправили — так и сказано', () => {
+    it('одной строкой для push и всплывашки — без пояснений «почему»', () => {
+      expect(confirmMessage(facts).short).toBe('Теги: Баг, Сайт · Проект: Сайт · Исполнитель: Глеб');
+      expect(confirmMessage({ ...facts, tags: ['Баг'] }).short).toBe('Тег: Баг · Проект: Сайт · Исполнитель: Глеб');
+    });
+
+    it('без тега, исполнителя и срока; уже поправили — так и сказано', () => {
       const m = confirmMessage({
         taskId: '7', title: 'Текст', assigneeName: null, projectName: 'Блог', deadlineAt: null, priority: 'urgent', tags: [], edited: true,
       });
-      expect(m.summary).toContain('Исполнитель — не назначен');
-      expect(m.summary).toContain('срок — без срока');
-      expect(m.summary).toContain('приоритет — срочный');
-      expect(m.summary).toContain('теги — без тегов');
+      expect(m.summary).toContain('• Тег: без тега');
+      expect(m.summary).toContain('• Исполнитель: не назначен');
+      expect(m.summary).toContain('• Срок: без срока');
+      expect(m.summary).toContain('• Приоритет: срочный');
       expect(m.summary).toContain('Вы уже поправили задачу');
+      expect(m.short).toBe('Тег: без тега · Проект: Блог · Исполнитель: не назначен');
+    });
+
+    it('длинное название не ломает заголовок карточки (до 200 знаков)', () => {
+      expect(confirmMessage({ ...facts, title: 'x'.repeat(400) }).title.length).toBe(200);
     });
   });
 });

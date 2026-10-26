@@ -56,6 +56,23 @@ export interface NewProposal {
   payload?: Record<string, unknown>;
   fingerprint: string;
   expiresAt?: Date | null;
+  /**
+   * Ответ на действие самого человека, а не подсказка (#4665): доходит всегда —
+   * мимо выключателей секретаря, «больше не предлагать» и дневного лимита.
+   */
+  direct?: DirectNotice;
+}
+
+/** Как показать прямое сообщение в центре уведомлений, push и всплывашке. */
+export interface DirectNotice {
+  /** Ключ события центра уведомлений (`task.*` попадает в фильтр «Задачи»). */
+  eventKey: string;
+  /** Задача, о которой речь: удалили или закрыли от человека — строка центра прячется. */
+  taskId?: string | null;
+  /** Одной строкой — для push и всплывашки. */
+  short: string;
+  /** Пункты для строки центра: «Тег: …», «Проект: …», «Исполнитель: …». */
+  fields?: [string, string][];
 }
 
 export interface ProactivePrefs {

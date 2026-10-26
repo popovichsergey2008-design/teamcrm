@@ -8,7 +8,7 @@ import { SecurityService } from '../security/security.service';
 import { can } from '../security/permissions';
 import { localParts } from '../assistant/ping-rules';
 import { zonedTime } from '../focus/close-day';
-import { NewProposal, ProposalRow, ProactiveRepository } from './proactive.repository';
+import { DirectNotice, NewProposal, ProposalRow, ProactiveRepository } from './proactive.repository';
 import {
   batchLine, compareRank, deliveryFor, FEEDBACK_REASONS, PRIORITY_LABEL, rankKey, SECTION_OF, Skill, SKILLS, snoozeTarget, SnoozePreset,
 } from './proactive-rules';
@@ -60,6 +60,8 @@ export class ProactiveService {
   async propose(p: NewProposal): Promise<ProposalRow | null> {
     try {
       const [tenant, prefs] = await Promise.all([this.repo.tenantSettings(p.tenantId), this.repo.prefs(p.tenantId, p.userId)]);
+      // ответ на собственное действие человека — не проактивная подсказка (#4665)
+      if (p.direct) return await this.proposeDirect(p, p.direct, tenant.telegramDelivery);
       if (!tenant.enabled || prefs.level === 'off') return null;
       const skillOn: Record<string, boolean> = {
         commitment: tenant.commitments, workload: tenant.workloadGuard, reply: tenant.smartReply && prefs.smartReply,
@@ -75,6 +77,37 @@ export class ProactiveService {
       this.log.warn(`предложение ${p.skill} для ${p.userId}: ${(e as Error).message}`);
       return null;
     }
+  }
+
+  /**
+   * Ответ на действие самого человека (#4665): «Задача поставлена от вас — проверьте».
+   *
+   * Раньше это сообщение шло общим путём подсказок секретаря и терялось по дороге:
+   * выключенный секретарь (компанией или «Не беспокоить» человека), «больше не
+   * предлагать», дневной лимит в 12 подсказок или тихий режим — и карточка ложилась
+   * молча в ящик или не создавалась вовсе. А в открытом браузере даже доставленное
+   * не всплывало: строка центра уведомлений приходила без всплывашки, только +1 на
+   * колокольчике. Человек ждал «через полминуту пришлю сообщение» и ничего не видел.
+   *
+   * Теперь: карточка с «Ок/Править» — всегда; строка в центре уведомлений со
+   * всплывашкой — всегда; push на телефон и Telegram — если не тихие часы человека.
+   * Повтор с тем же отпечатком по-прежнему не создаётся.
+   */
+  private async proposeDirect(p: NewProposal, d: DirectNotice, telegramOn: boolean): Promise<ProposalRow | null> {
+    const row = await this.repo.insert(p);
+    if (!row) return null;
+    const quiet = await this.inbox.isQuiet(row.tenant_id, row.user_id).catch(() => false);
+    this.realtime.emitToUsers(row.tenant_id, [row.user_id], 'assistant.proposal', { id: String(row.id), kind: 'created', delivery: quiet ? 'badge' : 'push' });
+    await this.repo.markNotified(String(row.id));
+    await this.push.personal({
+      tenantId: row.tenant_id, userId: row.user_id, eventKey: d.eventKey,
+      title: row.title.slice(0, 120), body: d.short.slice(0, 200), path: `/secretary/${row.id}`,
+      push: !quiet, toast: true, taskId: d.taskId ?? null, details: d.fields ? { fields: d.fields } : null,
+    }).catch(() => false);
+    if (!quiet && telegramOn) {
+      await this.telegram.push(row.tenant_id, row.user_id, `✦ ${row.title}\n\n${row.summary || row.why}`.slice(0, 900)).catch(() => false);
+    }
+    return row;
   }
 
   /** Сообщить человеку по правилам тишины и лимита (§9, §83–84). */

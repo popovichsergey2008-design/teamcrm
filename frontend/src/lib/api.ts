@@ -51,6 +51,8 @@ export interface CenterItem extends InboxItem {
   details: {
     phrase?: string; assignee?: string | null; deadline?: string | null; shiftTo?: string | null;
     status?: string | null; priority?: string | null; comment?: string | null; reason?: string | null;
+    /** #4665: готовые пункты «Тег: …», «Проект: …», «Исполнитель: …» — у подтверждения постановки. */
+    fields?: [string, string][];
   } | null;
 }
 export interface CenterPage { items: CenterItem[]; next: string | null; unread: number }
