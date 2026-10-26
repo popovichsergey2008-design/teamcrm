@@ -26,6 +26,7 @@ import { effectsOf, FollowupAnswer, shiftTarget } from './followup-rules';
 import { FollowupsRepository } from './followups.repository';
 import { OrgService } from '../org/org.service';
 import { BeforeAfterService, HANDOFF_STAGES } from '../before-after/before-after.service';
+import { pickParticipants } from './participants';
 
 @Injectable()
 export class TasksService {
@@ -292,15 +293,16 @@ export class TasksService {
 
     // Соисполнители и наблюдатели — с первой минуты: дописывать их потом руками
     // значит забыть половину.
-    for (const id of dto.coAssigneeIds ?? []) {
-      if (String(id) !== String(task.assignee_id ?? '')) {
-        await this.repo.addParticipant(tenantId, task.id, String(id), 'co_assignee', actorId);
-        void this.notify.participantAdded(tenantId, task.id, actorId, String(id), 'co_assignee');
-      }
+    // #4661: их теперь выбирают в окне постановки — берём только живых людей этой компании
+    const named = [...new Set([...(dto.coAssigneeIds ?? []), ...(dto.watcherIds ?? [])].map(String))];
+    const people = pickParticipants(dto, await this.repo.activeUserIds(tenantId, named), task.assignee_id);
+    for (const id of people.coAssigneeIds) {
+      await this.repo.addParticipant(tenantId, task.id, id, 'co_assignee', actorId);
+      void this.notify.participantAdded(tenantId, task.id, actorId, id, 'co_assignee');
     }
-    for (const id of dto.watcherIds ?? []) {
-      await this.repo.addParticipant(tenantId, task.id, String(id), 'watcher', actorId);
-      void this.notify.participantAdded(tenantId, task.id, actorId, String(id), 'watcher');
+    for (const id of people.watcherIds) {
+      await this.repo.addParticipant(tenantId, task.id, id, 'watcher', actorId);
+      void this.notify.participantAdded(tenantId, task.id, actorId, id, 'watcher');
     }
 
     this.realtime.emit(tenantId, task.project_id, 'task.created', task as any);
@@ -316,8 +318,8 @@ export class TasksService {
     */
     const forYou = [
       task.assignee_id,
-      ...(dto.coAssigneeIds ?? []),
-      ...(dto.watcherIds ?? []),
+      ...people.coAssigneeIds,
+      ...people.watcherIds,
     ].map((x) => String(x ?? '')).filter((id) => id && id !== String(actorId));
     if (forYou.length) {
       this.realtime.emitToUsers(tenantId, [...new Set(forYou)], 'task.for_you', {

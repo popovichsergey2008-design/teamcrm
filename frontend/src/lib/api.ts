@@ -1359,6 +1359,8 @@ export const api = {
     clientId?: string;
     /** страж нагрузки (ТЗ-21): видел предупреждение и всё равно ставлю */
     confirmWorkload?: boolean;
+    /** соисполнители и наблюдатели сразу при постановке (#4661) */
+    coAssigneeIds?: string[]; watcherIds?: string[];
   }) =>
     request<Task>('POST', '/tasks', b),
   /**

@@ -27,6 +27,7 @@ import { newDraftId, openDraft, removeDraft, saveDraft, setDraftEditing, type Ta
 import { loadDraftFiles, saveDraftFiles } from '../lib/draft-files';
 import { describeFailures, mergeFiles, pastedImages, uploadTaskFiles } from '../lib/task-files';
 import { TaskFilesField } from './TaskFilesField';
+import { PeopleField, peopleOf, type PersonOption } from './PeopleField';
 import { TaskDraftsOffer, useOtherDrafts } from './TaskDraftsOffer';
 import { useAuth } from '../state/auth';
 
@@ -176,8 +177,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   const chooseDeadline = (d: string | null) => {
     touched.current = true;
     setDeadline(d);
-    // точный срок из подсказки о перегрузе больше не действует: выбран другой день
-    setDrafts((list) => list.map((x) => (x.task?.deadlineAt ? { ...x, task: { ...x.task, deadlineAt: null } } : x)));
+    // точный срок из подсказки о перегрузе и свой срок задачи (#4663) больше не действуют:
+    // чип — общий срок для всех задач, последнее действие главнее
+    setDrafts((list) => list.map((x) => (x.task?.deadlineAt || x.task?.ownDeadline
+      ? { ...x, task: { ...x.task, deadlineAt: null, ownDeadline: false } } : x)));
   };
 
   const parse = async (raw?: string) => {
@@ -471,7 +474,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   };
 
   /** Срок, с которым уйдёт черновик: чип главнее; не трогали — услышанный во фразе. */
-  const dueOf = (d: any) => effectiveDeadline(d.task?.deadline, deadline, touched.current);
+  const dueOf = (d: any) => (d.task?.ownDeadline
+    // срок, поставленный в самой карточке (#4663), — только у этой задачи
+    ? d.task.deadline ?? null
+    : effectiveDeadline(d.task?.deadline, deadline, touched.current));
 
   const autoBody = (d: any) => {
     const tagIds = (d.task.autoTags ?? []).map((x: { id: string }) => String(x.id));
@@ -670,9 +676,23 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
     if (manual) patchDraft(first, { files: mergeFiles(drafts[first].files ?? [], images) });
     else setFiles((prev) => mergeFiles(prev, images));
   };
-  /** «Править поля»: общие файлы переезжают в черновики — там у каждой задачи свои. */
+  /**
+   * «Править поля»: общие файлы переезжают в черновики — там у каждой задачи свои.
+   * #4663: срок с чипа и подобранные теги переезжают тоже — раньше подробный вид
+   * открывался с пустым сроком и без тегов, и выбранное в первом окне терялось.
+   * Теги — предложением: в подробном виде их подтверждает постановщик, как и раньше.
+   */
   const toManual = () => {
-    setDrafts((list) => list.map((d) => (d.intent === 'create_task' ? { ...d, files: mergeFiles(d.files ?? [], files) } : d)));
+    setDrafts((list) => list.map((d) => {
+      if (d.intent !== 'create_task' || !d.task) return d;
+      const tagIds = (d.task.autoTags ?? []).map((x: { id: string }) => String(x.id));
+      return {
+        ...d,
+        files: mergeFiles(d.files ?? [], files),
+        task: { ...d.task, deadline: d.task.deadlineAt ? d.task.deadline : dueOf(d), ownDeadline: false },
+        tags: d.tags ?? (tagIds.length ? { ...EMPTY_TAGS, tagIds, suggested: tagIds } : EMPTY_TAGS),
+      };
+    }));
     setFiles([]);
     setManual(true);
   };
@@ -833,6 +853,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               onPatchTask={(patch) => patchTask(i, patch)}
               onPatchDraft={(patch) => patchDraft(i, patch)}
               onDrop={() => dropDraft(i)}
+              onDeadline={taskDrafts.length > 1 ? undefined : chooseDeadline}
             />
           ))}
           {other.map(({ d, i }) => (
@@ -1048,6 +1069,7 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
 }) {
   const [approvalHabit, setApprovalHabit] = useStickyCheck('task.requiresApproval', true);
   const ctx = draft?.context ?? { projects: [], users: [], clients: [] };
+  const people: PersonOption[] = (ctx.users ?? []).map((u: any) => ({ id: String(u.id), name: String(u.name ?? '') }));
   const files: File[] = draft?.files ?? [];
   // #1576: появилась причина отказа — показываем её, даже если карточка прокручена
   const alertRef = useRef<HTMLDivElement>(null);
@@ -1157,6 +1179,33 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
             </span>
           </div>
         )}
+        {/* #4661: соисполнители и наблюдатели — при постановке, а не вторым заходом в карточке */}
+        <div className="tv2-grid2">
+          <PeopleField
+            label="Соисполнители"
+            hint="Делают работу вместе с исполнителем и видят задачу в своих"
+            people={peopleOf(draft.task.coAssigneeIds, people)}
+            users={people}
+            exclude={draft.task.assigneeId ? [String(draft.task.assigneeId)] : []}
+            onAdd={(id) => onPatchTask({
+              coAssigneeIds: [...(draft.task.coAssigneeIds ?? []), id],
+              watcherIds: (draft.task.watcherIds ?? []).filter((x: string) => String(x) !== id),
+            })}
+            onRemove={(id) => onPatchTask({ coAssigneeIds: (draft.task.coAssigneeIds ?? []).filter((x: string) => String(x) !== id) })}
+          />
+          <PeopleField
+            label="Наблюдатели"
+            hint="Следят за ходом и получают уведомления, выполнять не обязаны"
+            people={peopleOf(draft.task.watcherIds, people)}
+            users={people}
+            exclude={draft.task.assigneeId ? [String(draft.task.assigneeId)] : []}
+            onAdd={(id) => onPatchTask({
+              watcherIds: [...(draft.task.watcherIds ?? []), id],
+              coAssigneeIds: (draft.task.coAssigneeIds ?? []).filter((x: string) => String(x) !== id),
+            })}
+            onRemove={(id) => onPatchTask({ watcherIds: (draft.task.watcherIds ?? []).filter((x: string) => String(x) !== id) })}
+          />
+        </div>
         {/* Направления пункта (задача #1363): отмечены по словам, уходят в задачу отметками. */}
         <DirectionsPicker
           value={draft.task.directions ?? []}

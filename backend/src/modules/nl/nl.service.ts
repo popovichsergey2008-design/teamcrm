@@ -26,6 +26,7 @@ import { AutoConfirmService } from './auto-confirm.service';
 import { OrgService } from '../org/org.service';
 import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
 import { fastTitleFrom, NL_FAST_BUDGET_MS, NL_FAST_MAX_TOKENS, NlTiming } from './fast-path';
+import { participantIdsIn } from '../tasks/participants';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 
@@ -889,6 +890,9 @@ export class NlService {
           deadlineAt: deadlineAt ?? null, directions: Array.isArray(t.directions) ? t.directions.map(String) : [], title: String(t.title),
         }, t.confirmWorkload === true);
       }
+      // #4661: соисполнители и наблюдатели из первого окна; чужих и уволенных отсеет tasks.create
+      const coAssigneeIds = participantIdsIn(t.coAssigneeIds);
+      const watcherIds = participantIdsIn(t.watcherIds);
       const task = await this.tasks.create(tenantId, {
         projectId: String(t.projectId), title: String(t.title).trim().slice(0, 255),
         description: t.description ? String(t.description) : undefined,
@@ -902,6 +906,8 @@ export class NlService {
           ? t.checklist.map((x: unknown) => String(x ?? '').trim()).filter(Boolean)
           : undefined,
         directions: Array.isArray(t.directions) ? t.directions.filter(isSkill) : undefined,
+        coAssigneeIds: coAssigneeIds.length ? coAssigneeIds : undefined,
+        watcherIds: watcherIds.length ? watcherIds : undefined,
       } as any, userId, { workloadChecked: guarded });
       await this.tags.applyToNewTask(tenantId, { userId }, String(task.id), String(task.project_id), {
         tagIds: Array.isArray(t.tagIds) ? t.tagIds.map(String) : [],

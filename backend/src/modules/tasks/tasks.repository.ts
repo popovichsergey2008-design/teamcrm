@@ -538,6 +538,16 @@ export class TasksRepository {
   }
 
   /** Клиент из этой организации — чужого к задаче не привязать. */
+  /** Кто из названных — живые сотрудники этой компании (#4661: чужой id участником не станет). */
+  async activeUserIds(tenantId: string, ids: string[]): Promise<Set<string>> {
+    if (!ids.length) return new Set();
+    const rows = await this.db.many<{ id: string }>(
+      `SELECT id::text AS id FROM users WHERE tenant_id = $1 AND is_active = TRUE AND id::text = ANY($2::text[])`,
+      [tenantId, ids],
+    );
+    return new Set(rows.map((r) => String(r.id)));
+  }
+
   async clientExists(tenantId: string, clientId: string): Promise<boolean> {
     const r = await this.db.one(`SELECT 1 FROM clients WHERE tenant_id = $1 AND id = $2`, [tenantId, clientId]);
     return !!r;

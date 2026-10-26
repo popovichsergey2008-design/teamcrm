@@ -36,6 +36,7 @@ import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { Field } from './ui/field';
 import { Input } from './ui/input';
 import { Select } from './ui/select';
+import { PeopleField as SharedPeopleField } from './PeopleField';
 import { Tabs } from './ui/tabs';
 import { useTitleHint } from '../lib/page-title';
 import { feedback, feedback as fx } from '../lib/feedback';
@@ -1846,10 +1847,8 @@ function TaskDescription({ text, onEmptyClick, onEdit, onOpenImage }: {
 }
 
 /**
- * Список людей в задаче с добавлением и удалением.
- *
- * Одним компонентом для обеих ролей: соисполнители и наблюдатели отличаются смыслом,
- * а не устройством, и два почти одинаковых блока разошлись бы на первой же правке.
+ * Список людей в задаче с добавлением и удалением — общий PeopleField (#4661):
+ * тот же, что в первом окне постановки, здесь он сразу пишет в задачу.
  */
 function PeopleField({ label, hint, role, people, users, onAdd, onRemove }: {
   label: string;
@@ -1860,39 +1859,14 @@ function PeopleField({ label, hint, role, people, users, onAdd, onRemove }: {
   onAdd: (userId: string, role: 'co_assignee' | 'watcher') => void;
   onRemove: (userId: string, role: 'co_assignee' | 'watcher') => void;
 }) {
-  const mine = people.filter((p) => p.role === role);
-  const taken = new Set(mine.map((p) => String(p.user_id)));
-
   return (
-    <Field label={<span title={hint}>{label}</span>}>
-      {mine.length > 0 && (
-        <div className="people-chips">
-          {mine.map((p) => (
-            <span key={p.user_id} className="people-chip">
-              {p.full_name}
-              <button
-                className="people-chip-x"
-                onClick={() => onRemove(String(p.user_id), role)}
-                title="Убрать из задачи"
-                aria-label={`Убрать ${p.full_name}`}
-              >
-                <Icon name="close" size={11} />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      {/* Значение всегда пустое: выбранный сразу уходит в список выше, поле снова «+ добавить». */}
-      <Select
-        ariaLabel={`Добавить: ${label.toLowerCase()}`}
-        className="tv2-wide"
-        value=""
-        onValueChange={(v) => { if (v) onAdd(v, role); }}
-        options={[
-          { value: '', label: '+ добавить' },
-          ...users.filter((u) => !taken.has(String(u.id))).map((u) => ({ value: String(u.id), label: u.fullName })),
-        ]}
-      />
-    </Field>
+    <SharedPeopleField
+      label={label}
+      hint={hint}
+      people={people.filter((p) => p.role === role).map((p) => ({ id: String(p.user_id), name: p.full_name }))}
+      users={users.map((u) => ({ id: String(u.id), name: u.fullName }))}
+      onAdd={(id) => onAdd(id, role)}
+      onRemove={(id) => onRemove(id, role)}
+    />
   );
 }
