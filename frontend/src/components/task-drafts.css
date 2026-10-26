@@ -22,4 +22,6 @@
 .tdo-open .tdo-meta { grid-column: 2; }
 .tff { display: flex; flex-direction: column; }
 .tff-note { margin-top: 6px; font-size: var(--fs-xs); }
+/* на узком экране кнопка не сжимается — иначе «Прикрепить файл» вылезал за рамку */
+.tff .file-pick { flex-shrink: 0; white-space: nowrap; }
 .file-pick.is-disabled { opacity: .55; pointer-events: none; }
