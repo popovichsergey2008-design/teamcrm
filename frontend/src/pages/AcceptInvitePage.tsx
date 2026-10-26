@@ -2,10 +2,12 @@ import { FormEvent, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { api, ApiError } from '../lib/api';
+import { PolicyCheck } from '../components/legal/PolicyCheck';
 
 export function AcceptInvitePage({ token }: { token: string }) {
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ usedExistingAccount: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -15,7 +17,7 @@ export function AcceptInvitePage({ token }: { token: string }) {
     setError('');
     setBusy(true);
     try {
-      const r = await api.acceptInvite({ token, fullName, password });
+      const r = await api.acceptInvite({ token, fullName, password, acceptPrivacy: agreed });
       setDone({ usedExistingAccount: !!r?.usedExistingAccount });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось принять приглашение');
@@ -58,8 +60,9 @@ export function AcceptInvitePage({ token }: { token: string }) {
               <label>Пароль</label>
               <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
             </div>
+            <PolicyCheck checked={agreed} onChange={setAgreed} />
             <div className="error-text">{error}</div>
-            <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy} type="submit">
+            <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || !agreed} type="submit">
               {busy ? '...' : 'Принять и создать аккаунт'}
             </button>
           </>

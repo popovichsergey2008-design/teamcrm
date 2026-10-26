@@ -40,7 +40,7 @@ describe('ТЗ-29 — консьерж-поддержка (e2e)', () => {
 
   it('статус, обратный звонок, запись, пожелание, итог, доступ на 15 минут', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Concierge', email: `cg_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Concierge', email: `cg_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `cg_m_${uniq()}@t.test`;
@@ -110,7 +110,23 @@ describe('ТЗ-29 — консьерж-поддержка (e2e)', () => {
     await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(hidden.id) }).expect(400);
     // до разрешения — ничего не видно
     await http.get(`/api/support/desk/${conv.id}/access/${grantId}/view`).set(O).expect(403);
-    const granted = (await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(proj.id) }).expect(201)).body.data;
+    // #4675: без согласия с Политикой удалённой поддержки доступ не выдаётся
+    const noConsent = await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(proj.id) }).expect(403);
+    expect(noConsent.body.error.message).toMatch(/Политикой удалённой поддержки/);
+    expect((await http.get(`/api/support/desk/${conv.id}/remote-consent`).set(M).expect(200)).body.data.active).toBe(false);
+    // согласие даёт только сам обратившийся — специалист за него не может
+    await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(O).send({ via: 'access', grantId }).expect(404);
+    await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(M).send({ via: 'nowhere' }).expect(400);
+    const given = (await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(M).set('User-Agent', 'e2e-agent').send({ via: 'access', grantId }).expect(201)).body.data;
+    expect(given).toMatchObject({ active: true, version: 'v1' });
+    const row = await db.one<{ version: string; user_agent: string; ip: string | null; context: any }>(
+      `SELECT version, user_agent, ip, context FROM policy_consents WHERE policy = 'remote_support' AND context->>'conversationId' = $1::text ORDER BY id DESC LIMIT 1`,
+      [String(conv.id)],
+    );
+    expect(row).toMatchObject({ version: 'v1', user_agent: 'e2e-agent' });
+    expect(row!.ip).toBeTruthy();
+    expect(row!.context).toMatchObject({ via: 'access', grantId: String(grantId) });
+    const granted =(await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(proj.id) }).expect(201)).body.data;
     expect(granted[0].status).toBe('granted');
     const snap = (await http.get(`/api/support/desk/${conv.id}/access/${grantId}/view`).set(O).expect(200)).body.data;
     expect(snap.project.name).toBe('Заказчик А');

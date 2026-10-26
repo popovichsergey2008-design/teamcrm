@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Ip, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -23,6 +23,12 @@ class WorksDto {
 }
 class AccessRequestDto {
   @IsOptional() @IsString() @MaxLength(300) reason?: string;
+}
+class RemoteConsentDto {
+  /** Откуда согласие: кнопка удалённой помощи, показ экрана в созвоне, доступ на 15 минут. */
+  @IsIn(['button', 'screen', 'access']) via!: 'button' | 'screen' | 'access';
+  @IsOptional() @IsString() @MaxLength(64) roomId?: string;
+  @IsOptional() @IsString() @MaxLength(32) grantId?: string;
 }
 class AccessDecisionDto {
   @IsBoolean() allow!: boolean;
@@ -106,6 +112,23 @@ export class SupportConciergeController {
   @Post(':id/offer-test')
   async offerTest(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.concierge.offerTest(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  /**
+   * #4675: согласие с Политикой удалённой поддержки — на одну сессию по этому обращению.
+   * Без живого согласия сервер не выдаёт доступ на 15 минут (см. decideAccess).
+   */
+  @Get(':id/remote-consent')
+  async remoteConsent(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.concierge.remoteConsentState(await this.desk.deskTenant(u, id), u, id);
+  }
+
+  @Post(':id/remote-consent')
+  async giveRemoteConsent(
+    @CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: RemoteConsentDto,
+    @Headers('user-agent') ua: string, @Ip() ip: string,
+  ) {
+    return this.concierge.giveRemoteConsent(await this.desk.deskTenant(u, id), u, id, dto, { userAgent: ua, ip });
   }
 
   @Get(':id/access')

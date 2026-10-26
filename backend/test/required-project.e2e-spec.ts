@@ -28,7 +28,7 @@ describe('Обязательный проект (e2e)', () => {
 
   it('без проекта — 422 PROJECT_REQUIRED; архив — 422; чужой закрытый — 403; с проектом — создаётся', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `rp_m_${uniq()}@t.test`;

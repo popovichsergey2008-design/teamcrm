@@ -50,7 +50,7 @@ describe('Инфоцентр проекта (e2e)', () => {
 
   async function setup() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Инфоцентр', email: `hub_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Инфоцентр', email: `hub_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `hubm_${uniq()}@t.test`;
@@ -78,7 +78,7 @@ describe('Инфоцентр проекта (e2e)', () => {
     await http$.get(url).set(stranger.H).expect(404);
     await http$.get(url).set(client).expect(403);
     const alien = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Чужие', email: `huba_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `huba_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.get(url).set(H(alien.accessToken)).expect(404);
     await http$.post(`${url}/items`).set(stranger.H)
       .send({ section: 'knowledge', kind: 'link', title: 'x', url: 'https://example.com' }).expect(404);

@@ -35,7 +35,7 @@ describe('Поддержка (e2e)', () => {
 
   it('обращение сотрудника становится задачей владельцу в проекте поддержки', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'SUP', email: `sup_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SUP', email: `sup_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `supm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
       .send({ email: mateEmail, fullName: 'Сотрудник', password: 'password123', role: 'member' }).expect(201)).body.data;

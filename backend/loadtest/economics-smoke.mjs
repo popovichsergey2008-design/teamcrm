@@ -44,7 +44,7 @@ async function drainPnl(projectId, token, timeoutMs = 15000) {
 async function main() {
   console.log(`# economics smoke -> ${BASE_URL} tasks=${TASKS} duration=${DURATION_MS}ms`);
   const reg = await call('POST', '/auth/register', {
-    tenantName: 'EconLoad', email: `el_${Date.now()}@l.test`, password: 'password123', fullName: 'EL',
+    acceptPrivacy: true, tenantName: 'EconLoad', email: `el_${Date.now()}@l.test`, password: 'password123', fullName: 'EL',
   });
   const token = reg.accessToken;
   const userId = reg.user.id;

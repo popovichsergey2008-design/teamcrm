@@ -36,7 +36,7 @@ describe('Ссылка на встречу (e2e)', () => {
 
   it('создал встречу с участником → ссылка сразу; перенос не меняет её; отмена — «отменена»', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Встречи', email: `ml_${uniq()}@t.test`, password: 'password123', fullName: 'Организатор' })
+      .send({ acceptPrivacy: true, tenantName: 'Встречи', email: `ml_${uniq()}@t.test`, password: 'password123', fullName: 'Организатор' })
       .expect(201)).body.data;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
       .send({ email: `mlm_${uniq()}@t.test`, fullName: 'Участник', password: 'password123', role: 'member' })
@@ -94,7 +94,7 @@ describe('Ссылка на встречу (e2e)', () => {
 
   it('личное событие без участников — без созвона; чужой не входит по своей ссылке другой компании', async () => {
     const a = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Компания А', email: `mla_${uniq()}@t.test`, password: 'password123', fullName: 'А' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Компания А', email: `mla_${uniq()}@t.test`, password: 'password123', fullName: 'А' }).expect(201)).body.data;
     const solo = (await http$.post('/api/calendar/events').set(H(a.accessToken))
       .send({ title: 'Подумать', startsAt: inMin(60), endsAt: inMin(90) }).expect(201)).body.data;
     expect(solo.isCall).toBe(false);
@@ -103,14 +103,14 @@ describe('Ссылка на встречу (e2e)', () => {
     const call = (await http$.post('/api/calendar/events').set(H(a.accessToken))
       .send({ title: 'Созвон', startsAt: inMin(60), endsAt: inMin(90), isCall: true }).expect(201)).body.data;
     const b = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Компания Б', email: `mlb_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Компания Б', email: `mlb_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
     expect((await http$.get(`/api/meet/m/${call.meeting.publicId}/me`).set(H(b.accessToken)).expect(200)).body.data).toEqual({ member: false });
     await http$.post(`/api/meet/m/${call.meeting.publicId}/enter`).set(H(b.accessToken)).expect(404);
   });
 
   it('гость по email: личная ссылка с именем, отзыв поштучно, отмена встречи', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Гости по почте', email: `mg_${uniq()}@t.test`, password: 'password123', fullName: 'Организатор' })
+      .send({ acceptPrivacy: true, tenantName: 'Гости по почте', email: `mg_${uniq()}@t.test`, password: 'password123', fullName: 'Организатор' })
       .expect(201)).body.data;
     const ev = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
       .send({ title: 'Показ клиенту', startsAt: inMin(24 * 60), endsAt: inMin(24 * 60 + 60), isCall: true }).expect(201)).body.data;

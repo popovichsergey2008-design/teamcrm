@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsIn,
   IsOptional,
@@ -30,6 +31,14 @@ export class RegisterDto {
   @MinLength(1, { message: 'Укажите ваше имя' })
   @MaxLength(160, { message: 'Имя слишком длинное (максимум 160 символов)' })
   fullName!: string;
+
+  /**
+   * #4675: галочка «Я принимаю Политику конфиденциальности». Необязательна для
+   * валидатора, чтобы отказ был понятным текстом из сервиса, а не «must be a boolean».
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'Примите Политику конфиденциальности, чтобы зарегистрироваться' })
+  acceptPrivacy?: boolean;
 }
 
 export class LoginDto {

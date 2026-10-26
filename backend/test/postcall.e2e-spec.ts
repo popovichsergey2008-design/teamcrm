@@ -37,7 +37,7 @@ describe('Итоги встречи после звонка (e2e)', () => {
 
   async function org() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Итоги', email: `pc_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Итоги', email: `pc_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `pcm_${uniq()}@t.test`;
     const u = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;

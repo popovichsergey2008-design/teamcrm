@@ -54,7 +54,7 @@ describe('Аудио-доказательство задачи (e2e)', () => {
 
   it('фрагмент — с согласия, по правам задачи, ссылка подписана; убрать можно', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Пруф', email: `pr_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Пруф', email: `pr_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const tenantId = String(owner.user.tenantId);
     const ownerId = String(owner.user.id);

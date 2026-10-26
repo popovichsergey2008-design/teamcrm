@@ -31,7 +31,7 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
   const names = (board: any) => board.columns.map((c: any) => c.name);
 
   it('add / rename / move / delete колонок с переносом задач', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Cols', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Cols', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска' }).expect(201)).body.data;
 
@@ -64,7 +64,7 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
   });
 
   it('reorder произвольным порядком (drag-and-drop); кривой набор → 400', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Reord', email: `r_${uniq()}@t.test`, password: 'password123', fullName: 'Р' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Reord', email: `r_${uniq()}@t.test`, password: 'password123', fullName: 'Р' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска' }).expect(201)).body.data;
     let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
@@ -81,7 +81,7 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
   });
 
   it('нельзя удалить последнюю колонку; остальным доска доступна сотруднику целиком', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Cols2', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Cols2', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Доска2' }).expect(201)).body.data;
     let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
@@ -101,7 +101,7 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     // держать её запертой рядом с кнопкой удаления всего проекта было бы защитой от ничего.
     const mEmail = `m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: mEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201);
     const mLogin = (await http.post('/api/auth/login').send({ email: mEmail, password: 'memberpass1' }).expect(201)).body.data;
     const mine = (await http.post(`/api/projects/${proj.id}/columns`).set(H(mLogin.accessToken))
       .send({ name: 'X' }).expect(201)).body.data;
@@ -121,7 +121,7 @@ describe('Enhancements v1 — Board columns (e2e)', () => {
     задач, а не сэкономленной минуты.
   */
   it('доски по умолчанию встают в начало, своё остаётся целым, повтор не плодит близнецов', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Cols3', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Cols3', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Импортированная' }).expect(201)).body.data;
     let board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;

@@ -32,7 +32,7 @@ describe('Изменения по задачам (e2e)', () => {
 
   it('в тест → возврат → в тест → готово → переоткрыто; автор ≠ исполнитель; список и CSV', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'CH', email: `ch_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'CH', email: `ch_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const gleb = (await http$.post('/api/users').set(O)

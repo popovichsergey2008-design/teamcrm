@@ -34,7 +34,7 @@ describe('Mobile — offline: Idempotency-Key, If-Match, sync (e2e)', () => {
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Офлайн', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Офлайн', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
     const memberEmail = `mem_${uniq()}@t.test`;
     const m = (await http.post('/api/users').set(H(owner.accessToken))
       .send({ email: memberEmail, password: 'password123', fullName: 'Иван', role: 'member' }).expect(201)).body.data;

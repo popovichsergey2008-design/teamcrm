@@ -35,7 +35,7 @@ describe('Демо ИИ-созвона в онбординге (e2e)', () => {
 
   async function owner() {
     const o = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Демо', email: `demo_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Демо', email: `demo_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
     return { O: H(o.accessToken), userId: String(o.user.id), tenantId: String(o.user.tenantId) };
   }
   async function waitReview(O: any, demoId: string) {

@@ -1,0 +1,59 @@
+/* Политики (#4675): отдельная страница /legal/* и то же самое в окне поверх формы. */
+.legal-page {
+  height: var(--app-h, 100dvh);
+  overflow-y: auto;
+  background: var(--bg);
+  color: var(--text);
+  padding: calc(16px + var(--safe-top, 0px)) 16px calc(32px + var(--safe-bottom, 0px));
+}
+.legal-wrap { max-width: 760px; margin: 0 auto; }
+.legal-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 20px; flex-wrap: wrap;
+}
+.legal-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none; font-weight: 700; }
+.legal-nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.legal-nav a[aria-current='page'] { background: var(--accent-soft); color: var(--text); }
+.legal-card {
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px;
+  padding: 28px 32px; box-shadow: var(--shadow);
+}
+
+.legal-doc { font-size: 15px; line-height: 1.6; color: var(--text); }
+.legal-title { font-size: 26px; line-height: 1.25; margin: 0 0 6px; }
+.legal-subtitle { color: var(--text-dim); font-weight: 600; }
+.legal-edition { color: var(--text-dim); font-size: 13px; margin: 0 0 14px; }
+.legal-lead { border-left: 3px solid var(--accent-line); padding: 2px 0 2px 12px; margin-bottom: 8px; }
+.legal-lead p { margin: 2px 0; }
+.legal-section { margin-top: 22px; }
+.legal-h { font-size: 17px; line-height: 1.35; margin: 0 0 8px; }
+.legal-doc-dialog .legal-h { font-size: 15px; }
+.legal-list { margin: 0; padding-left: 22px; }
+.legal-list > li { margin: 4px 0; }
+.legal-ol { margin: 6px 0 2px; padding-left: 22px; }
+.legal-ol > li { margin: 2px 0; }
+.legal-text { margin: 0; font-weight: 600; }
+.legal-foot { color: var(--text-dim); font-size: 13px; margin-top: 18px; text-align: center; }
+
+/* окно поверх формы: документ длинный — прокрутка внутри окна, шапка на месте */
+.legal-dialog-body { max-height: min(62vh, 640px); overflow-y: auto; padding-right: 4px; }
+.legal-dialog-open { font-size: 13px; }
+
+/* окно согласия на удалённую помощь */
+.remote-consent { display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; }
+.remote-consent p { margin: 0; }
+.remote-consent ul { margin: 0; padding-left: 20px; }
+.remote-consent-check { display: flex; gap: 10px; align-items: flex-start; }
+.remote-consent-check input { margin-top: 3px; width: 18px; height: 18px; flex: none; accent-color: var(--accent); }
+
+@media (max-width: 640px) {
+  .legal-card { padding: 18px 16px; border-radius: 12px; }
+  .legal-title { font-size: 22px; }
+  .legal-doc { font-size: 15px; }
+  .legal-dialog-body { max-height: 60vh; }
+}
+.remote-consent-doc { max-height: 40vh; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--bg); }
+@media (max-width: 640px) {
+  .remote-consent-doc { max-height: 26vh; }
+  .remote-consent { gap: 8px; }
+}

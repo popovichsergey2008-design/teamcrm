@@ -58,7 +58,7 @@ describe('TEAMCRM Этап 4 — Load Balancer (e2e)', () => {
 
     const reg = await http
       .post('/api/auth/register')
-      .send({ tenantName: 'LB', email: `o_${uniq()}@lb.test`, password: 'password123', fullName: 'Owner' })
+      .send({ acceptPrivacy: true, tenantName: 'LB', email: `o_${uniq()}@lb.test`, password: 'password123', fullName: 'Owner' })
       .expect(201);
     token = reg.body.data.accessToken;
     tenantId = reg.body.data.user.tenantId;

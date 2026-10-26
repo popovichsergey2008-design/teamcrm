@@ -18,7 +18,7 @@ describe('PromptOps (e2e)', () => {
 
   const register = async () => {
     const r = (await http.post('/api/auth/register')
-      .send({ tenantName: `PO-${uniq()}`, email: `po_${uniq()}@t.test`, password: 'password123', fullName: 'Овнер' })
+      .send({ acceptPrivacy: true, tenantName: `PO-${uniq()}`, email: `po_${uniq()}@t.test`, password: 'password123', fullName: 'Овнер' })
       .expect(201)).body.data;
     return r.accessToken as string;
   };

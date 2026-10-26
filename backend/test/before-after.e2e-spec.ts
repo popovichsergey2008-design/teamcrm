@@ -58,7 +58,7 @@ describe('Было/стало (e2e)', () => {
 
   it('отчёт по пунктам, без ключа — глазами, повтор без изменений, автозапуск после сдачи, 404 чужим', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Было-стало', email: `ba_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Было-стало', email: `ba_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `bam_${uniq()}@t.test`;
@@ -131,7 +131,7 @@ describe('Было/стало (e2e)', () => {
 
     // задача другой компании — 404
     const alien = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Чужие', email: `baa_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `baa_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.get(`/api/tasks/${task.id}/before-after`).set(H(alien.accessToken)).expect(404);
   });
 
@@ -143,7 +143,7 @@ describe('Было/стало (e2e)', () => {
    */
   it('образец постановщика и чек-лист приёмки: без «ошибок», роль руками, «Попросить результат» один раз', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Образец', email: `bae_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Константин' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Образец', email: `bae_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Константин' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `baed_${uniq()}@t.test`;
     const doerUser = (await http$.post('/api/users').set(O).send({ email, fullName: 'Исполнитель', password: 'password123', role: 'member' }).expect(201)).body.data;

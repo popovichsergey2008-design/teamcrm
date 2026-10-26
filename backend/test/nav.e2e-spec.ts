@@ -39,7 +39,7 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
 
   it('считает то, что обещает бейдж, и скрывает риски от рядового сотрудника', async () => {
     const reg = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Nav', email: `nav_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Nav', email: `nav_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const tok = reg.accessToken;
     const ownerId = reg.user.id;
@@ -64,7 +64,7 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
     // сотрудник, которому будем поручать
     const memEmail = `nav_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Сотрудник', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Сотрудник', password: 'memberpass1' }).expect(201);
     const memLogin = (await http.post('/api/auth/login').send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
     const memTok = memLogin.accessToken;
     const memId = memLogin.user.id;
@@ -145,13 +145,13 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
    */
   it('счётчик «нового» гаснет от открытия задачи и не считает архивные проекты', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Unread', email: `un_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Unread', email: `un_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
       .expect(201)).body.data;
     const memEmail = `un_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(owner.accessToken))
       .send({ email: memEmail, role: 'member' }).expect(201)).body.data;
     await http.post('/api/invites/accept')
-      .send({ token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
+      .send({ acceptPrivacy: true, token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
     const mem = (await http.post('/api/auth/login')
       .send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
 

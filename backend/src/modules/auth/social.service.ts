@@ -1,3 +1,4 @@
+import { PolicyConsentsService } from '../legal/policy-consents.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '../../common/http/app-exception';
@@ -86,7 +87,7 @@ export class SocialService {
     return (await res.json()) as Record<string, unknown>;
   }
 
-  async google(idToken: string, tenantName: string | undefined, meta?: SessionMeta): Promise<SocialLoginResult> {
+  async google(idToken: string, tenantName: string | undefined, meta?: SessionMeta, acceptPrivacy?: boolean): Promise<SocialLoginResult> {
     const clientId = this.googleClientId();
     if (!clientId) throw AppException.validation('Вход через Google не настроен');
 
@@ -97,7 +98,7 @@ export class SocialService {
       if (e instanceof AppException) throw e;
       throw AppException.unauthorized((e as Error).message);
     }
-    return this.enter(profile, tenantName, meta);
+    return this.enter(profile, tenantName, meta, acceptPrivacy);
   }
 
   async telegram(data: Record<string, string>, meta?: SessionMeta): Promise<SocialLoginResult> {
@@ -183,7 +184,7 @@ export class SocialService {
    * адрес (человек сменил его у себя), и тогда привязка — единственное, что связывает
    * его с прежним аккаунтом.
    */
-  private async enter(profile: SocialProfile, tenantName: string | undefined, meta?: SessionMeta): Promise<SocialLoginResult> {
+  private async enter(profile: SocialProfile, tenantName: string | undefined, meta?: SessionMeta, acceptPrivacy?: boolean): Promise<SocialLoginResult> {
     const link = await this.socials.findLink(profile.provider, profile.externalId);
     if (link) return this.sessionOf(link.account_id, meta);
 
@@ -200,10 +201,12 @@ export class SocialService {
     const name = String(tenantName ?? '').trim();
     if (name.length < 2) return { needsWorkspace: true, email, fullName: profile.fullName };
 
+    // новый аккаунт — та же галочка Политики конфиденциальности, что у формы (#4675)
+    PolicyConsentsService.assertPrivacy(acceptPrivacy);
     return this.auth.createOwnerAccount(
       email, profile.fullName, name.slice(0, 160),
       (accountId, client) => this.socials.link(accountId, profile.provider, profile.externalId, email, client),
-      meta,
+      meta, profile.provider,
     );
   }
 

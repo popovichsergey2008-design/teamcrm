@@ -36,7 +36,7 @@ describe('Проактивный секретарь (e2e)', () => {
 
   async function org() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Секретарь', email: `pro_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Секретарь', email: `pro_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `prom_${uniq()}@t.test`;
     const u = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;

@@ -21,7 +21,7 @@ describe('Mobile — устройства и отзыв сессий (e2e)', () 
   async function register() {
     const r = await http
       .post('/api/auth/register')
-      .send({ tenantName: 'Mob', email: `m_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' })
+      .send({ acceptPrivacy: true, tenantName: 'Mob', email: `m_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' })
       .expect(201);
     return { token: r.body.data.accessToken as string, userId: String(r.body.data.user.id) };
   }

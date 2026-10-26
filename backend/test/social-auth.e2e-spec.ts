@@ -65,7 +65,7 @@ describe('вход через провайдеров (e2e)', () => {
   it('обычный вход по паролю не задет: он и остаётся основным', async () => {
     const email = `social_${Math.random().toString(36).slice(2)}@t.test`;
     const reg = await http.post('/api/auth/register')
-      .send({ tenantName: 'Проверка входов', email, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Проверка входов', email, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201);
     expect(reg.body.data.accessToken).toBeTruthy();
     const login = await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201);

@@ -24,7 +24,7 @@ describe('Гостевой доступ в созвон (e2e)', () => {
   const register = async (name: string) => {
     const email = `${name}_${uniq()}@t.test`;
     return (await http$.post('/api/auth/register')
-      .send({ tenantName: name, email, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: name, email, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
   };
 

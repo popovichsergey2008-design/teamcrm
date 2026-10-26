@@ -58,7 +58,7 @@ describe('Почтовые уведомления (e2e)', () => {
   it('исполнитель получает письма о задаче, автор действия — нет', async () => {
     const ownerEmail = `own_${uniq()}@t.test`;
     const reg = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Почта', email: ownerEmail, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Почта', email: ownerEmail, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const tok = reg.accessToken;
 
@@ -122,7 +122,7 @@ describe('Почтовые уведомления (e2e)', () => {
   it('настройки выключают письма, отписка из письма — тоже', async () => {
     const email = `pr_${uniq()}@t.test`;
     const reg = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Настройки', email, password: 'password123', fullName: 'Пётр Настройка' })
+      .send({ acceptPrivacy: true, tenantName: 'Настройки', email, password: 'password123', fullName: 'Пётр Настройка' })
       .expect(201)).body.data;
     const tok = reg.accessToken;
 

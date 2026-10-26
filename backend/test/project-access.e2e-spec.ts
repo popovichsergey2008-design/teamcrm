@@ -37,7 +37,7 @@ describe('доступ к проектам и перенос задач (e2e)', 
   /** Владелец, сотрудник и проект с доской — всё, с чего начинается каждый случай. */
   const setup = async (tag: string) => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: tag, email: `${tag}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: tag, email: `${tag}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `${tag}_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))

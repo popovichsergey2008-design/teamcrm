@@ -43,7 +43,7 @@ describe('Голосовое: расшифровка фоном (e2e)', () => {
 
   async function setup() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Клипы', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Клипы', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const gleb = (await http$.post('/api/users').set(O)
       .send({ email: `cg_${uniq()}@t.test`, fullName: 'Глеб Орлов', password: 'password123', role: 'member' }).expect(201)).body.data;

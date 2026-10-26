@@ -862,14 +862,14 @@ export const api = {
   mobileSync: (cursor: string | null, limit = 200) =>
     request<SyncPage>('GET', `/mobile/sync?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   // auth
-  register: (b: { tenantName: string; email: string; password: string; fullName: string; dataRegion?: string }) =>
+  register: (b: { tenantName: string; email: string; password: string; fullName: string; dataRegion?: string; acceptPrivacy: boolean }) =>
     rawRequest<AuthResult>('POST', '/auth/register', b, false),
   login: (b: { email: string; password: string }) =>
     rawRequest<AuthResult>('POST', '/auth/login', b, false),
   /** Что включено на сервере. Ключей может не быть вовсе — тогда кнопок не будет. */
   authProviders: () => rawRequest<import('../types').AuthProviders>('GET', '/auth/providers', undefined, false),
-  googleLogin: (idToken: string, tenantName?: string) =>
-    rawRequest<import('../types').SocialAuthResult>('POST', '/auth/google', { idToken, tenantName }, false),
+  googleLogin: (idToken: string, tenantName?: string, acceptPrivacy?: boolean) =>
+    rawRequest<import('../types').SocialAuthResult>('POST', '/auth/google', { idToken, tenantName, acceptPrivacy }, false),
   telegramLogin: (data: Record<string, string>) =>
     rawRequest<import('../types').SocialAuthResult>('POST', '/auth/telegram', { data }, false),
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
@@ -1831,7 +1831,7 @@ export const api = {
   removeGroupMember: (id: string, userId: string) => request<any>('DELETE', `/groups/${id}/members/${userId}`),
   // invites
   createInvite: (b: { email: string; role: string; positionId?: string }) => request<{ token: string; email: string }>('POST', '/invites', b),
-  acceptInvite: (b: { token: string; fullName: string; password: string }) =>
+  acceptInvite: (b: { token: string; fullName: string; password: string; acceptPrivacy: boolean }) =>
     rawRequest<any>('POST', '/invites/accept', b, false),
   // многоразовые ссылки-приглашения
   createInviteLink: (b: { role?: string; positionId?: string; maxUses?: number; expiresInDays?: number }) =>
@@ -1839,7 +1839,7 @@ export const api = {
   listInviteLinks: () => request<any[]>('GET', '/invites/links'),
   deleteInviteLink: (id: string) => request<any>('DELETE', `/invites/links/${id}`),
   inviteLinkInfo: (token: string) => rawRequest<{ tenantName: string; role: string }>('GET', `/invites/links/${token}/info`, undefined, false),
-  acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string }) =>
+  acceptInviteLink: (b: { token: string; email: string; fullName: string; password: string; acceptPrivacy: boolean }) =>
     rawRequest<any>('POST', '/invites/links/accept', b, false),
 
   // мессенджер команды

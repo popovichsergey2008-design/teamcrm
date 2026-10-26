@@ -7,6 +7,7 @@ import { PromptsService } from '../prompts/prompts.service';
 import { PushService } from '../notifications/push.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { SecurityService } from '../security/security.service';
+import { ConsentMeta, PolicyConsentsService, POLICY_VERSIONS, REMOTE_CONSENT_REQUIRED } from '../legal/policy-consents.service';
 import { SupportDeskRepository } from './support-desk.repository';
 import { SupportDeskService } from './support-desk.service';
 import { SupportConciergeRepository } from './support-concierge.repository';
@@ -43,6 +44,8 @@ export class SupportConciergeService implements OnModuleInit, OnModuleDestroy {
     private readonly ai: AiService,
     private readonly prompts: PromptsService,
     private readonly security: SecurityService,
+    /** #4675: согласие с Политикой удалённой поддержки — перед показом экрана и доступом. */
+    private readonly consents: PolicyConsentsService,
   ) {}
 
   onModuleInit(): void {
@@ -260,6 +263,37 @@ export class SupportConciergeService implements OnModuleInit, OnModuleDestroy {
     return this.desk.conversation(tenantId, user, id);
   }
 
+  // ── согласие на удалённую помощь (#4675) ──
+
+  /** Есть ли живое согласие по этому обращению — чтобы не спрашивать второй раз за сессию. */
+  async remoteConsentState(tenantId: string, user: User, id: string) {
+    await this.ownConversation(tenantId, user, id);
+    const c = await this.consents.activeRemote(tenantId, user.userId, id);
+    return { active: !!c, expiresAt: c?.expiresAt ?? null, version: POLICY_VERSIONS.remote_support };
+  }
+
+  /**
+   * Галочка и «Разрешить доступ». Даёт только сам обратившийся — по своему обращению.
+   * Время, IP-адрес и версия текста — в журнал, как обещает политика; в разговор —
+   * системная строка, чтобы специалист видел, что согласие есть.
+   */
+  async giveRemoteConsent(
+    tenantId: string, user: User, id: string,
+    d: { via: 'button' | 'screen' | 'access'; roomId?: string; grantId?: string }, meta: ConsentMeta,
+  ) {
+    const conv = await this.ownConversation(tenantId, user, id);
+    const rec = await this.consents.record({
+      tenantId, userId: user.userId, policy: 'remote_support',
+      context: { conversationId: String(id), via: d.via, ...(d.roomId ? { roomId: d.roomId } : {}), ...(d.grantId ? { grantId: d.grantId } : {}) },
+    }, meta);
+    await this.deskRepo.addMessage({
+      tenantId, conversationId: id, authorId: user.userId, kind: 'system',
+      body: `дал(а) согласие на удалённую помощь по Политике удалённой поддержки (${rec.version}) — на эту сессию`,
+    });
+    this.emitConv(tenantId, conv, 'support.remote.consent', { conversationId: id });
+    return this.remoteConsentState(tenantId, user, id);
+  }
+
   // ── доступ на 15 минут (п. 45) ──
 
   async requestAccess(tenantId: string, user: User, id: string, reason: string | null) {
@@ -292,10 +326,13 @@ export class SupportConciergeService implements OnModuleInit, OnModuleDestroy {
       if (!d.projectId || !(await this.repo.projectVisibleTo(tenantId, user.userId, user.role, d.projectId))) {
         throw AppException.validation('Выберите проект, который вы сами можете открыть');
       }
+      // #4675: доступ — только по живому согласию с Политикой удалённой поддержки
+      const consent = await this.consents.activeRemote(tenantId, user.userId, id);
+      if (!consent) throw AppException.forbidden(REMOTE_CONSENT_REQUIRED);
       await this.repo.decideGrant(grantId, { status: 'granted', by: user.userId, projectId: d.projectId, minutes: ACCESS_MINUTES });
       await this.security.record({
         tenantId, actorId: user.userId, event: 'support.access.granted', resourceType: 'project', resourceId: d.projectId,
-        targetUserId: g.support_user_id, metadata: { conversationId: id, minutes: ACCESS_MINUTES },
+        targetUserId: g.support_user_id, metadata: { conversationId: id, minutes: ACCESS_MINUTES, consentId: consent.id },
       }).catch(() => undefined);
     } else {
       await this.repo.decideGrant(grantId, { status: 'declined', by: user.userId });

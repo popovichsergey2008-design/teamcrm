@@ -41,13 +41,13 @@ describe('ТЗ-2 — план на день (e2e)', () => {
 
   it('план ставит исполнитель, срок при этом не меняется', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Plan', email: `p_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Plan', email: `p_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
 
     const memEmail = `p_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Пётр', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Пётр', password: 'memberpass1' }).expect(201);
     const mem = (await http.post('/api/auth/login').send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
 
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'План' }).expect(201)).body.data;
@@ -85,7 +85,7 @@ describe('ТЗ-2 — план на день (e2e)', () => {
 
   it('вчерашнее незакрытое попадает в хвосты, сегодняшнее — нет', async () => {
     const a = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Tails', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' })
+      .send({ acceptPrivacy: true, tenantName: 'Tails', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' })
       .expect(201)).body.data;
     const tok = a.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Хвосты' }).expect(201)).body.data;

@@ -5,6 +5,7 @@ import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { getSocket } from './lib/socket';
 import { LoginPage } from './pages/LoginPage';
+import { legalKindOf } from './legal';
 import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { FocusPage } from './pages/FocusPage';
@@ -71,6 +72,8 @@ import { promptText } from './components/ui/dialog';
 */
 const GuestMeetPage = lazy(() => import('./pages/GuestMeetPage').then((m) => ({ default: m.GuestMeetPage })));
 const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ default: m.GetAppPage })));
+// #4675: политики — публичные страницы, до входа и после
+const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
 const TaskBatchPage = lazy(() => import('./pages/TaskBatchPage').then((m) => ({ default: m.TaskBatchPage })));
 // Клиенты (ТЗ-17) — отдельным куском: пока раздел только в сборке для dev
 const ClientsPage = lazy(() => import('./pages/clients/ClientsPage').then((m) => ({ default: m.ClientsPage })));
@@ -582,6 +585,9 @@ export function App() {
   if (guestMeetToken) return <Suspense fallback={pageFallback}><GuestMeetPage token={guestMeetToken} /></Suspense>;
   // «Скачать приложение» — тоже до входа: ссылку присылают новому сотруднику (волна 12).
   if (window.location.pathname.replace(/\/+$/, '') === '/get') return <Suspense fallback={pageFallback}><GetAppPage /></Suspense>;
+  // Политики (#4675) — тоже до входа: на них ведёт галочка формы регистрации.
+  const legalKind = legalKindOf(window.location.pathname);
+  if (legalKind) return <Suspense fallback={pageFallback}><LegalPage kind={legalKind} /></Suspense>;
 
   if (inviteToken) return <Suspense fallback={null}><AcceptInvitePage token={inviteToken} /></Suspense>;
   if (joinToken) return <Suspense fallback={null}><JoinOrgPage token={joinToken} /></Suspense>;

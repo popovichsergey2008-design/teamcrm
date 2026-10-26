@@ -36,7 +36,7 @@ describe('шаблоны задач (e2e)', () => {
 
   it('шаблон забирает из задачи содержимое, а срок — относительным', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'TPL', email: `tpl_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'TPL', email: `tpl_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
@@ -75,7 +75,7 @@ describe('шаблоны задач (e2e)', () => {
 
   it('второй шаблон с тем же именем не заводится — человек не поймёт, какой из них его', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'TPL2', email: `tpl2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'TPL2', email: `tpl2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;
@@ -91,7 +91,7 @@ describe('шаблоны задач (e2e)', () => {
 
   it('чужой шаблон не удалить, свой — да; прошедший срок относительным не становится', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'TPL3', email: `tpl3_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'TPL3', email: `tpl3_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const mateEmail = `tpl3_m_${uniq()}@t.test`;
@@ -125,7 +125,7 @@ describe('шаблоны задач (e2e)', () => {
 
   it('счётчик использований поднимает частые шаблоны наверх списка', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'TPL4', email: `tpl4_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'TPL4', email: `tpl4_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;

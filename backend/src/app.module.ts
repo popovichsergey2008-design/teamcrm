@@ -45,6 +45,7 @@ import { TaskCardModule } from './modules/taskcard/taskcard.module';
 import { BeforeAfterModule } from './modules/before-after/before-after.module';
 import { ProjectHubModule } from './modules/project-hub/project-hub.module';
 import { TagsModule } from './modules/tags/tags.module';
+import { LegalModule } from './modules/legal/legal.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -101,6 +102,8 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
       }),
     }),
     DatabaseModule,
+    // #4675: журнал согласий с политиками — глобальный, до модулей, которые в него пишут
+    LegalModule,
     CacheModule,
     MessagingModule,
     HealthModule,

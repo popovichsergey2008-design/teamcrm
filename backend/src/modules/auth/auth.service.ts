@@ -21,6 +21,7 @@ import { AccountsRepository } from './accounts.repository';
 import { LoginDto, RegisterDto } from './auth.dto';
 import { QaSwitchRepository } from './qa-switch.repository';
 import { backRefusal } from './qa-switch.rules';
+import { PolicyConsentsService } from '../legal/policy-consents.service';
 
 interface TokenPair {
   accessToken: string;
@@ -54,6 +55,8 @@ export class AuthService {
     /** Базовый набор тегов новой организации: без него первый же фильтр пустой. */
     private readonly tags: TagsService,
     private readonly qa: QaSwitchRepository,
+    /** #4675: галочка Политики конфиденциальности — в журнал вместе с регистрацией. */
+    private readonly consents: PolicyConsentsService,
     /** #4615, 23.10: готовые должности новой компании (Генеральный директор, Руководитель отдела…). */
     @Optional() private readonly org?: OrgService,
   ) {}
@@ -72,6 +75,7 @@ export class AuthService {
    * E-mail уникален глобально (одна личность = один аккаунт).
    */
   async register(dto: RegisterDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+    PolicyConsentsService.assertPrivacy(dto.acceptPrivacy);
     if (await this.accounts.findByEmail(dto.email)) {
       throw AppException.conflict('Пользователь с таким email уже зарегистрирован — войдите и создайте организацию в кабинете');
     }
@@ -86,6 +90,11 @@ export class AuthService {
          SELECT $1, $2, $3, $4, r.id, $5 FROM roles r WHERE r.code = 'owner'
          RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
         [tenant.id, dto.email, passwordHash, dto.fullName, account.id],
+      );
+      // согласие — в той же транзакции: аккаунта без записи о нём быть не должно
+      await this.consents.record(
+        { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: { flow: 'register' } },
+        meta, client,
       );
       return res.rows[0];
     });
@@ -155,6 +164,8 @@ export class AuthService {
     tenantName: string,
     link?: (accountId: string, client: PoolClient) => Promise<void>,
     meta?: SessionMeta,
+    /** Откуда пришёл человек — в журнал согласия (#4675); галочку проверяет вызывающий. */
+    consentFlow = 'social',
   ): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
     if (await this.accounts.findByEmail(email)) {
       throw AppException.conflict('Пользователь с таким email уже зарегистрирован — войдите и привяжите вход в профиле');
@@ -170,6 +181,10 @@ export class AuthService {
          SELECT $1, $2, $3, $4, r.id, $5 FROM roles r WHERE r.code = 'owner'
          RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
         [tenant.id, email, passwordHash, fullName, account.id],
+      );
+      await this.consents.record(
+        { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: { flow: consentFlow } },
+        meta, client,
       );
       return res.rows[0];
     });

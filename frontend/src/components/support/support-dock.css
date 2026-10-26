@@ -271,6 +271,9 @@
 .support-quick-btn:hover { border-color: var(--accent); }
 .support-quick-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .support-quick-btn svg { flex: 0 0 auto; color: var(--accent); }
+/* #4675: удалённая помощь — отдельной строкой под тремя кнопками, видна и в открытом разговоре */
+.support-remote { flex: 0 0 auto; padding: 6px 10px 0; }
+.support-remote .support-quick-btn { padding: 6px 12px; }
 
 /* Голос первым (п. 2.3): крупная акцентная кнопка; запись — пульсом */
 .support-mic {

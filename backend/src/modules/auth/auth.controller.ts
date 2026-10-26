@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Headers, Ip, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AuthService, SessionMeta } from './auth.service';
@@ -40,6 +40,8 @@ class GoogleLoginDto {
   @IsString() @MaxLength(4096) idToken!: string;
   /** Название организации приходит вторым заходом — когда человек пришёл впервые. */
   @IsOptional() @IsString() @MaxLength(160) tenantName?: string;
+  /** #4675: галочка Политики конфиденциальности — нужна, когда заводится новый аккаунт. */
+  @IsOptional() @IsBoolean() acceptPrivacy?: boolean;
 }
 class TelegramLoginDto {
   /** Виджет Telegram отдаёт произвольный набор полей: их состав задаёт он, не мы. */
@@ -93,7 +95,7 @@ export class AuthController {
   @Public()
   @Post('auth/google')
   google(@Body() dto: GoogleLoginDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
-    return this.social.google(dto.idToken, dto.tenantName, this.meta(ua, ip));
+    return this.social.google(dto.idToken, dto.tenantName, this.meta(ua, ip), dto.acceptPrivacy);
   }
 
   @Public()

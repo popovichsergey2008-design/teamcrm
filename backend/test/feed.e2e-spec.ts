@@ -36,7 +36,7 @@ describe('Новости (e2e)', () => {
   afterAll(async () => { await app?.close(); });
 
   const org = async (name: string) => (await http$.post('/api/auth/register')
-    .send({ tenantName: name, email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+    .send({ acceptPrivacy: true, tenantName: name, email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
     .expect(201)).body.data;
 
   const employee = async (ownerToken: string, name = 'Сотрудник', role = 'member') => {

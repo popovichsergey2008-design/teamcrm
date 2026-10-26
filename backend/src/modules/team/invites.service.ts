@@ -1,3 +1,4 @@
+import { ConsentMeta, PolicyConsentsService } from '../legal/policy-consents.service';
 import { Injectable } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { AppException } from '../../common/http/app-exception';
@@ -13,6 +14,7 @@ export class InvitesService {
     private readonly repo: InvitesRepository,
     private readonly users: UsersService,
     private readonly notify: NotificationsService,
+    private readonly consents: PolicyConsentsService,
   ) {}
 
   private sha256(v: string) {
@@ -106,7 +108,8 @@ export class InvitesService {
   }
 
   /** Принять приглашение: одноразово, с истечением; создаёт пользователя. */
-  async accept(input: { token: string; fullName: string; password: string }) {
+  async accept(input: { token: string; fullName: string; password: string; acceptPrivacy?: boolean }, meta?: ConsentMeta) {
+    PolicyConsentsService.assertPrivacy(input.acceptPrivacy);
     const invite = await this.repo.findValidByHash(this.sha256(input.token));
     if (!invite) throw AppException.unauthorized('Приглашение недействительно или истекло');
 
@@ -119,6 +122,10 @@ export class InvitesService {
           role: invite.role_code as any, positionId: invite.position_id,
         });
     await this.repo.markAccepted(invite.id);
+    await this.consents.record({
+      tenantId: invite.tenant_id, userId: created.user.id, policy: 'privacy',
+      context: { flow: 'invite', usedExistingAccount: created.usedExistingAccount },
+    }, meta);
     await this.users.rememberJoined(String(invite.tenant_id), String(created.user.id)).catch(() => undefined);
     // usedExistingAccount: аккаунт уже был — заданный сейчас пароль не применён,
     // человек входит прежним. Фронт обязан показать это, а не рапортовать «аккаунт создан».
@@ -164,7 +171,8 @@ export class InvitesService {
   }
 
   /** Вступить по многоразовой ссылке: человек вводит свой email/имя/пароль → создаётся участник. */
-  async acceptLink(input: { token: string; email: string; fullName: string; password: string }) {
+  async acceptLink(input: { token: string; email: string; fullName: string; password: string; acceptPrivacy?: boolean }, meta?: ConsentMeta) {
+    PolicyConsentsService.assertPrivacy(input.acceptPrivacy);
     const link = await this.repo.findActiveLinkByHash(this.sha256(input.token));
     if (!link) throw AppException.unauthorized('Ссылка недействительна, истекла или исчерпана');
     const created = await this.users.createUser(link.tenant_id, {
@@ -172,6 +180,10 @@ export class InvitesService {
       role: link.role_code as any, positionId: link.position_id,
     });
     await this.repo.incrementLinkUses(link.id);
+    await this.consents.record({
+      tenantId: link.tenant_id, userId: created.user.id, policy: 'privacy',
+      context: { flow: 'invite_link', usedExistingAccount: created.usedExistingAccount },
+    }, meta);
     await this.users.rememberJoined(String(link.tenant_id), String(created.user.id)).catch(() => undefined);
     return { accepted: true, user: created.user, usedExistingAccount: created.usedExistingAccount };
   }

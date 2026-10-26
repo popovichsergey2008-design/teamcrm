@@ -50,7 +50,7 @@ describe('Итоги клиенту в Telegram (e2e)', () => {
 
   async function org() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Студия Луч', email: `ctg_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Петров' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Студия Луч', email: `ctg_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Петров' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `ctgm_${uniq()}@t.test`;
     await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);

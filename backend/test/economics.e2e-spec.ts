@@ -63,7 +63,7 @@ describe('TEAMCRM Этап 2 — Unit-Economics (e2e)', () => {
 
     const reg = await http
       .post('/api/auth/register')
-      .send({ tenantName: 'Econ', email: `o_${uniq()}@e.test`, password: 'password123', fullName: 'Owner' })
+      .send({ acceptPrivacy: true, tenantName: 'Econ', email: `o_${uniq()}@e.test`, password: 'password123', fullName: 'Owner' })
       .expect(201);
     token = reg.body.data.accessToken;
     tenantId = reg.body.data.user.tenantId;

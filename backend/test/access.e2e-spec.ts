@@ -34,7 +34,7 @@ describe('Доступ к закрытым проектам (e2e)', () => {
 
   it('сотрудник вне закрытого проекта не находит, не открывает и не скачивает его данные', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Доступ', email: `acc_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Доступ', email: `acc_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `accm_${uniq()}@t.test`;

@@ -53,14 +53,14 @@ describe('планирование задачи: назначение и сро�
    */
   const team = async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Plan', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Plan', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
 
     const email = `pl_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(owner.accessToken))
       .send({ email, role: 'member' }).expect(201)).body.data;
     await http.post('/api/invites/accept')
-      .send({ token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
+      .send({ acceptPrivacy: true, token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
     const member = (await http.post('/api/auth/login')
       .send({ email, password: 'memberpass1' }).expect(201)).body.data;
 

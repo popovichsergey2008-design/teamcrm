@@ -36,7 +36,7 @@ describe('онбординг владельца (e2e)', () => {
 
   const owner = async (prefix: string) => {
     const data = (await http.post('/api/auth/register')
-      .send({ tenantName: prefix, email: `${prefix}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: prefix, email: `${prefix}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     return H(data.accessToken);
   };

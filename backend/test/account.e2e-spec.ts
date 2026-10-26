@@ -17,7 +17,7 @@ describe('Enhancements v1 — Account (e2e)', () => {
   async function register() {
     const r = await http
       .post('/api/auth/register')
-      .send({ tenantName: 'Acc', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'User' })
+      .send({ acceptPrivacy: true, tenantName: 'Acc', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'User' })
       .expect(201);
     return { token: r.body.data.accessToken, refresh: r.body.data.refreshToken, email: r.body.data.user.email };
   }

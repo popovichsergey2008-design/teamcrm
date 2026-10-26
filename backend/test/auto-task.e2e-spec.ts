@@ -39,7 +39,7 @@ describe('Автоматическая постановка задачи (e2e)',
 
   it('задача уходит руководителю отдела, через 30 с — сообщение, «Ок» подтверждает', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Авто', email: `auto_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Авто', email: `auto_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const person = async (fullName: string, skills: string[]) => {
       const u = (await http$.post('/api/users').set(O)
@@ -123,7 +123,7 @@ describe('Автоматическая постановка задачи (e2e)',
 
   it('руководитель не видит проект — следующий из отдела; невидящего назначить нельзя; правку видно', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Авто2', email: `auto2_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Авто2', email: `auto2_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const person = async (fullName: string, skills: string[]) => {
       const u = (await http$.post('/api/users').set(O)
@@ -173,7 +173,7 @@ describe('Автоматическая постановка задачи (e2e)',
   */
   it('структура через API → авто-постановка и форма уходят руководителю; роли; самому себе не ставит', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Орг', email: `org_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Орг', email: `org_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     // готовые должности новой компании — с уровнями
     const positions = (await http$.get('/api/positions').set(O).expect(200)).body.data;
@@ -246,7 +246,7 @@ describe('Автоматическая постановка задачи (e2e)',
 
   it('теги без подтверждения; «Кто отвечает за…» в сообщении; обучение на правках', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Орг2', email: `org2_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Орг2', email: `org2_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const person = async (fullName: string, skills: string[]) => {
       const u = (await http$.post('/api/users').set(O)
@@ -310,7 +310,7 @@ describe('Автоматическая постановка задачи (e2e)',
   */
   it('форма «Новая задача» голосом: подтверждение «от вас» с источником, без дублей и только своё', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Форма', email: `form_${uniq()}@t.test`, password: 'password123', fullName: 'Вера Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Форма', email: `form_${uniq()}@t.test`, password: 'password123', fullName: 'Вера Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const site = (await http$.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
     const task = (await http$.post('/api/tasks').set(O)
@@ -322,7 +322,7 @@ describe('Автоматическая постановка задачи (e2e)',
 
     // чужая компания свою задачу не подсунет
     const other = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Чужие', email: `other_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `other_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.post('/api/nl/confirm-later').set(H(other.accessToken)).send({ taskId: String(task.id) }).expect(404);
 
     const T = (await db.one<{ t: string }>(`SELECT tenant_id::text AS t FROM tasks WHERE id=$1`, [task.id]))!.t;

@@ -37,7 +37,7 @@ describe('слой безопасности (e2e)', () => {
 
   it('права, ограничение сотрудника, контакты и корзина', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Сейф', email: `sec_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Сейф', email: `sec_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 

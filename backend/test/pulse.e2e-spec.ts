@@ -31,7 +31,7 @@ describe('Пульс команды (e2e)', () => {
 
   it('сводка, права, действия, балансировка, обратная связь', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Pulse', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Pulse', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const tenantId = String(owner.user.tenantId);
     const mk = async (name: string) => {

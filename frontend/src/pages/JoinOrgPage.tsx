@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { api, ApiError } from '../lib/api';
 import { roleLabel } from '../lib/labels';
+import { PolicyCheck } from '../components/legal/PolicyCheck';
 
 /** Вступление в организацию по многоразовой ссылке (/?join=<token>): человек вводит свой e-mail/имя/пароль. */
 export function JoinOrgPage({ token }: { token: string }) {
@@ -11,6 +12,7 @@ export function JoinOrgPage({ token }: { token: string }) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState<{ usedExistingAccount: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,7 @@ export function JoinOrgPage({ token }: { token: string }) {
     setError('');
     setBusy(true);
     try {
-      const r = await api.acceptInviteLink({ token, email, fullName, password });
+      const r = await api.acceptInviteLink({ token, email, fullName, password, acceptPrivacy: agreed });
       setDone({ usedExistingAccount: !!r?.usedExistingAccount });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Не удалось вступить');
@@ -77,8 +79,9 @@ export function JoinOrgPage({ token }: { token: string }) {
               <label>Пароль</label>
               <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
             </div>
+            <PolicyCheck checked={agreed} onChange={setAgreed} />
             <div className="error-text">{error}</div>
-            <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || !info} type="submit">
+            <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || !info || !agreed} type="submit">
               {busy ? '...' : 'Вступить и создать аккаунт'}
             </button>
           </>

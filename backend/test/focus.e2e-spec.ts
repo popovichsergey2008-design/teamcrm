@@ -36,7 +36,7 @@ describe('ТЗ-2 — фокус и AI Секретарь (e2e)', () => {
 
   const register = async () => {
     const r = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Focus', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Focus', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     return r.accessToken as string;
   };

@@ -41,14 +41,14 @@ describe('ТЗ-2 — поиск (e2e)', () => {
     const marker = uniq(); // уникальное слово: в общей базе тестов ничего лишнего не подцепим
 
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Search', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Search', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
 
     // второй сотрудник — он в общий чат не входит
     const memEmail = `s_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Пётр Сотрудник', password: 'memberpass1' }).expect(201);
     const mem = (await http.post('/api/auth/login').send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
     const memTok = mem.accessToken;
 
@@ -87,7 +87,7 @@ describe('ТЗ-2 — поиск (e2e)', () => {
 
   it('слишком короткий запрос ничего не ищет', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Search2', email: `s2_${uniq()}@t.test`, password: 'password123', fullName: 'К' })
+      .send({ acceptPrivacy: true, tenantName: 'Search2', email: `s2_${uniq()}@t.test`, password: 'password123', fullName: 'К' })
       .expect(201)).body.data;
     const empty = await find(owner.accessToken, 'а');
     expect(empty).toEqual({ query: 'а', tasks: [], projects: [], chats: [], messages: [], people: [], docs: [] });

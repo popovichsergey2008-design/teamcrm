@@ -42,7 +42,7 @@ describe('регулярные задачи (e2e)', () => {
 
   const setup = async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Rec', email: `rec_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Rec', email: `rec_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const project = (await http.post('/api/projects').set(H(owner.accessToken))
       .send({ name: `Проект ${uniq()}` }).expect(201)).body.data;

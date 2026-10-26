@@ -39,7 +39,7 @@ describe('Ответ ИИ в обсуждении задачи (e2e)', () => {
 
   it('спасибо правилами, без ключа — понятный текст, чужая задача — 404', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'ИИ-ответ', email: `air_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'ИИ-ответ', email: `air_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `airm_${uniq()}@t.test`;
@@ -83,7 +83,7 @@ describe('Ответ ИИ в обсуждении задачи (e2e)', () => {
 
     // задача другой компании — 404
     const alien = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Чужие', email: `aira_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `aira_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.post(`/api/tasks/${task.id}/ai-reply`).set(H(alien.accessToken)).send({ kind: 'thanks' }).expect(404);
   });
 });

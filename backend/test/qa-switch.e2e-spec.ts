@@ -34,7 +34,7 @@ describe('Вход как тестовый сотрудник (e2e)', () => {
 
   const register = async (tenantName: string, fullName: string) =>
     (await http$.post('/api/auth/register')
-      .send({ tenantName, email: `qa_${uniq()}@t.test`, password: 'password123', fullName }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName, email: `qa_${uniq()}@t.test`, password: 'password123', fullName }).expect(201)).body.data;
   const staff = async (token: string, fullName: string) =>
     (await http$.post('/api/users').set(H(token))
       .send({ email: `qas_${uniq()}@t.test`, fullName, password: 'password123', role: 'member' }).expect(201)).body.data;

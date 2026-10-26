@@ -35,7 +35,7 @@ describe('Почта секретаря (e2e)', () => {
 
   it('почтовики, защита своего сервера, письма видит только владелец ящика', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Mail', email: `ml_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Mail', email: `ml_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     const providers = (await http$.get('/api/mailbox/providers').set(O).expect(200)).body.data;

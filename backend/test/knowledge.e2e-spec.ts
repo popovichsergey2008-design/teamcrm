@@ -41,7 +41,7 @@ describe('Knowledge base (e2e)', () => {
   };
 
   it('регламент индексируется и находится семантическим поиском; изоляция по tenant', async () => {
-    const a = (await http.post('/api/auth/register').send({ tenantName: 'KB-A', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'KB-A', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' }).expect(201)).body.data;
     const tok = a.accessToken;
 
     await http.post('/api/regulations').set(H(tok)).send({
@@ -57,13 +57,13 @@ describe('Knowledge base (e2e)', () => {
     expect(hits.some((h: any) => h.sourceType === 'regulation' && /Пагинация/.test(h.title))).toBe(true);
 
     // другой арендатор НЕ видит чужие знания
-    const b = (await http.post('/api/auth/register').send({ tenantName: 'KB-B', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'KB-B', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
     const hitsB = (await http.get('/api/knowledge/search').query({ q: 'как решали пагинацию на недвижимости' }).set(H(b.accessToken)).expect(200)).body.data;
     expect(hitsB.length).toBe(0);
   });
 
   it('разрез по проекту: поиск в рамках проекта не выдаёт задачи другого проекта', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'KB-Scope', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'С' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'KB-Scope', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'С' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const pa = (await http.post('/api/projects').set(H(tok)).send({ name: 'Проект Альфа' }).expect(201)).body.data;
     const pb = (await http.post('/api/projects').set(H(tok)).send({ name: 'Проект Бета' }).expect(201)).body.data;
@@ -84,7 +84,7 @@ describe('Knowledge base (e2e)', () => {
   });
 
   it('содержимое вложенного файла попадает в поиск, а не только его имя', async () => {
-    const a = (await http.post('/api/auth/register').send({ tenantName: 'KB-File', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Фёдор' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'KB-File', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Фёдор' }).expect(201)).body.data;
     const tok = a.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Документы' }).expect(201)).body.data;
     const task = (await http.post('/api/tasks').set(H(tok)).send({ projectId: proj.id, title: 'Подписать бумаги' }).expect(201)).body.data;
@@ -112,7 +112,7 @@ describe('Knowledge base (e2e)', () => {
   });
 
   it('закрытая задача попадает в базу знаний (триггер закрытия)', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'KB-T', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Т' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'KB-T', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Т' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;

@@ -9,7 +9,7 @@ interface AuthState {
   organizations: OrgRef[];
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (b: { tenantName: string; email: string; password: string; fullName: string }) => Promise<void>;
+  register: (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean }) => Promise<void>;
   /** Принять готовую сессию: так заходят через Google и Telegram — пароля там нет. */
   applySession: (r: AuthResult) => void;
   logout: () => Promise<void>;
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizations(r.organizations ?? []);
   };
 
-  const register = async (b: { tenantName: string; email: string; password: string; fullName: string }) => {
+  const register = async (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean }) => {
     const r = await api.register(b);
     tokens.set(r.accessToken, r.refreshToken);
     setUser(r.user);

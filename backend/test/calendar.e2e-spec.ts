@@ -51,7 +51,7 @@ describe('Календарь (e2e)', () => {
 
   it('событие с участником: приглашение, ответ, видимость', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Календарь', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Календарь', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
 
     const mateEmail = `mate_${uniq()}@t.test`;
@@ -90,7 +90,7 @@ describe('Календарь (e2e)', () => {
 
   it('напоминания сохраняются, а файл встречи отдаётся календарём, а не конвертом', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Напоминания', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Напоминания', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
 
     // по умолчанию — три напоминания: за 5 минут, за 15 и за час
@@ -128,14 +128,14 @@ describe('Календарь (e2e)', () => {
 
     // чужому файл не отдаём
     const stranger = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Мимо', email: `x_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
+      .send({ acceptPrivacy: true, tenantName: 'Мимо', email: `x_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
       .expect(201)).body.data;
     await http$.get(`/api/calendar/events/${event.id}/ics`).set(H(stranger.accessToken)).expect(404);
   });
 
   it('на занятое время встречу не поставить, а отказ объясняет кто и когда занят', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Пересечения', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Пересечения', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const mateEmail = `mate_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
@@ -182,7 +182,7 @@ describe('Календарь (e2e)', () => {
 
   it('событие на весь день не запирает сутки, а правка не конфликтует сама с собой', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Весь день', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Весь день', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const mateEmail = `mate_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
@@ -216,7 +216,7 @@ describe('Календарь (e2e)', () => {
 
   it('приватное чужое событие видно как занятость без названия', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Приват', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Приват', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const otherEmail = `other_${uniq()}@t.test`;
     await http$.post('/api/users').set(H(owner.accessToken))
@@ -241,10 +241,10 @@ describe('Календарь (e2e)', () => {
 
   it('соседняя организация не видит ничего, а рядовой сотрудник не заводит событие компании', async () => {
     const a = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Своя', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Своя', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const b = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Чужая', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
+      .send({ acceptPrivacy: true, tenantName: 'Чужая', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
       .expect(201)).body.data;
 
     const event = (await http$.post('/api/calendar/events').set(H(a.accessToken))
@@ -269,7 +269,7 @@ describe('Календарь (e2e)', () => {
 
   it('рабочее время задаёт владелец, руководитель — нет', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Часы', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Часы', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const bossEmail = `boss_${uniq()}@t.test`;
     await http$.post('/api/users').set(H(owner.accessToken))
@@ -291,7 +291,7 @@ describe('Календарь (e2e)', () => {
 
   it('роль сотрудника меняет только владелец', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Права', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Основатель' })
+      .send({ acceptPrivacy: true, tenantName: 'Права', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Основатель' })
       .expect(201)).body.data;
 
     const bossEmail = `boss_${uniq()}@t.test`;
@@ -314,7 +314,7 @@ describe('Календарь (e2e)', () => {
 
   it('область видимости меняется при правке — и только тем, кому положено', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Видимость', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Видимость', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const memberEmail = `mem_${uniq()}@t.test`;
     await http$.post('/api/users').set(H(owner.accessToken))
@@ -351,7 +351,7 @@ describe('Календарь (e2e)', () => {
    */
   it('календарь отдаётся по секретной ссылке и отзывается её заменой', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Sync', email: `sync_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Sync', email: `sync_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
       .expect(201)).body.data;
 
     await http$.post('/api/calendar/events').set(H(owner.accessToken))

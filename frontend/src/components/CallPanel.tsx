@@ -589,9 +589,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
 
   // Звонок поддержки? Тогда — согласие перед показом и запись только с разрешения (ТЗ-29)
   useEffect(() => {
-    if (isGuest || state !== 'connected' || support) return;
+    if (state !== 'connected' || support) return;
+    // Гость по ссылке Службы заботы, но в этом браузере выполнен вход в CRM — это может
+    // быть сам обратившийся: тогда перед показом экрана нужно его согласие (#4675).
+    if (isGuest && !(supportGuest && tokens.access)) return;
     api.supportRoom(meetingId).then(setSupport).catch(() => setSupport({ support: false }));
-  }, [isGuest, state, meetingId, support]);
+  }, [isGuest, supportGuest, state, meetingId, support]);
   const pageMarks = marks.some((m) => m.page)
     ? createPortal(
       <div className="ptr-layer" aria-hidden="true">
@@ -635,7 +638,25 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
       на чувствительной странице — предупредить закрыть лишнее. Решает человек.
     */
     const risky = sensitiveRoute(window.location.pathname);
-    if (support?.support || risky) {
+    /*
+      #4675: показ экрана специалисту — удалённая помощь. Обратившийся соглашается с
+      Политикой удалённой поддержки; уже согласился на эту сессию (кнопкой в окне заботы
+      или раньше в этом созвоне) — второй раз не спрашиваем.
+    */
+    let consented = false;
+    if (support?.support && support.requester && support.conversationId) {
+      const { ensureRemoteConsent } = await import('./support/remote-consent');
+      const r = await ensureRemoteConsent(support.conversationId, 'screen', {
+        roomId: meetingId,
+        intro: [
+          'Вы покажете специалисту поддержки вкладку QEVO. Специалист не сможет управлять вашим компьютером — только видеть и подсвечивать.',
+          risky ? 'На этой странице могут быть ключи, пароли или оплата — закройте их перед показом.' : '',
+        ].filter(Boolean).join(' '),
+      });
+      if (!r) return;
+      consented = r === 'given';
+    }
+    if (!consented && (support?.support || risky)) {
       const ok = await confirmAction({
         title: 'Показать экран?',
         description: [
@@ -677,7 +698,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
       diag('meet', 'screen.cancelled', meetingId, { error: (e as Error)?.name ?? (e as Error)?.message });
       setErr('Демонстрация экрана отменена');
     }
-  }, [screenOn, meetingId, stopScreen, support?.support, supportGuest]);
+  }, [screenOn, meetingId, stopScreen, support?.support, support?.requester, support?.conversationId, supportGuest]);
 
   /*
     Звук к уху, как в Телеграме (задача #1464). Chromium в приложении при звонке сам

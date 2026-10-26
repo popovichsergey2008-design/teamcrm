@@ -21,7 +21,7 @@ describe('Enhancements v1 — Files (e2e)', () => {
   async function reg(): Promise<string> {
     const r = await http
       .post('/api/auth/register')
-      .send({ tenantName: 'Files', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'U' })
+      .send({ acceptPrivacy: true, tenantName: 'Files', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'U' })
       .expect(201);
     return r.body.data.accessToken;
   }

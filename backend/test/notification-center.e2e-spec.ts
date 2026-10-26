@@ -55,7 +55,7 @@ describe('Центр уведомлений (e2e)', () => {
 
   it('история по задаче: исполнителю, наблюдателю и упомянутому — да, автору — нет; фильтры, поиск, прочтение', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Центр', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Ким' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Центр', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Ким' }).expect(201)).body.data;
     const O = owner.accessToken;
     const ivan = await member(O, 'Иван Петров');
     const gleb = await member(O, 'Глеб Смирнов');
@@ -121,7 +121,7 @@ describe('Центр уведомлений (e2e)', () => {
 
   it('смена исполнителя и срока: новому — «назначил вас», прежнему — «передал»; листание истории', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Центр-2', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Центр-2', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
     const O = owner.accessToken;
     const ivan = await member(O, 'Иван');
     const petr = await member(O, 'Пётр');
@@ -151,7 +151,7 @@ describe('Центр уведомлений (e2e)', () => {
 
     // в другой компании этих записей не видно
     const stranger = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Чужие', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
     expect((await center(stranger.accessToken)).items).toEqual([]);
     await http.get('/api/notifications/center?category=spam').set(H(petr.tok)).expect(400);
   });

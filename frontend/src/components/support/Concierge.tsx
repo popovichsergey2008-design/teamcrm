@@ -143,6 +143,18 @@ export function ConciergeCards({ conv, mine, onChange }: { conv: SupportConversa
     finally { setBusy(false); }
   };
 
+  /** #4675: доступ на 15 минут — только с согласием с Политикой удалённой поддержки (на сессию — один раз). */
+  const allowAccess = async (grantId: string) => {
+    // окно согласия и текст политики — отдельным куском: нужны редко
+    const { ensureRemoteConsent } = await import('./remote-consent');
+    const ready = await ensureRemoteConsent(conv.id, 'access', {
+      grantId,
+      intro: 'Специалист поддержки просит посмотреть настройки выбранного проекта на 15 минут — колонки и участников, без задач, файлов и переписки.',
+    });
+    if (!ready) return;
+    void run(() => api.supportDecideAccess(conv.id, grantId, true, pick));
+  };
+
   const res = conv.resolution;
   const callLive = (conv.messages ?? []).some((m) => m.kind === 'system' && /Созвон начат/.test(m.body ?? '')) && !res;
 
@@ -200,7 +212,7 @@ export function ConciergeCards({ conv, mine, onChange }: { conv: SupportConversa
               <option value="">Какой проект?</option>
               {(projects ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy || !pick} onClick={() => void run(() => api.supportDecideAccess(conv.id, g.id, true, pick))}>Разрешить на 15 минут</button>
+            <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy || !pick} onClick={() => void allowAccess(g.id)}>Разрешить на 15 минут</button>
             <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void run(() => api.supportDecideAccess(conv.id, g.id, false))}>Не разрешать</button>
           </div>
         </div>

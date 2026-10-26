@@ -40,7 +40,7 @@ describe('воронка онбординга (e2e)', () => {
 
   const owner = async (tag: string) => {
     const data = (await http.post('/api/auth/register')
-      .send({ tenantName: tag, email: `${tag}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: tag, email: `${tag}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     return { data, H: H(data.accessToken) };
   };

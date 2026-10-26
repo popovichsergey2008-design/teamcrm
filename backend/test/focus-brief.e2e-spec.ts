@@ -36,13 +36,13 @@ describe('ТЗ-27 — брифинг «Фокуса дня» (e2e)', () => {
 
   it('снимок, тройка, источники, права, «Взять в работу», настройки', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Brief', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Петров' })
+      .send({ acceptPrivacy: true, tenantName: 'Brief', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Петров' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
     const me = owner.user.id;
     const memEmail = `b_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Анна', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Анна', password: 'memberpass1' }).expect(201);
     const mem = (await http.post('/api/auth/login').send({ email: memEmail, password: 'memberpass1' }).expect(201)).body.data;
 
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Секретный' }).expect(201)).body.data;

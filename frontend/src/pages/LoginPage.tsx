@@ -3,6 +3,7 @@ import { useAuth } from '../state/auth';
 import { Logo } from '../components/Logo';
 import { ApiError } from '../lib/api';
 import { SocialButtons } from '../components/SocialButtons';
+import { PolicyCheck } from '../components/legal/PolicyCheck';
 
 export function LoginPage() {
   const { login, register } = useAuth();
@@ -11,6 +12,8 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [tenantName, setTenantName] = useState('');
   const [fullName, setFullName] = useState('');
+  /** #4675: согласие с Политикой конфиденциальности — только для регистрации. */
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -20,7 +23,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       if (mode === 'login') await login(email, password);
-      else await register({ tenantName, email, password, fullName });
+      else await register({ tenantName, email, password, fullName, acceptPrivacy: agreed });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Что-то пошло не так');
     } finally {
@@ -69,14 +72,16 @@ export function LoginPage() {
           />
         </div>
 
+        {mode === 'register' && <PolicyCheck checked={agreed} onChange={setAgreed} />}
+
         <div className="error-text">{error}</div>
 
-        <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy} type="submit">
+        <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || (mode === 'register' && !agreed)} type="submit">
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}
         </button>
 
         {/* Кнопки провайдеров появятся, только когда на сервере будут ключи. */}
-        <SocialButtons />
+        <SocialButtons acceptPrivacy={agreed} onAcceptPrivacy={setAgreed} />
 
         {/* писем система не шлёт, поэтому честно: ссылку на смену пароля выдаёт владелец */}
         {mode === 'login' && (

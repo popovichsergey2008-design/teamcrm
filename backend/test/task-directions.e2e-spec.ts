@@ -36,7 +36,7 @@ describe('Направления задачи (e2e)', () => {
 
   it('направления хранятся у задачи, автоподбор отдаёт задачу человеку нужного направления', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Dir', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Dir', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
@@ -87,7 +87,7 @@ describe('Направления задачи (e2e)', () => {
 
   it('ТЗ по пунктам раздаётся разным специалистам, а направления доходят до задачи', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'DirTz', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DirTz', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const person = async (fullName: string, skills: string[]) => {

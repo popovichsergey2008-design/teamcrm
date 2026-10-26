@@ -38,7 +38,7 @@ describe('импорт из файла (e2e)', () => {
   const team = async () => {
     const email = `imp_${uniq()}@t.test`;
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Imp', email, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Imp', email, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     return { owner, email };
   };

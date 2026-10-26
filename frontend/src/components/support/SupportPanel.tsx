@@ -63,6 +63,8 @@ const QUICK = [
   'Видео-созвон Huddle с показом экрана за 20 сек',
   'Помочь настроить ИИ-секретаря, доску или пригласить команду',
 ] as const;
+/** #4675: кнопка удалённой помощи — текст из задачи заказчика дословно. */
+const REMOTE_HELP = 'Получить помощь по ТП через удалённый доступ';
 
 /** Что окно сообщает островку: кто ведёт разговор, прогресс и пришло ли новое. */
 export interface PanelInfo { agent: string | null; progress: CareProgress | null; lastIncoming: string | null }
@@ -495,6 +497,32 @@ export default function SupportPanel({ embedded = false, request, open: openProp
   const quick = async (label: string) => {
     if (!conv || conv.status === 'closed') await send(label);
     if (label === QUICK[1]) await askCallRef.current?.();
+  };
+
+  /**
+   * «Получить помощь по ТП через удалённый доступ» (#4675).
+   *
+   * Сначала — окно с Политикой удалённой поддержки и галочкой: без согласия ничего не
+   * происходит. После «Разрешить доступ» — согласие в журнал (с номером обращения) и
+   * прежний сценарий: просьба о созвоне, где человек покажет вкладку QEVO специалисту.
+   * Обращения ещё нет — заводим его текстом кнопки, как три кнопки выше.
+   */
+  const remoteHelp = async () => {
+    const { askRemoteConsent, giveRemoteConsent } = await import('./remote-consent');
+    const ok = await askRemoteConsent({
+      accept: async () => {
+        let c = convRef.current;
+        if (!c || c.status === 'closed') {
+          await send(REMOTE_HELP);
+          c = convRef.current;
+        }
+        if (!c || c.status === 'closed') throw new Error('Не получилось начать обращение — попробуйте ещё раз');
+        await giveRemoteConsent(c.id, 'button');
+      },
+    });
+    if (!ok) return;
+    void load();
+    await askCallRef.current?.();
   };
 
   const attach = async (file: File) => {
@@ -1278,6 +1306,14 @@ export default function SupportPanel({ embedded = false, request, open: openProp
                       <Icon name={i === 0 ? 'upload' : i === 1 ? 'video' : 'sparkles'} size={14} /> {q}
                     </button>
                   ))}
+                </div>
+              )}
+              {/* #4675: удалённая помощь — только по согласию с Политикой удалённой поддержки */}
+              {mineConversation && !embedded && (
+                <div className="support-remote">
+                  <button type="button" className="support-quick-btn" disabled={busy} onClick={() => void remoteHelp()}>
+                    <Icon name="shield" size={14} /> {REMOTE_HELP}
+                  </button>
                 </div>
               )}
               <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="support-voice" />

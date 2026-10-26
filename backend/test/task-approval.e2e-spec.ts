@@ -41,13 +41,13 @@ describe('Согласование завершения (e2e)', () => {
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Согласование', email: `ap_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик' })
+      .send({ acceptPrivacy: true, tenantName: 'Согласование', email: `ap_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик' })
       .expect(201)).body.data;
     ownerTok = owner.accessToken;
 
     const email = `ap_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(ownerTok)).send({ email, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Исполнитель', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Исполнитель', password: 'memberpass1' }).expect(201);
     const mem = (await http.post('/api/auth/login').send({ email, password: 'memberpass1' }).expect(201)).body.data;
     memberTok = mem.accessToken;
     memberId = mem.user.id;

@@ -36,7 +36,7 @@ describe('Волшебная палочка в чатах (e2e)', () => {
 
   async function setup() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Палочка', email: `w_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Палочка', email: `w_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `wg_${uniq()}@t.test`;
     const gleb = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб Орлов', password: 'password123', role: 'member' }).expect(201)).body.data;

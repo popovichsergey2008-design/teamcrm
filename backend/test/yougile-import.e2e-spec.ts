@@ -65,7 +65,7 @@ describe('YouGile импорт (e2e)', () => {
 
   it('подключение → импорт доски: проект/колонки/задачи, исполнитель по e-mail, срок, идемпотентность', async () => {
     const email = `yg_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ tenantName: 'YG', email, password: 'password123', fullName: 'Owner' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'YG', email, password: 'password123', fullName: 'Owner' }).expect(201)).body.data;
     const tok = reg.accessToken;
 
     // мок-данные YouGile: пользователь с тем же e-mail (для авто-маппинга исполнителя)
@@ -223,7 +223,7 @@ describe('YouGile импорт (e2e)', () => {
 
   it('неверный ключ YouGile → 400 при подключении', async () => {
     const email = `yg2_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ tenantName: 'YG2', email, password: 'password123', fullName: 'O' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'YG2', email, password: 'password123', fullName: 'O' }).expect(201)).body.data;
     // мок вернёт 401 на /users, если сходить на несуществующий путь — эмулируем неверный ключ через отдельный base
     const prev = process.env.YOUGILE_API_BASE;
     process.env.YOUGILE_API_BASE = 'http://127.0.0.1:1/api-v2'; // недоступный адрес → validate падает

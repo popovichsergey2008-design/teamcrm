@@ -29,7 +29,7 @@ describe('Enhancements v1 — Project delete (e2e)', () => {
   afterAll(async () => app?.close());
 
   it('owner удаляет проект с задачами (каскад) — он исчезает из списка', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Del', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Оля' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Del', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Оля' }).expect(201)).body.data;
     const tok = reg.accessToken;
 
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'На удаление' }).expect(201)).body.data;
@@ -49,18 +49,18 @@ describe('Enhancements v1 — Project delete (e2e)', () => {
   });
 
   it('проект удаляет и сотрудник; чужой/несуществующий — 404', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Del2', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Del2', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Защищённый' }).expect(201)).body.data;
 
     // приглашаем рядового участника
     const memberEmail = `m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memberEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201);
     const mLogin = (await http.post('/api/auth/login').send({ email: memberEmail, password: 'memberpass1' }).expect(201)).body.data;
 
     // другая организация не видит проект → 404, и это важнее любых ролей внутри своей
-    const other = (await http.post('/api/auth/register').send({ tenantName: 'Other', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+    const other = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Other', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
     await http.delete(`/api/projects/${proj.id}`).set(H(other.accessToken)).expect(404);
 
     // Удаление проекта открыто сотрудникам — решение заказчика. От случайности
@@ -78,7 +78,7 @@ describe('Enhancements v1 — Project delete (e2e)', () => {
   */
   it('порядок досок: перетаскивание, основные первыми, возврат к умолчанию', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Порядок', email: `ord_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Порядок', email: `ord_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
 

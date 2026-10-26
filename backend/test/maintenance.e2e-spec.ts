@@ -42,7 +42,7 @@ describe('Уборка брошенного (e2e)', () => {
 
   const org = async (name: string) => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: name, email: `z_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: name, email: `z_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     const email = `z_m_${uniq()}@t.test`;
     await http.post('/api/users').set(H(owner.accessToken))

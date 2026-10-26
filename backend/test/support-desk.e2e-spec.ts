@@ -57,7 +57,7 @@ describe('служба заботы (e2e)', () => {
   /** Владелец (он же дежурный по умолчанию) и сотрудник, которому нужна помощь. */
   const team = async (tag: string) => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: tag, email: `${tag}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: tag, email: `${tag}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const email = `${tag}_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))

@@ -32,7 +32,7 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
     board.columns.flatMap((c: any) => c.tasks).find((t: any) => String(t.id) === String(id));
 
   it('создатель становится руководителем; назначение исполнителя видно на доске', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Roles', email: `r_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Roles', email: `r_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
     const board0 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
@@ -59,12 +59,12 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
   });
 
   it('создание задачи с явными исполнителем и руководителем (форма)', async () => {
-    const owner = (await http.post('/api/auth/register').send({ tenantName: 'Form', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Руководитель Р' }).expect(201)).body.data;
+    const owner = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Form', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Руководитель Р' }).expect(201)).body.data;
     const tok = owner.accessToken;
     // приглашаем исполнителя
     const exec = `e_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: exec, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Исполнитель И', password: 'execpass12' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Исполнитель И', password: 'execpass12' }).expect(201);
     const users = (await http.get('/api/users').set(H(tok)).expect(200)).body.data;
     const execId = users.find((u: any) => u.email === exec).id;
     const ownerId = users.find((u: any) => u.email !== exec).id;
@@ -83,7 +83,7 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
   });
 
   it('форма создания задаёт приоритет, срок, оценку и метки одним запросом', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Full', email: `u_${uniq()}@t.test`, password: 'password123', fullName: 'Полная Форма' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Full', email: `u_${uniq()}@t.test`, password: 'password123', fullName: 'Полная Форма' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
     const board0 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
@@ -119,7 +119,7 @@ describe('Enhancements v1 — Task roles (e2e)', () => {
   });
 
   it('удаление задачи: уносит её спутников, но не трогает задачи с учтённым временем', async () => {
-    const reg = (await http.post('/api/auth/register').send({ tenantName: 'Del', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Удаляющий' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Del', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Удаляющий' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'П' }).expect(201)).body.data;
     const col = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data.columns[0].id;

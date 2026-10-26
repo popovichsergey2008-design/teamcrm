@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
+import { PolicyCheck } from './legal/PolicyCheck';
 import { useAuth } from '../state/auth';
 import type { AuthProviders, SocialAuthResult } from '../types';
 
@@ -39,7 +40,8 @@ function loadScript(src: string): Promise<void> {
   });
 }
 
-export function SocialButtons() {
+/** acceptPrivacy — та же галочка, что у формы (#4675): новый аккаунт через Google без неё не заводится. */
+export function SocialButtons({ acceptPrivacy = false, onAcceptPrivacy }: { acceptPrivacy?: boolean; onAcceptPrivacy?: (v: boolean) => void }) {
   const { applySession } = useAuth();
   const [providers, setProviders] = useState<AuthProviders | null>(null);
   const [error, setError] = useState('');
@@ -132,11 +134,11 @@ export function SocialButtons() {
   }, [providers]);
 
   async function createWorkspace() {
-    if (!pending || tenantName.trim().length < 2) return;
+    if (!pending || tenantName.trim().length < 2 || !acceptPrivacy) return;
     setError('');
     setBusy(true);
     try {
-      const r = await api.googleLogin(pending.idToken, tenantName.trim());
+      const r = await api.googleLogin(pending.idToken, tenantName.trim(), acceptPrivacy);
       if (!('needsWorkspace' in r)) applySession(r);
     } catch (e) { fail(e); } finally { setBusy(false); }
   }
@@ -159,10 +161,11 @@ export function SocialButtons() {
             onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.preventDefault(); void createWorkspace(); } }}
           />
         </div>
+        {onAcceptPrivacy && <PolicyCheck checked={acceptPrivacy} onChange={onAcceptPrivacy} />}
         <div className="error-text">{error}</div>
         <button
           className="ui-btn ui-btn-primary ui-btn-md auth-submit"
-          disabled={busy || tenantName.trim().length < 2}
+          disabled={busy || tenantName.trim().length < 2 || !acceptPrivacy}
           type="button"
           onClick={() => void createWorkspace()}
         >

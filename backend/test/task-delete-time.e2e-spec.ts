@@ -66,7 +66,7 @@ describe('Удаление задачи с учтённым временем (e2
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Удаление', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Удаление', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
       .expect(201)).body.data;
     ownerToken = owner.accessToken;
 

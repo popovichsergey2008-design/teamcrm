@@ -32,7 +32,7 @@ describe('Присутствие и настройки интерфейса (e2e
 
   it('статус ставится руками, виден всем в компании и в списке чатов у собеседника', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'PR', email: `pr_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'PR', email: `pr_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `prm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
       .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
@@ -63,7 +63,7 @@ describe('Присутствие и настройки интерфейса (e2e
 
   it('настройки интерфейса сливаются, а не затирают друг друга', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'UP', email: `up_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'UP', email: `up_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     // меню слева сохранило порядок

@@ -40,7 +40,7 @@ describe('ТЗ-28 — гостевой портал (e2e)', () => {
 
   it('бренд, вход с согласием, протокол после публикации, подтверждение и уточнение', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Агентство', email: `gp_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
+      .send({ acceptPrivacy: true, tenantName: 'Агентство', email: `gp_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
       .expect(201)).body.data;
     const mateEmail = `gpm_${uniq()}@t.test`;
     const mateUser = (await http$.post('/api/users').set(H(owner.accessToken))

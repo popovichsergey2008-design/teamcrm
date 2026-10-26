@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, Ip, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { InvitesService } from './invites.service';
@@ -22,6 +22,8 @@ class AcceptInviteDto {
   @IsString() token!: string;
   @IsString() @MaxLength(160) fullName!: string;
   @IsString() @MinLength(8) @MaxLength(128) password!: string;
+  /** #4675: галочка Политики конфиденциальности; без неё сервис отвечает 400 понятным текстом. */
+  @IsOptional() @IsBoolean() acceptPrivacy?: boolean;
 }
 
 class CreateInviteLinkDto {
@@ -36,6 +38,8 @@ class AcceptInviteLinkDto {
   @IsEmail() email!: string;
   @IsString() @MaxLength(160) fullName!: string;
   @IsString() @MinLength(8) @MaxLength(128) password!: string;
+  /** #4675: галочка Политики конфиденциальности; без неё сервис отвечает 400 понятным текстом. */
+  @IsOptional() @IsBoolean() acceptPrivacy?: boolean;
 }
 
 @ApiTags('invites')
@@ -74,8 +78,8 @@ export class InvitesController {
 
   @Public()
   @Post('accept')
-  accept(@Body() dto: AcceptInviteDto) {
-    return this.invites.accept(dto);
+  accept(@Body() dto: AcceptInviteDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.invites.accept(dto, { userAgent: ua, ip });
   }
 
   // ── многоразовые ссылки-приглашения ──
@@ -108,7 +112,7 @@ export class InvitesController {
 
   @Public()
   @Post('links/accept')
-  acceptLink(@Body() dto: AcceptInviteLinkDto) {
-    return this.invites.acceptLink(dto);
+  acceptLink(@Body() dto: AcceptInviteLinkDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.invites.acceptLink(dto, { userAgent: ua, ip });
   }
 }

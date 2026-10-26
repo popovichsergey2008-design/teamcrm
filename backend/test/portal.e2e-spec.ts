@@ -29,7 +29,7 @@ describe('Client portal (e2e)', () => {
   afterAll(async () => app?.close());
 
   it('клиент видит прогресс своих проектов без финансов; изоляция по client_id', async () => {
-    const owner = (await http.post('/api/auth/register').send({ tenantName: 'Портал', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+    const owner = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Портал', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const tok = owner.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Сайт клиники', budget: 500000 }).expect(201)).body.data;
     const board0 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
@@ -46,7 +46,7 @@ describe('Client portal (e2e)', () => {
     await http.post(`/api/portal/projects/${proj.id}/assign`).set(H(tok)).send({ clientId: client.id }).expect(201);
     const cEmail = `c_${uniq()}@t.test`;
     const inv = (await http.post(`/api/portal/clients/${client.id}/invite`).set(H(tok)).send({ email: cEmail }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Клиент К', password: 'clientpass1' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Клиент К', password: 'clientpass1' }).expect(201);
     const clogin = (await http.post('/api/auth/login').send({ email: cEmail, password: 'clientpass1' }).expect(201)).body.data;
     const ctok = clogin.accessToken;
     expect(clogin.user.role).toBe('client');
@@ -74,7 +74,7 @@ describe('Client portal (e2e)', () => {
     const client2 = (await http.post('/api/portal/clients').set(H(tok)).send({ name: 'Другая клиника' }).expect(201)).body.data;
     const c2Email = `c2_${uniq()}@t.test`;
     const inv2 = (await http.post(`/api/portal/clients/${client2.id}/invite`).set(H(tok)).send({ email: c2Email }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ token: inv2.token, fullName: 'Клиент2', password: 'clientpass2' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv2.token, fullName: 'Клиент2', password: 'clientpass2' }).expect(201);
     const c2 = (await http.post('/api/auth/login').send({ email: c2Email, password: 'clientpass2' }).expect(201)).body.data;
     const p2 = (await http.get('/api/portal/projects').set(H(c2.accessToken)).expect(200)).body.data;
     expect(p2.length).toBe(0);

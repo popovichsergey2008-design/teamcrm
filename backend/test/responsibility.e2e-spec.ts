@@ -40,7 +40,7 @@ describe('ТЗ-30 — просрочка по ответственности (e2
 
   it('сдал на тестирование — не его просрочка; вернули — окно доработки; тип колонки руками', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ tenantName: 'Ответственность', email: `rs_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
+      .send({ acceptPrivacy: true, tenantName: 'Ответственность', email: `rs_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `rs_m_${uniq()}@t.test`;

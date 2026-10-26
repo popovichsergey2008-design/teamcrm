@@ -35,7 +35,7 @@ describe('Вторая память (e2e)', () => {
 
   it('личка — только участникам; решение изменили; запись кусками', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ tenantName: 'Память', email: `mem_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Память', email: `mem_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const tenantId = String(owner.user.tenantId);
     const mk = async (name: string) => {
