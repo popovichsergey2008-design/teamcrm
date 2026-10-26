@@ -528,8 +528,8 @@ export class ChatAnalysisService {
 
   // ── журнал решений ──
 
-  decisions(tenantId: string, userId: string, o: { chatId?: string | null; projectId?: string | null; withRevoked?: boolean }) {
-    return this.repo.decisions(tenantId, userId, o);
+  decisions(tenantId: string, viewer: { userId: string; role: string }, o: { chatId?: string | null; projectId?: string | null; withRevoked?: boolean }) {
+    return this.repo.decisions(tenantId, viewer, o);
   }
 
   /**
@@ -537,7 +537,7 @@ export class ChatAnalysisService {
    * «решали и передумали» тоже история. Снять могут руководство, записавший и участники.
    */
   async revokeDecision(tenantId: string, user: { userId: string; role: string }, id: string) {
-    const d = await this.repo.oneDecision(tenantId, user.userId, id);
+    const d = await this.repo.oneDecision(tenantId, user, id);
     if (!d) throw AppException.notFound('Решение не найдено');
     if (d.revoked_at) return { decisionId: id, revoked: true };
     const me = String(user.userId);
@@ -554,7 +554,7 @@ export class ChatAnalysisService {
    * Менять могут те же, кто может снять.
    */
   async supersedeDecision(tenantId: string, user: { userId: string; role: string }, id: string, text: string, details = '') {
-    const d = await this.repo.oneDecision(tenantId, user.userId, id);
+    const d = await this.repo.oneDecision(tenantId, user, id);
     if (!d) throw AppException.notFound('Решение не найдено');
     if (d.revoked_at) throw AppException.conflict('Решение снято — менять нечего');
     const me = String(user.userId);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { meetingVisibleSql, projectVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { DbService } from '../../database/db.service';
 import { ExtractedAction } from './analysis-schema';
 import { CreateFacts, QualityCounts } from './policy-rules';
@@ -29,6 +30,17 @@ const ANALYZABLE = `c.kind IN ('project', 'group') AND c.is_external = FALSE AND
  */
 const VISIBLE = `(c.kind = 'project' OR EXISTS (
   SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2))`;
+
+/**
+ * Решение видно, если виден его проект и встреча, откуда оно (#4659, этап 0). `$2` —
+ * человек; `all`, `client` — номера параметров из `viewerParams`. Ожидает алиасы
+ * `d` (decisions) и `mt` (meetings, LEFT JOIN).
+ */
+export const DECISION_VISIBLE = (all: string, client: string) => {
+  const p = { user: '$2', all, client };
+  return `((d.project_id IS NULL OR ${projectVisibleSql('d.project_id', p)})
+          AND (d.meeting_id IS NULL OR ${meetingVisibleSql('mt', p)}))`;
+};
 
 /** Поля чата для прохода: одинаковы у разбора по затиханию и у суточной сверки. */
 const DUE_CHAT = `SELECT c.id::text AS chat_id, c.tenant_id::text, c.kind, c.title,
@@ -836,11 +848,15 @@ export class ChatAnalysisRepository {
 
   /**
    * Журнал решений — только то, что человеку и так видно: решения из переписки — по
-   * чатам, где он есть (то же условие, что у наблюдений), со встреч — как и сами встречи,
-   * всем сотрудникам. Иначе журнал стал бы обходным путём к чужому разговору.
+   * чатам, где он есть (то же условие, что у наблюдений), со встреч — как и сами встречи
+   * (`meetingVisibleSql`). Иначе журнал стал бы обходным путём к чужому разговору.
+   *
+   * #4659, этап 0: и по проекту — решение закрытого проекта раньше отдавалось любому
+   * участнику чата/встречи без проверки, видит ли он сам проект. Теперь — то же правило,
+   * что у поиска и памяти (`projectVisibleSql`).
    */
   decisions(
-    tenantId: string, userId: string,
+    tenantId: string, viewer: ProjectViewer,
     o: { chatId?: string | null; projectId?: string | null; withRevoked?: boolean; limit?: number },
   ): Promise<DecisionRow[]> {
     return this.db.many<DecisionRow>(
@@ -856,25 +872,28 @@ export class ChatAnalysisRepository {
          LEFT JOIN projects p  ON p.id = d.project_id
         WHERE d.tenant_id = $1
           AND (d.chat_id IS NULL OR ${VISIBLE})
+          AND ${DECISION_VISIBLE('$7', '$8')}
           AND ($3::bigint IS NULL OR d.chat_id = $3::bigint)
           AND ($4::bigint IS NULL OR d.project_id = $4::bigint)
           AND ($5::boolean OR d.revoked_at IS NULL)
         ORDER BY d.decided_at DESC, d.id DESC
         LIMIT $6`,
-      [tenantId, userId, o.chatId ?? null, o.projectId ?? null, o.withRevoked === true,
-        Math.min(Math.max(o.limit ?? 50, 1), 200)],
+      [tenantId, viewer.userId, o.chatId ?? null, o.projectId ?? null, o.withRevoked === true,
+        Math.min(Math.max(o.limit ?? 50, 1), 200), ...viewerParams(viewer).slice(1)],
     );
   }
 
-  oneDecision(tenantId: string, userId: string, id: string): Promise<{
+  oneDecision(tenantId: string, viewer: ProjectViewer, id: string): Promise<{
     id: string; created_by: string | null; participants: string[]; revoked_at: Date | null;
   } | null> {
     return this.db.one(
       `SELECT d.id::text, d.created_by::text, d.participants::text[] AS participants, d.revoked_at
          FROM decisions d
          LEFT JOIN chats c ON c.id = d.chat_id
-        WHERE d.tenant_id = $1 AND d.id = $3 AND (d.chat_id IS NULL OR ${VISIBLE})`,
-      [tenantId, userId, id],
+         LEFT JOIN meetings mt ON mt.id = d.meeting_id
+        WHERE d.tenant_id = $1 AND d.id = $3 AND (d.chat_id IS NULL OR ${VISIBLE})
+          AND ${DECISION_VISIBLE('$4', '$5')}`,
+      [tenantId, viewer.userId, id, ...viewerParams(viewer).slice(1)],
     );
   }
 

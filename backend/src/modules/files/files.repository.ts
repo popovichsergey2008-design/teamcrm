@@ -52,6 +52,9 @@ export class FilesRepository {
    * вложение задачи — по проекту, запись встречи — по встрече, файл чата — участникам,
    * файл новости — тем, кому видна новость. Свой загруженный файл — всегда; аватары,
    * логотип и прочее служебное — как раньше.
+   *
+   * Новый вид файла, привязанный к проекту, обязан получить здесь свою ветку: иначе он
+   * попадёт в `ELSE TRUE` и откроется любому в компании по номеру (#4659, этап 0).
    */
   async canDownload(tenantId: string, id: string, viewer: ProjectViewer): Promise<boolean> {
     const [user, all, client] = viewerParams(viewer);
@@ -72,6 +75,9 @@ export class FilesRepository {
                     OR EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2::bigint)))
           -- голосовой бриф (ТЗ-21) — личный: только тому, кому его записали (он же «загрузил»)
           WHEN 'assistant_brief' THEN FALSE
+          -- файл Инфоцентра проекта (#4659): тем, кто видит проект; клиенту Инфоцентр не показываем
+          WHEN 'project_hub' THEN NOT $5::boolean AND f.owner_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM projects hp WHERE hp.id = f.owner_id AND hp.tenant_id = $1 AND ${proj('hp.id')})
           WHEN 'feed_post' THEN NOT $5::boolean AND EXISTS (
             SELECT 1 FROM feed_posts fp WHERE fp.id = f.owner_id AND ${FEED_VISIBLE('fp')})
           ELSE TRUE END) AS ok

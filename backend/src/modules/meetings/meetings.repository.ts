@@ -24,6 +24,13 @@ export interface DraftRow {
   tag_ids?: string[] | null; ai_tag_ids?: string[] | null;
 }
 
+/**
+ * Проект чата, из которого начали созвон (#4659): чат самого проекта или группа/канал,
+ * привязанные к проекту. Ожидает алиас `m` (meetings).
+ */
+export const MEETING_CHAT_PROJECT = `(SELECT COALESCE(mc.project_id, mc.linked_project_id) FROM chats mc
+   WHERE mc.id = m.chat_id AND mc.tenant_id = m.tenant_id)`;
+
 @Injectable()
 export class MeetingsRepository {
   constructor(private readonly db: DbService) {}
@@ -264,7 +271,7 @@ export class MeetingsRepository {
       // в журнал — с источником (ТЗ-22): секунда записи и кто произнёс
       await client.query(
         `INSERT INTO decisions (tenant_id, project_id, meeting_id, text, decided_at, source_sec, speaker, speaker_user_id)
-         SELECT m.tenant_id, m.project_id, m.id, btrim(t.text), COALESCE(m.happened_at, m.created_at),
+         SELECT m.tenant_id, COALESCE(m.project_id, ${MEETING_CHAT_PROJECT}), m.id, btrim(t.text), COALESCE(m.happened_at, m.created_at),
                 t.sec, NULLIF(t.speaker, ''), NULLIF(t.speaker_user_id, '')::bigint
            FROM meetings m
           CROSS JOIN unnest($3::text[], $4::numeric[], $5::text[], $6::text[]) AS t(text, sec, speaker, speaker_user_id)
@@ -275,6 +282,20 @@ export class MeetingsRepository {
           decisions.map((d) => d.speaker ?? ''), decisions.map((d) => d.speakerUserId ?? '')],
       );
     });
+  }
+
+  /**
+   * Проект созвона, начатого из чата (#4659, этап 0): у такой встречи `project_id` часто
+   * пуст, хотя чат — проектный или привязан к проекту (`linked_project_id`). Только когда
+   * у встречи своего проекта нет: выбранный руками проект важнее чата.
+   */
+  async chatProjectOf(tenantId: string, meetingId: string): Promise<string | null> {
+    const row = await this.db.one<{ project_id: string | null }>(
+      `SELECT ${MEETING_CHAT_PROJECT}::text AS project_id
+         FROM meetings m WHERE m.tenant_id = $1 AND m.id = $2 AND m.project_id IS NULL`,
+      [tenantId, meetingId],
+    );
+    return row?.project_id ?? null;
   }
 
   summary(tenantId: string, meetingId: string) {

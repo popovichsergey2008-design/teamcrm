@@ -611,6 +611,9 @@ export class MeetingsService {
   }
 
   private async analyze(tenantId: string, meetingId: string, projectId: string | null, replies: Reply[]): Promise<void> {
+    // #4659, этап 0: созвон из проектного чата без своего проекта — проект берём у чата,
+    // иначе задачи встречи ждут выбора проекта, а решения не попадают в Хронику проекта
+    if (!projectId) projectId = await this.repo.chatProjectOf(tenantId, meetingId).catch(() => null);
     const [team, projects] = await Promise.all([
       this.repo.teamMembers(tenantId),
       this.repo.projectsWithColumns(tenantId).catch(() => []),

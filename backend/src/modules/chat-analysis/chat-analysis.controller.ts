@@ -117,7 +117,7 @@ export class ChatAnalysisController {
     @Query('projectId') projectId?: string,
     @Query('all') all?: string,
   ) {
-    return this.svc.decisions(u.tenantId, u.userId, {
+    return this.svc.decisions(u.tenantId, { userId: u.userId, role: u.role }, {
       chatId: chatId || null, projectId: projectId || null, withRevoked: all === '1',
     });
   }
