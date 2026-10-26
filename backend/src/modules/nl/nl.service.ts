@@ -21,7 +21,7 @@ import {
   taskTitleFrom,
 } from './task-draft';
 import { buildEventDraft, EventDraft } from './event-draft';
-import { pickAutoProject } from './auto-task';
+import { ConfirmSource, pickAutoProject } from './auto-task';
 import { AutoConfirmService } from './auto-confirm.service';
 import { OrgService } from '../org/org.service';
 import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
@@ -841,7 +841,18 @@ export class NlService {
    * стража нагрузки. Остальные пути (бот, пакет, из сообщения, входящие) задачу ставят, а
    * перегруз приходит карточкой в ящик (ТЗ-21, этап 3).
    */
-  async apply(tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any }, opts: { interactive?: boolean } = {}) {
+  async apply(
+    tenantId: string, userId: string, body: { intent: Intent; task?: any; deal?: any },
+    opts: {
+      interactive?: boolean;
+      /**
+       * #4665: задачу разобрала модель, человек подтвердил — через 30 секунд прислать
+       * «Задача поставлена от вас» и назвать, откуда она (чат, бот, входящие).
+       * Авто-постановка быстрой командой шлёт его и без этого флага.
+       */
+      confirm?: ConfirmSource;
+    } = {},
+  ) {
     if (body.intent === 'create_task') {
       const t = body.task ?? {};
       // проект — общей проверкой (ТЗ-31): нет, архив, недоступен человеку
@@ -934,13 +945,16 @@ export class NlService {
           reasonCodes: Array.isArray(pr.reasonCodes) ? pr.reasonCodes.map(String).slice(0, 10) : [], taskId: String(task.id),
         });
       }
-      // #4615: через 30 секунд — «Задача поставлена, проверьте» (запись в базе, а не таймер)
-      const confirmAt = auto
+      // #4615: через 30 секунд — «Задача поставлена, проверьте» (запись в базе, а не таймер);
+      // #4665: и для остальных путей, где задачу разобрала модель (opts.confirm)
+      const source: ConfirmSource | null = auto ? (t.voice === true ? 'quick_voice' : 'quick_text') : opts.confirm ?? null;
+      const confirmAt = source
         ? await this.autoConfirm.schedule(tenantId, userId, String(task.id), {
-          projectWhy: t.projectHint ? String(t.projectHint).slice(0, 200) : null,
-          assigneeWhy: t.assigneeWhy ? String(t.assigneeWhy).slice(0, 200) : null,
+          projectWhy: auto && t.projectHint ? String(t.projectHint).slice(0, 200) : null,
+          assigneeWhy: auto && t.assigneeWhy ? String(t.assigneeWhy).slice(0, 200) : null,
           // у направления нет руководителя — спросим «кто отвечает» прямо в сообщении
-          noLeadFor: isSkill(t.noLeadFor) && String(task.assignee_id ?? '') === String(t.assigneeId ?? '') ? t.noLeadFor : null,
+          noLeadFor: auto && isSkill(t.noLeadFor) && String(task.assignee_id ?? '') === String(t.assigneeId ?? '') ? t.noLeadFor : null,
+          source,
         }).catch((e) => { this.log.warn(`подтверждение постановки ${task.id}: ${(e as Error).message}`); return null; })
         : null;
       return { type: 'task', task, ...(confirmAt ? { confirmAt } : {}) };

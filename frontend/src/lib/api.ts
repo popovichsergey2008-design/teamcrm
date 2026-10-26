@@ -1666,6 +1666,8 @@ export const api = {
       text, ...(currentProjectId ? { currentProjectId, ...(currentKind ? { currentKind } : {}) } : {}), ...(auto ? { auto: true } : {}),
     }),
   nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
+  /** #4665: форма, заполненная голосом, — «Задача поставлена от вас» через 30 секунд. */
+  nlConfirmLater: (taskId: string) => request<{ confirmAt: string | null }>('POST', '/nl/confirm-later', { taskId }),
   /**
    * Пакет задач из одной команды (ТЗ-10, этап 2).
    *

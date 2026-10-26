@@ -390,7 +390,10 @@ export class CommitmentsService implements OnModuleInit {
       description: `Обещание из разговора (${src.label}):\n«${c.quote.slice(0, 1500)}»`,
       assigneeId: String(c.speaker_user_id),
       deadlineAt: c.deadline_at ? new Date(c.deadline_at).toISOString() : undefined,
-    } as any, a.userId, { sourceChatMessageId: c.source_type === 'chat' && c.source_message_ids?.[0] ? String(c.source_message_ids[0]) : null });
+    } as any, a.userId, {
+      sourceChatMessageId: c.source_type === 'chat' && c.source_message_ids?.[0] ? String(c.source_message_ids[0]) : null,
+      aiConfirm: { userId: a.userId, source: 'commitment' },
+    });
     if (chosen || predicted) {
       void this.resolver.feedback(a.tenantId, a.userId, 'commitment', {
         predictedProjectId: predicted?.projectId ?? null, selectedProjectId: projectId, confidence: predicted?.confidence ?? null,

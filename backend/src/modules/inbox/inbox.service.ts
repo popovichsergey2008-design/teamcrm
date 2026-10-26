@@ -100,7 +100,7 @@ export class InboxService {
     const item = await this.repo.getItem(tenantId, itemId);
     if (!item) throw AppException.notFound('Сообщение не найдено');
     if (item.status === 'created') throw AppException.conflict('Задача уже создана');
-    const result = await this.nl.apply(tenantId, userId, { intent: 'create_task', task });
+    const result = await this.nl.apply(tenantId, userId, { intent: 'create_task', task }, { confirm: 'inbox' });
     await this.repo.markCreated(tenantId, itemId, (result as any).task.id);
     return { created: true, task: (result as any).task };
   }

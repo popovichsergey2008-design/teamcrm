@@ -748,7 +748,7 @@ export class ChatsService {
     if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
     if (msg.task_id) throw AppException.conflict('По этому сообщению задача уже заведена');
 
-    const res: any = await this.nl.apply(tenantId, user.userId, { intent: 'create_task', task });
+    const res: any = await this.nl.apply(tenantId, user.userId, { intent: 'create_task', task }, { confirm: 'chat_message' });
     const created = res?.task;
     if (!created?.id) throw AppException.conflict('Задача не создалась');
     await this.repo.linkTask(tenantId, messageId, String(created.id));

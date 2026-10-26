@@ -4,20 +4,18 @@ import { AppException } from '../../common/http/app-exception';
 import { Actor, ProactiveService } from '../proactive/proactive.service';
 import { ProactiveRepository, ProposalRow } from '../proactive/proactive.repository';
 import { fingerprint } from '../proactive/proactive-rules';
-import { AUTO_CONFIRM_DELAY_MS, confirmMessage } from './auto-task';
+import { confirmMessage, ConfirmSource, isConfirmSource } from './auto-task';
+import { AutoConfirmInfo, scheduleAutoConfirm, SNAP_SQL } from './auto-confirm.schedule';
 import { OrgService } from '../org/org.service';
 import { directionHasLead, leadOptions } from '../org/org-rules';
 import { isSkill, Skill, SKILL_LABEL } from '../team/skills';
-
-/** Что считаем правкой постановщика: поля, которые он видит в сообщении. */
-const SNAP_SQL = "md5(concat_ws('|', t.title, t.description, t.assignee_id, t.project_id, t.deadline_at, t.priority))";
 
 /** Как часто смотреть, не подошло ли время сообщения: 30 секунд ± 5. */
 const TICK_MS = 5_000;
 
 interface DueRow {
   task_id: string; tenant_id: string; user_id: string; snap: string;
-  info: { projectWhy?: string | null; assigneeWhy?: string | null; noLeadFor?: string | null } | null;
+  info: (Partial<AutoConfirmInfo>) | null;
 }
 
 /**
@@ -64,33 +62,39 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Запомнить: через 30 секунд спросить постановщика. Возвращает, когда придёт сообщение. */
-  async schedule(
-    tenantId: string, userId: string, taskId: string,
-    info: { projectWhy: string | null; assigneeWhy: string | null; noLeadFor?: string | null },
-  ): Promise<string | null> {
-    const row = await this.db.one<{ due_at: Date }>(
-      `INSERT INTO task_auto_confirm (task_id, tenant_id, user_id, due_at, snap, info)
-       SELECT t.id, t.tenant_id, $3, now() + make_interval(secs => $4), ${SNAP_SQL}, $5::jsonb
-         FROM tasks t WHERE t.tenant_id=$1 AND t.id=$2
-       ON CONFLICT (task_id) DO NOTHING
-       RETURNING due_at`,
-      [tenantId, taskId, userId, AUTO_CONFIRM_DELAY_MS / 1000, JSON.stringify(info)],
+  async schedule(tenantId: string, userId: string, taskId: string, info: AutoConfirmInfo): Promise<string | null> {
+    return scheduleAutoConfirm(this.db, tenantId, userId, taskId, info);
+  }
+
+  /**
+   * Голос в форме «Новая задача» (#4618 → #4665): задачу создаёт обычная ручка задач,
+   * а сообщение заказывает форма следом. Только своя и только что созданная задача —
+   * чтобы ручкой нельзя было слать сообщения о чужих или старых задачах.
+   */
+  async scheduleOwn(tenantId: string, userId: string, taskId: string, source: ConfirmSource): Promise<{ confirmAt: string | null }> {
+    const own = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM tasks
+        WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL
+          AND created_by = $3 AND created_at > now() - interval '15 minutes'`,
+      [tenantId, taskId, userId],
     );
-    return row ? new Date(row.due_at).toISOString() : null;
+    if (!own) throw AppException.notFound('Задача не найдена');
+    return { confirmAt: await scheduleAutoConfirm(this.db, tenantId, userId, taskId, { projectWhy: null, assigneeWhy: null, source }) };
   }
 
   /**
    * Отправить всё, чему пришло время. `now` подменяется в тестах. Строка помечается
    * отправленной до отправки: сбой доставки не повторяет сообщение по кругу.
    */
-  async flush(now: Date = new Date()): Promise<number> {
+  async flush(now: Date = new Date(), tenantId: string | null = null): Promise<number> {
+    // tenantId — только в тестах: другие наборы оставляют свои отложенные сообщения
     const rows = await this.db.many<DueRow>(
       `UPDATE task_auto_confirm SET sent_at = now()
         WHERE task_id IN (SELECT task_id FROM task_auto_confirm
-                           WHERE sent_at IS NULL AND due_at <= $1
+                           WHERE sent_at IS NULL AND due_at <= $1 AND ($2::bigint IS NULL OR tenant_id = $2::bigint)
                            ORDER BY due_at LIMIT 50 FOR UPDATE SKIP LOCKED)
        RETURNING task_id::text, tenant_id::text, user_id::text, snap, info`,
-      [now],
+      [now, tenantId],
     );
     let sent = 0;
     for (const r of rows) {
@@ -102,12 +106,14 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
   private async send(r: DueRow): Promise<boolean> {
     const t = await this.db.one<{
       id: string; title: string; project_id: string; priority: string; deadline_at: Date | null; snap: string;
-      project_name: string; assignee_name: string | null;
+      project_name: string; assignee_name: string | null; manager_id: string | null; manager_name: string | null;
     }>(
       `SELECT t.id::text, t.title, t.project_id::text, t.priority, t.deadline_at, ${SNAP_SQL} AS snap,
-              p.name AS project_name, ua.full_name AS assignee_name
+              p.name AS project_name, ua.full_name AS assignee_name,
+              t.created_by::text AS manager_id, um.full_name AS manager_name
          FROM tasks t JOIN projects p ON p.id = t.project_id
          LEFT JOIN users ua ON ua.id = t.assignee_id
+         LEFT JOIN users um ON um.id = t.created_by
         WHERE t.tenant_id=$1 AND t.id=$2 AND t.deleted_at IS NULL`,
       [r.tenant_id, r.task_id],
     );
@@ -125,6 +131,9 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       deadlineAt: t.deadline_at, priority: t.priority, tags: tags.map((x) => x.name),
       projectWhy: r.info?.projectWhy ?? null, assigneeWhy: r.info?.assigneeWhy ?? null,
       edited, timeZone: tz,
+      source: isConfirmSource(r.info?.source) ? r.info!.source! : null,
+      // постановщиком стал автор поручения (встреча, переписка), а человек лишь подтвердил
+      managerName: t.manager_id && t.manager_id !== String(r.user_id) ? t.manager_name ?? 'коллега' : null,
     });
     const link = `/projects/${t.project_id}/task/${t.id}`;
     /*

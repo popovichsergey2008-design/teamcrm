@@ -1,6 +1,8 @@
 import { stampTaskChanges, TransitionSource } from '../../common/task-changes/stamp';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { ConfirmSource } from '../nl/auto-task';
+import { scheduleAutoConfirm } from '../nl/auto-confirm.schedule';
 import { personalOverdueSql, stageSql } from './responsibility';
 import { GateFacts, GateRequirements } from './handoff-gate';
 import { buildRegistry, RegistryFilters } from './task-registry';
@@ -60,6 +62,11 @@ export type { TransitionSource } from '../../common/task-changes/stamp';
 @Injectable()
 export class TasksRepository {
   constructor(private readonly db: DbService) {}
+
+  /** #4665: «Задача поставлена от вас» через 30 секунд (отправляет тик AutoConfirmService). */
+  scheduleAutoConfirm(tenantId: string, userId: string, taskId: string, source: ConfirmSource): Promise<string | null> {
+    return scheduleAutoConfirm(this.db, tenantId, userId, taskId, { projectWhy: null, assigneeWhy: null, source });
+  }
 
   /**
    * Кто и откуда перенёс задачу (ТЗ-32). Сам переход пишет триггер базы — автора он не

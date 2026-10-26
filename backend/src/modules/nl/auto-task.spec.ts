@@ -1,4 +1,4 @@
-import { AutoProjectInput, confirmMessage, pickAutoProject } from './auto-task';
+import { AutoProjectInput, confirmMessage, isConfirmSource, pickAutoProject } from './auto-task';
 
 describe('#4615 автоматическая постановка: правила', () => {
   describe('проект без вопросов', () => {
@@ -68,6 +68,26 @@ describe('#4615 автоматическая постановка: правил�
       expect(m.summary).toContain('• Приоритет: срочный');
       expect(m.summary).toContain('Вы уже поправили задачу');
       expect(m.short).toBe('Тег: без тега · Проект: Блог · Исполнитель: не назначен');
+    });
+
+    it('откуда задача — последним пунктом: голос, чат, бот', () => {
+      expect(confirmMessage({ ...facts, source: 'quick_voice' }).summary).toContain('• Приоритет: обычный\n• Откуда: из голосового\n');
+      expect(confirmMessage({ ...facts, source: 'chat_message' }).fields.at(-1)).toEqual(['Откуда', 'из сообщения в чате']);
+      expect(confirmMessage({ ...facts, source: 'bot' }).fields.at(-1)).toEqual(['Откуда', 'через QEVO Bot']);
+      expect(confirmMessage({ ...facts, source: null }).fields.map(([k]) => k)).not.toContain('Откуда');
+    });
+
+    it('постановщик — автор поручения со встречи: не «от вас», а «по вашему подтверждению» и его имя', () => {
+      const m = confirmMessage({ ...facts, managerName: 'Ольга', source: 'meeting' });
+      expect(m.title).toBe('Задача поставлена по вашему подтверждению: #42 «Поправить форму входа»');
+      expect(m.fields.slice(-2)).toEqual([['Постановщик', 'Ольга'], ['Откуда', 'из итогов встречи']]);
+    });
+
+    it('источник проверяется: чужая строка из базы не попадает в текст', () => {
+      expect(isConfirmSource('bot')).toBe(true);
+      expect(isConfirmSource('<script>')).toBe(false);
+      expect(isConfirmSource('toString')).toBe(false);
+      expect(isConfirmSource(null)).toBe(false);
     });
 
     it('длинное название не ломает заголовок карточки (до 200 знаков)', () => {

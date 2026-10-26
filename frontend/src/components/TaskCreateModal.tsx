@@ -286,6 +286,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   */
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceNote, setVoiceNote] = useState('');
+  /** #4665: поля заполнила модель — после создания придёт «Задача поставлена от вас». */
+  const filledByVoice = useRef(false);
   const fillFromSpeech = async (text: string) => {
     setVoiceBusy(true);
     setVoiceNote('');
@@ -297,6 +299,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         setVoiceNote('Не разобрал задачу целиком — записал сказанное в название. Поправьте или наговорите ещё раз.');
         return;
       }
+      filledByVoice.current = true;
       setTitle(t.title);
       setDescription(t.description ?? '');
       // #4615, 23.10: исполнитель по общему правилу — с причиной; названный голосом — без подписи
@@ -375,6 +378,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
       });
       setCreatedId(String(created.id));
       feedback('task.created');
+      // #4665: через полминуты — сообщение со списком «тег, проект, исполнитель»; сбой не мешает задаче
+      if (filledByVoice.current) void api.nlConfirmLater(String(created.id)).catch(() => undefined);
       removeDraft(draftId.current); // задача создана — черновик своё отслужил
       /*
         Пункты чек-листа из шаблона — по порядку и по одному: отдельной ручки «создать

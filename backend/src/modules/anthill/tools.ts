@@ -598,7 +598,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async execute(ctx, p) {
         const { clientId, ...body } = p as any;
         // человек подтвердил карточку (с предупреждением, если оно было) — проверка пройдена
-        const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, body, { interactive: true });
+        const res: any = await nl.apply(ctx.tenantId, ctx.user.userId, body, { interactive: true, confirm: 'bot' });
         const task = res?.task;
         if (!task?.id) throw new Error('Задача не создалась');
         // клиент — после создания: разбор фразы о клиентах не знает, привязку ставим сами

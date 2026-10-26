@@ -9,6 +9,7 @@ import { AiService } from '../ai/ai.service';
 import { NlService } from './nl.service';
 import { VoiceService } from './voice.service';
 import { BatchService } from './batch.service';
+import { AutoConfirmService } from './auto-confirm.service';
 import { isShortCommand } from './fast-path';
 import { isHallucination } from '../ai/stt-hallucinations';
 
@@ -54,6 +55,11 @@ class RetryItemDto {
   @IsOptional() task?: Record<string, unknown>;
 }
 
+/** #4665: форма «Новая задача», заполненная голосом, просит подтверждение после создания. */
+class ConfirmLaterDto {
+  @IsString() @MaxLength(20) taskId!: string;
+}
+
 class ApplyDto {
   @IsIn(['create_task', 'create_deal', 'none']) intent!: 'create_task' | 'create_deal' | 'none';
   @IsOptional() @IsObject() task?: Record<string, unknown>;
@@ -71,6 +77,7 @@ export class NlController {
     private readonly ai: AiService,
     private readonly voice: VoiceService,
     private readonly batches: BatchService,
+    private readonly autoConfirm: AutoConfirmService,
   ) {}
 
   /** Голосовая команда: запись из браузера (multipart 'audio') → Whisper → текст (дальше обычный /parse). */
@@ -200,5 +207,16 @@ export class NlController {
   @Post('apply')
   apply(@CurrentUser() u: AuthUser, @Body() dto: ApplyDto) {
     return this.nl.apply(u.tenantId, u.userId, dto, { interactive: true });
+  }
+
+  /**
+   * Голос в форме «Новая задача» (#4618 → #4665): поля заполнила модель, задачу создала
+   * обычная ручка задач — через 30 секунд «Задача поставлена от вас». Только своя
+   * задача, созданная только что.
+   */
+  @Post('confirm-later')
+  confirmLater(@CurrentUser() u: AuthUser, @Body() dto: ConfirmLaterDto) {
+    if (!/^\d{1,18}$/.test(dto.taskId)) throw AppException.validation('Неверный номер задачи');
+    return this.autoConfirm.scheduleOwn(u.tenantId, u.userId, dto.taskId, 'form_voice');
   }
 }

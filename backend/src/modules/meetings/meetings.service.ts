@@ -832,7 +832,7 @@ export class MeetingsService {
           if (created.length >= MAX_AUTO_TASKS) break; // на всякий случай: разбор мог насчитать десятки
           try {
             // тем же путём, что и руками: постановщик — тот, кто поручил на встрече
-            await this.applyDraft(tenantId, String(actor ?? d.assignee_id), d.id);
+            await this.applyDraft(tenantId, String(actor ?? d.assignee_id), d.id, undefined, { auto: true });
             created.push({ title: d.title, assigneeId: d.assignee_id });
           } catch (e) {
             this.log.warn(`встреча ${meetingId}: черновик ${d.id} не применён — ${(e as Error).message}`);
@@ -860,7 +860,11 @@ export class MeetingsService {
   }
 
   /** Подтверждение черновика: создаём обычную задачу тем же путём, что и руками. */
-  async applyDraft(tenantId: string, actorId: string, draftId: string, patch?: DraftPatch, opts: { deferCut?: boolean } = {}) {
+  async applyDraft(
+    tenantId: string, actorId: string, draftId: string, patch?: DraftPatch,
+    /** `auto` — создано без человека (тумблер «задачи со встречи сразу»): подтверждать некому. */
+    opts: { deferCut?: boolean; auto?: boolean } = {},
+  ) {
     const draft = await this.repo.draft(tenantId, draftId);
     if (!draft) throw AppException.notFound('Черновик не найден');
     if (draft.status !== 'pending' && draft.status !== 'failed') throw AppException.conflict('Черновик уже обработан');
@@ -892,7 +896,7 @@ export class MeetingsService {
           ? (patch.deadlineAt || undefined)
           : (draft.deadline_at ? new Date(draft.deadline_at).toISOString() : undefined),
         priority: (patch?.priority !== undefined ? patch.priority : draft.priority) || undefined,
-      } as any, actorId);
+      } as any, actorId, opts.auto ? {} : { aiConfirm: { userId: actorId, source: 'meeting' } });
     } catch (e) {
       await this.repo.failDraft(draftId, e instanceof AppException ? e.message : 'Не удалось создать задачу');
       throw e;

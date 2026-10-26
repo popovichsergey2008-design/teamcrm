@@ -248,7 +248,7 @@ export class ChatAnalysisService {
       deadlineAt: a.deadline_at ?? undefined,
       // Откуда задача взялась — в той же вставке: письмо уходит сразу и должно назвать
       // постановщиком автора поручения, а не нажавшего кнопку.
-    } as any, userId, { sourceChatMessageId: a.instruction_message_id ?? null });
+    } as any, userId, { sourceChatMessageId: a.instruction_message_id ?? null, aiConfirm: { userId, source: 'chat_analysis' } });
 
     await this.repo.markAction(tenantId, id, { status: 'confirmed', entityType: 'task', entityId: String(task.id) });
     /*

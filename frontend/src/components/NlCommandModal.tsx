@@ -486,6 +486,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
       task: {
         ...d.task,
         auto: true,
+        // #4665: в сообщении-подтверждении — «из голосового» или «из быстрой команды»
+        voice: !!job,
         deadline: dueOf(d),
         requiresApproval: d.task.requiresApproval ?? stickyCheck('task.requiresApproval', true),
         checklist: (d.task.checklist ?? []).map((x: string) => x.trim()).filter(Boolean),

@@ -780,7 +780,7 @@ export class ChatTaskDraftService {
           }
           : {}),
       },
-    }, { interactive: true });
+    }, { interactive: true, confirm: 'chat_message' });
     const created = res?.task;
     if (!created?.id) throw AppException.conflict('Задача не создалась');
     const taskId = String(created.id);
@@ -867,7 +867,7 @@ export class ChatTaskDraftService {
             ? { tagIds: tags.tagIds ?? [], suggestedTagIds: tags.suggestedTagIds ?? [], tagsConfirmed: tags.tagsConfirmed === true, confirmedWithoutTags: tags.confirmedWithoutTags === true }
             : {}),
         },
-      });
+      }, { confirm: 'chat_message' });
       const taskId = String(res?.task?.id ?? '');
       if (!taskId) throw AppException.conflict(`Задача «${it.title}» не создалась — повторите, созданные не задвоятся`);
       items[i] = { ...it, taskId };

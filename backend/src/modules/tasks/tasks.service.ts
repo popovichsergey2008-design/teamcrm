@@ -1,5 +1,6 @@
 import { stripPasteJunk } from '../../common/text/paste-junk';
 import { WorkloadGuardService } from '../workload/workload.service';
+import { ConfirmSource } from '../nl/auto-task';
 import { Injectable, Optional } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { TagsService } from '../tags/tags.service';
@@ -254,7 +255,14 @@ export class TasksService {
    */
   async create(
     tenantId: string, dto: CreateTaskDto, actorId: string | null = null,
-    origin: { sourceChatMessageId?: string | null; createdByAi?: boolean; workloadChecked?: boolean } = {},
+    origin: {
+      sourceChatMessageId?: string | null; createdByAi?: boolean; workloadChecked?: boolean;
+      /**
+       * #4665: задачу разобрала модель, человек подтвердил — через 30 секунд ему
+       * «Задача поставлена от вас: тег, проект, исполнитель». `source` — откуда.
+       */
+      aiConfirm?: { userId: string | null | undefined; source: ConfirmSource };
+    } = {},
   ): Promise<TaskRow> {
     await this.assertProject(tenantId, dto.projectId);
 
@@ -336,6 +344,10 @@ export class TasksService {
     this.knowledge.enqueue(tenantId, 'task', task.id); // в базу знаний (открытые проекты тоже)
     await this.outbox.enqueue(tenantId, task.project_id, 'task.create', task.id); // выгрузка во внешнюю систему
     void this.notify.taskCreated(tenantId, task.id, actorId); // письмо исполнителю; ответа не ждём
+    if (origin.aiConfirm?.userId) {
+      await this.repo.scheduleAutoConfirm(tenantId, String(origin.aiConfirm.userId), String(task.id), origin.aiConfirm.source)
+        .catch(() => null); // сообщение — не повод сорвать постановку
+    }
     return task;
   }
 

@@ -73,7 +73,27 @@ export interface ConfirmFacts {
   /** Задачу уже поправили после создания. */
   edited: boolean;
   timeZone?: string | null;
+  /** Откуда задача (#4665): «из голосового», «из сообщения в чате», «через бота». */
+  source?: ConfirmSource | null;
+  /** Постановщик — не получатель (поручение со встречи или из переписки): его имя. */
+  managerName?: string | null;
 }
+
+/** Пути постановки через ИИ и как их назвать в сообщении (#4665). */
+export const CONFIRM_SOURCES = {
+  quick_text: 'из быстрой команды',
+  quick_voice: 'из голосового',
+  form_voice: 'из голосового в форме «Новая задача»',
+  chat_message: 'из сообщения в чате',
+  bot: 'через QEVO Bot',
+  inbox: 'из входящих',
+  meeting: 'из итогов встречи',
+  commitment: 'из обещания в переписке',
+  chat_analysis: 'из разбора переписки',
+  standup: 'из утренней сводки',
+} as const;
+export type ConfirmSource = keyof typeof CONFIRM_SOURCES;
+export const isConfirmSource = (v: unknown): v is ConfirmSource => typeof v === 'string' && Object.prototype.hasOwnProperty.call(CONFIRM_SOURCES, v);
 
 function fmtDeadline(v: Date | string | null, tz?: string | null): string {
   if (!v) return 'без срока';
@@ -113,7 +133,8 @@ export interface ConfirmMessage {
  */
 export function confirmMessage(f: ConfirmFacts): ConfirmMessage {
   const name = `#${f.taskId} «${f.title}»`;
-  const title = `Задача поставлена от вас: ${name}`;
+  // постановщик — другой человек (поручение со встречи): «от вас» было бы неправдой
+  const title = f.managerName ? `Задача поставлена по вашему подтверждению: ${name}` : `Задача поставлена от вас: ${name}`;
   const why = (x?: string | null) => (x && x.trim() ? ` (${x.trim()})` : '');
   const fields: [string, string][] = [
     [f.tags.length > 1 ? 'Теги' : 'Тег', f.tags.length ? f.tags.join(', ') : 'без тега'],
@@ -122,6 +143,8 @@ export function confirmMessage(f: ConfirmFacts): ConfirmMessage {
     ['Срок', fmtDeadline(f.deadlineAt, f.timeZone)],
     ['Приоритет', PRIORITY_RU[f.priority] ?? PRIORITY_RU.normal],
   ];
+  if (f.managerName) fields.push(['Постановщик', f.managerName]);
+  if (f.source && CONFIRM_SOURCES[f.source]) fields.push(['Откуда', CONFIRM_SOURCES[f.source]]);
   const check = f.edited
     ? 'Вы уже поправили задачу — проверьте, всё ли верно: «Ок» — подтвердить, «Править» — открыть задачу.'
     : 'Проверьте, всё ли верно: «Ок» — подтвердить, «Править» — открыть задачу.';
@@ -136,6 +159,6 @@ export function confirmMessage(f: ConfirmFacts): ConfirmMessage {
   ].join(' · ');
   return {
     title: title.slice(0, 200), fields, summary, short,
-    why: 'Задача поставлена автоматически по вашему тексту — проект, исполнителя, теги и приоритет выбрала нейросеть.',
+    why: 'Задачу разобрала нейросеть — проверьте, что тег, проект и исполнитель выбраны верно.',
   };
 }

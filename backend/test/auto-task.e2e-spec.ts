@@ -87,10 +87,11 @@ describe('Автоматическая постановка задачи (e2e)',
     expect(applied.confirmAt).toBeTruthy();
 
     // до 30 секунд — тишина; после — карточка в ящике постановщика
-    expect(await confirm.flush(new Date())).toBe(0);
-    expect(await confirm.flush(new Date(Date.now() + 31_000))).toBe(1);
+    const T = String(applied.task.tenant_id);
+    expect(await confirm.flush(new Date(), T)).toBe(0);
+    expect(await confirm.flush(new Date(Date.now() + 31_000), T)).toBe(1);
     // второй проход ту же задачу не шлёт
-    expect(await confirm.flush(new Date(Date.now() + 60_000))).toBe(0);
+    expect(await confirm.flush(new Date(Date.now() + 60_000), T)).toBe(0);
 
     const inbox = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items;
     const card = inbox.find((p: any) => p.skill === 'autotask');
@@ -157,7 +158,7 @@ describe('Автоматическая постановка задачи (e2e)',
       intent: 'create_task', task: { ...d.task, deadline: '2030-01-16', tagIds: [], auto: true },
     }).expect(201)).body.data;
     await http$.patch(`/api/tasks/${ok.task.id}`).set(O).send({ title: 'Поправить базу данных отчётов' }).expect(200);
-    expect(await confirm.flush(new Date(Date.now() + 31_000))).toBe(1);
+    expect(await confirm.flush(new Date(Date.now() + 31_000), String(ok.task.tenant_id))).toBe(1);
     const card = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items.find((p: any) => p.skill === 'autotask');
     expect(card.title).toContain('Поправить базу данных отчётов');
     expect(card.summary).toContain('Вы уже поправили задачу');
@@ -273,7 +274,7 @@ describe('Автоматическая постановка задачи (e2e)',
     expect(draft.task.noLeadFor).toBe('design');
     const applied = (await http$.post('/api/nl/apply').set(O)
       .send({ intent: 'create_task', task: { ...draft.task, deadline: '2030-01-15', tagIds: [], auto: true } }).expect(201)).body.data;
-    expect(await confirm.flush(new Date(Date.now() + 31_000))).toBe(1);
+    expect(await confirm.flush(new Date(Date.now() + 31_000), String(applied.task.tenant_id))).toBe(1);
     const card = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items
       .find((p: any) => p.skill === 'autotask' && String(p.source.id) === String(applied.task.id));
     const pick = card.actions.find((a: any) => a.key === `lead:${lena}`);
@@ -300,5 +301,35 @@ describe('Автоматическая постановка задачи (e2e)',
     await http$.post(`/api/assistant/proposals/${learn.id}/confirm`).set(O).send({ action: 'lead_yes' }).expect(201);
     const after = (await http$.post('/api/nl/auto-assign').set(O).send({ title: 'Нарисовать баннер' }).expect(201)).body.data;
     expect(after.assigneeId).toBe(dina);
+  });
+
+  /*
+    #4665: голос в форме «Новая задача» — задачу создаёт обычная ручка, сообщение
+    заказывает форма. Только своя, только что созданная; второе — не шлётся.
+  */
+  it('форма «Новая задача» голосом: подтверждение «от вас» с источником, без дублей и только своё', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Форма', email: `form_${uniq()}@t.test`, password: 'password123', fullName: 'Вера Владелец' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const site = (await http$.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
+    const task = (await http$.post('/api/tasks').set(O)
+      .send({ projectId: String(site.id), title: 'Собрать макет формы', confirmedWithoutTags: true }).expect(201)).body.data;
+    const first = (await http$.post('/api/nl/confirm-later').set(O).send({ taskId: String(task.id) }).expect(201)).body.data;
+    expect(first.confirmAt).toBeTruthy();
+    const again = (await http$.post('/api/nl/confirm-later').set(O).send({ taskId: String(task.id) }).expect(201)).body.data;
+    expect(again.confirmAt).toBeNull();
+
+    // чужая компания свою задачу не подсунет
+    const other = (await http$.post('/api/auth/register')
+      .send({ tenantName: 'Чужие', email: `other_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+    await http$.post('/api/nl/confirm-later').set(H(other.accessToken)).send({ taskId: String(task.id) }).expect(404);
+
+    const T = (await db.one<{ t: string }>(`SELECT tenant_id::text AS t FROM tasks WHERE id=$1`, [task.id]))!.t;
+    expect(await confirm.flush(new Date(Date.now() + 31_000), T)).toBe(1);
+    const card = (await http$.get('/api/assistant/proposals').set(O).expect(200)).body.data.items
+      .find((p: any) => p.skill === 'autotask' && String(p.source.id) === String(task.id));
+    expect(card.title).toBe(`Задача поставлена от вас: #${task.id} «Собрать макет формы»`);
+    expect(card.summary).toContain('• Проект: Сайт');
+    expect(card.summary).toContain('• Откуда: из голосового в форме «Новая задача»');
   });
 });

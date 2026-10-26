@@ -36,7 +36,7 @@ export class StandupService {
       description: `${d.description}${d.link ? `\n\nИсточник: ${d.link}` : ''}`,
       assigneeId: a.userId,
       deadlineAt: evening.getTime() > Date.now() ? evening.toISOString() : undefined,
-    } as any, a.userId, { workloadChecked: true });
+    } as any, a.userId, { workloadChecked: true, aiConfirm: { userId: a.userId, source: 'standup' } });
     d.taskId = String(task.id);
     await this.proposals.setPayload(String(p.id), { ...p.payload, drafts });
     return { text: `Задача #${task.id} поставлена: «${d.title}»`, link: `/projects/${task.project_id}/task/${task.id}`, keepOpen: left() };
