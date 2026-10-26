@@ -13,7 +13,7 @@ export function Logo({ size = 32, withWord = false }: { size?: number; withWord?
   const mark = (
     <img
       className="logo-mark"
-      src="/logo-mark.png"
+      src="/logo-mark.png?v=2"
       width={size}
       height={size}
       alt=""
