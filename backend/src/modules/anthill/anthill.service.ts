@@ -86,7 +86,7 @@ export class AnthillService {
     this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload, proactive, plan: aiPlan });
   }
 
-  private base() { return (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, ''); }
+  private base() { return (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, ''); }
 
   // ── сессии ──
   sessions(tenantId: string, userId: string) {

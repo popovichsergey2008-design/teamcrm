@@ -329,8 +329,11 @@ export class PushService {
 
   /** Путь внутри приложения из первой ссылки на наш домен в письме. */
   static pathOf(text: string): string | null {
-    const base = (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
-    const m = new RegExp(`${base.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}(/[^\\s)>"']*)`).exec(text ?? '');
+    const base = (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, '');
+    // письма, поставленные в очередь до переезда на app.qevo.one (26.10), ещё со старым адресом
+    const bases = [...new Set([base, 'https://app.qevo.one', 'https://qevo.one'])]
+      .map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const m = new RegExp(`(?:${bases})(/[^\\s)>"']*)`).exec(text ?? '');
     if (!m) return null;
     // ссылки на API (отписка) — не маршрут приложения
     return m[1].startsWith('/api/') ? null : m[1];

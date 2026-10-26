@@ -97,14 +97,16 @@ export function isConsoleHost(): boolean {
 export function mainSiteHref(): string {
   const host = window.location.hostname;
   if (!isConsoleHost()) return '/';
-  return `${window.location.protocol}//${host.slice(CONSOLE_HOST.length)}/`;
+  // с 26.10 CRM живёт на app.qevo.one, а корень домена — сайт компании
+  return `${window.location.protocol}//app.${host.slice(CONSOLE_HOST.length)}/`;
 }
 
 export function consoleHref(): string {
   const host = window.location.hostname;
   const local = host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host);
   if (isConsoleHost() || local) return '/console';
-  return `${window.location.protocol}//${CONSOLE_HOST}${host.replace(/^www\./, '')}/console`;
+  // console.qevo.one, а не console.app.qevo.one: консоль — поддомен корня
+  return `${window.location.protocol}//${CONSOLE_HOST}${host.replace(/^(www|app)\./, '')}/console`;
 }
 
 const NAV_EVENT = 'teamcrm:navigate';

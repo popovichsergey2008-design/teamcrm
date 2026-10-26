@@ -1375,7 +1375,7 @@ export class ChatsService {
    */
   async share(tenantId: string, chatId: string, user: { userId: string; role: string }, entityType: string, entityId: string) {
     const chat = await this.access(tenantId, chatId, user);
-    const base = (process.env.APP_BASE_URL || 'https://qevo.one').replace(/\/+$/, '');
+    const base = (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, '');
     let message: MessageRow;
     if (entityType === 'task') {
       const task = await this.repo.taskCard(tenantId, entityId);

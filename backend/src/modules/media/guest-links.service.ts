@@ -730,6 +730,6 @@ export class GuestLinksService {
   }
 
   private baseUrl(): string {
-    return (this.config.get<string>('APP_BASE_URL') || 'https://qevo.one').replace(/\/+$/, '');
+    return (this.config.get<string>('APP_BASE_URL') || 'https://app.qevo.one').replace(/\/+$/, '');
   }
 }

@@ -22,7 +22,7 @@ export class CalendarMailService {
   ) {}
 
   private baseUrl(): string {
-    return (this.config.get<string>('APP_BASE_URL') || 'https://qevo.one').replace(/\/+$/, '');
+    return (this.config.get<string>('APP_BASE_URL') || 'https://app.qevo.one').replace(/\/+$/, '');
   }
 
   /** Постоянная ссылка встречи (ТЗ-14): одна на всех и навсегда. */

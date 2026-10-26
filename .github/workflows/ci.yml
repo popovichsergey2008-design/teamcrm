@@ -189,7 +189,7 @@ jobs:
   # res/values/strings.xml). Нет секрета — бандл НЕ выпускается: оболочка с ключом всё
   # равно не примет его без подписи.
   ota-bundle:
-    name: OTA web bundle → qevo.one/app/bundle
+    name: OTA web bundle → app.qevo.one/app/bundle
     needs: [deploy]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -232,7 +232,7 @@ jobs:
           node -e '
             const [v, min, sha, size, sig] = process.argv.slice(1);
             const out = {
-              version: v, minNative: min, url: `https://qevo.one/app/bundle/qevo-web-${v}.zip`,
+              version: v, minNative: min, url: `https://app.qevo.one/app/bundle/qevo-web-${v}.zip`,
               sha256: sha, sizeBytes: Number(size), signature: sig, mandatory: false,
               publishedAt: new Date().toISOString(),
             };
@@ -262,7 +262,7 @@ jobs:
           scp -i ~/.ssh/deploy_key "ota/qevo-web-$OTA_VERSION.zip" "$TARGET:$D/qevo-web-$OTA_VERSION.zip"
           scp -i ~/.ssh/deploy_key ota/latest.json "$TARGET:$D/latest.json.tmp"
           ssh -i ~/.ssh/deploy_key "$TARGET" "set -e; mv -f $D/latest.json.tmp $D/latest.json; cd $D; ls -1t qevo-web-*.zip | tail -n +6 | xargs -r rm -f --"
-          curl -fsS "https://qevo.one/app/bundle/latest.json"
+          curl -fsS "https://app.qevo.one/app/bundle/latest.json"
 
   # Новый интерфейс (ТЗ-15) — на dev.qevo.one, пока не готов к проду.
   # Ветка ui-v2 меняет только интерфейс: API, база и созвоны — общие с продом, поэтому

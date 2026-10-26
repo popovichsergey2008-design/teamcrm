@@ -67,7 +67,10 @@ x-api-env: &api-env
   KIMI_REASONING_EFFORT: ${KIMI_REASONING_EFFORT:-low}
   MAIL_FROM: ${MAIL_FROM:-noreply@anthill.team}
   MAIL_FROM_NAME: ${MAIL_FROM_NAME:-QEVO}
-  APP_BASE_URL: ${APP_BASE_URL:-https://qevo.one}
+  APP_BASE_URL: ${APP_BASE_URL:-https://app.qevo.one}
+  # адрес для внешних служб (подписки календаря, вебхуки YouGile); без него брался
+  # первый https из CORS_ORIGIN — а там может оказаться https://localhost
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://app.qevo.one}
   # Телеграм-бот: без токена отправка молча ничего не делает — это рабочий режим
   # для окружений без бота. Секрет проверяется на входящем вебхуке, если задан.
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
