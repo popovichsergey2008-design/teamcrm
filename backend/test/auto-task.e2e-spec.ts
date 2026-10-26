@@ -102,6 +102,7 @@ describe('Автоматическая постановка задачи (e2e)',
     expect(card.summary).toContain('• Проект: Сайт');
     expect(card.summary).toContain('• Исполнитель: Глеб Руководитель');
     expect(card.summary).toContain('• Срок: 15 января');
+    expect(card.summary).toContain('• Откуда: из быстрой команды');
     expect(card.summary).toContain('• Приоритет: обычный');
     expect(card.summary).toContain('Проверьте, всё ли верно');
     // и строка в центре уведомлений (колокольчик) — с пунктами и задачей
@@ -111,7 +112,7 @@ describe('Автоматическая постановка задачи (e2e)',
     expect(center.title).toBe(card.title);
     expect(center.path).toBe(`/secretary/${card.id}`);
     expect(String(center.task?.id)).toBe(taskId);
-    expect(center.details.fields.map((f: string[]) => f[0])).toEqual(['Тег', 'Проект', 'Исполнитель', 'Срок', 'Приоритет']);
+    expect(center.details.fields.map((f: string[]) => f[0])).toEqual(['Тег', 'Проект', 'Исполнитель', 'Срок', 'Приоритет', 'Откуда']);
     expect(card.actions.map((a: any) => a.label)).toEqual(['Ок', 'Править']);
     expect(card.actions[1].link).toBe(`/projects/${site.id}/task/${taskId}`);
 
