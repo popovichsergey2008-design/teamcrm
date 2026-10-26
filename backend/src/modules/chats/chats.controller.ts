@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
@@ -26,7 +27,9 @@ class SendDto {
   /** Ответ на сообщение В ЛЕНТЕ: цитата есть, ветка не заводится. */
   @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
   /** Выделенный кусок, на который отвечают. */
-  @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
+  // Цитата — превью, а не содержание: длинную обрезаем, а не отказываем в отправке всего
+  // сообщения (#4676: выделенный фрагмент длиннее 600 знаков ронял отправку ответа)
+  @Transform(({ value }) => (typeof value === 'string' ? value.slice(0, 600) : value)) @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
 }
 class AskAiDto {
   @IsString() @MaxLength(2000) question!: string;

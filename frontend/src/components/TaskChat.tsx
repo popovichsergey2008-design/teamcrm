@@ -789,7 +789,7 @@ export function TaskChat({
    * не заводим: обычный ответ остаётся частью общего разговора.
    */
   const startReply = (c: any, node: Element | null, ready?: string) => {
-    const excerpt = picked(node, ready) || String(c.body ?? 'вложение');
+    const excerpt = (picked(node, ready) || String(c.body ?? 'вложение')).slice(0, 600);
     setEditing(null);
     setThread(null);
     setReplyTo({ id: String(c.id), author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt });
@@ -798,7 +798,7 @@ export function TaskChat({
 
   /** Ответ ВЕТКОЙ: обсуждение уходит в сторону и общую ленту не засоряет. */
   const startThreadReply = (c: any, node: Element | null, ready?: string) => {
-    const excerpt = picked(node, ready);
+    const excerpt = picked(node, ready).slice(0, 600);
     setEditing(null);
     setReplyTo(null);
     setThreadQuote(excerpt ? { author: c.is_ai ? AI_MENTION_NAME : c.author_name, excerpt } : null);

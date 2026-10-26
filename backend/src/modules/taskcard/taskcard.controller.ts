@@ -5,7 +5,7 @@ import {
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
@@ -21,7 +21,9 @@ class CommentDto {
   /** Ответ на конкретное сообщение: в длинной переписке без этого не разобраться. */
   @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
   /** Выделенный кусок, на который отвечают: в длинном сообщении спорят об одном абзаце. */
-  @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
+  // Цитата — превью, а не содержание: длинную обрезаем, а не отказываем в отправке всего
+  // сообщения (#4676: выделенный фрагмент длиннее 600 знаков ронял отправку ответа)
+  @Transform(({ value }) => (typeof value === 'string' ? value.slice(0, 600) : value)) @IsOptional() @IsString() @MaxLength(600) replyExcerpt?: string;
   /** Ответ в ветку: в общей ленте его не будет — ради этого ветки и заводились. */
   @IsOptional() @IsString() @MaxLength(32) threadRootId?: string;
   /** Ответ, важный для всех: показывается и в ветке, и в ленте. */
@@ -133,7 +135,7 @@ export class TaskCardController {
       u.tenantId, id, u.userId, list,
       String(body?.body ?? '').slice(0, 5000),
       body?.replyToId ?? null,
-      body?.replyExcerpt ?? null,
+      body?.replyExcerpt ? String(body.replyExcerpt).slice(0, 600) : null,
       body?.threadRootId ?? null,
     );
   }

@@ -151,6 +151,14 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     const shown = list2.find((c: any) => String(c.id) === String(reply.id));
     expect(shown.reply_body).toBe('как это выглядит');
 
+    // #4676: длинная цитата не роняет отправку ответа — сервер её обрезает до 600
+    const longQuote = 'очень длинный фрагмент '.repeat(40);
+    const reply2 = (await http.post(`/api/tasks/${taskId}/comments`).set(A())
+      .send({ body: 'отвечаю на длинное', replyToId: String(msg.id), replyExcerpt: longQuote })
+      .expect(201)).body.data;
+    const list3 = (await http.get(`/api/tasks/${taskId}/comments`).set(A()).expect(200)).body.data;
+    expect(list3.find((c: any) => String(c.id) === String(reply2.id)).reply_body).toBe(longQuote.slice(0, 600));
+
     /*
       Несколько снимков — ОДНО сообщение (как в переписке).
 

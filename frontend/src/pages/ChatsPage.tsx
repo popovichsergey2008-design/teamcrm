@@ -1634,7 +1634,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           id: String(m.id),
           author: m.is_ai ? 'QEVO Bot' : (m.author_name ?? m.guest_name ?? 'Собеседник'),
           // Цитируем ИМЕННО выделенный кусок: спорят обычно об одном абзаце.
-          excerpt: picked || String(m.body ?? 'вложение').slice(0, 600),
+          excerpt: (picked || String(m.body ?? 'вложение')).slice(0, 600),
         });
         focusComposer();
       },
