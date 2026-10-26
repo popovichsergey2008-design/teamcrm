@@ -974,14 +974,16 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
                 <span>{timerActive ? 'Идёт работа' : 'Таймер остановлен'}</span>
               </div>
               <div className="tv2-timer-actions">
+                {/* #4674: «Начать», не «В работу», и не ярко-синяя — кнопка всё время на глазах и мешала */}
                 <Button
                   size="sm"
-                  variant={timerActive ? 'outline' : 'primary'}
+                  variant={timerActive ? 'outline' : 'secondary'}
                   disabled={timerActive}
-                  title={timerActive ? 'Таймер уже идёт' : 'Начать отсчёт времени по задаче'}
+                  title={timerActive ? 'Таймер уже идёт' : 'Начать работу'}
+                  aria-label={timerActive ? 'Таймер уже идёт' : 'Начать работу'}
                   onClick={() => onToggleTimer(task.id)}
                 >
-                  <Icon name="play" size={14} /> В работу
+                  <Icon name="play" size={14} /> Начать
                 </Button>
                 <Button
                   size="sm"
