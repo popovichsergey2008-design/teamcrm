@@ -1,4 +1,4 @@
-import { dropHallucinations, isHallucination } from './stt-hallucinations';
+import { dropHallucinations, isHallucination, stripHallucinationEdges } from './stt-hallucinations';
 
 const seg = (text: string, noSpeechProb = 0.1, avgLogprob = -0.3, start = 0) => ({ start, end: start + 2, text, noSpeechProb, avgLogprob });
 
@@ -28,5 +28,23 @@ describe('выдумки распознавания на тишине', () => {
       seg('Это тестовая фраза из тишины', 0.2, -0.5, 40), seg('Нет, наша сервисная часть.', 0.05, -0.2, 60),
     ];
     expect(dropHallucinations(list).map((s) => s.text)).toEqual(['Нет, наша сервисная часть.']);
+  });
+});
+
+describe('stripHallucinationEdges', () => {
+  it('срезает выдумку в конце надиктовки (26.10: «С вами был Игорь Негода»)', () => {
+    const said = 'То есть ещё раз зайти, пересмотреть миссию — каким образом это сделать? У меня нет больше доступа к инфоцентру.';
+    expect(stripHallucinationEdges(`${said}\n\nС вами был Игорь Негода.`)).toBe(said);
+    expect(stripHallucinationEdges(`${said} Продолжение следует... Субтитры сделал DimaTorzok`)).toBe(said);
+  });
+
+  it('живую речь не трогает: и с «спасибо за просмотр» внутри фразы', () => {
+    const t = 'Скинь, пожалуйста, ссылку. Спасибо за просмотр макета, всё понятно.';
+    expect(stripHallucinationEdges(t)).toBe(t);
+    expect(stripHallucinationEdges('Поставь задачу Глебу на завтра')).toBe('Поставь задачу Глебу на завтра');
+  });
+
+  it('целиком выдумка — пусто', () => {
+    expect(stripHallucinationEdges('Продолжение следует...')).toBe('');
   });
 });

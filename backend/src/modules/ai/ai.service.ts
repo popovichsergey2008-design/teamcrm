@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { stripHallucinationEdges } from './stt-hallucinations';
 import { AiGateway, AiPriority } from './ai-gateway';
 import { deadlineSignal, rejectAfter } from './hedge';
 import { ConfigService } from '@nestjs/config';
@@ -128,12 +129,13 @@ export class AiService {
   }
 
   transcribe(tenantId: string, audioRefOrText: string): Promise<string> {
-    return this.providerFor(tenantId).then((p) => p.provider.transcribe(audioRefOrText));
+    return this.providerFor(tenantId).then((p) => p.provider.transcribe(audioRefOrText)).then(stripHallucinationEdges);
   }
 
   /** Веб-запись голоса (аудио-буфер) → текст через Whisper (mock → '' при отсутствии ключа). */
   transcribeAudio(tenantId: string, audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts): Promise<string> {
-    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint, opts));
+    // выдумка Whisper на тишине в конце записи («С вами был …») — не речь человека
+    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint, opts)).then(stripHallucinationEdges);
   }
 
   /**
@@ -143,7 +145,7 @@ export class AiService {
     tenantId: string, audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts,
   ): Promise<{ text: string; model: string }> {
     const { provider } = await this.providerFor(tenantId);
-    const text = await provider.transcribeAudio(audio, filename, hint, opts);
+    const text = stripHallucinationEdges(await provider.transcribeAudio(audio, filename, hint, opts));
     return { text, model: (provider as { lastSttModel?: string }).lastSttModel ?? (provider.name === 'mock' ? 'mock-stt' : 'whisper-1') };
   }
 

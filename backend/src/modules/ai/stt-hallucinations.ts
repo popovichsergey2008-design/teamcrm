@@ -64,3 +64,39 @@ export function dropHallucinations<T extends RawSttSegment>(segments: T[]): T[] 
   }
   return echo.size ? kept.filter((s) => !echo.has(norm(s.text))) : kept;
 }
+
+/**
+ * Срезать выдумку с краёв цельной расшифровки.
+ *
+ * Надиктовку распознают одним куском, без сегментов: выдумка на тишине после последних
+ * слов приклеивается в конец — «…С вами был Игорь Негода.» (26.10, обращение заказчика
+ * в службу заботы). Проверка «весь текст — выдумка» её не ловит. Режем по предложениям
+ * с конца и с начала, пока предложение целиком из набора; середину не трогаем.
+ */
+const EDGE = [
+  /^продолжение следует$/,
+  /^субтитры (?:сделал|делал|создавал|подготовил|подготовила|создал).{0,40}$/,
+  /^редактор субтитров.{0,40}$/,
+  /^корректор .{0,40}$/,
+  /^с вами (?:был|была|были) [a-zа-я-]+(?: [a-zа-я-]+)?$/,
+  /^спасибо за просмотр$/,
+  /^подписывайтесь на (?:наш )?канал$/,
+  /^ставьте лайки?$/,
+  /^всем пока$/,
+  /^до новых встреч$/,
+  /^dimatorzok$/,
+];
+
+export function stripHallucinationEdges(text: string): string {
+  const parts = String(text ?? '').split(/(?<=[.!?…])\s+|\n+/);
+  // на краях — только предложение, которое ЦЕЛИКОМ выдумка: «Спасибо за просмотр макета» — живая речь
+  const bad = (p: string) => {
+    const t = norm(p).replace(/[.!?…]+$/, '').trim();
+    return !!t && t.length <= 90 && EDGE.some((re) => re.test(t));
+  };
+  let from = 0, to = parts.length;
+  while (to > from && (!parts[to - 1].trim() || bad(parts[to - 1]))) to--;
+  while (from < to && (!parts[from].trim() || bad(parts[from]))) from++;
+  if (from === 0 && to === parts.length) return text;
+  return parts.slice(from, to).join(' ').replace(/\s+/g, ' ').trim();
+}

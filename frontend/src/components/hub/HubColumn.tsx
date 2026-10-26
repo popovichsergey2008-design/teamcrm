@@ -187,6 +187,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
               {p.mission
                 ? <p className="hub-mission hub-clamp">{p.mission}</p>
                 : cardEmpty && <p className="hub-hint">Добавьте миссию и сайт проекта — новичку не придётся спрашивать.</p>}
+              {p.audience && <p className="hub-meta hub-clamp">Для кого: {p.audience}</p>}
               {links.length > 0 && (
                 <ul className="hub-chips">
                   {links.map((l) => {
@@ -209,9 +210,15 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
                   {!ownerIsMe && <Button variant="outline" size="sm" onClick={() => void write()}><Icon name="chat" size={13} /> Написать</Button>}
                 </div>
               )}
-              {cardEmpty && view.canEdit && (
-                <Button variant="link" size="sm" onClick={() => setPassport({ tab: 'passport' })}>Заполнить паспорт</Button>
-              )}
+              {/* Вход в паспорт — всегда на виду: раньше ссылка пропадала после заполнения, и
+                  миссию с аудиторией было не найти — оставалась только иконка «На весь экран» (26.10) */}
+              {cardEmpty && view.canEdit
+                ? <Button variant="link" size="sm" onClick={() => setPassport({ tab: 'passport' })}>Заполнить паспорт</Button>
+                : (
+                  <Button variant="link" size="sm" onClick={() => setPassport({ tab: 'passport' })}>
+                    {view.canEdit ? 'Паспорт проекта — посмотреть и изменить' : 'Паспорт проекта'}
+                  </Button>
+                )}
             </section>
 
             {/* 2. База знаний */}
