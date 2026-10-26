@@ -1,0 +1,132 @@
+/* Шторка Telegram Mini App (#4619, этап 5) — грузится только на /tg/…; цвета — токены темы. */
+
+.tg-app {
+  min-height: var(--tg-viewport-stable-height, 100dvh);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  padding-bottom: 24px;
+}
+.tg-center { display: flex; align-items: center; justify-content: center; }
+.tg-app.tg-center { padding: 16px; }
+.tg-pad { padding: 16px; }
+.tg-dim { color: var(--text-dim); margin: 0; }
+.tg-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.tg-note {
+  max-width: 360px; display: flex; flex-direction: column; gap: 10px; text-align: center; align-items: center;
+  color: var(--text);
+}
+.tg-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.tg-title { margin: 0; font-size: var(--fs-lg); line-height: 1.3; color: var(--text); }
+.tg-h2 { margin: 0 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.tg-count {
+  display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px; text-align: center;
+  background: var(--hover); color: var(--text-dim); font-size: var(--fs-xs); font-weight: 600; text-transform: none; letter-spacing: 0;
+}
+
+/* плашка примера */
+.tg-demo {
+  margin: 12px 16px 0; padding: 12px; border-radius: var(--radius-lg);
+  background: var(--accent-soft); color: var(--text); border: 1px solid var(--accent-line);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.tg-demo p { margin: 0; line-height: 1.4; }
+.tg-task .tg-demo { margin: 0 0 12px; }
+
+.tg-error {
+  margin: 12px 16px 0; padding: 10px 12px; border-radius: var(--radius);
+  background: var(--danger-soft); color: var(--text); border: 1px solid var(--danger-line);
+  display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+}
+.tg-task .tg-error { margin: 0 0 12px; }
+
+/* шапка доски */
+.tg-head {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; background: var(--bg-elev); color: var(--text); border-bottom: 1px solid var(--border);
+}
+.tg-head-title { margin: 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-project { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; color: var(--text); }
+.tg-project select {
+  appearance: none; width: 100%; min-height: 36px; padding: 0 28px 0 10px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.tg-project select:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.tg-project svg { position: absolute; right: 8px; pointer-events: none; color: var(--text-dim); }
+
+/* колонки — горизонтальной прокруткой, по одной на экран с краем следующей */
+.tg-board {
+  display: flex; gap: 10px; overflow-x: auto; padding: 12px 16px;
+  scroll-snap-type: x mandatory; scroll-padding: 0 16px; -webkit-overflow-scrolling: touch;
+}
+.tg-col {
+  flex: 0 0 min(82vw, 300px); scroll-snap-align: start;
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px;
+}
+.tg-col-title { margin: 0 0 2px; font-size: var(--fs-sm); font-weight: 600; color: var(--text); display: flex; gap: 6px; align-items: center; }
+.tg-empty { font-size: var(--fs-sm); padding: 8px 2px; }
+.tg-card {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left;
+  padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit; cursor: pointer; box-shadow: var(--shadow);
+}
+.tg-card:active { background: var(--hover); }
+.tg-card:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.tg-card-title { font-weight: 600; line-height: 1.3; color: var(--text); }
+.tg-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: var(--fs-sm); color: var(--text-dim); }
+.tg-meta > span { display: inline-flex; align-items: center; gap: 4px; }
+.tg-overdue { color: var(--danger); font-weight: 600; }
+
+/* карточка задачи */
+.tg-task { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.tg-crumb { font-size: var(--fs-sm); }
+.tg-task .tg-title { margin-top: -8px; }
+.tg-fields { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-fields > div { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; color: var(--text); }
+.tg-fields dt { font-size: var(--fs-xs); color: var(--text-dim); }
+.tg-fields dd { margin: 2px 0 0; font-weight: 600; color: var(--text); }
+.tg-fields dd.tg-overdue { color: var(--danger); }
+.tg-section { display: flex; flex-direction: column; }
+
+.tg-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.tg-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0 12px;
+  border-radius: 18px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text);
+  font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.tg-chip.is-on { background: var(--fill-info); border-color: var(--fill-info); color: var(--on-fill); font-weight: 600; }
+.tg-chip:disabled { opacity: .7; cursor: default; }
+.tg-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.tg-gate {
+  margin-top: 10px; padding: 12px; border-radius: var(--radius);
+  background: var(--warn-soft); color: var(--text); border: 1px solid var(--warn-line);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.tg-gate ul { margin: 0; padding-left: 18px; }
+.tg-gate .tg-actions { justify-content: flex-start; }
+
+.tg-progress { height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; margin-bottom: 8px; }
+.tg-progress span { display: block; height: 100%; background: var(--fill-ok); transition: width .2s; }
+.tg-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tg-check {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; min-height: 44px;
+  border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-elev); color: var(--text);
+  cursor: pointer; line-height: 1.35;
+}
+.tg-check input { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--fill-ok); cursor: pointer; }
+.tg-check:focus-within { outline: 2px solid var(--ring); outline-offset: 1px; }
+.tg-check:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.tg-check.is-done span { color: var(--text-dim); text-decoration: line-through; }
+
+.tg-desc { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); color: var(--text); }
+.tg-desc summary { padding: 10px 12px; cursor: pointer; font-weight: 600; color: var(--text); }
+.tg-desc summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.tg-desc p { margin: 0; padding: 0 12px 12px; white-space: pre-wrap; line-height: 1.45; color: var(--text); }

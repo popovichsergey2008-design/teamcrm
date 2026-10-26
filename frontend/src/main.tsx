@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import '@fontsource-variable/inter';
 import './index.css';
@@ -16,6 +16,8 @@ import { platform, platformKind, setPlatformBridge } from './platform';
 import { installSupportErrorCapture } from './lib/support-context';
 import { installChunkRecovery } from './lib/chunk-recovery';
 import { ScreenBoundary } from './components/ScreenBoundary';
+
+const TgApp = lazy(() => import('./tg/TgApp'));
 
 initTheme(); // до первой отрисовки: иначе тёмная тема мигнёт светлым
 initFontScale(); // тоже до отрисовки: увеличенный шрифт не должен моргать обычным
@@ -61,11 +63,14 @@ async function boot(): Promise<void> {
   }
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <AuthProvider>
-        <ScreenBoundary full>
-          <App />
-        </ScreenBoundary>
-      </AuthProvider>
+      {/* шторка Telegram (#4619): своя лёгкая оболочка без входа CRM, отдельным куском */}
+      {location.pathname.startsWith('/tg/') ? <ScreenBoundary full><Suspense fallback={null}><TgApp /></Suspense></ScreenBoundary> : (
+        <AuthProvider>
+          <ScreenBoundary full>
+            <App />
+          </ScreenBoundary>
+        </AuthProvider>
+      )}
     </React.StrictMode>,
   );
 }
