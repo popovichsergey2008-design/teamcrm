@@ -156,8 +156,8 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
               {collecting ? <span className="ui-spinner" style={{ width: 13, height: 13 }} /> : <Icon name="refresh" size={14} />}
             </Button>
           )}
-          <Button variant="ghost" size="icon-sm" onClick={() => view && setPassport({ tab: 'passport' })} disabled={!view} aria-label="На весь экран" title="На весь экран: паспорт проекта">
-            <Icon name="maximize" size={14} />
+          <Button variant="ghost" size="icon-sm" onClick={() => view && setPassport({ tab: 'passport' })} disabled={!view} aria-label="Паспорт проекта" title="Паспорт проекта: миссия, аудитория, команда, база знаний">
+            <Icon name="settings" size={14} />
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={() => setCollapsed(true)} aria-label="Свернуть" title="Свернуть в полосу">
             <Icon name="chevron-left" size={14} />
@@ -216,7 +216,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
                 ? <Button variant="link" size="sm" onClick={() => setPassport({ tab: 'passport' })}>Заполнить паспорт</Button>
                 : (
                   <Button variant="link" size="sm" onClick={() => setPassport({ tab: 'passport' })}>
-                    {view.canEdit ? 'Паспорт проекта — посмотреть и изменить' : 'Паспорт проекта'}
+                    Открыть паспорт
                   </Button>
                 )}
             </section>
