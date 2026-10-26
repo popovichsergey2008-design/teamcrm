@@ -40,6 +40,8 @@ import { feedback } from '../lib/feedback';
 */
 const TaskDrawer = lazyComponent(() => import('../components/TaskDrawer').then((m) => m.TaskDrawer));
 const TaskCreateModal = lazyComponent(() => import('../components/TaskCreateModal').then((m) => m.TaskCreateModal));
+/* Инфоцентр проекта (#4659): нулевая колонка — своим куском, первый экран не тяжелеет. */
+const HubColumn = lazyComponent(() => import('../components/hub/HubColumn').then((m) => m.HubColumn));
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -718,6 +720,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                         <Icon name="settings" size={15} /> Настройки
                       </Button>
                     )}
+                    {view === 'list' && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} variant="button" />}
                     {board.project.origin === 'bitrix' && (
                       <Button variant="ghost" size="sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</Button>
                     )}
@@ -746,6 +749,9 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               />
             ) : (
               <div className="board-columns" ref={columnsRef}>
+                {/* Инфоцентр — перед колонками, но НЕ среди board.columns: «первая колонка»,
+                    порядок и перенос карточек его не видят. Клиенту не показываем. */}
+                {!isClient && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} />}
                 {(shownBoard ?? board).columns.map((col, idx) => (
                   <ColumnView
                     key={col.id}

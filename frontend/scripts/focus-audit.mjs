@@ -19,8 +19,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SRC = process.argv[2] ?? join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
-// все таблицы стилей верхнего уровня: app.css, index.css и ui.css (компоненты ТЗ-15)
-const css = readdirSync(SRC).filter((f) => f.endsWith('.css')).map((f) => readFileSync(join(SRC, f), 'utf8')).join('\n');
+// верхний уровень (app/index/ui.css) и components/hub (#4659); в остальных подпапках есть старые
+// классы без кольца (welcome, focus-zen…) — подключать после починки
+const css = readdirSync(SRC, { recursive: true }).map(String).filter((f) => f.endsWith('.css') && (!/[\\/]/.test(f) || /^components[\\/]hub[\\/]/.test(f))).map((f) => readFileSync(join(SRC, f), 'utf8')).join('\n');
 
 // классы с cursor: pointer — то, что задумано кликабельным
 const clickable = new Set();

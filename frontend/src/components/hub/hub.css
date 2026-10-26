@@ -1,0 +1,191 @@
+/* Инфоцентр проекта (#4659): нулевая колонка доски и «Паспорт проекта».
+   Лежит в ленивом куске вместе с компонентом — первый экран не тяжелеет.
+   Цвета только токенами: светлая (бежевая) и тёмная (тёмно-синяя) темы сразу. */
+
+/* ── колонка ─────────────────────────────────────────────────────────────────── */
+.hub-col {
+  width: 272px; flex-shrink: 0; display: flex; flex-direction: column; max-height: 100%;
+  border-radius: var(--radius-lg); border: 1px solid var(--accent-line);
+  /* полупрозрачная подложка: колонка читается как «не задачи», доска просвечивает */
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+.hub-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 6px 4px 12px; }
+.hub-head-title { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.hub-head-acts { display: inline-flex; gap: 0; }
+.hub-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 8px; }
+
+.hub-badge {
+  display: flex; align-items: center; gap: 6px; margin: 2px 8px 4px; padding: 6px 10px;
+  border-radius: var(--radius); border: 1px solid var(--accent-line);
+  background: var(--bg-elev); color: var(--accent); font: inherit; font-size: var(--fs-xs); font-weight: 500;
+  text-align: left; cursor: pointer;
+}
+.hub-badge:hover { background: var(--hover); }
+.hub-badge:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.hub-badge-wide { margin: 0 20px 6px; flex: none; }
+.hub-note { margin: 0 8px 4px; padding: 6px 10px; border-radius: var(--radius); background: var(--bg-elev); color: var(--text-dim); font-size: var(--fs-xs); }
+
+/* мини-карточки — сплошной лист поверх полупрозрачной колонки: текст на ровном фоне */
+.hub-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgba(16,24,40,.05); color: var(--text);
+}
+.hub-card-title { margin: 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.hub-card-label { margin: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); }
+.hub-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0 -6px -4px; }
+.hub-card-foot .ui-btn-link { padding: 0 6px; }
+.hub-card > .ui-btn-link { align-self: flex-start; }
+.hub-mission { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; }
+.hub-meta { margin: 0; display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--text-mut); }
+.hub-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hub-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.45; }
+.hub-err { margin: 0; font-size: var(--fs-sm); color: var(--danger); }
+
+.hub-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.hub-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-elev-2); color: var(--text); font-size: var(--fs-xs); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.hub-chip:hover { background: var(--hover); }
+.hub-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+.hub-owner { display: flex; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+.hub-owner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hub-owner-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* строки записей */
+.hub-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 4px; border-radius: var(--radius-sm); }
+.hub-row:hover { background: var(--hover); }
+.hub-row-compact { align-items: center; padding: 4px 2px; gap: 6px; }
+.hub-row-icon { flex: none; display: inline-flex; color: var(--text-dim); padding-top: 2px; }
+.hub-row-compact .hub-row-icon { padding-top: 0; }
+.hub-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-row-title { font-size: var(--fs-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.hub-row-body { font-size: var(--fs-sm); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+.hub-row-meta { font-size: var(--fs-xs); color: var(--text-mut); overflow-wrap: anywhere; }
+.hub-row-acts { flex: none; display: inline-flex; gap: 0; }
+.hub-pinned { flex: none; display: inline-flex; color: var(--text-mut); }
+
+/* кнопка, которая выглядит ссылкой: название записи, «из созвона ▸» */
+.hub-linkish {
+  border: 0; padding: 0; background: none; font: inherit; color: var(--accent); cursor: pointer; min-width: 0; max-width: 100%;
+  border-radius: 3px;
+}
+.hub-linkish:hover { text-decoration: underline; }
+.hub-linkish:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.hub-row-title.hub-linkish { color: var(--text); }
+.hub-row-title.hub-linkish:hover { color: var(--accent); }
+
+/* метка «ИИ»: плотная заливка, белый текст (правило плашек — ux-decisions) */
+.hub-ai {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; height: 16px; padding: 0 5px; border-radius: 999px;
+  background: var(--fill-info); color: var(--on-fill); font-size: 10px; font-weight: 600; line-height: 1; cursor: help;
+}
+.hub-ai:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.hub-ai-line { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: var(--fs-xs); color: var(--text-mut); }
+
+.hub-decision { display: flex; flex-direction: column; gap: 2px; padding: 4px 2px; }
+.hub-decision-date { font-size: var(--fs-xs); color: var(--text-mut); }
+.hub-decision-text { font-size: var(--fs-sm); color: var(--text); line-height: 1.45; overflow-wrap: anywhere; }
+.hub-decision-src { display: inline-flex; align-items: center; gap: 2px; align-self: flex-start; font-size: var(--fs-xs); }
+.hub-decisions .hub-decision { padding: 10px 4px; border-bottom: 1px solid var(--border); }
+
+/* поиск: в колонке — подвал под прокруткой карточек */
+.hub-foot {
+  flex: none; padding: 8px; border-top: 1px solid var(--accent-line);
+  background: var(--bg-elev); border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.hub-foot .hub-answer { max-height: min(40vh, 280px); overflow-y: auto; }
+.hub-ask { display: flex; flex-direction: column; gap: 6px; }
+.hub-ask-form { display: flex; gap: 6px; }
+.hub-answer { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--bg-elev-2); }
+.hub-answer-text { margin: 0; font-size: var(--fs-sm); color: var(--text); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hub-cites { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.hub-cite {
+  display: inline-block; max-width: 220px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg-elev); color: var(--accent); font: inherit; font-size: var(--fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+}
+.hub-cite:hover { background: var(--hover); }
+.hub-cite:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.hub-cite-static { color: var(--text-dim); cursor: default; }
+.hub-ask-big .hub-answer-text { font-size: var(--fs-md); }
+
+/* ── свёрнутая полоса 30 px ──────────────────────────────────────────────────── */
+.hub-col-strip { width: 30px; border-radius: var(--radius); }
+.hub-strip-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px 0;
+  width: 100%; border: 0; border-radius: inherit; background: none; color: var(--text); font: inherit; cursor: pointer;
+}
+.hub-strip-btn:hover { background: var(--hover); }
+.hub-strip-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.hub-strip-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); letter-spacing: .02em; }
+.hub-strip-count {
+  min-width: 22px; padding: 1px 4px; border-radius: 999px; text-align: center;
+  background: var(--fill-info); color: var(--on-fill); font-size: 10px; font-weight: 700;
+}
+/* точка на кнопке «Инфоцентр» в виде «Список» — ИИ что-то добавил */
+.hub-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fill-info); }
+
+/* ── паспорт ─────────────────────────────────────────────────────────────────── */
+.hub-passport { width: 920px; height: min(860px, calc(var(--app-h, 100vh) - 48px)); }
+.hub-passport .ui-modal-title { display: inline-flex; align-items: center; gap: 8px; }
+.hub-tabs { padding: 0 20px; flex: none; }
+.hub-passport-body { padding-top: 14px; }
+.hub-sub { margin: 8px 0 0; font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.hub-group-title { margin: 6px 0 2px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); }
+.hub-block { display: flex; flex-direction: column; gap: 8px; }
+.hub-add { align-self: flex-start; }
+.hub-empty {
+  display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius);
+  border: 1px dashed var(--border-2); background: var(--bg-elev-2); color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.5;
+}
+.hub-empty b { color: var(--text); font-weight: 500; }
+.hub-empty .icon { flex: none; color: var(--accent); margin-top: 2px; }
+
+.hub-field { display: flex; flex-direction: column; gap: 4px; }
+.hub-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hub-field-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.hub-field-text { margin: 0; font-size: var(--fs-md); color: var(--text); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hub-field-foot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.hub-field-foot .hub-hint { margin-right: auto; }
+.hub-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; font-size: var(--fs-sm); }
+.hub-facts dt { color: var(--text-dim); }
+.hub-facts dd { margin: 0; color: var(--text); }
+
+.hub-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev-2); }
+.hub-form-row { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hub-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.hub-file { font: inherit; font-size: var(--fs-sm); color: var(--text); }
+.hub-row-edit { list-style: none; }
+
+.hub-member { display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); }
+.hub-member-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hub-member-name { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: var(--fs-md); font-weight: 500; color: var(--text); }
+.hub-member-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.hub-contact-fields { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-sm); color: var(--text); }
+.hub-contact-fields a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+.hub-search-tab { display: flex; flex-direction: column; gap: 12px; }
+
+/* окно «Что добавил ИИ» */
+.hub-run { display: flex; flex-direction: column; gap: 10px; }
+.hub-run-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.hub-run-item > .hub-list { flex: 1; min-width: 0; }
+.hub-run-item.is-removed .hub-row-title { text-decoration: line-through; color: var(--text-mut); }
+.hub-run-removed { font-size: var(--fs-xs); color: var(--text-mut); padding: 0 8px; }
+
+@media (max-width: 720px) {
+  .hub-col-strip { width: 30px; }
+  .modal-overlay.hub-overlay { padding: 0; align-items: stretch; }
+  .hub-passport { width: 100%; height: var(--app-h, 100dvh); max-height: none; border-radius: 0; border: 0; padding-top: var(--safe-top, 0px); padding-bottom: var(--safe-bottom, 0px); }
+  .hub-tabs { padding: 0 8px; }
+  .hub-form-grid { grid-template-columns: 1fr; }
+  .hub-row-acts .ui-btn-icon-sm { width: 36px; height: 36px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .hub-col { background: var(--bg-elev-2); backdrop-filter: none; }
+}
