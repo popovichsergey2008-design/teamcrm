@@ -49,6 +49,7 @@ import { NotificationBell } from './components/NotificationBell';
 import { OPEN_CENTER_EVENT } from './lib/notification-center';
 import { useLiveSignals } from './hooks/useLiveSignals';
 import { TaskDraftButton } from './components/TaskDraftButton';
+import { TASK_QUICK_DRAFT_OPEN, type TaskDraft } from './lib/task-draft';
 import { useOfflineQueue } from './hooks/useOfflineQueue';
 import { useDeltaSync } from './hooks/useDeltaSync';
 import { OfflineBar } from './components/OfflineBar';
@@ -246,12 +247,18 @@ export function App() {
     Фильтр canJoin — в панели (см. Sidebar activeCalls) и в joinActiveCall.
   */
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
-  const [nl, setNl] = useState<{ text?: string; voice?: boolean } | null>(null);
+  const [nl, setNl] = useState<{ text?: string; voice?: boolean; draft?: TaskDraft } | null>(null);
   // «Создать задачу» из любого места с готовым текстом (ТЗ-20 §50: комментарий новости → задача)
   useEffect(() => {
     const open = (e: Event) => setNl({ text: (e as CustomEvent<{ text?: string }>).detail?.text ?? '' });
+    // #4668: черновик быстрой постановки — то же окно с сохранённой фразой
+    const openDraft = (e: Event) => setNl({ draft: (e as CustomEvent<TaskDraft>).detail });
     window.addEventListener('teamcrm:quick-task', open);
-    return () => window.removeEventListener('teamcrm:quick-task', open);
+    window.addEventListener(TASK_QUICK_DRAFT_OPEN, openDraft);
+    return () => {
+      window.removeEventListener('teamcrm:quick-task', open);
+      window.removeEventListener(TASK_QUICK_DRAFT_OPEN, openDraft);
+    };
   }, []);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
@@ -965,8 +972,10 @@ export function App() {
       <NotificationBell className="notif-bell-float" />
       {nl && (
         <NlCommandModal
+          key={nl.draft?.id ?? 'nl'}
           onClose={() => setNl(null)}
           initialText={nl.text}
+          draft={nl.draft}
           autoRecord={nl.voice}
           /* Доска, на которой человек работает: диктуя задачу, он имеет в виду её,
              а не «выберите проект из списка». Раздел мог смениться — тогда берём

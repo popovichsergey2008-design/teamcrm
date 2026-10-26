@@ -633,12 +633,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     const picked = Array.from(list ?? []);
     if (!picked.length) return;
     setErr('');
+    let ok = 0;
     for (const f of picked) {
-      try { await api.uploadAttachment(task.id, f); setFileCount((n) => n + 1); }
-      catch (e) { setErr(e instanceof ApiError ? e.message : `Не удалось приложить ${f.name}`); }
+      try { await api.uploadAttachment(task.id, f); setFileCount((n) => n + 1); ok++; }
+      catch (e) { setErr(e instanceof ApiError ? `${f.name}: ${e.message}` : `Не удалось приложить ${f.name}`); }
     }
     onRefresh();
-    toastSaved('Файл приложен', picked.length > 1 ? `${picked.length} шт. — во вкладке «Файлы»` : picked[0].name);
+    // #4664: «Файл приложен» только о том, что действительно долетело
+    if (ok) toastSaved('Файл приложен', ok > 1 ? `${ok} шт. — во вкладке «Файлы»` : picked.length === 1 ? picked[0].name : '1 шт. — во вкладке «Файлы»');
   };
 
   const userOptions = (empty: string) => [
@@ -1682,7 +1684,8 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       setBusyName(f.name);
       // по одному и по порядку: параллельная отправка рвётся на середине,
       // и понять, какой файл не долетел, потом нельзя
-      try { await api.uploadAttachment(taskId, f); } catch { failed.push(f.name); }
+      // #4664: причина рядом с именем — «не загрузились» без «почему» не исправить
+      try { await api.uploadAttachment(taskId, f); } catch (e) { failed.push(e instanceof ApiError ? `${f.name} (${e.message})` : f.name); }
     }
     setBusyName('');
     await reload();

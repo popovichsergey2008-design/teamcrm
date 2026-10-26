@@ -797,6 +797,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       )}
       {createIn && selected && (
         <TaskCreateModal
+          /* другой черновик — другое окно: состояние формы не должно переехать из прошлого */
+          key={createIn.draft?.id ?? 'new'}
           projectId={selected}
           columnId={createIn.columnId}
           columnName={createIn.columnName}
