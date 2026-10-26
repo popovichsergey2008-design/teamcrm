@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { Icon } from '../Icon';
 import { Button } from '../ui/button';
-import { Tooltip } from '../ui/tooltip';
-import { api, ApiError, type HubDecision, type HubItem } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
+import { hubApi, type HubDecision, type HubItem } from '../../lib/hub-api';
 import { navigate } from '../../lib/router';
 import { platform } from '../../platform';
 import { categoryLabel, dayLabel, hostOf, itemIcon, originLabel, originPath, safeHref } from '../../lib/hub';
@@ -45,9 +45,9 @@ export function AiMark({ item, inline }: { item: Pick<HubItem, 'source' | 'origi
     );
   }
   return (
-    <Tooltip content={`Добавил ИИ ${where}`}>
-      <span className="hub-ai" tabIndex={0} aria-label={`Добавил ИИ ${where}`}><Icon name="sparkles" size={11} /> ИИ</span>
-    </Tooltip>
+    // родная подсказка title, а не Tooltip: всплывашка Base UI в этом куске разбивала общий
+    // кусок первого экрана на два и добавляла ~0,6 КБ к бюджету; в паспорте «откуда» — текстом
+    <span className="hub-ai" title={`Добавил ИИ ${where}`} aria-label={`Добавил ИИ ${where}`}><Icon name="sparkles" size={11} /> ИИ</span>
   );
 }
 
@@ -125,7 +125,7 @@ export function DecisionRow({ d, clamp }: { d: HubDecision; clamp?: boolean }) {
   );
 }
 
-type Answer = Awaited<ReturnType<typeof api.hubAsk>>;
+type Answer = Awaited<ReturnType<typeof hubApi.ask>>;
 
 /** Вопрос про проект: ответ ИИ по документам, решениям и переписке — с источниками. */
 export function AskBox({ projectId, big }: { projectId: string; big?: boolean }) {
@@ -138,7 +138,7 @@ export function AskBox({ projectId, big }: { projectId: string; big?: boolean })
     const text = q.trim();
     if (!text || busy) return;
     setBusy(true); setErr(''); setAnswer(null);
-    try { setAnswer(await api.hubAsk(projectId, text)); }
+    try { setAnswer(await hubApi.ask(projectId, text)); }
     catch (ex) { setErr(errText(ex, 'Не получилось спросить — попробуйте ещё раз')); }
     finally { setBusy(false); }
   };

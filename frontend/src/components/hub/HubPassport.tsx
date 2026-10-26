@@ -6,7 +6,8 @@ import { Tabs } from '../ui/tabs';
 import { Textarea } from '../ui/field';
 import { OptionSelect } from '../ui/option-select';
 import { confirmAction, promptText } from '../ui/dialog';
-import { api, ApiError, type ClientContact, type HubDecision, type HubItem, type HubKind, type HubMember, type HubSection, type HubView } from '../../lib/api';
+import { api, ApiError, type ClientContact } from '../../lib/api';
+import { hubApi, type HubDecision, type HubItem, type HubKind, type HubMember, type HubSection, type HubView } from '../../lib/hub-api';
 import { navigate } from '../../lib/router';
 import { initialsOf } from '../../lib/initials';
 import { overlayProps } from '../../lib/overlay';
@@ -116,7 +117,7 @@ const EMPTY_AI = 'ИИ соберёт сам каждое утро в 8:00 — �
 function PassportTab({ ctx }: { ctx: Ctx }) {
   const p = ctx.view.project;
   const save = (field: 'mission' | 'audience' | 'description') => async (value: string) => {
-    await api.hubPassport(ctx.projectId, { [field]: value });
+    await hubApi.passport(ctx.projectId, { [field]: value });
     await ctx.reload();
     toastSaved();
   };
@@ -186,12 +187,12 @@ function ItemsBlock({ ctx, section, items, kinds, empty, grouped, startAdd }: {
   const [adding, setAdding] = useState(!!startAdd && ctx.canEdit);
   const [editing, setEditing] = useState<HubItem | null>(null);
   const pin = async (it: HubItem) => {
-    try { await api.hubUpdateItem(ctx.projectId, it.id, { pinned: !it.pinned }); await ctx.reload(); }
+    try { await hubApi.updateItem(ctx.projectId, it.id, { pinned: !it.pinned }); await ctx.reload(); }
     catch (e) { ctx.setErr(errText(e, 'Не удалось закрепить')); }
   };
   const remove = async (it: HubItem) => {
     if (!(await confirmAction({ title: `Убрать «${it.title}»?`, description: 'Запись пропадёт из Инфоцентра у всей команды.', confirmLabel: 'Убрать', danger: true }))) return;
-    try { await api.hubRemoveItem(ctx.projectId, it.id); await ctx.reload(); }
+    try { await hubApi.removeItem(ctx.projectId, it.id); await ctx.reload(); }
     catch (e) { ctx.setErr(errText(e, 'Не удалось убрать')); }
   };
   const row = (it: HubItem) => (editing?.id === it.id ? (
@@ -266,7 +267,7 @@ function ItemForm({ ctx, section, kinds, item, onDone }: {
           setBusy(`Загружаю ${f.name}…`);
           try {
             const up = await api.uploadFile(f, 'project_hub', ctx.projectId);
-            await api.hubAddItem(ctx.projectId, {
+            await hubApi.addItem(ctx.projectId, {
               section, kind: 'file', fileId: up.id, title: files.length === 1 && title.trim() ? title.trim() : f.name,
               category: touchedCategory.current ? category : guessFileCategory(f.name),
             });
@@ -298,8 +299,8 @@ function ItemForm({ ctx, section, kinds, item, onDone }: {
       }
       if (!payload.title) { setErr('Укажите название'); return; }
       setBusy('Сохраняю…');
-      if (item) await api.hubUpdateItem(ctx.projectId, item.id, payload);
-      else await api.hubAddItem(ctx.projectId, { section, kind, ...payload } as never);
+      if (item) await hubApi.updateItem(ctx.projectId, item.id, payload);
+      else await hubApi.addItem(ctx.projectId, { section, kind, ...payload } as never);
       await ctx.reload();
       toastSaved(item ? 'Сохранено' : 'Добавлено');
       onDone();
@@ -411,7 +412,7 @@ function MemberRow({ ctx, m, me, onWrite }: { ctx: Ctx; m: HubMember; me: boolea
   const save = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    try { await api.hubMember(ctx.projectId, m.userId, { roleTitle: role.trim(), responsibility: resp.trim() }); await ctx.reload(); setEditing(false); toastSaved(); }
+    try { await hubApi.member(ctx.projectId, m.userId, { roleTitle: role.trim(), responsibility: resp.trim() }); await ctx.reload(); setEditing(false); toastSaved(); }
     catch (ex) { ctx.setErr(errText(ex, 'Не удалось сохранить')); }
     finally { setBusy(false); }
   };
@@ -450,7 +451,7 @@ function ContactsBlock({ ctx, items }: { ctx: Ctx; items: HubItem[] }) {
   const [editing, setEditing] = useState<string | null>(null);
   const remove = async (it: HubItem) => {
     if (!(await confirmAction({ title: `Убрать контакт «${it.title}»?`, confirmLabel: 'Убрать', danger: true }))) return;
-    try { await api.hubRemoveItem(ctx.projectId, it.id); await ctx.reload(); }
+    try { await hubApi.removeItem(ctx.projectId, it.id); await ctx.reload(); }
     catch (e) { ctx.setErr(errText(e, 'Не удалось убрать')); }
   };
   return (
@@ -553,7 +554,7 @@ function DecisionsTab({ ctx }: { ctx: Ctx }) {
   const load = async (before?: string) => {
     setBusy(true);
     try {
-      const r = await api.hubDecisions(ctx.projectId, before);
+      const r = await hubApi.decisions(ctx.projectId, before);
       setItems((xs) => (before ? [...xs, ...r.items.filter((d) => !xs.some((x) => x.id === d.id))] : r.items));
       setTotal(r.total);
     } catch (e) { ctx.setErr(errText(e, 'Не удалось загрузить решения')); }

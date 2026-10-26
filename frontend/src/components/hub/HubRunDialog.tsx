@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
-import { api, type HubDecision, type HubItem, type HubRun } from '../../lib/api';
+import { hubApi, type HubDecision, type HubItem, type HubRun } from '../../lib/hub-api';
 import { addedSummary, dayLabel } from '../../lib/hub';
 import { DecisionRow, ItemRow, errText } from './parts';
 
@@ -30,11 +30,11 @@ export function HubRunDialog({ projectId, runId, onClose, onChanged }: {
 
   useEffect(() => {
     let alive = true;
-    api.hubRun(projectId, runId)
+    hubApi.run(projectId, runId)
       .then((r) => { if (!alive) return; setRun(r.run); setItems(r.items); setDecisions(r.decisions); })
       .catch((e) => alive && setErr(errText(e, 'Не удалось загрузить, что добавил ИИ')))
       .finally(() => alive && setLoading(false));
-    api.hubSeen(projectId, runId).then(onChanged).catch(() => undefined);
+    hubApi.seen(projectId, runId).then(onChanged).catch(() => undefined);
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, runId]);
@@ -42,7 +42,7 @@ export function HubRunDialog({ projectId, runId, onClose, onChanged }: {
   const remove = async (it: RunItem) => {
     setErr('');
     setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, removed: true } : x)));
-    try { await api.hubRemoveItem(projectId, it.id); onChanged(); }
+    try { await hubApi.removeItem(projectId, it.id); onChanged(); }
     catch (e) {
       setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, removed: false } : x)));
       setErr(errText(e, 'Не удалось убрать запись'));

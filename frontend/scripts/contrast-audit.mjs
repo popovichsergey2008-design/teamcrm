@@ -165,7 +165,9 @@ function ownBackground(decls) {
 }
 
 // ── прогон ────────────────────────────────────────────────────────────────────
-const files = readdirSync(SRC).filter((f) => f.endsWith('.css')).sort();
+// верхний уровень (index/app/ui.css) и components/hub (#4659). Остальные подпапки пока не
+// подключены: в welcome/secretary/ai-demo/postcall есть старые провалы — их сначала чинить.
+const files = readdirSync(SRC, { recursive: true }).map(String).filter((f) => f.endsWith('.css') && (!/[\\/]/.test(f) || /^components[\\/]hub[\\/]/.test(f))).sort();
 if (!files.length) {
   console.error('contrast: не найдено ни одного .css в', SRC);
   process.exit(2);

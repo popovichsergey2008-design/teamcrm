@@ -1,5 +1,5 @@
 import type { IconName } from '../components/Icon';
-import type { HubAdded, HubItem, HubOrigin, HubSection } from './api';
+import type { HubAdded, HubItem, HubOrigin, HubSection } from './hub-api';
 import { plural } from './chat-text';
 
 /**

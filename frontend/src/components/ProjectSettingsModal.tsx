@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
+import { lazyComponent } from '../lib/lazy';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
 import { PROJECTS_CHANGED } from './ProjectsNav';
 import { OptionSelect } from './ui/option-select';
+
+/* #4659: выключатель библиотекаря — своим куском, первый экран не тяжелеет */
+const LibrarianToggle = lazyComponent(() => import('./hub/LibrarianToggle').then((m) => m.LibrarianToggle));
 
 /**
  * Настройки проекта.
@@ -20,6 +24,8 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
   project: {
     id: string; name: string; is_default?: boolean; is_support?: boolean;
     owner_user_id?: string | null; visibility?: string; aliases?: string[]; description?: string;
+    /** #4659: ИИ-библиотекарь Инфоцентра; по умолчанию включён. */
+    hub_librarian?: boolean;
   };
   onClose: () => void;
   onChanged: () => void;
@@ -332,6 +338,12 @@ export function ProjectSettingsModal({ project, onClose, onChanged }: {
           </OptionSelect>
           <p className="dim">К нему идут с вопросами «что по проекту»; показывается в шапке чата проекта и в сведениях.</p>
         </div>
+
+        <LibrarianToggle
+          projectId={String(project.id)}
+          initial={project.hub_librarian !== false}
+          onDone={(msg, isErr) => { setErr(isErr ? msg : ''); setDone(isErr ? '' : msg); if (!isErr) onChanged(); }}
+        />
 
         <div className="drawer-section">
           <div className="drawer-section-title">Доски по умолчанию в этом проекте</div>

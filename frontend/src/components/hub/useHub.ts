@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type HubView } from '../../lib/api';
+import { hubApi, type HubView } from '../../lib/hub-api';
 import { getSocket } from '../../lib/socket';
 import { errText } from './parts';
 
@@ -20,7 +20,7 @@ export function useHub(projectId: string) {
 
   const reload = useCallback(() => {
     const id = projectId;
-    return api.hub(id)
+    return hubApi.view(id)
       .then((v) => { if (current.current === id) { setView(v); setError(''); } })
       .catch((e) => { if (current.current === id) setError(errText(e, 'Инфоцентр не загрузился')); })
       .finally(() => { if (current.current === id) setLoading(false); });

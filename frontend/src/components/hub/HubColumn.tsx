@@ -4,6 +4,7 @@ import { Icon } from '../Icon';
 import { Avatar } from '../Avatar';
 import { Button } from '../ui/button';
 import { api } from '../../lib/api';
+import { hubApi } from '../../lib/hub-api';
 import { navigate } from '../../lib/router';
 import { initialsOf } from '../../lib/initials';
 import { toastSaved } from '../../lib/notifications';
@@ -58,7 +59,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
 
   const collect = async () => {
     setCollecting(true); setNote('');
-    try { await api.hubCollect(projectId); toastSaved('Сбор запущен', 'ИИ разберёт события за сутки — новое появится в Инфоцентре само.'); }
+    try { await hubApi.collect(projectId); toastSaved('Сбор запущен', 'ИИ разберёт события за сутки — новое появится в Инфоцентре само.'); }
     catch (e) { setNote(errText(e, 'Не удалось запустить сбор')); }
     finally { setCollecting(false); }
   };
@@ -236,14 +237,15 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
                 </div>
               )}
             </section>
-
-            {/* 4. Поиск */}
-            <section className="hub-card" aria-label="Поиск по проекту">
-              <AskBox projectId={projectId} />
-            </section>
           </>
         )}
       </div>
+      {/* 4. Поиск — прибит к низу колонки: карточки над ним прокручиваются, поле видно всегда */}
+      {view && (
+        <section className="hub-foot" aria-label="Поиск по проекту">
+          <AskBox projectId={projectId} />
+        </section>
+      )}
       {overlays}
     </aside>
   );

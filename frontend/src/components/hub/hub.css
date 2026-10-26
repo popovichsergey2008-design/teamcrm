@@ -94,7 +94,12 @@
 .hub-decision-src { display: inline-flex; align-items: center; gap: 2px; align-self: flex-start; font-size: var(--fs-xs); }
 .hub-decisions .hub-decision { padding: 10px 4px; border-bottom: 1px solid var(--border); }
 
-/* поиск */
+/* поиск: в колонке — подвал под прокруткой карточек */
+.hub-foot {
+  flex: none; padding: 8px; border-top: 1px solid var(--accent-line);
+  background: var(--bg-elev); border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.hub-foot .hub-answer { max-height: min(40vh, 280px); overflow-y: auto; }
 .hub-ask { display: flex; flex-direction: column; gap: 6px; }
 .hub-ask-form { display: flex; gap: 6px; }
 .hub-answer { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius); background: var(--bg-elev-2); }
