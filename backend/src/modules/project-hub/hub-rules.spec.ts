@@ -1,5 +1,5 @@
 import {
-  addedLabel, addedTotal, buildCandidates, classifyFile, classifyUrl, extractUrls, isJunkFile, isJunkUrl,
+  addedLabel, addedTotal, buildCandidates, classifyFile, contextTitle, classifyUrl, extractUrls, isJunkFile, isJunkUrl,
   normalizeUrl, parseJsonLoose, phoneInText, placeByRules, telegramInText, validateModelAnswer, validCategory,
 } from './hub-rules';
 
@@ -183,5 +183,40 @@ describe('Инфоцентр: проверка ответа модели', () =>
     expect(phoneInText('123', 'код 123')).toBe(false);
     expect(telegramInText('@ivan_pixel', 'пишите в t.me/ivan_pixel')).toBe(true);
     expect(telegramInText('ivan_pixel', 'пишите Ивану')).toBe(false);
+  });
+});
+
+describe('Инфоцентр: правки 26.10 (проект QEVO)', () => {
+  it('скриншот во вложениях задачи не становится «ТЗ» из-за слова в её описании', () => {
+    const shot = { id: '9', name: 'Снимок 2026-10-16 09-55-03.png', contentType: 'image/png' };
+    const doc = { id: '10', name: 'Интеграция.docx', contentType: 'application/msword' };
+    const cands = buildCandidates([{
+      text: 'ТЗ на интеграцию с Google', files: [shot, doc], origin: { type: 'task', id: '1', taskId: '1' },
+    }], { urls: new Set(), fileIds: new Set() });
+    expect(cands.map((c) => c.fileName)).toEqual(['Интеграция.docx']); // скрин — мусор
+    // и документ задачи не «ТЗ» только потому, что задача про ТЗ: решит модель
+    expect(placeByRules(cands).placed.size).toBe(0);
+    // а у фото в чате подпись — о самом фото
+    const chat = buildCandidates([{
+      text: 'новый логотип', files: [{ id: '11', name: 'фото.jpg', contentType: 'image/jpeg' }],
+      origin: { type: 'chat_message', id: '5', chatId: '3' },
+    }], { urls: new Set(), fileIds: new Set() });
+    expect(placeByRules(chat).placed.get(chat[0].ref)?.category).toBe('brand');
+  });
+
+  it('безликая ссылка получает подпись из задачи, адрес из подписи убран', () => {
+    const cands = buildCandidates([{
+      text: 'Интеграция с Google Workspace\nВсё расписано https://docs.google.com/document/d/abc/edit',
+      origin: { type: 'task', id: '1', taskId: '1' },
+    }], { urls: new Set(), fileIds: new Set() });
+    const { placed } = placeByRules(cands);
+    expect([...placed.values()][0].title).toBe('Документ Google: Интеграция с Google Workspace Всё расписано');
+  });
+
+  it('contextTitle режет длинное по слову и пустое не придумывает', () => {
+    expect(contextTitle('https://x.ru')).toBe('');
+    const long = contextTitle('Очень длинное название задачи про то, как всё должно работать в мобильном приложении и на сайте');
+    expect(long.length).toBeLessThanOrEqual(70);
+    expect(long.endsWith('…')).toBe(true);
   });
 });

@@ -280,6 +280,15 @@ export interface RawFind {
  * нормальному виду, файл — по номеру), уже лежащее в Инфоцентре (в том числе
  * убранное человеком) — пропущено. Порядок — как в источниках: первое упоминание.
  */
+/**
+ * Подпись файла. У вложения задачи «подпись» — вся задача: слово «ТЗ» в её описании делало
+ * «Снимок 2026-10-16 09-55-03.png» техзаданием (26.10, проект QEVO). О самом файле там ничего нет —
+ * судим по имени. Подпись к фото в чате, наоборот, говорит именно о фото.
+ */
+function fileCaption(f: { text?: string | null; origin: Origin }): string {
+  return f.origin.type === 'task' ? '' : f.text ?? '';
+}
+
 export function buildCandidates(
   finds: RawFind[], known: { urls: Set<string>; fileIds: Set<string> }, ctx: UrlContext = {},
 ): Candidate[] {
@@ -297,7 +306,7 @@ export function buildCandidates(
     for (const file of f.files ?? []) {
       const id = String(file.id);
       if (seenFile.has(id) || known.fileIds.has(id)) continue;
-      if (isJunkFile(file.name, file.contentType, f.text ?? '')) continue;
+      if (isJunkFile(file.name, file.contentType, fileCaption(f))) continue;
       seenFile.add(id);
       out.push({
         ref: `c${out.length + 1}`, kind: 'file', fileId: id, fileName: file.name, contentType: file.contentType,
@@ -309,11 +318,26 @@ export function buildCandidates(
 }
 
 /** Раскладка правилами: что правила узнали — сразу место; остальное — для модели. */
+/** Названия ссылок, которые сами по себе ничего не говорят: десять «Документ Google» подряд не различить. */
+const GENERIC_LINK = new Set(['Документ Google', 'Таблица Google', 'Презентация Google', 'Файл Google Диска', 'Страница Notion', 'Макет Figma']);
+
+/** О чём ссылка — по тексту вокруг неё (название задачи, сообщение) без самих адресов. */
+export function contextTitle(context: string): string {
+  const t = String(context ?? '').replace(/(https?:\/\/|www\.)\S+/gi, ' ').replace(/\s+/g, ' ').trim().replace(/[\s:;,.—–-]+$/, '');
+  if (t.length < 3) return '';
+  return t.length > 70 ? `${t.slice(0, 69).replace(/\s+\S*$/, '')}…` : t;
+}
+
 export function placeByRules(cands: Candidate[], ctx: UrlContext = {}): { placed: Map<string, Placement>; rest: Candidate[] } {
   const placed = new Map<string, Placement>();
   const rest: Candidate[] = [];
   for (const c of cands) {
-    const p = c.kind === 'link' ? classifyUrl(c.url!, ctx) : classifyFile(c.fileName ?? '', c.contentType ?? null, c.context);
+    let p = c.kind === 'link' ? classifyUrl(c.url!, ctx)
+      : classifyFile(c.fileName ?? '', c.contentType ?? null, fileCaption({ text: c.context, origin: c.origin }));
+    if (p && c.kind === 'link' && GENERIC_LINK.has(p.title)) {
+      const about = contextTitle(c.context);
+      if (about) p = { ...p, title: `${p.title}: ${about}` };
+    }
     if (p) placed.set(c.ref, p); else rest.push(c);
   }
   return { placed, rest };
