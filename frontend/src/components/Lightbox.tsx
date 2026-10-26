@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
+import { useBackClose } from '../lib/overlay';
 
 /**
  * Один снимок в просмотре. Либо готовый адрес (лента компании), либо номер файла —
@@ -23,7 +25,12 @@ export interface LightboxItem {
  * Соседние снимки подгружаются заранее — перелистывание не должно ждать сети.
  *
  * Закрытие — по фону, по Esc и по крестику: три привычных способа, и ни один из них
- * не должен требовать попасть в маленькую кнопку.
+ * не должен требовать попасть в маленькую кнопку. На телефоне ещё два (#4667):
+ * системная кнопка «Назад» и смахивание снимка вниз.
+ *
+ * Окно рисуется в <body>, а не там, где его открыли (#4667): в чате на телефоне оно
+ * жило внутри ленты, и «fixed» считался от её рамки — шапка с крестиком уезжала за
+ * верх экрана, под строку состояния, и закрыть снимок было нечем.
  */
 export function Lightbox({ items, index = 0, onClose }: {
   items: LightboxItem[];
@@ -50,6 +57,10 @@ export function Lightbox({ items, index = 0, onClose }: {
   } | null>(null);
   const lastTap = useRef(0);
   const stageRef = useRef<HTMLDivElement>(null);
+  /** Насколько снимок утянут пальцем вниз — дальше порога отпустили, окно закрывается. */
+  const [drop, setDrop] = useState(0);
+
+  useBackClose(onClose);
 
   const count = items.length;
   const item = items[at];
@@ -64,13 +75,21 @@ export function Lightbox({ items, index = 0, onClose }: {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      // Esc закрывает только снимок: карточка задачи под ним тоже слушает Esc и закрылась бы следом
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
       if (e.key === 'ArrowRight') go(1);
       if (e.key === 'ArrowLeft') go(-1);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose, go]);
+
+  // Повернули телефон — увеличение и сдвиг считались под старый размер экрана.
+  useEffect(() => {
+    const reset = () => setZoom({ s: 1, x: 0, y: 0 });
+    window.addEventListener('orientationchange', reset);
+    return () => window.removeEventListener('orientationchange', reset);
+  }, []);
 
   /*
     Забираем текущий снимок и соседей.
@@ -142,16 +161,24 @@ export function Lightbox({ items, index = 0, onClose }: {
     const dy = a.clientY - g.y;
     if (Math.abs(dx) > 8 || Math.abs(dy) > 8) g.moved = true;
     if (zoomRef.current.s > 1 && g.pan && !g.pinch) setZoom((z) => ({ ...z, x: g.pan!.x + dx, y: g.pan!.y + dy }));
+    // обычный масштаб и палец идёт вниз — снимок едет за ним, как в мессенджерах
+    else if (!g.pinch && dy > 0 && dy > Math.abs(dx)) setDrop(dy);
+    else setDrop(0);
   };
   const onTouchEnd = (e: ReactTouchEvent) => {
     const g = touch.current;
     if (e.touches.length > 0) return; // ещё держит палец — жест не кончился
     touch.current = null;
     setGesture(false);
+    const pulled = drop;
+    setDrop(0);
     if (!g) return;
     if (zoomRef.current.s <= 1.02) setZoom({ s: 1, x: 0, y: 0 });
+    if (pulled > 110) { onClose(); return; }
     const to = e.changedTouches[0];
     if (!g.moved) {
+      // касание мимо снимка — закрыть: на телефоне окно во весь экран, и «фон» — это поля вокруг
+      if (e.target === e.currentTarget) { e.preventDefault(); onClose(); return; }
       // двойное касание — увеличить в 2,5 раза или вернуть как было
       const now = Date.now();
       if (now - lastTap.current < 300) { lastTap.current = 0; toggleZoom(); } else lastTap.current = now;
@@ -169,22 +196,39 @@ export function Lightbox({ items, index = 0, onClose }: {
   const src = item.url ?? (item.fileId ? blobs[item.fileId] : undefined);
   const isVideo = (item.mime ?? '').startsWith('video/');
 
-  return (
-    <div className="lightbox-overlay" onClick={onClose}>
+  const fade = drop ? Math.max(0.35, 1 - drop / 400) : 1;
+
+  return createPortal(
+    <div
+      className="lightbox-overlay"
+      style={fade < 1 ? { opacity: fade } : undefined}
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      // события из портала всплывают по дереву React — до карточки задачи и ленты чата
+      onMouseDown={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-modal="true"
+      aria-label={item.name}
+    >
       <div className="lightbox-body" onClick={(e) => e.stopPropagation()}>
         <div className="lightbox-head">
-          <span className="dim">
-            {item.name}
+          <span className="dim lightbox-name" title={item.name}>
+            <span className="lightbox-name-text">{item.name}</span>
             {many && <span className="lightbox-count">{at + 1} из {count}</span>}
           </span>
           <div className="lightbox-actions">
             {!isVideo && src && (
-              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={toggleZoom} title={zoom.s > 1 ? 'Как было' : 'Увеличить (или щипком, двойным касанием, колесом мыши)'}>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm lightbox-zoom" onClick={toggleZoom} title={zoom.s > 1 ? 'Как было' : 'Увеличить (или щипком, двойным касанием, колесом мыши)'}>
                 {zoom.s > 1 ? 'Как было' : 'Увеличить'}
               </button>
             )}
-            {src && <a className="ui-btn ui-btn-ghost ui-btn-sm" href={src} download={item.name}>Скачать</a>}
-            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+            {src && (
+              <a className="ui-btn ui-btn-ghost ui-btn-sm" href={src} download={item.name} title="Скачать" aria-label="Скачать">
+                <Icon name="download" size={16} /><span className="lightbox-btn-label">Скачать</span>
+              </a>
+            )}
+            <button className="ui-btn ui-btn-ghost ui-btn-sm lightbox-close" onClick={onClose} title="Закрыть" aria-label="Закрыть">
+              <Icon name="close" size={20} />
+            </button>
           </div>
         </div>
 
@@ -195,7 +239,8 @@ export function Lightbox({ items, index = 0, onClose }: {
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
-          onTouchCancel={() => { touch.current = null; setGesture(false); }}
+          onTouchCancel={() => { touch.current = null; setGesture(false); setDrop(0); }}
+          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
           {many && (
             <button className="lightbox-nav lightbox-prev" onClick={() => go(-1)} title="Предыдущее" aria-label="Предыдущее">
@@ -213,7 +258,7 @@ export function Lightbox({ items, index = 0, onClose }: {
                 draggable={false}
                 onDoubleClick={toggleZoom}
                 style={{
-                  transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`,
+                  transform: `translate(${zoom.x}px, ${zoom.y + drop}px) scale(${zoom.s})`,
                   transition: gesture ? 'none' : 'transform .18s ease',
                   cursor: zoom.s > 1 ? 'zoom-out' : 'zoom-in',
                 }}
@@ -226,7 +271,8 @@ export function Lightbox({ items, index = 0, onClose }: {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

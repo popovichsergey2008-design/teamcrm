@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { DatePicker } from './DatePicker';
 import { Button } from './ui/button';
 import { Select } from './ui/select';
+import { ClampText } from './ClampText';
 import { useWorkloadCheck, WorkloadWarning } from './WorkloadWarning';
 import { chipDate, chipFor, DEADLINE_CHIPS, PRIORITY_LABEL, shortDay } from '../lib/auto-task';
 import './nl-auto.css';
@@ -78,7 +79,8 @@ export function AutoSummary({ draft, index, many, deadline, busy, onPatchTask, o
         )}
       </div>
       <div className="nla-title">{t.title}</div>
-      {t.description && <div className="nla-desc">{t.description}</div>}
+      {/* описание от ИИ бывает длинным: четыре строки и «Ещё», а не обрыв многоточием (#4670) */}
+      {t.description && <ClampText className="nla-desc" lines={4}>{t.description}</ClampText>}
       <dl className="nla-facts">
         <dt>Исполнитель</dt>
         <dd>{t.assigneeName ?? 'без исполнителя'}{t.assigneeWhy ? <span className="nla-why"> · {t.assigneeWhy}</span> : null}</dd>

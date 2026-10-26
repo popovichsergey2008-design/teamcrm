@@ -27,7 +27,8 @@
 .zen-dod { border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; background: var(--bg-elev); }
 .zen-dod summary { cursor: pointer; font-weight: 600; }
 .zen-dod summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }
-.zen-dod p { margin: 8px 0 0; white-space: pre-wrap; color: var(--text-dim); font-size: 14px; }
+/* описание целиком (#4670): длинное прокручивается внутри, а не обрывается на 900 знаках */
+.zen-dod p { margin: 8px 0 0; white-space: pre-wrap; color: var(--text-dim); font-size: 14px; max-height: 40vh; overflow-y: auto; }
 .zen-sub { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
 .zen-checks { display: flex; flex-direction: column; gap: 6px; }
 .zen-check { display: flex; align-items: flex-start; gap: 10px; padding: 6px 10px; border-radius: 8px; cursor: pointer; }

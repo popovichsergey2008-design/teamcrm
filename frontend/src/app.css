@@ -3843,10 +3843,18 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   color: var(--accent); text-decoration: underline; font: inherit;
 }
 .file-link:hover { color: var(--text); }
+/* Кнопка-ссылка («Ещё», «Отменить — агент ошибся»): без своего правила она рисовалась серой системной кнопкой. */
+.link-btn {
+  background: none; border: none; padding: 0; cursor: pointer; text-align: left;
+  color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font: inherit;
+}
+.link-btn:hover { color: var(--text); }
+.link-btn:disabled { color: var(--text-mut); cursor: default; }
 
 /* лайтбокс просмотра картинки */
 .lightbox-overlay {
-  position: fixed; inset: 0; background: var(--overlay); z-index: 80;
+  /* над карточкой задачи, окнами и нижними вкладками: снимок открыт поверх всего (#4667) */
+  position: fixed; inset: 0; background: var(--overlay); z-index: 1300;
   display: flex; align-items: center; justify-content: center; padding: 32px;
 }
 .lightbox-body {
@@ -3854,7 +3862,12 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   max-width: 92vw; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
 }
 .lightbox-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
-.lightbox-actions { display: flex; gap: 6px; }
+/* Длинное имя файла сжимается само, а кнопки — никогда: раньше имя выталкивало крестик за край (#4667). */
+.lightbox-name { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; }
+.lightbox-name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lightbox-count { flex: none; }
+.lightbox-actions { display: flex; gap: 6px; flex: none; }
+.lightbox-btn-label { margin-left: 4px; }
 .lightbox-img { max-width: 88vw; max-height: 78vh; object-fit: contain; display: block; }
 
 /* copilot panel */
@@ -5741,10 +5754,27 @@ button.chat-pop-row:hover { background: var(--hover); }
 @media (max-width: 720px) { .lightbox-nav { width: 38px; height: 38px; } }
 /* увеличение снимка: жесты обрабатываем сами, увеличенное не вылезает из окна */
 .lightbox-stage { overflow: hidden; touch-action: none; }
-@media (max-width: 720px) {
+/*
+  Телефон — и стоя, и лёжа (низкий экран в повороте): снимок во весь экран.
+
+  Шапка начинается под строкой состояния: в приложении Android WebView рисуется и под
+  часами, и без отступа крестик оказывался под ними (#4667). Снизу — над полосой
+  системных кнопок, по бокам — мимо выреза камеры в повороте.
+*/
+@media (max-width: 720px), (max-height: 520px) {
   .lightbox-overlay { padding: 0; }
-  .lightbox-body { max-width: 100vw; max-height: 100dvh; width: 100vw; height: 100dvh; border-radius: 0; border: none; }
-  .lightbox-img { max-width: 100vw; max-height: calc(100dvh - 56px); }
+  .lightbox-body {
+    max-width: 100vw; max-height: 100dvh; width: 100vw; height: 100dvh; border-radius: 0; border: none;
+    padding: 0 env(safe-area-inset-right, 0px) var(--safe-bottom) env(safe-area-inset-left, 0px);
+    box-sizing: border-box;
+  }
+  .lightbox-head { padding: calc(6px + var(--safe-top)) 8px 6px 14px; gap: 8px; flex: none; }
+  /* снимок по размеру сцены, что осталась под шапкой, — какой бы высоты шапка ни вышла */
+  .lightbox-stage { min-height: 0; }
+  .lightbox-img { max-width: 100%; max-height: 100%; }
+  /* крупно, под палец; увеличивают щипком и двойным касанием — текстовая кнопка лишняя */
+  .lightbox-close, .lightbox-actions .ui-btn { min-width: 44px; min-height: 44px; justify-content: center; }
+  .lightbox-actions .lightbox-zoom, .lightbox-btn-label { display: none; }
 }
 
 /* «ИИ определил правильно?» — строка в панели разбора и в карточке задачи (ТЗ-12, этап 9). */

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
+import { ClampText } from '../ClampText';
 import { api, ApiError } from '../../lib/api';
 import type { AnthillActionRow, AnthillReminder, AnthillSchedule } from '../../lib/api';
 import { stampLabel } from '../../lib/chat-text';
@@ -31,7 +32,8 @@ function actionHint(a: AnthillActionRow): string {
   const i = a.input ?? {};
   const first = [i.title, i.text, (i.task as any)?.title, i.instruction, i.name, i.content]
     .find((x) => typeof x === 'string' && x.trim());
-  return first ? String(first).slice(0, 120) : '';
+  // целиком: длинное сворачивает ClampText с «Ещё» — обрыв на 120 знаках не давал дочитать (#4670)
+  return first ? String(first) : '';
 }
 
 /**
@@ -133,7 +135,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
                 <span className="anthill-task-title">{TOOL_TITLE[a.tool] ?? a.tool}</span>
                 <span className="dim">{stampLabel(a.createdAt)}</span>
               </div>
-              {actionHint(a) && <div className="dim anthill-task-what">{actionHint(a)}</div>}
+              {actionHint(a) && <ClampText className="dim anthill-task-what" lines={3}>{actionHint(a)}</ClampText>}
               <div className="anthill-task-acts">
                 <button
                   className="ui-btn ui-btn-primary ui-btn-sm"
