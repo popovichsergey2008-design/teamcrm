@@ -3850,6 +3850,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 }
 .link-btn:hover { color: var(--text); }
 .link-btn:disabled { color: var(--text-mut); cursor: default; }
+.link-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 3px; }
 
 /* лайтбокс просмотра картинки */
 .lightbox-overlay {
