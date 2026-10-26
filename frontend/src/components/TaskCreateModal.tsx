@@ -16,6 +16,7 @@ import { useAuth } from '../state/auth';
 import { SuggestAssignee } from './SuggestAssignee';
 import { localInput, useWorkloadCheck, workloadOf, WorkloadInfo, WorkloadWarning } from './WorkloadWarning';
 import { DirectionsPicker } from './DirectionsPicker';
+import { PeopleField, peopleOf } from './PeopleField';
 import { NlCommandModal } from './NlCommandModal';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { Badge } from './ui/badge';
@@ -87,6 +88,9 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const [priority, setPriority] = useState(draft?.priority ?? 'normal');
   const [deadline, setDeadline] = useState(draft?.deadline ?? '');
   const [estimate, setEstimate] = useState(draft?.estimate ?? '');
+  /** Соисполнители и наблюдатели (#4661): уходят тем же запросом, что и задача. */
+  const [coIds, setCoIds] = useState<string[]>([]);
+  const [watcherIds, setWatcherIds] = useState<string[]>([]);
   useEffect(() => {
     const t = title.trim();
     if (t.length < 3 && !description.trim()) return;
@@ -363,6 +367,9 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         confirmedWithoutTags: tags.confirmedWithoutTags,
         requiresApproval,
         directions: directions.length ? directions : undefined,
+        // исполнитель соисполнителем не бывает: его могли выбрать уже после
+        coAssigneeIds: coIds.filter((id) => id !== who).length ? coIds.filter((id) => id !== who) : undefined,
+        watcherIds: watcherIds.filter((id) => id !== who).length ? watcherIds.filter((id) => id !== who) : undefined,
         // #4615, 23.10: радар перегрузки — подсказка над кнопкой, а не стоп: «Создать» создаёт
         confirmWorkload: true,
       });
@@ -425,6 +432,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
     );
   }
 
+  const people = users.map((u) => ({ id: String(u.id), name: u.fullName }));
   const userOptions = (empty: string) => [
     { value: '', label: empty },
     ...users.map((u) => ({ value: String(u.id), label: u.fullName })),
@@ -602,6 +610,28 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             <Field label={<span title="Кто ставит задачу и принимает результат">Постановщик</span>}>
               <Select ariaLabel="Постановщик" className="tv2-wide" value={managerId} onValueChange={setManagerId} options={userOptions('Не задан')} />
             </Field>
+          </div>
+
+          {/* #4661: соисполнители и наблюдатели — сразу при постановке, а не вторым заходом в карточке */}
+          <div className="tv2-grid2">
+            <PeopleField
+              label="Соисполнители"
+              hint="Делают работу вместе с исполнителем и видят задачу в своих"
+              people={peopleOf(coIds, people)}
+              users={people}
+              exclude={assigneeId ? [assigneeId] : []}
+              onAdd={(id) => { setCoIds((l) => [...l, id]); setWatcherIds((l) => l.filter((x) => x !== id)); }}
+              onRemove={(id) => setCoIds((l) => l.filter((x) => x !== id))}
+            />
+            <PeopleField
+              label="Наблюдатели"
+              hint="Следят за ходом и получают уведомления, выполнять не обязаны"
+              people={peopleOf(watcherIds, people)}
+              users={people}
+              exclude={assigneeId ? [assigneeId] : []}
+              onAdd={(id) => { setWatcherIds((l) => [...l, id]); setCoIds((l) => l.filter((x) => x !== id)); }}
+              onRemove={(id) => setWatcherIds((l) => l.filter((x) => x !== id))}
+            />
           </div>
 
           <div className="tc-grid3">

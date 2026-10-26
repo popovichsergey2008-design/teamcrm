@@ -27,3 +27,20 @@
   .nla-facts dd { margin-bottom: 4px; }
 }
 .nla-actions { flex-wrap: wrap; }
+/* #4663/#4661: правка задачи прямо в сводке — «Изменить» раскрывает поля, включая соисполнителей и наблюдателей */
+.nla-sum-tools { display: inline-flex; align-items: center; gap: 2px; }
+.nla-sum button.nla-title {
+  display: block; width: 100%; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+  border-radius: 4px;
+}
+.nla-sum button.nla-title:hover { color: var(--accent); }
+.nla-sum button.nla-title:focus-visible, .nla-add-people:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.nla-add-people {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 4px 0;
+  border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-sm, 14px); cursor: pointer;
+}
+.nla-add-people:hover { text-decoration: underline; }
+.nla-edit { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.nla-edit .ui-field { min-width: 0; }
+.nla-edit-note { font-size: var(--fs-xs); }
+.nla-sum.nla-editing { border-color: var(--accent); }
