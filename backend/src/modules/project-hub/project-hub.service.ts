@@ -39,7 +39,7 @@ export function runOut(r: HubRunRow) {
   return {
     id: String(r.id), runDate: r.run_date, finishedAt: r.finished_at,
     added: { links: a.links ?? 0, files: a.files ?? 0, contacts: a.contacts ?? 0, notes: a.notes ?? 0, decisions: a.decisions ?? 0 },
-    usedModel: !!r.used_model,
+    usedModel: !!r.used_model, status: r.status, error: r.status === 'failed' ? (r.error ?? null) : null,
   };
 }
 

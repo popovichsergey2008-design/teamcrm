@@ -30,7 +30,7 @@ export interface HubDecisionRow {
 
 export interface HubRunRow {
   id: string; project_id: string; run_date: string; trigger: string; status: string; added: Partial<Added>;
-  used_model: boolean; started_at: Date; finished_at: Date | null; window_start: Date; window_end: Date;
+  used_model: boolean; error: string | null; started_at: Date; finished_at: Date | null; window_start: Date; window_end: Date;
 }
 
 /** Чаты проекта для библиотекаря: чат самого проекта и ОТКРЫТЫЕ группы/каналы, привязанные к нему. */
@@ -44,7 +44,7 @@ const ITEM_FROM = `project_hub_items i
   LEFT JOIN files f ON f.id = i.file_id
   LEFT JOIN users cu ON cu.id = i.created_by`;
 
-const RUN_COLS = `r.id::text, r.project_id::text, r.run_date::text, r.trigger, r.status, r.added, r.used_model,
+const RUN_COLS = `r.id::text, r.project_id::text, r.run_date::text, r.trigger, r.status, r.added, r.used_model, r.error,
   r.started_at, r.finished_at, r.window_start, r.window_end`;
 
 /** Сумма добавленного прогоном — для бейджа: пустой прогон бейдж не зажигает. */

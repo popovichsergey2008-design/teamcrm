@@ -28,7 +28,7 @@ export interface HubDecision {
   sourceSec: number | null; speaker: string | null; link: string | null;
 }
 export interface HubAdded { links: number; files: number; contacts: number; notes: number; decisions: number }
-export interface HubRun { id: string; runDate: string; finishedAt: string | null; added: HubAdded; usedModel: boolean }
+export interface HubRun { id: string; runDate: string; finishedAt: string | null; added: HubAdded; usedModel: boolean; status?: string; error?: string | null }
 export interface HubView {
   project: {
     id: string; name: string; mission: string | null; audience: string | null; description: string | null; aliases: string[];
@@ -57,7 +57,7 @@ export const hubApi = {
   run: (id: string, runId: string) =>
     request<{ run: HubRun; items: (HubItem & { removed?: boolean })[]; decisions: HubDecision[] }>('GET', `/projects/${id}/hub/runs/${runId}`),
   seen: (id: string, runId: string) => request<unknown>('POST', `/projects/${id}/hub/runs/${runId}/seen`),
-  collect: (id: string) => request<unknown>('POST', `/projects/${id}/hub/librarian/run`),
+  collect: (id: string) => request<{ run: HubRun; status: string }>('POST', `/projects/${id}/hub/librarian/run`),
   ask: (id: string, q: string) =>
     request<{ answer: string; citations: { title: string | null; link?: string | null; sourceType: string }[]; cached: boolean }>('POST', `/projects/${id}/hub/ask`, { q }),
 };

@@ -59,7 +59,18 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
 
   const collect = async () => {
     setCollecting(true); setNote('');
-    try { await hubApi.collect(projectId); toastSaved('Сбор запущен', 'ИИ разберёт события за сутки — новое появится в Инфоцентре само.'); }
+    // Сбор идёт прямо в запросе — показываем итог, а не «запущен»: молча пустой сбор выглядел как «ничего не происходит».
+    try {
+      const r = await hubApi.collect(projectId);
+      if (r.status === 'failed') {
+        setNote(`Не получилось собрать${r.run.error ? `: ${r.run.error}` : ''}. Попробуйте ещё раз через минуту.`);
+      } else if (addedTotal(r.run.added) > 0) {
+        await reload();
+        setRunId(r.run.id);
+      } else {
+        toastSaved('Сбор закончен — нового нет', 'За сутки в чатах, созвонах и закрытых задачах проекта не нашлось новых ссылок, файлов и решений.');
+      }
+    }
     catch (e) { setNote(errText(e, 'Не удалось запустить сбор')); }
     finally { setCollecting(false); }
   };
@@ -142,7 +153,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
         <span className="hub-head-acts">
           {mayCollect && (
             <Button variant="ghost" size="icon-sm" onClick={() => void collect()} disabled={collecting} aria-label="Собрать сейчас" title="Собрать сейчас: ИИ разберёт события за сутки">
-              <Icon name="refresh" size={14} />
+              {collecting ? <span className="ui-spinner" style={{ width: 13, height: 13 }} /> : <Icon name="refresh" size={14} />}
             </Button>
           )}
           <Button variant="ghost" size="icon-sm" onClick={() => view && setPassport({ tab: 'passport' })} disabled={!view} aria-label="На весь экран" title="На весь экран: паспорт проекта">
