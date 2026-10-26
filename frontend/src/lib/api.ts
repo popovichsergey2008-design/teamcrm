@@ -872,6 +872,8 @@ export const api = {
     rawRequest<import('../types').SocialAuthResult>('POST', '/auth/google', { idToken, tenantName, acceptPrivacy }, false),
   telegramLogin: (data: Record<string, string>) =>
     rawRequest<import('../types').SocialAuthResult>('POST', '/auth/telegram', { data }, false),
+  /** #4619: одноразовая ссылка входа из Telegram-бота (?tglogin=<код>). */
+  telegramCode: (code: string) => rawRequest<AuthResult>('POST', '/auth/telegram-code', { code }, false),
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
   organizations: () => request<import('../types').OrgRef[]>('GET', '/auth/organizations'),
   switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),

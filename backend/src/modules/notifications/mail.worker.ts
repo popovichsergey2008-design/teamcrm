@@ -3,6 +3,7 @@ import { NotificationsRepository } from './notifications.repository';
 import { createTransport, MailPermanentError, MailTransport } from './mail.transport';
 import { TelegramMirror } from './telegram-mirror.service';
 import { PushService } from './push.service';
+import { isServiceEmail } from '../../common/mail/service-email';
 
 const BATCH = 20;
 const MAX_ATTEMPTS = 6;
@@ -64,6 +65,11 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
         await this.mirror.mirror(row);
         // Ящик и push — тоже до письма (ТЗ-9): телефон узнаёт о событии, даже если почта легла.
         await this.push.deliver(row);
+        // учётка из Telegram-бота (#4619): адрес-заглушка без ящика — письмо не шлём
+        if (isServiceEmail(row.to_email)) {
+          await this.repo.skip(row.id, 'служебный адрес без ящика — письмо не отправлялось');
+          continue;
+        }
         try {
           await this.transport.send({
             to: row.to_email, subject: row.subject, text: row.body_text, html: row.body_html,

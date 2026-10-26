@@ -1,10 +1,8 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
-import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
+import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
-import { AppException } from '../../common/http/app-exception';
 import { StandupRepository } from './standup.repository';
 import { StandupService } from './standup.service';
 
@@ -21,18 +19,9 @@ export class StandupController {
   constructor(
     private readonly service: StandupService,
     private readonly repo: StandupRepository,
-    private readonly config: ConfigService,
   ) {}
 
-  /** Telegram webhook — публичный, верифицируется secret token (если задан). */
-  @Public()
-  @Post('telegram/webhook')
-  async webhook(@Headers('x-telegram-bot-api-secret-token') secret: string | undefined, @Body() update: any) {
-    const expected = this.config.get<string>('TELEGRAM_WEBHOOK_SECRET');
-    if (expected && secret !== expected) throw AppException.unauthorized('Bad webhook secret');
-    await this.service.handleTelegramUpdate(update);
-    return { received: true };
-  }
+  // Вебхук Telegram переехал в TelegramBotController (#4619): там диспетчер, дейлик — его ветка.
 
   @ApiBearerAuth()
   @Get('standup/submissions')

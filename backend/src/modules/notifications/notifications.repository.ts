@@ -204,6 +204,12 @@ export class NotificationsRepository {
       `UPDATE mail_outbox SET status='done', last_error=NULL, sent_at=now(), updated_at=now() WHERE id=$1`, [id]);
   }
 
+  /** Письмо не отправляется намеренно (служебный адрес без ящика, #4619): не ошибка и не повтор. */
+  async skip(id: string, reason: string): Promise<void> {
+    await this.db.query(
+      `UPDATE mail_outbox SET status='skipped', last_error=$2, updated_at=now() WHERE id=$1`, [id, reason.slice(0, 500)]);
+  }
+
   async fail(id: string, error: string, retryInSec: number | null): Promise<void> {
     if (retryInSec === null) {
       await this.db.query(

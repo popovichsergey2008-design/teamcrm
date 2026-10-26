@@ -21,6 +21,9 @@ interface AuthState {
 
 const Ctx = createContext<AuthState | null>(null);
 
+/** #4619: почему не сработала ссылка входа из Telegram-бота — экран входа покажет. */
+export let authNotice = '';
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [organizations, setOrganizations] = useState<OrgRef[]>([]);
@@ -29,6 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     (async () => {
+      // вход из Telegram-бота: код одноразовый — сразу убираем его из адреса и истории
+      const tg = new URLSearchParams(location.search).get('tglogin');
+      if (tg) {
+        history.replaceState(history.state, '', location.pathname);
+        try { const r = await api.telegramCode(tg); tokens.set(r.accessToken, r.refreshToken); } catch (e) { authNotice = (e as Error).message; }
+      }
       if (tokens.access) {
         try {
           const me = await api.me();

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { useAuth } from '../state/auth';
+import { authNotice, useAuth } from '../state/auth';
 import { Logo } from '../components/Logo';
 import { ApiError } from '../lib/api';
 import { SocialButtons } from '../components/SocialButtons';
@@ -14,7 +14,7 @@ export function LoginPage() {
   const [fullName, setFullName] = useState('');
   /** #4675: согласие с Политикой конфиденциальности — только для регистрации. */
   const [agreed, setAgreed] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(authNotice);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {

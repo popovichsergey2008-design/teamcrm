@@ -99,6 +99,50 @@ export class TelegramSender {
     }
   }
 
+  /**
+   * Вызов Bot API с ответом (#4619: кнопки бота, «печатает…», имя и описание бота).
+   * Без токена — null; сбой сети или отказ Telegram — тоже null, с записью в журнал:
+   * бот не должен ронять обработку вебхука из-за того, что Telegram не принял кнопку.
+   */
+  async call<T = unknown>(method: string, body: Record<string, unknown>): Promise<T | null> {
+    if (!this.token) {
+      this.logger.debug(`(no token) ${method}`);
+      return null;
+    }
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const json: any = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        this.logger.warn(`${method} отклонён: ${String(json?.description ?? res.status).slice(0, 200)}`);
+        return null;
+      }
+      return json.result as T;
+    } catch (e) {
+      this.logger.warn(`${method} failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Скачать присланный файл (голосовое демо, #4619). Больше maxBytes — не качаем. */
+  async fileBuffer(fileId: string, maxBytes = 8 * 1024 * 1024): Promise<Buffer | null> {
+    const url = await this.fileUrl(fileId);
+    if (!url) return null;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      return buf.length > maxBytes ? null : buf;
+    } catch (e) {
+      this.logger.warn(`download failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
   async sendMessage(chatId: string | number, text: string, replyMarkup?: unknown): Promise<void> {
     if (!this.token) {
       this.logger.debug(`(no token) -> ${chatId}: ${text.slice(0, 80)}`);

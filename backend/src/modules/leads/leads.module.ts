@@ -8,5 +8,6 @@ import { LeadsService } from './leads.service';
   imports: [TelegramModule],
   controllers: [LeadsController],
   providers: [LeadsService],
+  exports: [LeadsService],
 })
 export class LeadsModule {}

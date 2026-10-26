@@ -33,6 +33,7 @@ import { RatesModule } from './modules/rates/rates.module';
 import { AiModule } from './modules/ai/ai.module';
 import { TelegramModule } from './modules/telegram/telegram.module';
 import { StandupModule } from './modules/standup/standup.module';
+import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
 import { VelocityModule } from './modules/velocity/velocity.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ForecastModule } from './modules/forecast/forecast.module';
@@ -129,6 +130,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     AiModule,
     TelegramModule,
     StandupModule,
+    TelegramBotModule,
     VelocityModule,
     ReportsModule,
     ForecastModule,

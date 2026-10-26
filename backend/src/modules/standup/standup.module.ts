@@ -13,5 +13,6 @@ import { StandupConsumer } from './standup.consumer';
   imports: [TelegramModule, TasksModule, ProjectsModule, TimeTrackingModule, EconomicsModule],
   controllers: [StandupController],
   providers: [StandupService, StandupRepository, StandupConsumer],
+  exports: [StandupService],
 })
 export class StandupModule {}

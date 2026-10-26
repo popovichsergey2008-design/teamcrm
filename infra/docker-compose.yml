@@ -61,6 +61,9 @@ x-api-env: &api-env
   # Ключ OpenAI только для демо «ИИ-созвон за 30 секунд» в онбординге (ТЗ-24): у новой
   # компании своего ключа нет. Пусто — демо идёт правилами, речь распознаёт браузер.
   DEMO_OPENAI_API_KEY: ${DEMO_OPENAI_API_KEY:-}
+  # #4619: демо Telegram-бота до регистрации — попыток на человека в сутки и общий суточный бюджет обращений к ИИ
+  TG_DEMO_PER_USER_DAILY: ${TG_DEMO_PER_USER_DAILY:-5}
+  TG_DEMO_DAILY_BUDGET: ${TG_DEMO_DAILY_BUDGET:-300}
   # Kimi (Moonshot AI, 19.10): общий ключ для компаний без своего. Пусто — Kimi только по
   # ключу компании (Настройки → Интеграции → ИИ). Рассуждение K3: low | high | max.
   KIMI_API_KEY: ${KIMI_API_KEY:-}

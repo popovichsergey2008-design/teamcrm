@@ -29,4 +29,13 @@ describe('заявка с сайта: дежурному — выбранный 
     expect(t).toContain('ответьте сейчас');
     expect(t).toContain('Вопрос: Есть ли API?');
   });
+
+  it('Telegram-бот (#4619): новое пространство и переезд различаются', () => {
+    const space = leadText({ source: 'telegram', team: '6-15' }, contact, now);
+    expect(space.split('\n')[0]).toBe('Новое пространство из Telegram-бота');
+    expect(space).toContain('Команда: 6-15');
+    const move = leadText({ source: 'telegram', want: 'plan', from: 'jira' }, contact, now);
+    expect(move.split('\n')[0]).toBe('Заявка с сайта: план переезда (Telegram-бот)');
+    expect(move).toContain('«Jira»');
+  });
 });

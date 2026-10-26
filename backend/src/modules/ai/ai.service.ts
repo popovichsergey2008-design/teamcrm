@@ -79,6 +79,40 @@ export class AiService {
   }
 
   /**
+   * ИИ для демо в Telegram-боте до регистрации (#4619). Организации ещё нет, поэтому
+   * расход пишет вызывающий в свою таблицу (telegram_bot_demos), а не в ai_usage.
+   * Речь — только ключом демо (DEMO_OPENAI_API_KEY), быстрой моделью (#4666).
+   * Текст — ключом демо, иначе общими ключами сервера (Kimi первым, как везде).
+   * null — нечем: голосовое просим написать текстом, текст разбираем правилами.
+   */
+  botDemoAi(): {
+    transcribe: ((audio: Buffer, filename: string) => Promise<string>) | null;
+    generate: ((system: string, user: string, timeoutMs: number) => Promise<string>) | null;
+    model: string | null;
+  } {
+    const demo = this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
+    const g = this.settings.globalKeys();
+    const global = g.source === 'global'
+      ? new RealAiProvider(g.openaiKey, g.anthropicKey, this.parserModel, g.brainModel, g.openrouterKey, g.kimiKey) : null;
+    const llm = demo ?? global;
+    return {
+      transcribe: demo
+        ? async (audio, filename) => stripHallucinationEdges(await demo.transcribeAudio(audio, filename, 'QEVO', { fast: true }))
+        : null,
+      generate: llm
+        ? async (system, user, timeoutMs) => {
+          const d = deadlineSignal(timeoutMs);
+          try {
+            // персональные данные из пересланной переписки в модель не уходят
+            return await rejectAfter(llm.generate(system, maskPII(user).masked,{ fast: true, maxTokens: 600, signal: d.signal }), d.signal);
+          } finally { d.cancel(); }
+        }
+        : null,
+      model: demo ? 'gpt-4o-mini' : global ? (g.kimiKey ? KIMI_DEFAULT_MODEL : 'global') : null,
+    };
+  }
+
+  /**
    * Есть ли у компании настоящая модель (свой ключ или общий). Навыки, где заглушка
    * вместо модели дала бы бессмыслицу (готовый ответ, письмо клиенту, голос), без неё
    * честно молчат, а не показывают «ответ» заглушки.

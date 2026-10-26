@@ -167,6 +167,24 @@ export class AuthService {
     /** Откуда пришёл человек — в журнал согласия (#4675); галочку проверяет вызывающий. */
     consentFlow = 'social',
   ): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+    const user = await this.createOwnerUser(email, fullName, tenantName, link, meta, { flow: consentFlow });
+    return this.sessionFor(user, meta);
+  }
+
+  /**
+   * То же без сессии: аккаунт, организация, владелец и запись согласия одной транзакцией.
+   * Telegram-бот (#4619) заводит пространство в чате, а войти человек решит позже —
+   * ссылкой без пароля; лишняя сессия в журнале «Мои устройства» ему ни к чему.
+   * consentContext — что положить в журнал согласия ({flow, telegramUserId…}).
+   */
+  async createOwnerUser(
+    email: string,
+    fullName: string,
+    tenantName: string,
+    link: ((accountId: string, client: PoolClient) => Promise<void>) | undefined,
+    meta: SessionMeta | undefined,
+    consentContext: Record<string, unknown>,
+  ): Promise<UserRow> {
     if (await this.accounts.findByEmail(email)) {
       throw AppException.conflict('Пользователь с таким email уже зарегистрирован — войдите и привяжите вход в профиле');
     }
@@ -183,7 +201,7 @@ export class AuthService {
         [tenant.id, email, passwordHash, fullName, account.id],
       );
       await this.consents.record(
-        { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: { flow: consentFlow } },
+        { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: consentContext },
         meta, client,
       );
       return res.rows[0];
@@ -191,7 +209,7 @@ export class AuthService {
 
     void this.tags.seedDefaults(String(user.tenant_id));
     await this.org?.seedDefaults(String(user.tenant_id));
-    return this.sessionFor(user, meta);
+    return user;
   }
 
   /** Список организаций аккаунта текущего пользователя. */

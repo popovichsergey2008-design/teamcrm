@@ -45,6 +45,16 @@ export class AiSettingsService {
     this.globalBrainModel = config.get<string>('AI_BRAIN_MODEL');
   }
 
+  /** Общие ключи сервера без организации (#4619: демо в Telegram-боте до регистрации). */
+  globalKeys(): ResolvedAi {
+    const s = {
+      openaiKey: this.globalOpenai || undefined, anthropicKey: this.globalAnthropic || undefined,
+      openrouterKey: this.globalOpenrouter || undefined, kimiKey: this.globalKimi || undefined,
+      brainModel: this.globalBrainModel || undefined,
+    };
+    return { ...s, source: s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey ? 'global' : 'none' };
+  }
+
   private row(tenantId: string) {
     return this.db.one<any>(`SELECT * FROM ai_settings WHERE tenant_id=$1`, [tenantId]);
   }

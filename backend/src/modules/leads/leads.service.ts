@@ -22,6 +22,11 @@ export interface NewLead {
   page?: string;
   message?: string;
   ip: string;
+  /** Заявка из Telegram-бота (#4619): пространство, если уже заведено, и Telegram ID. */
+  tenantId?: string | null;
+  telegramUserId?: string | null;
+  /** Строка контакта готова у вызывающего (бот знает ник и ссылку на чат). */
+  contactLine?: string;
 }
 
 /** Срок плана переезда, обещанный на сайте: 24 часа от заявки, по Москве. */
@@ -46,7 +51,16 @@ export function leadText(l: Pick<NewLead, 'source' | 'from' | 'team' | 'want' | 
     ].join('\n');
   }
   const from = l.from ? FROM_LABEL[l.from] ?? l.from : 'не указано';
-  const where = l.source === 'exit' ? ' (окно при уходе)' : '';
+  // #4619: новое пространство из Telegram-бота — дежурному знать размер команды и написать
+  if (l.source === 'telegram' && l.want !== 'plan') {
+    return [
+      'Новое пространство из Telegram-бота',
+      'Что сделать: поздороваться, помочь с первыми задачами и предложить бесплатный переезд досок.',
+      `Команда: ${l.team ?? 'не указано'}`,
+      contactLine,
+    ].join('\n');
+  }
+  const where = l.source === 'exit' ? ' (окно при уходе)' : l.source === 'telegram' ? ' (Telegram-бот)' : '';
   const todo = l.want === 'video'
     ? [
       `Заявка с сайта: прислать видео работы приложения${where}`,
@@ -90,10 +104,12 @@ export class LeadsService {
     // номер с сайта — это WhatsApp (#4628): дежурному сразу ссылка, чтобы написать в один тап
     const digits = contact.replace(/\D/g, '');
     const phone = !contact.startsWith('@') && digits.length >= 10 && digits.length <= 15;
-    const contactLine = phone ? `WhatsApp: ${contact} — https://wa.me/${digits.length === 11 && digits.startsWith('8') ? `7${digits.slice(1)}` : digits}` : `Telegram: ${contact}`;
+    const contactLine = l.contactLine ?? (phone ? `WhatsApp: ${contact} — https://wa.me/${digits.length === 11 && digits.startsWith('8') ? `7${digits.slice(1)}` : digits}` : `Telegram: ${contact}`);
     await this.db.query(
-      `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message, want) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null, l.want ?? null],
+      `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message, want, tenant_id, telegram_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null, l.want ?? null,
+        l.tenantId ?? null, l.telegramUserId ?? null],
     );
     const text = leadText(l, contactLine);
     await this.notify(text).catch((e) => this.logger.warn(`notify failed: ${(e as Error).message}`));
