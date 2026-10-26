@@ -13,11 +13,13 @@ import { SocialService } from './social.service';
 import { SocialsRepository } from './socials.repository';
 import { QaSwitchRepository } from './qa-switch.repository';
 import { QaSwitchService } from './qa-switch.service';
+import { TelegramWebAppController } from './telegram-webapp.controller';
+import { TelegramWebAppService } from './telegram-webapp.service';
 
 @Module({
   imports: [TenantsModule, UsersModule, TagsModule],
-  controllers: [AuthController, SessionsController],
-  providers: [AuthService, SocialService, SocialsRepository, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService, QaSwitchRepository, QaSwitchService],
+  controllers: [AuthController, SessionsController, TelegramWebAppController],
+  providers: [AuthService, SocialService, SocialsRepository, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService, QaSwitchRepository, QaSwitchService, TelegramWebAppService],
   exports: [AuthService, RefreshTokenRepository, SessionsService, QaSwitchService],
 })
 export class AuthModule {}
