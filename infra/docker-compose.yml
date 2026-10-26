@@ -129,6 +129,8 @@ x-web: &web
 networks:
   crm-net:
     driver: bridge
+  qevo-site-web:
+    external: true
 
 volumes:
   pg-data:
@@ -263,7 +265,9 @@ services:
       - "80:80"
       - "443:443"
       - "8080:80"   # convenience http-by-IP alias
-    networks: [crm-net]
+    # qevo-site-web — сеть сайта компании (WordPress, infra/site): edge проксирует
+    # qevo.one и db.qevo.one. Сеть создаёт стек сайта; без него edge не стартует.
+    networks: [crm-net, qevo-site-web]
     # Без depends_on на API и веб: адреса nginx разрешает на каждый запрос, а
     # какой цвет поднимать — решает выкладка, не порядок старта.
     healthcheck:

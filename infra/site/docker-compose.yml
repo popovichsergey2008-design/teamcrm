@@ -1,0 +1,99 @@
+# Сайт компании на WordPress — корень qevo.one (с 26.10.2026; CRM — на app.qevo.one).
+#
+# Отдельный стек и отдельный каталог на сервере (/opt/qevo-site), а не часть CRM:
+# сайт делает сторонний программист, и ничего из CRM ему не нужно и не должно быть
+# видно. Изоляция по сетям:
+#   site-db  — внутренняя (internal): MariaDB видна только WordPress и Adminer, наружу
+#              порта нет, в сеть CRM база не ходит;
+#   site-web — сюда же подключён пограничный nginx CRM (crm-edge), чтобы проксировать
+#              qevo.one и db.qevo.one. Контейнеров CRM (API, Postgres, MinIO) в ней нет.
+# Программисту — только SFTP в папку сайта (порт 2222, без консоли) и Adminer для базы
+# сайта на db.qevo.one (за паролем nginx и паролем базы).
+#
+# Секреты — в /opt/qevo-site/.env (в git его нет): MYSQL_ROOT_PASSWORD, WP_DB_PASSWORD,
+# SFTP_PASSWORD. Запуск на сервере: cd /opt/qevo-site && docker compose up -d
+
+x-restart: &restart
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  db:
+    image: mariadb:11.4
+    <<: *restart
+    container_name: qevo-site-db
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: ${WP_DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+    networks: [site-db]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  wp:
+    image: wordpress:6.6-php8.3-apache
+    <<: *restart
+    container_name: qevo-site-wp
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WP_DB_PASSWORD}
+      # За пограничным nginx: TLS снят там, сюда приходит http. Без этого WordPress
+      # считает адрес http:// и уводит админку в бесконечный редирект.
+      WORDPRESS_CONFIG_EXTRA: |
+        if (isset($$_SERVER['HTTP_X_FORWARDED_PROTO']) && $$_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') { $$_SERVER['HTTPS'] = 'on'; }
+        define('WP_HOME', 'https://qevo.one');
+        define('WP_SITEURL', 'https://qevo.one');
+        define('FS_METHOD', 'direct');
+    volumes:
+      - ./wp:/var/www/html
+    networks: [site-db, site-web]
+    mem_limit: 768m
+
+  adminer:
+    image: adminer:4.8.1
+    <<: *restart
+    container_name: qevo-site-adminer
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    networks: [site-db, site-web]
+    mem_limit: 128m
+
+  # SFTP только в папку сайта: chroot, без консоли. uid/gid 33 — как у www-data в
+  # WordPress, чтобы залитые файлы сайт мог читать и обновлять, а программист — свои.
+  sftp:
+    image: atmoz/sftp:alpine
+    <<: *restart
+    container_name: qevo-site-sftp
+    command: "qevosite:${SFTP_PASSWORD}:33:33"
+    volumes:
+      - ./wp:/home/qevosite/site
+      # ключи сервера постоянные — иначе после перезапуска клиент ругается на подмену
+      - ./ssh/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key:ro
+      - ./ssh/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key:ro
+    ports:
+      - "2222:22"
+    networks: [site-sftp]
+    mem_limit: 64m
+
+networks:
+  site-db:
+    internal: true
+  site-web:
+    name: qevo-site-web
+  site-sftp: {}
+
+volumes:
+  db-data:
