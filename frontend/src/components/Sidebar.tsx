@@ -8,6 +8,7 @@ import { setQuietSource } from '../lib/quiet';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
+import { BotBadgeArt, SupportArt } from './NavFabArt';
 import { AuthedMedia } from './AuthedMedia';
 import { buildPath, isConsoleHost, navigate, Route, Section } from '../lib/router';
 import { openSupport } from './support/SupportDock';
@@ -856,11 +857,11 @@ export function Sidebar({
               title="QEVO Bot — ваш секретарь: напоминания, сводки, встречи, почта"
               aria-label="Открыть QEVO Bot — секретаря"
             >
-              <Icon name="robot" size={20} />
+              <BotBadgeArt />
             </button>
             {/* удержание 1 с — шторка «голосом, созвон или написать» (ТЗ-34, п. 2.1) */}
-            <button className="nav-support-fab" data-care-hold="" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
-              <Icon name="support" size={20} />
+            <button className="nav-support-fab nav-care-fab" data-care-hold="" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
+              <SupportArt />
             </button>
           </div>
           {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
