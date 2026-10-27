@@ -64,7 +64,7 @@ describe('#4675 — согласие с Политикой конфиденци�
 
     const inv = (await http.post('/api/invites').set(O).send({ email: `pc_i_${uniq()}@t.test`, role: 'member' }).expect(201)).body.data;
     const noInv = await http.post('/api/invites/accept').send({ token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(400);
-    expect(noInv.body.error.message).toMatch(/Политику конфиденциальности/);
+    expect(noInv.body.error.message).toMatch(/согласие на обработку персональных данных/);
     const acc = (await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Петя', password: 'memberpass1' }).expect(201)).body.data;
     expect((await consentsOf(String(acc.user.id)))[0]).toMatchObject({ policy: 'privacy', context: { flow: 'invite' } });
 

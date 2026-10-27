@@ -128,7 +128,9 @@ describe('Telegram-бот для сайта (e2e)', () => {
     const consent = await db.one<{ context: any; policy: string }>(
       `SELECT context, policy FROM policy_consents WHERE tenant_id = $1`, [tenantId]);
     expect(consent!.policy).toBe('privacy');
-    expect(consent!.context).toEqual({ flow: 'telegram_bot', telegramUserId: String(guest) });
+    expect(consent!.context).toMatchObject({ flow: 'telegram_bot', telegramUserId: String(guest) });
+    // #4680: при регистрации — весь пакет документов
+    expect(consent!.context.documents).toContain('https://qevo.one/legal/offer/');
     const created = buttons(last(guest));
     expect(created.filter((b) => b.callback_data).map((b) => b.callback_data)).toEqual(['b:tm:s', 'b:tm:m', 'b:tm:l', 'b:tm:xl']);
     // задача уже в CRM — Mini App открывает её по номеру
