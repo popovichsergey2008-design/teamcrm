@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api';
-import { PolicyCheck } from './legal/PolicyCheck';
+import { lazyComponent } from '../lib/lazy';
+// галочки согласий нужны только при регистрации — первый экран входа без них легче (#4680)
+const PolicyCheck = lazyComponent(() => import('./legal/PolicyCheck').then((m) => m.PolicyCheck));
 import { useAuth } from '../state/auth';
 import type { AuthProviders, SocialAuthResult } from '../types';
 

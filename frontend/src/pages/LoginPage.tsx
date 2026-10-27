@@ -3,7 +3,9 @@ import { authNotice, useAuth } from '../state/auth';
 import { Logo } from '../components/Logo';
 import { ApiError } from '../lib/api';
 import { SocialButtons } from '../components/SocialButtons';
-import { PolicyCheck } from '../components/legal/PolicyCheck';
+import { lazyComponent } from '../lib/lazy';
+// галочки согласий нужны только при регистрации — первый экран входа без них легче (#4680)
+const PolicyCheck = lazyComponent(() => import('../components/legal/PolicyCheck').then((m) => m.PolicyCheck));
 
 export function LoginPage() {
   const { login, register } = useAuth();

@@ -23,7 +23,19 @@ export type PolicyKind = keyof typeof POLICY_VERSIONS;
  */
 export const REMOTE_CONSENT_MS = 2 * 60 * 60 * 1000;
 
-export const PRIVACY_REQUIRED = 'Чтобы зарегистрироваться, примите Политику конфиденциальности';
+export const PRIVACY_REQUIRED = 'Чтобы зарегистрироваться, примите условия оферты и соглашений и дайте согласие на обработку персональных данных';
+
+/**
+ * Документы, которые человек принимает при регистрации (#4680) — те же, что в форме сайта
+ * qevo.one, плюс Публичная оферта. Тексты живут на сайте; редакцию фиксируем датой проверки.
+ */
+export const SIGNUP_DOCUMENTS = [
+  'https://qevo.one/legal/offer/',
+  'https://qevo.one/legal/terms/',
+  'https://qevo.one/legal/license/',
+  'https://app.qevo.one/legal/privacy',
+  'https://qevo.one/legal/consent/',
+];
 export const REMOTE_CONSENT_REQUIRED =
   'Сначала подтвердите согласие с Политикой удалённой поддержки — без него специалист не получит доступ';
 
@@ -47,6 +59,8 @@ export class PolicyConsentsService {
     const sql = `INSERT INTO policy_consents (tenant_id, user_id, policy, version, ip, user_agent, context)
                  VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
                  RETURNING id::text, version, accepted_at`;
+    // #4680: при регистрации галочки — за весь пакет документов сайта; в журнале видно, за какие
+    const context = input.policy === 'privacy' ? { ...(input.context ?? {}), documents: SIGNUP_DOCUMENTS } : (input.context ?? {});
     const params = [
       input.tenantId == null ? null : String(input.tenantId),
       input.userId == null ? null : String(input.userId),
@@ -54,7 +68,7 @@ export class PolicyConsentsService {
       POLICY_VERSIONS[input.policy],
       meta?.ip ? String(meta.ip).slice(0, 64) : null,
       meta?.userAgent ? String(meta.userAgent).slice(0, 250) : null,
-      JSON.stringify(input.context ?? {}),
+      JSON.stringify(context),
     ];
     const row = client
       ? (await client.query<{ id: string; version: string; accepted_at: Date | string }>(sql, params)).rows[0]

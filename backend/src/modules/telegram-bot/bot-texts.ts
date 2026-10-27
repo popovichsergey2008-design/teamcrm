@@ -97,7 +97,11 @@ export function consent(base: string, demoId: string): { text: string; markup: K
   return {
     text: [
       'Создам рабочее пространство QEVO на ваш Telegram — без почты и пароля.',
-      `Перед этим примите Политику конфиденциальности: ${base}/legal/privacy`,
+      // #4680: тот же пакет документов, что в форме регистрации и на сайте
+      'Нажимая «Принимаю», вы принимаете условия Публичной оферты (https://qevo.one/legal/offer/), '
+        + 'Пользовательского соглашения (https://qevo.one/legal/terms/), Лицензионного соглашения '
+        + `(https://qevo.one/legal/license/) и Политики конфиденциальности (${base}/legal/privacy) `
+        + 'и даёте согласие на обработку персональных данных (https://qevo.one/legal/consent/).',
     ].join('\n'),
     markup: { inline_keyboard: [[cb('Принимаю', `b:ok:${demoId}`), cb('Отмена', 'b:no')]] },
   };

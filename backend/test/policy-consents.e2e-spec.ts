@@ -45,7 +45,7 @@ describe('#4675 — согласие с Политикой конфиденци�
     const email = `pc_${uniq()}@t.test`;
     const body = { tenantName: 'Политики', email, password: 'password123', fullName: 'Ольга' };
     const no = await http.post('/api/auth/register').send(body).expect(400);
-    expect(no.body.error.message).toBe('Чтобы зарегистрироваться, примите Политику конфиденциальности');
+    expect(no.body.error.message).toBe('Чтобы зарегистрироваться, примите условия оферты и соглашений и дайте согласие на обработку персональных данных');
     await http.post('/api/auth/register').send({ ...body, acceptPrivacy: false }).expect(400);
     // отказ не оставил аккаунта: та же почта регистрируется с первого раза
     const owner = (await http.post('/api/auth/register').set('User-Agent', 'e2e-browser')
