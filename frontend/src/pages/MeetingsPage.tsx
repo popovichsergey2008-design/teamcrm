@@ -52,10 +52,17 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
     return openMeetingId && Number.isFinite(t) && t >= 0 && window.location.search.includes('t=') ? t : null;
   });
   useEffect(() => {
-    if (!openMeetingId) return;
+    if (!openMeetingId) return undefined;
     setOpenId(openMeetingId);
-    const t = new URLSearchParams(window.location.search).get('t');
-    setSeek(t != null && Number.isFinite(Number(t)) ? Number(t) : null);
+    const read = () => {
+      const t = new URLSearchParams(window.location.search).get('t');
+      setSeek(t != null && Number.isFinite(Number(t)) ? Number(t) : null);
+    };
+    read();
+    // та же встреча, другая секунда (`?t=` сменился) — роутер сообщает об этом своим событием
+    window.addEventListener('teamcrm:navigate', read);
+    window.addEventListener('popstate', read);
+    return () => { window.removeEventListener('teamcrm:navigate', read); window.removeEventListener('popstate', read); };
   }, [openMeetingId]);
   // «Открыть мит» из сайдбара чата: раздел уже открыт, остаётся развернуть разбор
   useEffect(() => {
@@ -252,6 +259,18 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
     wasBusy.current = false;
   }, [busyStatus, data?.meeting?.status]);
 
+  /*
+    Пришли по ссылке «…с воспроизведением с 12:15» (#1525, фича 3) — запись сама
+    загружается и играет с этой секунды. Новая секунда той же встречи (второй ответ
+    в Ctrl+K) — перематываем, а не ждём повторного открытия.
+  */
+  const seekFile = data?.meeting?.file_id && data.meeting.source !== 'transcript' ? String(data.meeting.file_id) : null;
+  useEffect(() => {
+    if (seek == null || !seekFile) return;
+    jump(seek, seekFile);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seek, seekFile]);
+
   if (!data) return <div style={{ padding: 10 }}><SkeletonList rows={3} /></div>;
   const { meeting, segments, summary, drafts, tasks = [] } = data;
   // играть есть что, если запись — звук (загруженный или сведённый созвон), а не субтитры
@@ -438,7 +457,8 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
                 if (el && pendingSeek.current != null) {
                   const t = pendingSeek.current;
                   pendingSeek.current = null;
-                  el.addEventListener('loadedmetadata', () => { el.currentTime = t; }, { once: true });
+                  // перемотали — и сразу играем: «ссылка с воспроизведением с 12:15»
+                  el.addEventListener('loadedmetadata', () => { el.currentTime = t; void el.play().catch(() => undefined); }, { once: true });
                 }
               }}
               src={audioUrl} controls preload="metadata"

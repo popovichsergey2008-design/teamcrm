@@ -44,11 +44,15 @@ const MALE_SOFT = new Set(['игорь', 'василь', 'шамиль', 'яро
 export function guessGender(full: string | null | undefined): Gender {
   const w = String(full ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!w.length) return null;
-  for (const x of w) {
-    if (/(вич|ьич|оглы)$/u.test(x)) return 'm';
+  const name = firstName(full).toLowerCase();
+  // «-вич» бывает и фамилией: «Анна Попович» — женщина. Отчеством считаем только третье слово
+  // или когда само имя не говорит о поле
+  const nameSaysF = isCyr(name) && /[ая]$/u.test(name) && !MALE_A.has(name) && !UNISEX.has(name);
+  for (const [i, x] of w.entries()) {
+    if (x === name) continue;
+    if (/(вич|ьич|оглы)$/u.test(x) && !(nameSaysF && (w.length < 3 || i === 0))) return 'm';
     if (/(вна|ична|чна|кызы)$/u.test(x)) return 'f';
   }
-  const name = firstName(full).toLowerCase();
   for (const x of w) {
     if (x === name) continue;
     if (/(ова|ева|ёва|ина|ына|ская|цкая)$/u.test(x)) return 'f';
@@ -77,6 +81,9 @@ const keepCase = (src: string, out: string) => (src[0] === src[0].toUpperCase() 
  * Имя в падеже. Только одно слово — имя (фамилию в фразах секретаря не склоняем).
  * Нерусское или непонятное имя возвращается как есть: «Джону» хуже, чем «Джон».
  */
+/** Мужские имена с беглой гласной — основа косвенных падежей. */
+const FLEETING: Record<string, string> = { 'павел': 'павл', 'пётр': 'петр', 'петр': 'петр', 'лев': 'льв', 'фрол': 'фрол' };
+
 export function declineName(name: string, c: Case, g: Gender = guessGender(name)): string {
   const n = String(name ?? '').trim();
   if (!n || !isCyr(n) || /\s/.test(n)) return n;
@@ -109,7 +116,9 @@ export function declineName(name: string, c: Case, g: Gender = guessGender(name)
   } else if (/[бвгджзклмнпрстфхцчшщ]$/u.test(low)) {
     // женские имена на согласную (Ирэн, Нинон) не склоняются
     if (g === 'f') return n;
-    out = c === 'gen' ? `${low}а` : c === 'dat' ? `${low}у` : hush.test(low) ? `${low}ем` : `${low}ом`;
+    // беглая гласная: Павел → Павла, Пётр → Петра, Лев → Льва
+    const stem = FLEETING[low] ?? low;
+    out = c === 'gen' ? `${stem}а` : c === 'dat' ? `${stem}у` : hush.test(stem) ? `${stem}ем` : `${stem}ом`;
   }
   return out ? keepCase(n, out) : n;
 }
@@ -165,6 +174,14 @@ const IRREGULAR: Record<string, string> = {
 };
 
 /** Вспомогательные: сами по себе обещанием не являются, за ними идёт инфинитив. */
+/** Глаголы обещаний в 1-м лице — по ним узнаём, что слово перед ними не глагол, а дополнение. */
+const KNOWN_VERB = new Set([
+  'сделаю', 'пришлю', 'вышлю', 'отправлю', 'перешлю', 'передам', 'проверю', 'подготовлю', 'уточню', 'выясню', 'узнаю',
+  'возьму', 'скину', 'сброшу', 'напишу', 'допишу', 'позвоню', 'посмотрю', 'доделаю', 'переделаю', 'закрою', 'исправлю',
+  'поправлю', 'добавлю', 'загружу', 'выложу', 'согласую', 'соберу', 'оформлю', 'обновлю', 'разберусь', 'займусь',
+  'подключу', 'настрою', 'починю', 'завершу', 'сдам', 'отвечу', 'покажу', 'сверю', 'посчитаю', 'оплачу', 'договорюсь',
+  'созвонюсь', 'организую', 'назначу', 'забронирую', 'закажу', 'распечатаю', 'подпишу', 'опубликую', 'протестирую',
+]);
 const AUX = new Set(['буду', 'смогу', 'могу', 'хочу', 'постараюсь', 'попробую', 'успею', 'обязуюсь', 'готов', 'готова']);
 
 /** Приставки, с которыми «беру» превращается в «-обрать»: «разберу» → «разобрать». */
@@ -222,10 +239,19 @@ export function actionInfinitiveStrict(action: string): string | null {
   const text = String(action ?? '').trim().replace(/[\s.!,;:–—-]+$/u, '');
   const words = text.split(/\s+/);
   const lead: string[] = [];
+  // «Задачу закрою завтра», «Цену уточню» — дополнение впереди глагола. Такое слово
+  // в инфинитив не превращаем («задачить»), а ставим после глагола: «закрыть задачу»
+  const object: string[] = [];
   for (let i = 0; i < Math.min(3, words.length); i++) {
     const w = words[i].replace(/[,!.]+$/u, '');
     const low = w.toLowerCase();
     if (low === 'я') continue;
+    if (i + 1 < words.length && !object.length && !KNOWN_VERB.has(low) && !AUX.has(low)
+      && KNOWN_VERB.has(words[i + 1].replace(/[,!.]+$/u, '').toLowerCase())
+      && !/^(сегодня|завтра|сейчас|потом|вечером|утром|днем|днём|обязательно|тогда|ок|окей|хорошо|да|на|за)$/u.test(low)) {
+      object.push(low);
+      continue;
+    }
     if (/^(сегодня|завтра|сейчас|потом|вечером|утром|днем|днём|обязательно|тогда|ок|окей|хорошо|да)$/u.test(low)) { lead.push(low); continue; }
     if (/^(на|за)$/u.test(low)) break;
     // «смогу прислать», «буду готовить» — вспомогательный глагол пропускаем
@@ -234,7 +260,7 @@ export function actionInfinitiveStrict(action: string): string | null {
     if (!inf) break;
     const rest = words.slice(i + 1).join(' ');
     const when = lead.filter((x) => /^(сегодня|завтра|вечером|утром|днем|днём)$/u.test(x));
-    return [inf, rest, ...when].filter(Boolean).join(' ').trim();
+    return [inf, ...object, rest, ...when].filter(Boolean).join(' ').trim();
   }
   return null;
 }

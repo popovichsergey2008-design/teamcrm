@@ -424,7 +424,11 @@ export function App() {
     const socket = getSocket();
     socket.on('followup.ready', show);
     window.addEventListener('qevo:followup', show);
-    return () => { socket.off('followup.ready', show); window.removeEventListener('qevo:followup', show); };
+    // пропустил событие (не был в сети) — покажем при входе (#1525)
+    const late = window.setTimeout(() => {
+      void import('./components/followup/pending').then((m) => m.pendingFollowup()).then((id) => { if (id) setFollowupId(id); }).catch(() => undefined);
+    }, 4000);
+    return () => { window.clearTimeout(late); socket.off('followup.ready', show); window.removeEventListener('qevo:followup', show); };
   }, []);
 
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.

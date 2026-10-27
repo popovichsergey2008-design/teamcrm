@@ -48,19 +48,23 @@ const MAX_WORDS = 110;
 
 const clean = (s: string, max = 110) => {
   const t = String(s ?? '').replace(/[«»"]/g, '').replace(/\s+/g, ' ').trim().replace(/[.!;:,]+$/u, '');
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+  // режем по слову и без висящей запятой: «(постановка,…» читалось как опечатка
+  return t.length > max ? `${t.slice(0, max - 1).replace(/\s+\S*$/u, '').replace(/[\s.!;:,(–—-]+$/u, '')}…` : t;
 };
+/** Точка в конце фразы — если она не кончается многоточием («…» и так конец мысли). */
+const dot = (s: string) => (s.endsWith('…') ? s : `${s}.`);
 /** Первая буква строчная, если это не аббревиатура и не имя собственное в начале («API», «QEVO»). */
 const lc = (s: string) => (/^\p{Lu}\p{Ll}/u.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 
-/** «Вчера на созвоне с Сергеем согласовали: …»; решение-глагол — «решили заложить комиссию». */
+/** «Вчера на созвоне с Сергеем согласовали …»; решение-глагол — «решили заложить комиссию». */
 export function decisionLine(d: CoffeeFacts['decisions'][number]): string {
   const text = lc(clean(d.text).replace(/^(решено|решили|договорились|согласовали)[\s:,–—-]+/iu, ''));
   const peer = d.peer ? firstName(d.peer) : '';
   const where = peer ? `на созвоне с ${declineName(peer, 'ins')}` : d.meetingTitle ? `на созвоне «${clean(d.meetingTitle, 60)}»` : 'на созвоне';
-  const verb = /^\p{L}+(ть|ти|ться|тись|чь)(?![\p{L}])/u.test(text) ? `решили ${text}` : `согласовали: ${text}`;
-  return `Вчера ${where} ${verb}.`;
+  // как в документе — без двоеточия: «согласовали структуру гостевых ссылок»
+  const verb = /^\p{L}+(ть|ти|ться|тись|чь)(?![\p{L}])/u.test(text) ? `решили ${text}` : `согласовали ${text}`;
+  return dot(`Вчера ${where} ${verb}`);
 }
 
 export function hotLine(h: CoffeeFacts['hot'][number]): string {
@@ -73,8 +77,10 @@ export function hotLine(h: CoffeeFacts['hot'][number]): string {
 /** «В техподдержке закрыты все 100 процентов вопросов» / «… закрыты 80 процентов вопросов». */
 export function supportLine(s: CoffeeFacts['support']): string | null {
   if (!s || !s.total) return null;
-  const pct = Math.round((Math.min(s.closed, s.total) / s.total) * 100);
-  if (pct === 100) return 'В техподдержке закрыты все 100 процентов вопросов.';
+  const closed = Math.min(s.closed, s.total);
+  if (closed === s.total) return 'В техподдержке закрыты все 100 процентов вопросов.';
+  // «все 100» — только когда закрыто всё: 199 из 200 — это 99, а не «все»
+  const pct = Math.min(99, Math.round((closed / s.total) * 100));
   return `В техподдержке закрыты ${pct} ${plural(pct, 'процент', 'процента', 'процентов')} вопросов.`;
 }
 

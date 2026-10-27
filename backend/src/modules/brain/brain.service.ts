@@ -151,6 +151,8 @@ export class BrainService {
     const ctx = await this.askCtx(tenantId, userId);
     const period = periodOf(q, ctx.now, ctx.tz);
     const exactKey = this.exactKey(tenantId, projectId, access, versionKey, q, period);
+    // Ответ с подписью созвона зависит от спрашивающего («созвона с Константином» — кроме
+    // него самого): такой кэшируется на человека, иначе Константин получил бы своё же имя
     const exact = await this.redis.getJson<{ answer: string; citations: any[] }>(exactKey).catch(() => null)
       ?? await this.redis.getJson<{ answer: string; citations: any[] }>(`${exactKey}:u${userId}`).catch(() => null);
     if (exact) return { answer: exact.answer, citations: exact.citations, cache: 'exact', versionId };
@@ -173,7 +175,9 @@ export class BrainService {
     const hits = await this.knowledge.recall(tenantId, q, vec, viewer, projectId, 6, period);
     const citations = citationsOf(hits);
     // ответ из чужих глаз закрытой переписки не должен достаться другому человеку из кэша
-    const personal = hits.some((h) => h.private);
+    // личное — и закрытая переписка, и ответ с подписью созвона (в ней имя собеседника,
+    // а собеседник зависит от того, кто спрашивает)
+    const personal = hits.some((h) => h.private) || hits.some((h) => h.sourceType === 'meeting' && h.sec != null);
 
     let answer: string;
     if (!hits.length) {
@@ -252,7 +256,9 @@ export class BrainService {
     const hits = await this.knowledge.recall(tenantId, q, vec, viewer, projectId, 6, period);
     const citations = citationsOf(hits);
     // ответ из чужих глаз закрытой переписки не должен достаться другому человеку из кэша
-    const personal = hits.some((h) => h.private);
+    // личное — и закрытая переписка, и ответ с подписью созвона (в ней имя собеседника,
+    // а собеседник зависит от того, кто спрашивает)
+    const personal = hits.some((h) => h.private) || hits.some((h) => h.sourceType === 'meeting' && h.sec != null);
     on.citations(citations);
 
     let answer: string;

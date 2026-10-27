@@ -342,6 +342,10 @@ export class ClientFollowupService implements OnModuleInit {
   /** Сообщение боту: запуск по ссылке клиента, /stop клиента, остальное от клиента. */
   async onTelegram(chatId: string, text: string, ctx: { staff: boolean; name: string | null }): Promise<boolean> {
     const code = clientCodeOf(text);
+    // Сотрудник открыл ссылку клиента (проверить, что уйдёт) — код НЕ гасим и чат за
+    // клиентом не записываем: иначе клиент получил бы «ссылка устарела», а сотрудник —
+    // чужие итоги навсегда. Показываем, что увидит клиент.
+    if (code && ctx.staff) { await this.preview(chatId, code); return true; }
     if (code) { await this.redeem(chatId, code, ctx.name); return true; }
     if (ctx.staff) return false;
     const links = await this.db.many<{ company: string }>(
@@ -356,6 +360,16 @@ export class ClientFollowupService implements OnModuleInit {
     }
     await this.tg.deliver(chatId, clientChatText(links[0].company));
     return true;
+  }
+
+  /** Сотрудник проверяет ссылку клиента: показываем текст, ссылка остаётся рабочей. */
+  private async preview(chatId: string, code: string): Promise<void> {
+    const row = await this.db.one<{ message: string }>(
+      `SELECT message FROM client_telegram_codes WHERE code_hash = $1 AND used_at IS NULL AND expires_at > now()`,
+      [hashClientCode(code)],
+    );
+    if (!row) { await this.tg.deliver(chatId, EXPIRED_TEXT); return; }
+    await this.tg.deliver(chatId, `Это ссылка для клиента — вы открыли её сами, поэтому она осталась рабочей. Клиент получит вот что:\n\n${row.message}`);
   }
 
   /**

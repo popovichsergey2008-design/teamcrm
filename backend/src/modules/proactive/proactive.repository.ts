@@ -250,12 +250,15 @@ export class ProactiveRepository {
   }
 
   /** Источник решён без нас (задача создана, ответ отправлен) — закрыть открытое предложение. */
-  async resolveBySource(tenantId: string, skill: string, sourceType: string, sourceId: string, text: string): Promise<string[]> {
+  async resolveBySource(tenantId: string, skill: string, sourceType: string, sourceId: string, text: string, commitmentId?: string): Promise<string[]> {
+    // commitmentId — закрыть карточки ОДНОГО обещания: на созвоне их бывает несколько, и
+    // «уже выполнено» по смете не должно гасить карточку про звонок юристу
     const rows = await this.db.many<{ user_id: string }>(
       `UPDATE assistant_proposals SET status='executed', resolved_action='auto', result_text=$5, resolved_at=now(), updated_at=now()
         WHERE tenant_id=$1 AND skill=$2 AND source_type=$3 AND source_id=$4 AND status IN ('new','seen','snoozed')
+          AND ($6::text IS NULL OR payload->>'commitmentId' = $6::text)
         RETURNING user_id::text`,
-      [tenantId, skill, sourceType, String(sourceId), text],
+      [tenantId, skill, sourceType, String(sourceId), text, commitmentId ?? null],
     );
     return [...new Set(rows.map((r) => r.user_id))];
   }

@@ -124,7 +124,11 @@ export interface Shaped { text: string; play: { link: string; label: string } | 
  */
 export function shapeAnswer(raw: string, sources: CitedSource[]): Shaped {
   const cited = [...raw.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]) - 1);
-  const pick = cited.map((i) => sources[i]).find((s) => s && s.sourceType === 'meeting' && s.sec != null && s.link);
+  const isRec = (s: CitedSource | undefined) => !!s && s.sourceType === 'meeting' && s.sec != null && !!s.link;
+  // модель назвала «…на 12-й минуте созвона», но номер [n] не поставила — ссылка всё равно
+  // нужна (документ: «Вот ссылка на созвон…»): берём первый фрагмент созвона из найденного
+  const pick = cited.map((i) => sources[i]).find(isRec)
+    ?? (!cited.length && /минуте\s+созвона/u.test(raw) ? sources.find(isRec) : undefined);
   const text = raw
     .replace(/\s*Вот ссылка на (?:созвон|запись)[^.\n]*\.?/giu, '')
     .replace(/\s*\[\d+\](?:\s*,?\s*\[\d+\])*/g, '')

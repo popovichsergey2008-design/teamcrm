@@ -104,3 +104,23 @@ describe('русская грамматика секретаря', () => {
     expect(actionInfinitive('за мной договор с банком')).toBe('за мной договор с банком');
   });
 });
+
+describe('правки 27.10 (#1525)', () => {
+  it('дополнение перед глаголом не превращается в глагол', () => {
+    expect(actionInfinitive('Задачу закрою завтра')).toBe('закрыть задачу завтра');
+    expect(actionInfinitive('Цену уточню')).toBe('уточнить цену');
+    expect(actionInfinitive('скину смету к вечеру')).toBe('прислать смету к вечеру');
+  });
+  it('фамилия на -вич у женщины не делает её мужчиной', () => {
+    expect(guessGender('Анна Попович')).toBe('f');
+    expect(guessGender('Глеб Петрович')).toBe('m');
+    expect(guessGender('Иванова Анна Петровна')).toBe('f');
+    expect(guessGender('Иванов Глеб Петрович')).toBe('m');
+  });
+  it('беглая гласная', () => {
+    expect(declineName('Павел', 'dat')).toBe('Павлу');
+    expect(declineName('Пётр', 'gen')).toBe('Петра');
+    expect(declineName('Лев', 'ins')).toBe('Львом');
+    expect(declineName('Глеб', 'dat')).toBe('Глебу');
+  });
+});

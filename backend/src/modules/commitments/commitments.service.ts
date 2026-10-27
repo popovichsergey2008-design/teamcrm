@@ -112,7 +112,9 @@ export class CommitmentsService implements OnModuleInit {
     if (!assigner && type === 'chat' && m.kind === 'dm') assigner = await this.repo.dmPeer(m.container_id, m.author_id);
     const deadlineAt = this.toAbs(d.deadline, at, m.tz);
     const linked = await this.findTask(tenantId, m.author_id, d.action, type === 'chat' ? m.id : null);
-    const checkAt = deadlineAt ?? new Date(at.getTime() + checkHours * 3600_000);
+    // #1525: «если через 24 часа задача не создана» — проверяем ровно через сутки, и при
+    // сроке в обещании тоже (раньше ждали срок, и «к пятнице» в понедельник всплывало в пятницу)
+    const checkAt = new Date(at.getTime() + checkHours * 3600_000);
     const id = await this.repo.insert({
       tenantId, sourceType: type, sourceId: m.container_id, messageIds: [m.id], sourceAt: at, quote: m.body,
       speaker: m.author_id, assigner, projectId: m.project_id, action: d.action, normalized: normalizeAction(d.action),
@@ -145,7 +147,7 @@ export class CommitmentsService implements OnModuleInit {
           projectId: mt.project_id, action: d.action, normalized: normalizeAction(d.action), deadlineAt,
           deadlineText: d.deadline?.text ?? null, confidence: d.confidence,
           status: linked ? (linked.closed ? 'fulfilled' : 'tracked') : 'detected', linkedTaskId: linked?.id ?? null,
-          checkAt: deadlineAt ?? new Date(at.getTime() + checkHours * 3600_000),
+          checkAt: new Date(at.getTime() + checkHours * 3600_000),
         });
         if (id) found++;
       }
@@ -191,7 +193,7 @@ export class CommitmentsService implements OnModuleInit {
       if (later) {
         await this.repo.update(String(c.id), { status: 'tracked', linked_task_id: later.id, check_at: new Date(Date.now() + 24 * 3600_000) });
         if (later.closed) return this.close({ ...c, linked_task_id: later.id }, 'fulfilled', 'task');
-        return this.proactive.resolveBySource(String(c.tenant_id), 'commitment', c.source_type, String(c.source_id), `Задача #${later.id} уже есть`).catch(() => undefined);
+        return this.proactive.resolveBySource(String(c.tenant_id), 'commitment', c.source_type, String(c.source_id), `Задача #${later.id} уже есть`, String(c.id)).catch(() => undefined);
       }
     }
     if (c.status === 'detected') {
@@ -238,15 +240,15 @@ export class CommitmentsService implements OnModuleInit {
     const src: { label: string; link: string | null } = sees ? this.sourceOf(c)
       : { label: c.source_type === 'chat' ? (c.chat_kind === 'dm' ? 'Личная переписка' : 'Чат') : c.source_type === 'task' ? 'Задача' : 'Встреча', link: null };
     const when = dateRu(c.source_at, tz);
-    const overdue = !!c.deadline_at && new Date(c.deadline_at).getTime() < Date.now();
     const self = role === 'self';
     const card = commitmentCardText({
       self, speakerFullName: c.speaker_name ?? '', sourceType: c.source_type, chatKind: c.chat_kind ?? null,
       taskTitle: sees && c.source_type === 'task' ? c.source_title ?? null : null,
       saidWhen: whenSaid(localParts(new Date(c.source_at), tz).date, localParts(new Date(), tz).date),
       action: c.action_text,
-      overdueText: overdue ? c.deadline_text ?? 'срок' : null,
-      hoursPassed: overdue ? checkHours : (Date.now() - new Date(c.source_at).getTime()) / 3600_000,
+      // текст документа: «Прошло 24 часа» — ровно столько, сколько ждали, а не «прошло 25 часов»
+      overdueText: null,
+      hoursPassed: checkHours,
     });
     const name = firstName(c.speaker_name) || c.speaker_name || '';
     const actions = [
@@ -269,8 +271,8 @@ export class CommitmentsService implements OnModuleInit {
         : `Поставьте задачу или напомните — ${name} пока не ${pastVerb('отреагировал', guessGender(c.speaker_name))}.`,
       effect: self ? 'Задача появится на вас со сроком из обещания и ссылкой на разговор.'
         : `Задача появится на ${c.speaker_name} со сроком из обещания; «${card.remindLabel}» — личное уведомление.`,
-      // тихо (документ): без пуша, кроме просроченного срока
-      priority: overdue ? 1 : 2,
+      // «тихо и деликатно» (документ): без пуша и Telegram — карточкой в ящике
+      priority: 2,
       confidence: Number(c.confidence),
       actions,
       payload: { commitmentId: String(c.id), dueAt: c.deadline_at, role },
@@ -293,7 +295,7 @@ export class CommitmentsService implements OnModuleInit {
       ? { status, fulfilled_at: new Date(), fulfilled_by: by ?? 'user' }
       : status === 'cancelled' ? { status, cancelled_at: new Date() } : { status });
     const text = status === 'fulfilled' ? (by === 'task' ? 'Задача закрыта — обещание выполнено' : 'Обещание выполнено') : 'Обещание снято';
-    await this.proactive.resolveBySource(String(c.tenant_id), 'commitment', c.source_type, String(c.source_id), text).catch(() => undefined);
+    await this.proactive.resolveBySource(String(c.tenant_id), 'commitment', c.source_type, String(c.source_id), text, String(c.id)).catch(() => undefined);
   }
 
   // ───────────────────────── кнопки карточки ─────────────────────────
@@ -384,9 +386,11 @@ export class CommitmentsService implements OnModuleInit {
     if (!projectId) throw new AppException('UNPROCESSABLE', 'К какому проекту относится задача?', { code: 'PROJECT_REQUIRED', field: 'project_id' });
     if (chosen) await this.tasks.assertProject(a.tenantId, chosen, { userId: a.userId, role: a.role });
     const src = this.sourceOf(c);
+    // название — действием, а не словами из разговора: «Прислать смету к вечеру», не «Скину смету…»
+    const what = actionInfinitive(c.action_text) || c.action_text;
     const task = await this.tasks.create(a.tenantId, {
       projectId,
-      title: c.action_text.charAt(0).toUpperCase() + c.action_text.slice(1),
+      title: what.charAt(0).toUpperCase() + what.slice(1),
       description: `Обещание из разговора (${src.label}):\n«${c.quote.slice(0, 1500)}»`,
       assigneeId: String(c.speaker_user_id),
       deadlineAt: c.deadline_at ? new Date(c.deadline_at).toISOString() : undefined,

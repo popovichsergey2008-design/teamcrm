@@ -46,9 +46,16 @@ export class MorningVoiceService implements OnModuleInit {
     // «Прочитано» — сведения; «Поставить задачей» — черновик планерки становится задачей
     this.proactive.register({
       skill: 'brief',
-      execute: async (a: Actor, p: ProposalRow, action, params) => (action === 'task'
-        ? this.standup.execute(a, p, params ?? {})
-        : { text: action === 'done' ? 'Прочитано' : 'Готово' }),
+      execute: async (a: Actor, p: ProposalRow, action, params) => {
+        if (action === 'task') return this.standup.execute(a, p, params ?? {});
+        // «Прочитано» при непоставленных черновиках планерки карточку не закрывает: иначе
+        // черновики пропадали, и «в 1 клик» поставить их было уже нельзя (27.10)
+        const drafts = (p.payload?.drafts ?? []) as { taskId?: string | null }[];
+        const left = drafts.some((d) => !d.taskId);
+        return left
+          ? { text: 'Прочитано. Черновики планерки остаются здесь до конца дня', keepOpen: true }
+          : { text: action === 'done' ? 'Прочитано' : 'Готово' };
+      },
     });
     this.scheduler.add('утренний бриф руководителя', () => this.tick());
   }
@@ -67,8 +74,11 @@ export class MorningVoiceService implements OnModuleInit {
          JOIN tenants t ON t.id = u.tenant_id
     LEFT JOIN secretary_prefs sp ON sp.user_id = u.id
         WHERE u.is_active IS NOT FALSE AND (sp.user_id IS NULL OR sp.brief_at IS NOT NULL)
+          -- уже получил бриф на сегодня по СВОЕЙ дате — отсеиваем; дату считаем в поясе человека.
+          -- Раньше здесь было «ref >= вчера по часам базы»: вчерашний бриф отсеивал сегодняшний,
+          -- и бриф приходил через день (27.10).
           AND NOT EXISTS (SELECT 1 FROM secretary_sent x WHERE x.user_id = u.id AND x.kind = 'morning_coffee'
-                             AND x.ref >= to_char(current_date - 1, 'YYYY-MM-DD'))`,
+                             AND x.ref = to_char((now() AT TIME ZONE COALESCE(u.timezone, t.timezone, 'Europe/Moscow'))::date, 'YYYY-MM-DD'))`,
     );
     for (const r of rows) {
       const tz = r.tz || 'Europe/Moscow';
@@ -84,7 +94,8 @@ export class MorningVoiceService implements OnModuleInit {
     const done = await this.db.one(`SELECT 1 FROM assistant_proposals WHERE tenant_id = $1 AND user_id = $2 AND fingerprint = $3`, [tenantId, userId, fp]);
     if (done) return null;
     const s = await this.settings.tenantSettings(tenantId);
-    if (!s.enabled || !s.morningAudio) return null;
+    // «Утренняя сводка голосом» в настройках компании выключает ГОЛОС, а не весь бриф
+    if (!s.enabled) return null;
     const prefs = await this.settings.prefs(tenantId, userId);
     if (prefs.level === 'off') return null;
     // один бриф на день даже при двух экземплярах во время выкладки: синтез — один раз
@@ -93,7 +104,7 @@ export class MorningVoiceService implements OnModuleInit {
     );
     if (!claimed.rowCount) return null;
     try {
-      return await this.compose(tenantId, userId, name, tz, now, today, fp, prefs.morningAudio);
+      return await this.compose(tenantId, userId, name, tz, now, today, fp, prefs.morningAudio && s.morningAudio !== false);
     } catch (e) {
       // не получилось — освобождаем день: следующий тик попробует снова
       await this.db.query(`DELETE FROM secretary_sent WHERE user_id = $1 AND kind = 'morning_coffee' AND ref = $2`, [userId, today]).catch(() => undefined);

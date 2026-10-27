@@ -888,8 +888,10 @@ export class NlService {
       */
       const exactAt = typeof t.deadlineAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(t.deadlineAt) && !Number.isNaN(Date.parse(t.deadlineAt))
         ? new Date(t.deadlineAt).toISOString() : undefined;
+      // день без времени — конец рабочего дня ПО ПОЯСУ КОМПАНИИ, как считает радар перегрузки;
+      // раньше брались часы сервера (UTC), и «к пятнице» становилось 21:00 по Москве
       const deadlineAt = exactAt ?? (/^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? ''))
-        ? new Date(`${t.deadline}T18:00:00`).toISOString() // день без времени — считаем концом рабочего дня
+        ? await this.workload.deadlineOfDate(tenantId, String(t.deadline))
         : undefined);
       // #4615, 23.10: в автоматической постановке радар перегрузки — только подсказка
       // (карточка в ящик после создания), а не вопрос, который останавливает постановку

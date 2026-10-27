@@ -175,7 +175,8 @@ export function softHint(i: {
 }): string {
   const who = genitive(i.name);
   const load = i.day
-    ? `у ${who} ${i.day} уже назначено ${i.sameDayUrgent} ${plural(i.sameDayUrgent, 'срочная задача', 'срочные задачи', 'срочных задач')}`
+    // «назначена 1 / 21 срочная задача», «назначено 4 срочные задачи» — сказуемое согласуем с числом
+    ? `у ${who} ${i.day} уже ${plural(i.sameDayUrgent, 'назначена', 'назначено', 'назначено')} ${i.sameDayUrgent} ${plural(i.sameDayUrgent, 'срочная задача', 'срочные задачи', 'срочных задач')}`
     : i.counted > 0
       ? `у ${who} уже ${i.counted} ${plural(i.counted, 'задача', 'задачи', 'задач')} на эти две недели`
       : `у ${who} уже полная загрузка на эти две недели`;

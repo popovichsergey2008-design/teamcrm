@@ -25,6 +25,8 @@ const VERBS = [
 ];
 const VERB_RE = new RegExp(`${before}(я\\s+)?(?:(?:сегодня|завтра|сейчас|потом|вечером|утром)\\s+)?(${VERBS.join('|')})${after}`, 'iu');
 const TAKE_RE = new RegExp(`${before}(беру(?:\\s+на\\s+себя)?|возьму\\s+на\\s+себя|это\\s+на\\s+мне|за\\s+мной)${after}`, 'iu');
+/** «Сейчас покажу», «щас поправлю», «давайте ещё раз покажу» — действие прямо сейчас. */
+const IMMEDIATE_RE = new RegExp(`${before}(?:(?:прямо\\s+)?сейчас|щас|счас)\\s+(?:я\\s+)?(?:[${L}]+\\s+)?(?:${VERBS.join('|')})${after}|${before}(?:${VERBS.join('|')})\\s+(?:сейчас|щас)${after}|${before}(?:ещ[её]\\s+раз|снова)\\s+покажу${after}`, 'iu');
 /** То, что делает обещание не обещанием. */
 const HEDGE_RE = new RegExp(`${before}(если|может|можно|наверное|возможно|попробую|постараюсь|хотел\\s+бы|хотела\\s+бы|не\\s+знаю|вряд\\s+ли)${after}`, 'iu');
 const NEG_RE = new RegExp(`${before}не\\s+(?:${VERBS.join('|')}|беру|возьму|смогу|успею)${after}`, 'iu');
@@ -61,8 +63,12 @@ export function detectCommitment(raw: string, local: { date: string; hour: numbe
   const sentence = sentenceAround(own, m.index);
   if (sentence.endsWith('?')) return null;
   if (HEDGE_RE.test(sentence) || NEG_RE.test(sentence)) return null;
+  // «сейчас покажу», «щас поправлю» — делается тут же, на глазах, а не обещается на потом:
+  // на созвонах это каждая вторая фраза демонстрации (27.10 — ложные карточки на проде)
+  if (IMMEDIATE_RE.test(sentence) && !parseDeadline(sentence.replace(IMMEDIATE_RE, ''), local)) return null;
   const action = sentence
-    .replace(/^[\s,–—-]*(ок|окей|хорошо|да|ладно|понял|поняла|принято)[\s,!.–—-]*/iu, '')
+    // слово целиком: «Да» не должно откусывать начало «Давай» («вай, я доделаю», 27.10)
+    .replace(/^[\s,–—-]*(ок|окей|хорошо|да|давай|давайте|ладно|понял|поняла|принято)(?![\p{L}])[\s,!.–—-]*/iu, '')
     .replace(new RegExp(`^(я\\s+)`, 'iu'), '')
     .trim();
   if (action.length < 4) return null;

@@ -53,7 +53,8 @@ export class BriefRepository {
       `SELECT s.user_id, s.tenant_id, to_char(s.morning_at, 'HH24:MI') AS morning_at, to_char(s.evening_at, 'HH24:MI') AS evening_at,
               s.weekdays_only, s.channels, s.meeting_brief_min, s.vip_user_ids::text[] AS vip_user_ids,
               s.last_morning::text AS last_morning, s.last_evening::text AS last_evening,
-              COALESCE(u.timezone, t.timezone) AS timezone, u.role
+              COALESCE(u.timezone, t.timezone) AS timezone,
+              (SELECT r.code FROM roles r WHERE r.id = u.role_id) AS role
          FROM secretary_prefs s
          JOIN users u ON u.id = s.user_id AND u.is_active
          JOIN tenants t ON t.id = s.tenant_id

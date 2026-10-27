@@ -97,7 +97,7 @@ describe('мягкая подсказка (#1525)', () => {
   it('склонение «срочная задача»', () => {
     expect(softHint({ ...base, day: 'на среду', sameDayUrgent: 3 })).toContain('у Сергея на среду уже назначено 3 срочные задачи.');
     expect(softHint({ ...base, day: 'на завтра', sameDayUrgent: 5 })).toContain('уже назначено 5 срочных задач.');
-    expect(softHint({ ...base, day: 'на сегодня', sameDayUrgent: 21 })).toContain('уже назначено 21 срочная задача.');
+    expect(softHint({ ...base, day: 'на сегодня', sameDayUrgent: 21 })).toContain('уже назначена 21 срочная задача.');
   });
 
   it('перегруз без срочных на день — та же форма', () => {
