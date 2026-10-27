@@ -62,6 +62,7 @@ import { TrelloModule } from './modules/integrations/trello/trello.module';
 import { NotionModule } from './modules/integrations/notion/notion.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { GdocsModule } from './modules/gdocs/gdocs.module';
+import { GoogleModule } from './modules/google/google.module';
 import { NlModule } from './modules/nl/nl.module';
 import { InboxModule } from './modules/inbox/inbox.module';
 import { AgentsModule } from './modules/agents/agents.module';
@@ -157,6 +158,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     NotionModule,
     KnowledgeModule,
     GdocsModule,
+    GoogleModule,
     NlModule,
     InboxModule,
     AgentsModule,

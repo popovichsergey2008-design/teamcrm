@@ -11,6 +11,7 @@ import {
   api, ApiError, ClientActivity, ClientCard, ClientContact, ClientContacts, ClientDeal, ClientFile, ClientMeeting, ClientNote, ClientTask,
 } from '../../lib/api';
 import { navigate } from '../../lib/router';
+import { GoogleFilesBlock } from '../../components/google/GoogleFilesBlock';
 import { toastSaved } from '../../lib/notifications';
 import { useAuth } from '../../state/auth';
 import { CURRENCIES, dateRu, dateTimeRu, FILE_CATEGORY, MEMBER_ROLE, money, SOURCE, STAGE, STAGE_KEYS } from './labels';
@@ -388,6 +389,8 @@ export function FilesTab({ clientId, canEdit }: { clientId: string; canEdit: boo
           ))}
         </div>
       ))}
+      {/* Google Диск клиента и «итоги для клиента» Google-документом (#1565) */}
+      <GoogleFilesBlock entityType="client" entityId={clientId} />
     </div>
   );
 }

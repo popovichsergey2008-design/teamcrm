@@ -85,6 +85,13 @@ x-api-env: &api-env
   # поэтому ключи появятся после переезда. Имя бота нужно виджету входа отдельно от
   # токена: по токену виджет не собрать.
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  # #1565 Google Workspace (Диск, Документы, Календарь) — OAuth-клиент из Google Cloud Console.
+  # GOOGLE_OAUTH_CLIENT_ID не задан — берётся GOOGLE_CLIENT_ID (тот же веб-клиент).
+  GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+  GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+  GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+  GOOGLE_PICKER_API_KEY: ${GOOGLE_PICKER_API_KEY:-}
+  GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER:-}
   TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
   # Push на телефоны (ТЗ-9): сервисный аккаунт проекта Firebase, JSON или base64.
   # Не задан — push выключен, ящик уведомлений работает как прежде.

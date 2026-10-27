@@ -1,0 +1,33 @@
+/* #1565 Google Workspace: блок файлов при сущности и экран настроек */
+.gfiles { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.gfiles-compact { padding: 10px; }
+.gfiles-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.gfiles-head h4 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-md); font-weight: 600; }
+.gfiles-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.gfiles-connect { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--text-dim); }
+.gfiles-connect > span { flex: 1 1 220px; }
+.gfiles-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.gfiles-row {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; grid-template-areas: 'icon name x' 'icon meta x';
+  column-gap: 8px; align-items: center; padding: 6px 4px; border-radius: var(--radius-sm);
+}
+.gfiles-row:hover { background: var(--hover); }
+.gfiles-row > img, .gfiles-row > svg { grid-area: icon; }
+.gfiles-icon { width: 16px; height: 16px; }
+.gfiles-name { grid-area: name; color: var(--text); font-weight: 500; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gfiles-name:hover { text-decoration: underline; }
+.gfiles-meta { grid-area: meta; font-size: var(--fs-xs); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gfiles-row > .ui-btn { grid-area: x; }
+.gfiles-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-dim); }
+.gfiles-ok { margin: 0; display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); color: var(--ok); }
+.gfiles-err { margin: 0; font-size: var(--fs-sm); color: var(--danger); }
+
+/* экран «Настройки → Google» */
+.gset { display: flex; flex-direction: column; gap: 14px; }
+.gset-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.gset-card h4 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-md); }
+.gset-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gset-dim { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.5; }
+.gset-ok { display: inline-flex; align-items: center; gap: 4px; color: var(--ok); font-weight: 500; }
+.gset-warn { padding: 8px 10px; border-radius: var(--radius-sm); background: var(--danger-soft); border: 1px solid var(--danger-line); font-size: var(--fs-sm); }
+.gset-list { margin: 0; padding-left: 18px; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.6; }

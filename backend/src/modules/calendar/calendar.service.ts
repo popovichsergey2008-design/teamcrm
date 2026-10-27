@@ -4,6 +4,7 @@ import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository, EventRow, MeetingSettings } from './calendar.repository';
 import { CalendarSyncService } from './calendar-sync.service';
 import { buildIcs, icsUid } from './ics';
+import { emitCalendarChange } from './calendar-hooks';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 const DEFAULT_WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[], fixWindowHours: 24 };
@@ -222,6 +223,8 @@ export class CalendarService {
     await this.repo.setReminders(row.id, this.cleanReminders(dto.reminders));
     // письма не ждём: встреча уже создана и видна на экране, почта догонит
     void this.mail.sendInvites(row);
+    // копия в Google Календарь участников, кто его подключил (#1565) — тоже не ждём
+    void emitCalendarChange(tenantId, String(row.id), 'saved');
     return this.details(tenantId, user, row.id);
   }
 
@@ -267,6 +270,7 @@ export class CalendarService {
     if (updated && (timeChanged || dto.participantIds)) void this.mail.sendInvites(updated);
     // гостям со стороны — «время изменено» с их же ссылкой
     if (updated && timeChanged) void this.notifyGuests(updated, 'update');
+    void emitCalendarChange(tenantId, String(id), 'saved');
     return this.details(tenantId, user, id);
   }
 
@@ -275,6 +279,8 @@ export class CalendarService {
     // письмо об отмене собираем ДО удаления: после него список участников уже не прочитать
     await this.mail.sendCancel(event);
     await this.notifyGuests(event, 'cancel');
+    // из Google убираем ДО удаления: после него связи «встреча → событие Google» уже нет
+    await emitCalendarChange(tenantId, String(id), 'removed');
     await this.repo.remove(tenantId, id);
     return { deleted: true };
   }
@@ -355,6 +361,8 @@ export class CalendarService {
   async respond(tenantId: string, userId: string, id: string, status: 'accepted' | 'declined') {
     const ok = await this.repo.respond(tenantId, id, userId, status);
     if (!ok) throw AppException.notFound('Вас не приглашали на это событие');
+    // отказался — встреча уходит и из его Google Календаря; передумал — возвращается
+    void emitCalendarChange(tenantId, String(id), 'saved');
     return { status };
   }
 

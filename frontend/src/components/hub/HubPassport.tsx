@@ -17,6 +17,7 @@ import { toastSaved } from '../../lib/notifications';
 import { MAX_TASK_FILE_BYTES } from '../../lib/task-files';
 import { HUB_CATEGORIES, dayLabel, guessFileCategory, guessLinkCategory, normalizeUrl, safeHref } from '../../lib/hub';
 import { AiMark, AskBox, DecisionRow, ItemRow, errText } from './parts';
+import { GoogleFilesBlock } from '../google/GoogleFilesBlock';
 import './hub.css';
 
 export type HubTab = 'passport' | 'team' | 'knowledge' | 'decisions' | 'search';
@@ -541,6 +542,8 @@ function KnowledgeTab({ ctx, startAdd }: { ctx: Ctx; startAdd?: boolean }) {
       <p className="hub-hint">ТЗ и спецификации, брендбук, макеты, репозитории, API и регламенты. Закреплённое видно прямо в колонке на доске.</p>
       <ItemsBlock ctx={ctx} section="knowledge" items={ctx.view.knowledge} kinds={['link', 'file', 'note']} grouped startAdd={startAdd}
         empty="Положите сюда ТЗ, брендбук и ссылку на макеты." />
+      {/* файлы Google Диска проекта и «документ проекта» Google-документом (#1565) */}
+      <GoogleFilesBlock entityType="project" entityId={ctx.projectId} />
     </>
   );
 }

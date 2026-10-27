@@ -9,6 +9,7 @@ import { addReminder, MAX_REMINDERS, reminderRows, ReminderUnit, toMinutes } fro
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { meetingUrl, shareMeeting } from './MeetingPage';
 import { CalendarSyncPanel } from '../components/CalendarSyncPanel';
+import { GoogleFilesBlock } from '../components/google/GoogleFilesBlock';
 import { api, ApiError } from '../lib/api';
 import { feedback } from '../lib/feedback';
 import { navigate } from '../lib/router';
@@ -1131,6 +1132,9 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
             ))}
           </>
         )}
+
+        {/* материалы встречи с Google Диска и протокол Google-документом (#1565) */}
+        {!isNew && value.id && <GoogleFilesBlock entityType="event" entityId={String(value.id)} compact />}
 
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 

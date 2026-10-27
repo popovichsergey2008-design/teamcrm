@@ -258,7 +258,7 @@ export class CalendarSyncService implements OnModuleInit, OnModuleDestroy {
       `SELECT x.id, x.title, x.location, x.starts_at, x.ends_at, x.all_day, l.title AS link_title
          FROM calendar_external_events x
          JOIN calendar_links l ON l.id = x.link_id
-        WHERE x.tenant_id=$1 AND l.user_id=$2 AND l.kind='import'
+        WHERE x.tenant_id=$1 AND l.user_id=$2 AND l.kind IN ('import', 'google')
           AND x.starts_at < $4::timestamptz AND x.ends_at > $3::timestamptz
         ORDER BY x.starts_at`,
       [tenantId, userId, from, to],

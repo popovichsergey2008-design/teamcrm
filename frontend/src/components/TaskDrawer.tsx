@@ -38,6 +38,7 @@ import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { PeopleField as SharedPeopleField } from './PeopleField';
 import { Tabs } from './ui/tabs';
+import { GoogleFilesBlock } from './google/GoogleFilesBlock';
 import { useTitleHint } from '../lib/page-title';
 import { feedback, feedback as fx } from '../lib/feedback';
 // «Послушать контекст · 15 сек» (ТЗ-25) — отдельным куском, только у задач со встречи
@@ -1805,6 +1806,8 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
         <EmptyState compact icon="paperclip" title="Файлов нет"
           hint="Прикрепите документы, макеты или скриншоты — они останутся в задаче и будут видны всем участникам." />
       )}
+      {/* файлы Google Диска и документ по задаче (#1565) — рядом с обычными файлами */}
+      <div style={{ marginTop: 12 }}><GoogleFilesBlock entityType="task" entityId={String(taskId)} /></div>
       {preview && <Lightbox items={[{ url: preview.url, name: preview.name, mime: preview.mime }]} onClose={closePreview} />}
     </>
   );

@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { api, ApiError, CalendarLink } from '../lib/api';
 import { overlayProps } from '../lib/overlay';
 import { confirmAction } from './ui/dialog';
+import { navigate } from '../lib/router';
 
 /**
  * Синхронизация календаря с Google (и любым другим, понимающим iCalendar).
@@ -76,6 +77,19 @@ export function CalendarSyncPanel({ onClose }: { onClose: () => void }) {
         <div className="drawer-head">
           <h3>Синхронизация календаря</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
+        </div>
+
+        {/* #1565: прямое подключение по OAuth — проще ссылок и пишет в Google по-настоящему */}
+        <div className="drawer-section">
+          <div className="drawer-section-title">Google Календарь — напрямую</div>
+          <p className="dim">
+            Подключите свой Google в один клик: встречи QEVO лягут в ваш Google Календарь и будут меняться вместе
+            с ними, а встречи Google станут видны здесь. Ссылки ниже тогда не нужны — подписка по ссылке вместе
+            с прямым подключением задвоит встречи в Google.
+          </p>
+          <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { onClose(); navigate({ section: 'settings', tab: 'google' }); }}>
+            <Icon name="calendar" size={14} /> Подключить Google
+          </button>
         </div>
 
         <div className="drawer-section">

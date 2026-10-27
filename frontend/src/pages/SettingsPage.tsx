@@ -14,6 +14,7 @@ import { KnowledgePanel } from '../components/KnowledgePanel';
 import { TeamPanel } from '../components/TeamPanel';
 import { FocusSettingsPanel } from '../components/FocusSettingsPanel';
 import { MailPanel } from '../components/MailPanel';
+import { GooglePanel } from '../components/google/GooglePanel';
 import { GuestBrandPanel } from '../components/GuestBrandPanel';
 import { navigate, Route } from '../lib/router';
 import { useState } from 'react';
@@ -74,6 +75,14 @@ const CARDS: Card[] = [
     title: 'Почта',
     hint: 'Ваш ящик Gmail, Яндекс, Mail.ru, Outlook или свой: секретарь разбирает письма и готовит ответы',
     icon: 'mail',
+    roles: ['owner', 'manager', 'member'],
+  },
+  {
+    // #1565: личное подключение Google — Диск, Документы, Календарь
+    tab: 'google',
+    title: 'Google',
+    hint: 'Диск, Документы и Календарь: файлы при задачах, документы из QEVO, встречи в Google Календаре',
+    icon: 'link',
     roles: ['owner', 'manager', 'member'],
   },
   {
@@ -216,6 +225,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'ai-plan' && canManage && <AiPlanPanel canManage={role === 'owner'} onClose={close} />}
       {/* Личный ящик — у каждого свой (ТЗ-18): письма не видит никто, кроме хозяина. */}
       {route.tab === 'mail' && role !== 'client' && <MailPanel onClose={close} />}
+      {route.tab === 'google' && role !== 'client' && <GooglePanel onClose={close} />}
       {route.tab === 'reports' && role !== 'client' && <ReportsPanel canManage={canManage} onClose={close} />}
       {route.tab === 'knowledge' && <KnowledgePanel canManage={canManage} onClose={close} />}
       {route.tab === 'handoff' && <HandoffGatePanel canManage={role === 'owner'} onClose={close} />}
