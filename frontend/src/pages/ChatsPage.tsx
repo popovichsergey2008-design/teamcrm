@@ -1199,18 +1199,30 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     доводит до сегодняшних сообщений».
   */
   const unreadShown = useRef<string | null>(null);
+  /*
+    #4681: к черте прыгаем ТОЛЬКО сразу после открытия чата. Раньше, если черта не успевала
+    отрисоваться за 30 мс, прыжок «ждал следующего обновления ленты» — им оказывалось
+    новое сообщение минут через пять, когда человек уже читал историю выше, и ленту
+    выбрасывало вниз к черте. Теперь черту ищем несколько кадров подряд в первые секунды,
+    а не нашли или человек уже листает сам — прыжок отменяется насовсем.
+  */
+  const openedAt = useRef(0);
+  const userScrolled = useRef(false);
+  useEffect(() => { openedAt.current = Date.now(); userScrolled.current = false; }, [activeId]);
   useEffect(() => {
     if (!unreadFrom) { unreadShown.current = null; return; }
     if (unreadShown.current === String(unreadFrom)) return;
-    const t = window.setTimeout(() => {
+    let raf = 0;
+    const tryJump = (tries: number) => {
+      if (Date.now() - openedAt.current > 3000 || userScrolled.current) { unreadShown.current = String(unreadFrom); return; }
       // Идёт переход к сообщению — черта подождёт: иначе два разных места спорят за ленту.
-      if (jumping.current) return;
-      const line = feedRef.current?.querySelector('.chat-unread-line');
-      if (!line) return; // черта ещё не отрисована — попробуем, когда лента обновится
+      const line = jumping.current ? null : feedRef.current?.querySelector('.chat-unread-line');
+      if (!line) { if (tries > 0) raf = requestAnimationFrame(() => tryJump(tries - 1)); return; }
       line.scrollIntoView({ block: 'center' });
       unreadShown.current = String(unreadFrom);
-    }, 30);
-    return () => window.clearTimeout(t);
+    };
+    const t = window.setTimeout(() => tryJump(60), 30);
+    return () => { window.clearTimeout(t); cancelAnimationFrame(raf); };
   }, [unreadFrom, messages.length]);
 
   /**
@@ -2776,6 +2788,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             <div
               className="chat-feed"
               ref={feedRef}
+              // листает сам человек (колесо, палец) — к черте непрочитанного ленту больше не тянем (#4681)
+              onWheel={() => { userScrolled.current = true; }}
+              onTouchMove={() => { userScrolled.current = true; }}
               onScroll={(e) => {
                 closePops();
                 const el = e.currentTarget;
