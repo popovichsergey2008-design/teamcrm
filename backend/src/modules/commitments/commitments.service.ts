@@ -248,7 +248,7 @@ export class CommitmentsService implements OnModuleInit {
       action: c.action_text,
       // текст документа: «Прошло 24 часа» — ровно столько, сколько ждали, а не «прошло 25 часов»
       overdueText: null,
-      hoursPassed: checkHours,
+      hoursPassed: Math.min(checkHours, (Date.now() - new Date(c.source_at).getTime()) / 3600_000),
     });
     const name = firstName(c.speaker_name) || c.speaker_name || '';
     const actions = [
