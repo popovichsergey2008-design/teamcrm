@@ -15,6 +15,7 @@ import { AI_PARTICIPANT, MeetingRoom } from './media.types';
 import { GuestLinksService, GuestTokenPayload } from './guest-links.service';
 import { Ringing } from './ringing';
 import { PushService } from '../notifications/push.service';
+import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
 const PATH = '/ws/meet';
 
@@ -88,6 +89,7 @@ export class MeetGateway implements OnModuleInit {
     private readonly diag: DiagService,
     private readonly guests: GuestLinksService,
     private readonly push: PushService,
+    private readonly mirror: TelegramMirror,
   ) {}
 
   /**
@@ -637,6 +639,10 @@ export class MeetGateway implements OnModuleInit {
           // Телефон в кармане: push с высоким приоритетом, по нажатию приложение откроется и
           // получит вызов заново через сокет (см. onConnect). Не ждём и не роняем приглашение.
           void this.push.callInvite({
+            tenantId: c.tenantId, userId: String(target), meetingId: room.id, callerName: c.displayName,
+          });
+          // не у компьютера — ещё и в Telegram, как личное сообщение (#4682)
+          void this.mirror.callInvite({
             tenantId: c.tenantId, userId: String(target), meetingId: room.id, callerName: c.displayName,
           });
         }

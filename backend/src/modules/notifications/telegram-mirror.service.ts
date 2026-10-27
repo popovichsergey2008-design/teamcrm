@@ -5,6 +5,8 @@ import { MailRow, NotificationsRepository } from './notifications.repository';
 import { InboxRepository } from './inbox.repository';
 import { CHAT_DIRECT_KEY, MIRROR_EVENT_KEY } from './mail.templates';
 import { mirrorText } from './telegram-mirror.text';
+import { RealtimeService } from '../realtime/realtime.service';
+import { DbService } from '../../database/db.service';
 
 /**
  * Дубль почтового уведомления в личный чат сотрудника с ботом.
@@ -29,7 +31,44 @@ export class TelegramMirror {
     private readonly telegram: TelegramService,
     private readonly sender: TelegramSender,
     private readonly inbox: InboxRepository,
+    private readonly realtime: RealtimeService,
+    private readonly db: DbService,
   ) {}
+
+  /** Один вызов — одно сообщение: звонящий может дёргать приглашение несколько раз. */
+  private readonly callSent = new Map<string, number>();
+
+  /**
+   * Позвали в созвон, а человека нет у компьютера (#4682) — сообщение в Telegram, как о
+   * личном сообщении. «Нет у компьютера» — нет в сети (приложение закрыто) или сам поставил
+   * «отошёл». Кто сидит в QEVO, услышит звонок там: дубль в Telegram ему не нужен.
+   * Настройка та же, что у личных сообщений; глубокая работа — молчим.
+   */
+  async callInvite(m: { tenantId: string; userId: string; meetingId: string; callerName: string }): Promise<boolean> {
+    if (!this.sender.enabled || !m.userId) return false;
+    const key = `${m.userId}:${m.meetingId}`;
+    const now = Date.now();
+    for (const [k, at] of this.callSent) if (now - at > 10 * 60_000) this.callSent.delete(k);
+    if (this.callSent.has(key)) return false;
+    try {
+      const away = !this.realtime.isOnline(m.tenantId, m.userId)
+        || (await this.db.one<{ s: string | null }>(`SELECT presence_status AS s FROM users WHERE tenant_id=$1 AND id=$2`, [m.tenantId, m.userId]))?.s === 'away';
+      if (!away) return false;
+      if (!(await this.repo.prefEnabled(m.tenantId, m.userId, CHAT_DIRECT_KEY))) return false;
+      if (await this.inbox.isQuiet(m.tenantId, m.userId)) return false;
+      const chatId = await this.telegram.chatIdOf(m.tenantId, m.userId);
+      if (!chatId) return false;
+      this.callSent.set(key, now);
+      const base = (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, '');
+      // по ссылке приложение откроется, и вызов придёт заново, пока звонящий ждёт
+      await this.sender.sendMessage(chatId, `📞 ${m.callerName || 'Коллега'} зовёт вас в созвон. Ответить: ${base}/chat`);
+      return true;
+    } catch (e) {
+      this.callSent.delete(key);
+      this.log.warn(`о звонке в Telegram не ушло: ${(e as Error).message}`);
+      return false;
+    }
+  }
 
   /**
    * Сообщение сотруднику в его личный чат, без письма.
