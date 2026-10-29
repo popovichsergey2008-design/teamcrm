@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { api, SIGNED_OUT_EVENT, tokens } from '../lib/api';
-import { disconnectSocket } from '../lib/socket';
+import { disconnectSocket, reconnectSocket } from '../lib/socket';
 import { forgetRegisteredDevice, registeredDeviceId } from '../hooks/useDeviceRegistration';
 import { isMfaChallenge, type AuthResult, type LoginResponse, type OrgRef, type User } from '../types';
 
@@ -87,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const take = async (r: AuthResult) => {
     setMfaToken(null);
     tokens.set(r.accessToken, r.refreshToken);
+    reconnectSocket();
     const full = await api.me().catch(() => null);
     setUser(full ?? r.user);
     setOrganizations(r.organizations ?? []);
@@ -111,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean; website?: string }) => {
     const r = await api.register(b);
     tokens.set(r.accessToken, r.refreshToken);
+    reconnectSocket();
     setUser(r.user);
     setOrganizations(r.organizations ?? []);
   };

@@ -35,13 +35,28 @@ export function getSocket(): Socket {
   s.on('disconnect', (reason) => {
     if (reason !== 'io server disconnect') return;
     pause = Date.now() - since > 10_000 ? 1000 : Math.min(pause * 2, 30_000);
-    window.setTimeout(() => {
-      if (socket !== s || s.connected || !tokens.refresh) return;
+    const retry = () => {
+      if (socket !== s || s.connected) return;
+      // токенов нет — человек вышел; ждём, пока войдёт снова (в этой или соседней вкладке)
+      if (!tokens.refresh) { window.setTimeout(retry, 5_000); return; }
       refreshAccess().catch(() => undefined).finally(() => { if (socket === s && tokens.refresh) s.connect(); });
-    }, pause);
+    };
+    window.setTimeout(retry, pause);
   });
   socket = s;
   return s;
+}
+
+/**
+ * Вошли снова в той же вкладке — поднять сокет.
+ *
+ * Сессия кончилась (или вход упал, как 29.10) — сервер выгоняет сокет, а переподключение
+ * выше останавливается: токенов нет. После нового входа его никто не включал, и до
+ * перезагрузки страницы не было ни «в сети», ни живых сообщений. Экземпляр тот же:
+ * на нём уже висят слушатели разделов, новый сокет их бы потерял.
+ */
+export function reconnectSocket() {
+  if (socket && !socket.connected) socket.connect();
 }
 
 export function disconnectSocket() {
