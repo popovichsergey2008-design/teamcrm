@@ -12,6 +12,8 @@ interface Props {
   /** Подсказка «просрочен» для дедлайнов: прошедшая дата подсвечивается красным. */
   warnPast?: boolean;
   disabled?: boolean;
+  /** Подпись для экранного диктора, когда видимого <label> рядом нет. */
+  ariaLabel?: string;
 }
 
 const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
@@ -38,7 +40,7 @@ const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
  * выглядит чужеродно и по-разному в каждом браузере.
  * Без внешних зависимостей: в проекте нет библиотеки дат, и тащить её ради одного поля незачем.
  */
-export function DatePicker({ value, onChange, withTime = false, placeholder = 'не задан', warnPast = false, disabled }: Props) {
+export function DatePicker({ value, onChange, withTime = false, placeholder = 'не задан', warnPast = false, disabled, ariaLabel }: Props) {
   const selected = useMemo(() => parseValue(value), [value]);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState(() => startOfDay(selected ?? new Date()));
@@ -124,8 +126,9 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
     if (!withTime) setOpen(false);
   };
 
+  // #4685: дата в задачах — дд.мм.гг, а не «28 октября 2026» и не «10/28/2026» браузера
   const label = selected
-    ? selected.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
+    ? `${pad(selected.getDate())}.${pad(selected.getMonth() + 1)}.${String(selected.getFullYear()).slice(-2)}`
       + (withTime ? `, ${pad(selected.getHours())}:${pad(selected.getMinutes())}` : '')
     : placeholder;
 
@@ -203,6 +206,7 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
         onClick={() => !disabled && setOpen((v) => !v)}
         disabled={disabled}
         title={selected ? 'Изменить дату' : 'Выбрать дату'}
+        aria-label={ariaLabel ? `${ariaLabel}: ${label}` : undefined}
       >
         <span><Icon name="calendar" size={14} /> {label}</span>
         {selected && !disabled && (

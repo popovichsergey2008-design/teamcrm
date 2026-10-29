@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import '../guest/guest-host.css';
 import { Icon } from '../Icon';
+import { DatePicker } from '../DatePicker';
 import { Button } from '../ui/button';
 import { confirmAction } from '../ui/dialog';
 import { api, ApiError, GuestAgreement, GuestSummaryHost } from '../../lib/api';
@@ -136,8 +137,8 @@ export default function GuestSummaryPanel({ meetingId }: { meetingId: string }) 
                 <select className="input" value={a.side} aria-label="Чья сторона" onChange={(e) => setAgreement(i, { side: e.target.value })}>
                   {Object.entries(SIDE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
-                <input className="input" type="date" aria-label="Срок" value={a.deadlineAt ? toLocal(a.deadlineAt).slice(0, 10) : ''}
-                  onChange={(e) => setAgreement(i, { deadlineAt: e.target.value ? new Date(`${e.target.value}T12:00:00`).toISOString() : null })} />
+                <DatePicker ariaLabel="Срок" placeholder="срок" value={a.deadlineAt ? toLocal(a.deadlineAt).slice(0, 10) : ''}
+                  onChange={(v) => setAgreement(i, { deadlineAt: v ? new Date(`${v}T12:00:00`).toISOString() : null })} />
                 <Button variant="ghost" size="icon-sm" aria-label="Убрать" onClick={() => edit({ agreements: draft.agreements.filter((_, k) => k !== i) })}><Icon name="close" size={13} /></Button>
               </div>
             ))}

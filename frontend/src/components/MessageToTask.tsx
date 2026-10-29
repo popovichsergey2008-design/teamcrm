@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
+import { DatePicker } from './DatePicker';
 import { api, ApiError, TagSettings } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
@@ -407,12 +408,7 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>Срок</label>
-                <input
-                  className="input"
-                  type="date"
-                  value={draft.deadline ?? ''}
-                  onChange={(e) => void patch({ deadline: e.target.value || null })}
-                />
+                <DatePicker value={draft.deadline ?? ''} onChange={(v) => void patch({ deadline: v || null })} />
               </div>
               <div className="field" style={{ flex: 1 }}>
                 <label>Приоритет</label>
@@ -508,12 +504,10 @@ export function MessageToTask({ chatId, messageId, messageText, draft: outside, 
                               <option value="">— не назначен —</option>
                               {ctx.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                             </OptionSelect>
-                            <input
-                              className="input"
-                              type="date"
-                              aria-label={`Срок задачи ${i + 1}`}
+                            <DatePicker
+                              ariaLabel={`Срок задачи ${i + 1}`}
                               value={x.deadline ?? ''}
-                              onChange={(e) => void patch({ split: put({ deadline: e.target.value || null }) })}
+                              onChange={(v) => void patch({ split: put({ deadline: v || null }) })}
                             />
                           </div>
                         </li>

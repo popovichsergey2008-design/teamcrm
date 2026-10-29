@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
+import { DatePicker } from '../DatePicker';
 import { OptionSelect } from '../ui/option-select';
 import { api, ApiError, type DraftProof, type TagItem } from '../../lib/api';
 import { labelTextColor } from '../../lib/labels';
@@ -229,7 +230,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
           <option value="">— проект —</option>
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </OptionSelect>
-        <input type="date" className="input" value={deadline} onChange={(e) => setDeadline(e.target.value)} aria-label="Срок" title="Срок" />
+        <DatePicker value={deadline} onChange={setDeadline} ariaLabel="Срок" placeholder="срок" />
       </div>
 
       <div className="team-rate" style={{ marginTop: 4 }}>

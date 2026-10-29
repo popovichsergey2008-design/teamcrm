@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
+import { DatePicker } from '../../components/DatePicker';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { Field } from '../../components/ui/field';
@@ -59,7 +60,7 @@ export function QuickTaskDialog({ clientId, clientName, users, onClose, onDone }
               {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </OptionSelect>
           </Field>
-          <Field label="Срок"><input className="input" type="date" value={v.deadline} onChange={(e) => setV({ ...v, deadline: e.target.value })} /></Field>
+          <Field label="Срок"><DatePicker value={v.deadline} onChange={(d) => setV({ ...v, deadline: d })} /></Field>
         </div>
         {err && <div className="error-text" role="alert">{err}</div>}
       </div>
