@@ -66,6 +66,10 @@ async function login(initData: string): Promise<{ linked: boolean; name: string 
     | null;
   if (!env?.ok || !env.data) throw new Error(env?.error?.message ?? 'Сервер QEVO сейчас не отвечает');
   if (!env.data.linked) return { linked: false, name: '' };
+  // у человека включён вход по коду: шесть цифр в шторке Telegram не спрашиваем
+  if ((env.data as { mfaRequired?: boolean }).mfaRequired) {
+    throw new Error('У вас включён вход по коду из приложения — откройте QEVO в браузере или в приложении');
+  }
   tokens.set(env.data.accessToken!, env.data.refreshToken!);
   return { linked: true, name: env.data.user?.fullName ?? '' };
 }

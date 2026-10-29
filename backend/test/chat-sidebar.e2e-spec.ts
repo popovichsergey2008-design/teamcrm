@@ -40,12 +40,12 @@ describe('Сайдбар чата (e2e)', () => {
 
   it('роли: создатель — владелец; администратора назначает владелец; участник — нет', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'SB', email: `sb_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SB', email: `sb_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const make = async (name: string) => {
       const mail = `sb_${uniq()}@t.test`;
       const u = (await http$.post('/api/users').set(H(owner.accessToken))
-        .send({ email: mail, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data;
+        .send({ email: mail, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data;
       return { id: String(u.id), token: login.accessToken };
     };
     const gleb = await make('Глеб');
@@ -95,11 +95,11 @@ describe('Сайдбар чата (e2e)', () => {
 
   it('материалы: картинка — медиа, ссылка — во вкладке ссылок, сохранённое — только своё', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'SB2', email: `sb2_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SB2', email: `sb2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mail = `sb2m_${uniq()}@t.test`;
-    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
     const withLink = (await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'макет тут https://figma.com/file/abc' }).expect(201)).body.data;
@@ -131,11 +131,11 @@ describe('Сайдбар чата (e2e)', () => {
   */
   it('«отправить задачу» кладёт карточку в ленту, и задача появляется в блоке задач чата', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'SB3', email: `sb3_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SB3', email: `sb3_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mail = `sb3m_${uniq()}@t.test`;
-    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     const project = (await http$.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
     const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
@@ -175,11 +175,11 @@ describe('Сайдбар чата (e2e)', () => {
   */
   it('мит чата: в блоке «Миты» с итогом и говорившими, в истории — запуск', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'SB4', email: `sb4_${uniq()}@t.test`, password: 'password123', fullName: 'Иван Петров' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SB4', email: `sb4_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Иван Петров' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mail = `sb4m_${uniq()}@t.test`;
-    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Алина', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Алина', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
 
     const vtt = [
@@ -216,11 +216,11 @@ describe('Сайдбар чата (e2e)', () => {
   /* Уведомления по чату (этап 5): личная настройка, видна в списке и в сведениях. */
   it('режим уведомлений по чату — личный: у меня «тихо», у собеседника как было', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'SB5', email: `sb5_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SB5', email: `sb5_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mail = `sb5m_${uniq()}@t.test`;
-    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const mate = (await http$.post('/api/users').set(O).send({ email: mail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: mate.id }).expect(201)).body.data;
     const byChat = (list: any[]) => list.find((c) => String(c.id) === String(chat.id));
 

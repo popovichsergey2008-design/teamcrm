@@ -75,7 +75,7 @@ describe('TEAMCRM Этап 1 (e2e)', () => {
     const email = `owner_${uniq()}@a.test`;
     const res = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Tenant A', email, password: 'password123', fullName: 'Owner A' })
+      .send({ acceptPrivacy: true, tenantName: 'Tenant A', email, password: 'Test-pass-2026', fullName: 'Owner A' })
       .expect(201);
     expect(res.body.ok).toBe(true);
     expect(res.body.data.user.role).toBe('owner');
@@ -104,7 +104,7 @@ describe('TEAMCRM Этап 1 (e2e)', () => {
     const email = `rot_${uniq()}@a.test`;
     const reg = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RotTenant', email, password: 'password123', fullName: 'Rot' })
+      .send({ acceptPrivacy: true, tenantName: 'RotTenant', email, password: 'Test-pass-2026', fullName: 'Rot' })
       .expect(201);
     const refreshToken = reg.body.data.refreshToken;
 
@@ -167,7 +167,7 @@ describe('TEAMCRM Этап 1 (e2e)', () => {
     const email = `owner_${uniq()}@b.test`;
     const reg = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Tenant B', email, password: 'password123', fullName: 'Owner B' })
+      .send({ acceptPrivacy: true, tenantName: 'Tenant B', email, password: 'Test-pass-2026', fullName: 'Owner B' })
       .expect(201);
     const ownerBToken = reg.body.data.accessToken;
 

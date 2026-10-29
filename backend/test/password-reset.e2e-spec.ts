@@ -34,7 +34,7 @@ describe('Сброс пароля и приглашение на существ�
   it('владелец выдаёт ссылку → сотрудник задаёт новый пароль, старый перестаёт работать, ссылка одноразовая', async () => {
     const ownerEmail = `own_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'PR', email: ownerEmail, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'PR', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
 
     // сотрудник с известным паролем
     const staffEmail = `st_${uniq()}@t.test`;
@@ -69,7 +69,7 @@ describe('Сброс пароля и приглашение на существ�
   it('выдача новой ссылки гасит предыдущую; чужой/битый токен не принимается', async () => {
     const ownerEmail = `own2_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'PR2', email: ownerEmail, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'PR2', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const staffEmail = `st2_${uniq()}@t.test`;
     const staff = (await http$.post('/api/users').set(H(owner.accessToken))
       .send({ email: staffEmail, fullName: 'Сотрудник 2', password: 'oldpassword1', role: 'member' }).expect(201)).body.data;
@@ -85,11 +85,11 @@ describe('Сброс пароля и приглашение на существ�
   it('member не может выдать ссылку на сброс — только владелец', async () => {
     const ownerEmail = `own3_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'PR3', email: ownerEmail, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'PR3', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const memberEmail = `mem_${uniq()}@t.test`;
     const member = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: memberEmail, fullName: 'Рядовой', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const memberLogin = (await http$.post('/api/auth/login').send({ email: memberEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: memberEmail, fullName: 'Рядовой', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const memberLogin = (await http$.post('/api/auth/login').send({ email: memberEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     await http$.post('/api/auth/password/reset-link').set(H(memberLogin.accessToken)).send({ userId: member.id }).expect(403);
   });
@@ -103,7 +103,7 @@ describe('Сброс пароля и приглашение на существ�
     // другая организация зовёт его по многоразовой ссылке
     const hostEmail = `host_${uniq()}@t.test`;
     const host = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Чужая', email: hostEmail, password: 'password123', fullName: 'Хозяин' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужая', email: hostEmail, password: 'Test-pass-2026', fullName: 'Хозяин' }).expect(201)).body.data;
     const inviteLink = (await http$.post('/api/invites/links').set(H(host.accessToken)).send({ role: 'member' }).expect(201)).body.data;
 
     const accepted = (await http$.post('/api/invites/links/accept')
@@ -124,7 +124,7 @@ describe('Сброс пароля и приглашение на существ�
       .send({ acceptPrivacy: true, tenantName: 'Первая', email: personEmail, password: 'ownpassword1', fullName: 'Мультиюзер' }).expect(201);
     const hostEmail = `host2_${uniq()}@t.test`;
     const host = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Вторая', email: hostEmail, password: 'password123', fullName: 'Хозяин' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Вторая', email: hostEmail, password: 'Test-pass-2026', fullName: 'Хозяин' }).expect(201)).body.data;
     const inviteLink = (await http$.post('/api/invites/links').set(H(host.accessToken)).send({ role: 'member' }).expect(201)).body.data;
     const joined = (await http$.post('/api/invites/links/accept')
       .send({ acceptPrivacy: true, token: inviteLink.token, email: personEmail, fullName: 'Мультиюзер', password: 'irrelevant123' }).expect(201)).body.data;

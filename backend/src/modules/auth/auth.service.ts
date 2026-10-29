@@ -22,6 +22,9 @@ import { LoginDto, RegisterDto } from './auth.dto';
 import { QaSwitchRepository } from './qa-switch.repository';
 import { backRefusal } from './qa-switch.rules';
 import { PolicyConsentsService } from '../legal/policy-consents.service';
+import { assertPasswordStrong } from '../../common/auth/password-policy';
+import { AccountSecurityService, MfaChallenge } from './account-security.service';
+import { AuthThrottleService, RULES } from './auth-throttle.service';
 
 interface TokenPair {
   accessToken: string;
@@ -33,6 +36,10 @@ export interface SessionMeta {
   userAgent?: string;
   ip?: string;
 }
+
+export type SessionResult = { user: PublicUser; organizations: OrgRef[] } & TokenPair;
+/** Вход: готовая сессия или, если включён второй фактор, просьба ввести код. */
+export type LoginResult = SessionResult | MfaChallenge;
 
 export interface OrgRef {
   tenantId: string;
@@ -57,6 +64,9 @@ export class AuthService {
     private readonly qa: QaSwitchRepository,
     /** #4675: галочка Политики конфиденциальности — в журнал вместе с регистрацией. */
     private readonly consents: PolicyConsentsService,
+    /** Подтверждение почты, второй фактор, журнал входов (мастер-план релиза, этап 3). */
+    private readonly security: AccountSecurityService,
+    private readonly throttle: AuthThrottleService,
     /** #4615, 23.10: готовые должности новой компании (Генеральный директор, Руководитель отдела…). */
     @Optional() private readonly org?: OrgService,
   ) {}
@@ -74,8 +84,12 @@ export class AuthService {
    * Регистрация: создаёт ГЛОБАЛЬНЫЙ аккаунт + первую организацию + owner-членство.
    * E-mail уникален глобально (одна личность = один аккаунт).
    */
-  async register(dto: RegisterDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+  async register(dto: RegisterDto, meta?: SessionMeta): Promise<SessionResult> {
+    // поле-ловушка: человек его не видит и не заполняет, бот заполняет всё подряд
+    if (dto.website) throw AppException.validation('Не удалось зарегистрироваться. Обновите страницу и попробуйте ещё раз');
+    await this.throttle.hit(RULES.registerIp, meta?.ip);
     PolicyConsentsService.assertPrivacy(dto.acceptPrivacy);
+    assertPasswordStrong(dto.password, dto.email);
     if (await this.accounts.findByEmail(dto.email)) {
       throw AppException.conflict('Пользователь с таким email уже зарегистрирован — войдите и создайте организацию в кабинете');
     }
@@ -103,18 +117,27 @@ export class AuthService {
     // человеку войти, а список тегов он увидит в первой же задаче.
     void this.tags.seedDefaults(String(user.tenant_id));
     await this.org?.seedDefaults(String(user.tenant_id));
+    // письмо со ссылкой подтверждения — в очередь; сбой почты не мешает войти
+    await this.security.sendVerification(String(user.account_id)).catch(() => undefined);
+    await this.security.auditUser({ tenantId: String(user.tenant_id), userId: String(user.id), name: user.full_name }, 'auth.registered', meta);
     const tokens = await this.issueTokens(user, meta);
     const orgs = this.orgRefs(await this.users.membershipsByAccount(user.account_id as string));
     return { user: toPublicUser(user), organizations: orgs, ...tokens };
   }
 
   /** Вход по ГЛОБАЛЬНОМУ аккаунту; активная организация — выбранная или первая. */
-  async login(dto: LoginDto, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+  async login(dto: LoginDto, meta?: SessionMeta): Promise<LoginResult> {
+    // два счётчика (мастер-план §16): все попытки с адреса и неудачи по почте
+    await this.throttle.hit(RULES.loginIp, meta?.ip);
+    await this.throttle.check(RULES.loginFail, dto.email);
     const account = await this.accounts.findByEmail(dto.email);
-    if (!account) throw AppException.unauthorized('Неверный email или пароль');
-    if (!(await argon2.verify(account.password_hash, dto.password))) {
+    if (!account || !(await argon2.verify(account.password_hash, dto.password))) {
+      const fails = await this.throttle.fail(RULES.loginFail, dto.email);
+      if (account) await this.auditFailed(String(account.id), fails >= RULES.loginFail.limit, meta);
+      // одна и та же фраза: по ответу нельзя узнать, есть ли такой аккаунт
       throw AppException.unauthorized('Неверный email или пароль');
     }
+    await this.throttle.reset(RULES.loginFail, dto.email);
 
     const memberships = await this.users.membershipsByAccount(account.id);
     if (memberships.length === 0) throw AppException.unauthorized('У аккаунта нет активных организаций');
@@ -126,8 +149,36 @@ export class AuthService {
     const user = await this.users.findActiveByAccountAndTenant(account.id, target);
     if (!user) throw AppException.unauthorized('Нет доступа к организации');
 
+    if (await this.security.mfaEnabled(String(account.id))) return this.security.issueChallenge(String(account.id), user);
+    await this.auditLogin(user, meta, 'password');
     const tokens = await this.issueTokens(user, meta);
     return { user: toPublicUser(user), organizations: this.orgRefs(memberships), ...tokens };
+  }
+
+  /** Второй шаг входа: код из приложения или резервный код → обычная сессия. */
+  async loginMfa(mfaToken: string, code: string, meta?: SessionMeta): Promise<SessionResult> {
+    const ok = await this.security.passChallenge(mfaToken, code, meta);
+    const user = await this.users.findActiveByAccountAndTenant(ok.accountId, ok.tenantId);
+    if (!user || String(user.id) !== ok.userId) throw AppException.unauthorized('Нет доступа к организации');
+    await this.auditLogin(user, meta, ok.viaRecovery ? 'mfa_recovery' : 'mfa');
+    return this.session(user, meta);
+  }
+
+  private auditLogin(user: UserRow, meta: SessionMeta | undefined, method: string) {
+    return this.security.auditUser(
+      { tenantId: String(user.tenant_id), userId: String(user.id), name: user.full_name }, 'auth.login', meta, { method },
+    );
+  }
+
+  /** Неудачный вход — в журнал организации, где человек работает (владелец видит подбор пароля). */
+  private async auditFailed(accountId: string, locked: boolean, meta?: SessionMeta) {
+    const home = await this.users.preferredTenant(accountId).catch(() => null);
+    const member = home ? await this.users.findActiveByAccountAndTenant(accountId, home) : null;
+    if (!member) return;
+    await this.security.auditUser(
+      { tenantId: String(member.tenant_id), userId: String(member.id), name: member.full_name },
+      locked ? 'auth.login_locked' : 'auth.login_failed', meta,
+    );
   }
 
   /**
@@ -137,7 +188,17 @@ export class AuthService {
    * паролю: пара токенов и список организаций. Чтобы это «то же самое» не разошлось со
    * временем, оно живёт здесь в одном месте, а не повторяется в каждом провайдере.
    */
-  async sessionFor(user: UserRow, meta?: SessionMeta): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+  async sessionFor(user: UserRow, meta?: SessionMeta): Promise<LoginResult> {
+    // второй фактор действует при любом способе входа — иначе его обходили бы через Telegram
+    if (user.account_id && (await this.security.mfaEnabled(String(user.account_id)))) {
+      return this.security.issueChallenge(String(user.account_id), user);
+    }
+    await this.auditLogin(user, meta, 'social');
+    return this.session(user, meta);
+  }
+
+  /** Пара токенов и список организаций — без проверок входа. */
+  private async session(user: UserRow, meta?: SessionMeta): Promise<SessionResult> {
     const tokens = await this.issueTokens(user, meta);
     const orgs = user.account_id
       ? this.orgRefs(await this.users.membershipsByAccount(String(user.account_id)))
@@ -166,9 +227,10 @@ export class AuthService {
     meta?: SessionMeta,
     /** Откуда пришёл человек — в журнал согласия (#4675); галочку проверяет вызывающий. */
     consentFlow = 'social',
-  ): Promise<{ user: PublicUser; organizations: OrgRef[] } & TokenPair> {
+  ): Promise<SessionResult> {
     const user = await this.createOwnerUser(email, fullName, tenantName, link, meta, { flow: consentFlow });
-    return this.sessionFor(user, meta);
+    // свежий аккаунт: второго фактора у него быть не может
+    return this.session(user, meta);
   }
 
   /**
@@ -334,6 +396,8 @@ export class AuthService {
       await this.users.rememberTenant(String(user.account_id), String(user.tenant_id)).catch(() => undefined);
     }
 
+    // организация требует второй фактор, а он не включён — токен только для его настройки
+    const mustSetUpMfa = !actorId && (await this.security.mfaSetupRequired(user).catch(() => false));
     const accessPayload: AccessTokenPayload = {
       sub: user.id,
       tenantId: user.tenant_id,
@@ -341,6 +405,7 @@ export class AuthService {
       email: user.email,
       sid: row.id,
       ...(actorId ? { act: actorId } : {}),
+      ...(mustSetUpMfa ? { mfa: 'setup' as const } : {}),
     };
     const accessToken = await this.jwt.signAsync(accessPayload, {
       secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),

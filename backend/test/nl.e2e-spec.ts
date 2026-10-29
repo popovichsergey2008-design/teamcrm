@@ -31,7 +31,7 @@ describe('NL-команда (e2e)', () => {
 
   it('parse отдаёт контекст; apply создаёт задачу; без проекта — 422', async () => {
     const email = `nl_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'NL', email, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'NL', email, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http$.post('/api/projects').set(H(tok)).send({ name: 'Маркетинг' }).expect(201)).body.data;
 
@@ -84,7 +84,7 @@ describe('NL-команда (e2e)', () => {
 
     // чужую запись не отдаём: надиктовка — это чужой разговор
     const stranger = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `nl2_${uniq()}@t.test`, password: 'password123', fullName: 'Сосед' })
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `nl2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сосед' })
       .expect(201)).body.data;
     await http$.get(`/api/nl/voice/${started.id}`).set(H(stranger.accessToken)).expect(404);
 
@@ -111,7 +111,7 @@ describe('NL-команда (e2e)', () => {
 
   it('transcribe: multipart аудио принимается (mock → пустой текст); без файла — 400', async () => {
     const email = `nlv_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'NLV', email, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'NLV', email, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
 
     // multipart с аудио-полем → 200, ответ содержит строковое поле text (под mock Whisper — пусто)
@@ -126,11 +126,11 @@ describe('NL-команда (e2e)', () => {
   it('надиктованная встреча превращается в заполненный черновик', async () => {
     const email = `nle_${uniq()}@t.test`;
     const reg = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'NLE', email, password: 'password123', fullName: 'Ольга Ким' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'NLE', email, password: 'Test-pass-2026', fullName: 'Ольга Ким' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const mateEmail = `nle_m_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(tok))
-      .send({ email: mateEmail, fullName: 'Пётр Иванов', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Пётр Иванов', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
 
     // «сейчас» присылает клиент: разбор идёт в ЕГО местном времени, а не серверном
     const draft = (await http$.post('/api/nl/parse-event').set(H(tok)).send({
@@ -175,7 +175,7 @@ describe('NL-команда (e2e)', () => {
   it('пакет: результат живёт по номеру, повтор не плодит дубли, упавшую можно повторить', async () => {
     const email = `batch_${uniq()}@t.test`;
     const reg = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Пакет', email, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Пакет', email, password: 'Test-pass-2026', fullName: 'Ольга' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http$.post('/api/projects').set(H(tok)).send({ name: 'Сайт' }).expect(201)).body.data;
     const requestId = `qc-${uniq()}`;
@@ -229,7 +229,7 @@ describe('NL-команда (e2e)', () => {
     // чужой пакет не показываем
     const other = `other_${uniq()}@t.test`;
     const reg2 = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: other, password: 'password123', fullName: 'Пётр' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: other, password: 'Test-pass-2026', fullName: 'Пётр' }).expect(201)).body.data;
     await http$.get(`/api/nl/batches/${batch.batchId}`).set(H(reg2.accessToken)).expect(404);
   });
 });

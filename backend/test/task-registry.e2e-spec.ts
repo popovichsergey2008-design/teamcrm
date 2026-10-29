@@ -49,7 +49,7 @@ describe('реестр задач (e2e)', () => {
 
   const team = async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Reg', email: `reg_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Reg', email: `reg_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const email = `reg_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(owner.accessToken))

@@ -29,7 +29,7 @@ describe('AI settings BYOK (e2e)', () => {
   afterAll(async () => app?.close());
 
   it('владелец задаёт ключ+модель; статус без раскрытия; изоляция по tenant', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'AI-A', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'AI-A', email: `a_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна' }).expect(201)).body.data;
     const tok = a.accessToken;
 
     let st = (await http.get('/api/ai/settings').set(H(tok)).expect(200)).body.data;
@@ -50,7 +50,7 @@ describe('AI settings BYOK (e2e)', () => {
     expect(cleared.openaiKeySet).toBe(false);
 
     // другой арендатор не видит настроек первого
-    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'AI-B', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
+    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'AI-B', email: `b_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Б' }).expect(201)).body.data;
     const stB = (await http.get('/api/ai/settings').set(H(b.accessToken)).expect(200)).body.data;
     expect(stB.openaiKeySet).toBe(false);
 
@@ -63,14 +63,14 @@ describe('AI settings BYOK (e2e)', () => {
   });
 
   it('список моделей доступен (fallback без ключа)', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'AI-M', email: `m_${uniq()}@t.test`, password: 'password123', fullName: 'М' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'AI-M', email: `m_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'М' }).expect(201)).body.data;
     const models = (await http.get('/api/ai/settings/models').set(H(a.accessToken)).expect(200)).body.data;
     expect(Array.isArray(models)).toBe(true);
     expect(models.length).toBeGreaterThan(0);
   });
   it('расход ИИ показывает и то, что запускалось, и то, что не запускалось ни разу', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AI-Usage', email: `u_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'AI-Usage', email: `u_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
     const usage = (await http.get('/api/ai/usage?days=30').set(H(owner.accessToken)).expect(200)).body.data;
 

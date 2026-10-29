@@ -39,6 +39,40 @@ export class RegisterDto {
   @IsOptional()
   @IsBoolean({ message: 'Примите Политику конфиденциальности, чтобы зарегистрироваться' })
   acceptPrivacy?: boolean;
+
+  /** Поле-ловушка для ботов: в форме скрыто, человек его не заполняет. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  website?: string;
+}
+
+export class MfaLoginDto {
+  @IsString() @MaxLength(2048) mfaToken!: string;
+  @IsString() @MaxLength(32) code!: string;
+}
+
+export class ForgotPasswordDto {
+  @IsEmail({}, { message: 'Введите корректный email' })
+  @MaxLength(255)
+  email!: string;
+}
+
+export class TokenDto {
+  @IsString() @MaxLength(128) token!: string;
+}
+
+export class MfaPasswordDto {
+  @IsString() @MaxLength(128) password!: string;
+}
+
+export class MfaCodeDto {
+  @IsString() @MaxLength(32) code!: string;
+}
+
+export class MfaDisableDto {
+  @IsString() @MaxLength(128) password!: string;
+  @IsString() @MaxLength(32) code!: string;
 }
 
 export class LoginDto {

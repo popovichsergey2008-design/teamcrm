@@ -24,7 +24,7 @@ describe('Гостевой доступ в созвон (e2e)', () => {
   const register = async (name: string) => {
     const email = `${name}_${uniq()}@t.test`;
     return (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: name, email, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: name, email, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
   };
 
@@ -120,7 +120,7 @@ describe('Гостевой доступ в созвон (e2e)', () => {
   it('ссылка привязывается к чату и подписывается им в списке', async () => {
     const owner = await register('ГостиЧат');
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: `gl_${Date.now()}@t.test`, fullName: 'Коллега', password: 'password123', role: 'member' })
+      .send({ email: `gl_${Date.now()}@t.test`, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const chat = (await http$.post('/api/chats/groups').set(H(owner.accessToken))
       .send({ title: 'Клиент Вектор', userIds: [String(mate.id)] }).expect(201)).body.data;

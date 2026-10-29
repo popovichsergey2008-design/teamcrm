@@ -74,7 +74,7 @@ describe('TEAMCRM Этап 3 — AI Standup (e2e)', () => {
 
     const reg = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Standup', email: `o_${uniq()}@s.test`, password: 'password123', fullName: 'Owner' })
+      .send({ acceptPrivacy: true, tenantName: 'Standup', email: `o_${uniq()}@s.test`, password: 'Test-pass-2026', fullName: 'Owner' })
       .expect(201);
     token = reg.body.data.accessToken;
     tenantId = reg.body.data.user.tenantId;

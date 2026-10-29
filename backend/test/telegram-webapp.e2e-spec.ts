@@ -61,7 +61,7 @@ describe('Telegram Mini App: вход по initData (e2e)', () => {
 
   it('привязанный Telegram ID → сессия того человека, источник помечен', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Маркетинг', email: `twa_${uniq()}@t.test`, password: 'password123', fullName: 'Дмитрий Орлов' })
+      .send({ acceptPrivacy: true, tenantName: 'Маркетинг', email: `twa_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Дмитрий Орлов' })
       .expect(201)).body.data;
     const id = tgId();
     await db.query(`INSERT INTO telegram_accounts (tenant_id, user_id, telegram_user_id) VALUES ($1, $2, $3)`,

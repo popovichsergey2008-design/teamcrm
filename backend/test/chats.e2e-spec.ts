@@ -35,11 +35,11 @@ describe('Чаты команды (e2e)', () => {
       отправить такое было можно, а исправить в нём опечатку — нельзя.
     */
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'ED', email: `ed_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'ED', email: `ed_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `ed_m_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
@@ -59,12 +59,12 @@ describe('Чаты команды (e2e)', () => {
   it('диалог: переписка, непрочитанное, повторное открытие не плодит второй чат', async () => {
     const ownerEmail = `ch_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'CH', email: ownerEmail, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'CH', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
 
     const mateEmail = `mate_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     // открываем диалог и пишем
     const chat = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
@@ -99,11 +99,11 @@ describe('Чаты команды (e2e)', () => {
   */
   it('пометка «непрочитанное»: видна только мне, галочки собеседника целы, открытие снимает', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'UN', email: `un_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'UN', email: `un_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `unm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -132,7 +132,7 @@ describe('Чаты команды (e2e)', () => {
 
     // в чужой чат пометку не поставить
     const stranger = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'UN2', email: `un2_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'UN2', email: `un2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.post(`/api/chats/${chat.id}/unread`).set(H(stranger.accessToken)).expect(404);
 
     /*
@@ -161,17 +161,17 @@ describe('Чаты команды (e2e)', () => {
   it('в чужой диалог не попасть даже по угаданному id', async () => {
     const aEmail = `pa_${uniq()}@t.test`;
     const a = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'PA', email: aEmail, password: 'password123', fullName: 'A' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'PA', email: aEmail, password: 'Test-pass-2026', fullName: 'A' }).expect(201)).body.data;
     const bEmail = `pb_${uniq()}@t.test`;
     const b = (await http$.post('/api/users').set(H(a.accessToken))
-      .send({ email: bEmail, fullName: 'B', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: bEmail, fullName: 'B', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const chat = (await http$.post('/api/chats/dm').set(H(a.accessToken)).send({ userId: b.id }).expect(201)).body.data;
 
     // посторонний сотрудник той же организации
     const cEmail = `pc_${uniq()}@t.test`;
     await http$.post('/api/users').set(H(a.accessToken))
-      .send({ email: cEmail, fullName: 'C', password: 'password123', role: 'member' }).expect(201);
-    const c = (await http$.post('/api/auth/login').send({ email: cEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: cEmail, fullName: 'C', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const c = (await http$.post('/api/auth/login').send({ email: cEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     await http$.get(`/api/chats/${chat.id}/messages`).set(H(c.accessToken)).expect(403);
     await http$.post(`/api/chats/${chat.id}/messages`).set(H(c.accessToken)).send({ body: 'подслушиваю' }).expect(403);
@@ -180,7 +180,7 @@ describe('Чаты команды (e2e)', () => {
   it('чат проекта общий для команды и заводится один раз', async () => {
     const email = `pr_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'PR', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'PR', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const project = (await http$.post('/api/projects').set(H(owner.accessToken)).send({ name: 'Мануфактура' }).expect(201)).body.data;
 
     const first = (await http$.post(`/api/chats/project/${project.id}`).set(H(owner.accessToken)).expect(201)).body.data;
@@ -192,8 +192,8 @@ describe('Чаты команды (e2e)', () => {
     // сотрудник без явного членства читает чат проекта: доступ к проектам общий
     const memberEmail = `prm_${uniq()}@t.test`;
     await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: memberEmail, fullName: 'Сотрудник', password: 'password123', role: 'member' }).expect(201);
-    const member = (await http$.post('/api/auth/login').send({ email: memberEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: memberEmail, fullName: 'Сотрудник', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const member = (await http$.post('/api/auth/login').send({ email: memberEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     const feed = (await http$.get(`/api/chats/${first.id}/messages`).set(H(member.accessToken)).expect(200)).body.data;
     expect(feed.some((m: any) => m.body === 'обсуждаем доску')).toBe(true);
@@ -205,13 +205,13 @@ describe('Чаты команды (e2e)', () => {
   it('группа: видна участникам, посторонний в неё не попадает', async () => {
     const email = `gr_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'GR', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'GR', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
 
     const make = async (name: string) => {
       const mail = `${name}_${uniq()}@t.test`;
       const u = (await http$.post('/api/users').set(H(owner.accessToken))
-        .send({ email: mail, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data;
+        .send({ email: mail, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data;
       return { id: u.id, token: login.accessToken };
     };
     const inside = await make('Внутри');
@@ -243,13 +243,13 @@ describe('Чаты команды (e2e)', () => {
   it('управление группой: добавить, переименовать, убрать, выйти', async () => {
     const email = `gm_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'GM', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'GM', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
 
     const make = async (name: string) => {
       const mail = `${name}_${uniq()}@t.test`;
       const u = (await http$.post('/api/users').set(H(owner.accessToken))
-        .send({ email: mail, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'password123' }).expect(201)).body.data;
+        .send({ email: mail, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const login = (await http$.post('/api/auth/login').send({ email: mail, password: 'Test-pass-2026' }).expect(201)).body.data;
       return { id: u.id, token: login.accessToken };
     };
     const alice = await make('Алиса');
@@ -299,11 +299,11 @@ describe('Чаты команды (e2e)', () => {
   it('пустое сообщение и чужое удаление отклоняются', async () => {
     const email = `em_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'EM', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'EM', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `emm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     const chat = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
     await http$.post(`/api/chats/${chat.id}/messages`).set(H(owner.accessToken)).send({ body: '   ' }).expect(400);
@@ -317,12 +317,12 @@ describe('Чаты команды (e2e)', () => {
   it('поиск по всем чатам находит чужие слова только там, куда есть доступ', async () => {
     const email = `sr_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Поиск', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Поиск', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `srm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const mateLogin = (await http$.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     const dm = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
     await http$.post(`/api/chats/${dm.id}/messages`).set(H(owner.accessToken))
@@ -345,9 +345,9 @@ describe('Чаты команды (e2e)', () => {
     // чужой личный диалог в поиск не попадает
     const third = `sr3_${uniq()}@t.test`;
     const outsider = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: third, fullName: 'Посторонний', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: third, fullName: 'Посторонний', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const outLogin = (await http$.post('/api/auth/login')
-      .send({ email: third, password: 'password123' }).expect(201)).body.data;
+      .send({ email: third, password: 'Test-pass-2026' }).expect(201)).body.data;
     void outsider;
     const alien = (await http$.get('/api/chats/search?q=пиликалка').set(H(outLogin.accessToken)).expect(200)).body.data;
     expect(alien.items).toEqual([]);
@@ -357,12 +357,12 @@ describe('Чаты команды (e2e)', () => {
   it('отложенное сообщение: время только в будущем, отменить может лишь автор', async () => {
     const email = `sc_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Отложенные', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Отложенные', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `scm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const mateLogin = (await http$.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const dm = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
 
     const soon = new Date(Date.now() + 3600_000).toISOString();
@@ -415,12 +415,12 @@ describe('Чаты команды (e2e)', () => {
   it('правка своего сообщения и галочки «прочитано»', async () => {
     const email = `ed_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'ED', email, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'ED', email, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `edm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Коллега', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const mateLogin = (await http$.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     const chat = (await http$.post('/api/chats/dm').set(H(owner.accessToken)).send({ userId: mate.id }).expect(201)).body.data;
     const msg = (await http$.post(`/api/chats/${chat.id}/messages`).set(H(owner.accessToken))
@@ -453,12 +453,12 @@ describe('Чаты команды (e2e)', () => {
 
   it('«Входящие»: упоминание гаснет при открытии, удалённое не висит цифрой', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Inbox', email: `inb_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Inbox', email: `inb_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mateEmail = `inbm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: String(mate.id) }).expect(201)).body.data;
     const called = (await http$.post(`/api/chats/${chat.id}/messages`).set(O)
@@ -489,12 +489,12 @@ describe('Чаты команды (e2e)', () => {
 
   it('подгрузка старого не гасит непрочитанное', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Unread', email: `unr_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Unread', email: `unr_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mateEmail = `unrm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     const chat = (await http$.post('/api/chats/dm').set(O).send({ userId: String(mate.id) }).expect(201)).body.data;
     const first = (await http$.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'первое' }).expect(201)).body.data;
@@ -517,13 +517,13 @@ describe('Чаты команды (e2e)', () => {
   it('удаление группы: автор удаляет, участник — нет, список знает автора', async () => {
     // жалоба 12.10: «не работает удаление чата, не вижу кнопки управления»
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'DL', email: `dl_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DL', email: `dl_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна Владелец' })
       .expect(201)).body.data;
     const mateEmail = `dl_m_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Борис Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Борис Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
-    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+    const mateLogin = (await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -539,14 +539,14 @@ describe('Чаты команды (e2e)', () => {
 
   it('#4640: несколько выделенных сообщений пересылаются одним запросом, по времени и с автором', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'FW', email: `fw_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'FW', email: `fw_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const mateEmail = `fw_m_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Борис Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Борис Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     // Откуда пересылаем: группа без коллеги. Куда: личный диалог с ним.
     const src = (await http$.post('/api/chats/groups').set(O).send({ title: 'Исходный' }).expect(201)).body.data;

@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { AppException } from '../http/app-exception';
 import { IS_PUBLIC_KEY } from './decorators';
-import { AccessTokenPayload, AuthUser } from './jwt.types';
+import { AccessTokenPayload, AuthUser, allowedDuringMfaSetup } from './jwt.types';
 import { SessionRevocationService } from './session-revocation.service';
 
 /** Глобальный guard: проверяет access-токен и прикрепляет req.user. */
@@ -52,6 +52,10 @@ export class JwtAuthGuard implements CanActivate {
     */
     if (payload.sid && await this.revoked.isRevoked(String(payload.sid))) {
       throw new AppException('SESSION_REVOKED', 'Сессия отозвана — войдите снова');
+    }
+    // организация требует второй фактор — пока он не включён, открыт только экран настройки
+    if (payload.mfa === 'setup' && !allowedDuringMfaSetup(req.method, req.originalUrl ?? req.url)) {
+      throw new AppException('FORBIDDEN', 'В вашей организации обязателен вход по коду из приложения — включите его в профиле', { mfaSetupRequired: true });
     }
     {
       const user: AuthUser = {

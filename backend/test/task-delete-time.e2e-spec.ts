@@ -66,15 +66,15 @@ describe('Удаление задачи с учтённым временем (e2
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Удаление', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Удаление', email: `d_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
     ownerToken = owner.accessToken;
 
     const bossEmail = `d_b_${uniq()}@t.test`;
     await http.post('/api/users').set(H(ownerToken))
-      .send({ email: bossEmail, fullName: 'Руководитель', password: 'password123', role: 'manager' }).expect(201);
+      .send({ email: bossEmail, fullName: 'Руководитель', password: 'Test-pass-2026', role: 'manager' }).expect(201);
     bossToken = (await http.post('/api/auth/login')
-      .send({ email: bossEmail, password: 'password123' }).expect(201)).body.data.accessToken;
+      .send({ email: bossEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
 
     // 360000 в час → одна секунда работы = 100
     await http.post('/api/rates').set(H(ownerToken))

@@ -45,7 +45,7 @@ describe('Приёмка работы (e2e)', () => {
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Gate', email: `g_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Gate', email: `g_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
     ownerTok = owner.accessToken;
 

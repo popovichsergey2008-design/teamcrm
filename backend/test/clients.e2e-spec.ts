@@ -38,7 +38,7 @@ describe('ТЗ-17 — Клиенты (e2e)', () => {
 
   it('клиент от создания до объединения', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Clients', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' })
+      .send({ acceptPrivacy: true, tenantName: 'Clients', email: `c_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
     const memEmail = `c_m_${uniq()}@t.test`;
@@ -143,7 +143,7 @@ describe('ТЗ-17 — Клиенты (e2e)', () => {
 
   it('клиент портала не видит раздел; портал не отдаёт контакт целиком', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Portal', email: `p_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Portal', email: `p_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     await http.post('/api/portal/clients').set(H(owner.accessToken)).send({ name: 'Аника', contact: '+7 999 765-43-21' }).expect(201);
     const list = (await http.get('/api/portal/clients').set(H(owner.accessToken)).expect(200)).body.data;

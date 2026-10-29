@@ -2,16 +2,20 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { api, SIGNED_OUT_EVENT, tokens } from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
 import { forgetRegisteredDevice, registeredDeviceId } from '../hooks/useDeviceRegistration';
-import type { AuthResult, OrgRef, User } from '../types';
+import { isMfaChallenge, type AuthResult, type LoginResponse, type OrgRef, type User } from '../types';
 
 interface AuthState {
   user: User | null;
   organizations: OrgRef[];
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean }) => Promise<void>;
-  /** Принять готовую сессию: так заходят через Google и Telegram — пароля там нет. */
-  applySession: (r: AuthResult) => void;
+  register: (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean; website?: string }) => Promise<void>;
+  /** Принять ответ входа: так заходят через Google и Telegram — пароля там нет. */
+  applySession: (r: LoginResponse) => void;
+  /** Пароль принят, ждём код второго фактора — экран входа показывает поле для кода. */
+  mfaPending: boolean;
+  completeMfa: (code: string) => Promise<void>;
+  cancelMfa: () => void;
   logout: () => Promise<void>;
   switchOrg: (tenantId: string) => Promise<void>;
   createOrg: (name: string) => Promise<void>;
@@ -28,6 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [organizations, setOrganizations] = useState<OrgRef[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Токен второго шага: живёт только в памяти, пять минут — на ввод шести цифр. */
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -36,7 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const tg = new URLSearchParams(location.search).get('tglogin');
       if (tg) {
         history.replaceState(history.state, '', location.pathname);
-        try { const r = await api.telegramCode(tg); tokens.set(r.accessToken, r.refreshToken); } catch (e) { authNotice = (e as Error).message; }
+        try {
+          const r = await api.telegramCode(tg);
+          if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
+          else tokens.set(r.accessToken, r.refreshToken);
+        } catch (e) { authNotice = (e as Error).message; }
       }
       if (tokens.access) {
         try {
@@ -69,21 +79,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut);
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const r = await api.login({ email, password });
+  const take = (r: AuthResult) => {
+    setMfaToken(null);
     tokens.set(r.accessToken, r.refreshToken);
     setUser(r.user);
     setOrganizations(r.organizations ?? []);
   };
 
-  const register = async (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean }) => {
+  const applySession = (r: LoginResponse) => {
+    if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
+    else take(r);
+  };
+
+  const login = async (email: string, password: string) => applySession(await api.login({ email, password }));
+
+  const completeMfa = async (code: string) => {
+    if (!mfaToken) throw new Error('Войдите заново');
+    take(await api.loginMfa(mfaToken, code));
+  };
+
+  const register = async (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean; website?: string }) => {
     const r = await api.register(b);
-    tokens.set(r.accessToken, r.refreshToken);
-    setUser(r.user);
-    setOrganizations(r.organizations ?? []);
-  };
-
-  const applySession = (r: AuthResult) => {
     tokens.set(r.accessToken, r.refreshToken);
     setUser(r.user);
     setOrganizations(r.organizations ?? []);
@@ -125,7 +141,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ user, organizations, loading, login, register, applySession, logout, switchOrg, createOrg, renameOrg }}>
+    <Ctx.Provider value={{
+      user, organizations, loading, login, register, applySession, logout, switchOrg, createOrg, renameOrg,
+      mfaPending: !!mfaToken, completeMfa, cancelMfa: () => setMfaToken(null),
+    }}>
       {children}
     </Ctx.Provider>
   );

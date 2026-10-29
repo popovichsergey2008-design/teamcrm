@@ -38,7 +38,7 @@ describe('AI-агенты (e2e)', () => {
   };
 
   it('агент по задаче → черновик-комментарий на ревью; запуск в журнале', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag', email: `ag_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag', email: `ag_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
 
@@ -59,7 +59,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('автономное выполнение: результат в задачу + авто-перенос в «На тестировании»', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-Exec', email: `ae_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-Exec', email: `ae_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok); // дефолтные колонки включают «На тестировании»
 
@@ -85,7 +85,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('виртуальный исполнитель: передать агенту (флаг + авто-выполнение) и снять', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-As', email: `aas_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-As', email: `aas_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
 
@@ -108,7 +108,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('v3 классификатор: офлайн-задачу (звонок/встреча) агент не выполняет и НЕ переносит', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-Cl', email: `acl_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-Cl', email: `acl_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Кл' }).expect(201)).body.data;
     const board = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;
@@ -132,7 +132,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('v2 доработка: результат выполнения возвращается агенту на доработку (черновик — нельзя)', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-RW', email: `arw_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-RW', email: `arw_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
 
@@ -154,7 +154,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('ревью: «В чеклист» добавляет пункты; «Отклонить» убирает черновик-комментарий', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag2', email: `ag2_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag2', email: `ag2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
 
     // принять в чеклист
@@ -181,7 +181,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('единый cost of work: работа ИИ-агента входит в полную себестоимость проекта', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-CoW', email: `cow_${uniq()}@t.test`, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-CoW', email: `cow_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
     await http.post(`/api/agents/tasks/${task.id}/run`).set(H(tok)).expect(201);
@@ -201,21 +201,21 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('изоляция: чужую задачу агенту не запустить (404)', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-A', email: `aa_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-A', email: `aa_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'A' }).expect(201)).body.data;
     const task = await makeTask(a.accessToken);
-    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-B', email: `ab_${uniq()}@t.test`, password: 'password123', fullName: 'B' }).expect(201)).body.data;
+    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-B', email: `ab_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'B' }).expect(201)).body.data;
     await http.post(`/api/agents/tasks/${task.id}/run`).set(H(b.accessToken)).expect(404);
   });
 
   it('доступ: рядовой участник (member, напр. копирайтер) может запускать агента', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-R', email: `ar_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-R', email: `ar_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Owner' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
 
     const memEmail = `m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Копирайтер', password: 'password123' }).expect(201);
-    const memTok = (await http.post('/api/auth/login').send({ email: memEmail, password: 'password123' }).expect(201)).body.data.accessToken;
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Копирайтер', password: 'Test-pass-2026' }).expect(201);
+    const memTok = (await http.post('/api/auth/login').send({ email: memEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
 
     // member запускает агента-советника (403 больше нет)
     const run = (await http.post(`/api/agents/tasks/${task.id}/run`).set(H(memTok)).expect(201)).body.data;
@@ -223,7 +223,7 @@ describe('AI-агенты (e2e)', () => {
   });
 
   it('библиотека промптов: создать → применить пресет (usage++) → редактировать → удалить', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-P', email: `ap_${uniq()}@t.test`, password: 'password123', fullName: 'Копирайтер' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Ag-P', email: `ap_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Копирайтер' }).expect(201)).body.data;
     const tok = a.accessToken;
     const task = await makeTask(tok);
 

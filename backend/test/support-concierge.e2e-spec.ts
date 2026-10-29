@@ -40,12 +40,12 @@ describe('ТЗ-29 — консьерж-поддержка (e2e)', () => {
 
   it('статус, обратный звонок, запись, пожелание, итог, доступ на 15 минут', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Concierge', email: `cg_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Concierge', email: `cg_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `cg_m_${uniq()}@t.test`;
-    await http.post('/api/users').set(O).send({ email, fullName: 'Дмитрий', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http.post('/api/users').set(O).send({ email, fullName: 'Дмитрий', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     // 1. Честный статус: без назначенной платформы инженеров нет — так и пишем
     const av = (await http.get('/api/support/desk/concierge').set(M).expect(200)).body.data;

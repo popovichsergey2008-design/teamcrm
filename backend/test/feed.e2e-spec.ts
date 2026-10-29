@@ -36,15 +36,15 @@ describe('Новости (e2e)', () => {
   afterAll(async () => { await app?.close(); });
 
   const org = async (name: string) => (await http$.post('/api/auth/register')
-    .send({ acceptPrivacy: true, tenantName: name, email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+    .send({ acceptPrivacy: true, tenantName: name, email: `own_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
     .expect(201)).body.data;
 
   const employee = async (ownerToken: string, name = 'Сотрудник', role = 'member') => {
     const email = `u_${uniq()}@t.test`;
     const user = (await http$.post('/api/users').set(H(ownerToken))
-      .send({ email, fullName: name, password: 'password123', role }).expect(201)).body.data;
+      .send({ email, fullName: name, password: 'Test-pass-2026', role }).expect(201)).body.data;
     const token = (await http$.post('/api/auth/login')
-      .send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      .send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
     return { user, token, id: String(user.id) };
   };
 

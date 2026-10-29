@@ -41,7 +41,7 @@ describe('ТЗ-2 — план на день (e2e)', () => {
 
   it('план ставит исполнитель, срок при этом не меняется', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Plan', email: `p_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Plan', email: `p_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
 
@@ -85,7 +85,7 @@ describe('ТЗ-2 — план на день (e2e)', () => {
 
   it('вчерашнее незакрытое попадает в хвосты, сегодняшнее — нет', async () => {
     const a = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Tails', email: `t_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' })
+      .send({ acceptPrivacy: true, tenantName: 'Tails', email: `t_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна' })
       .expect(201)).body.data;
     const tok = a.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Хвосты' }).expect(201)).body.data;

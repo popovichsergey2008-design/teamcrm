@@ -110,7 +110,7 @@ describe('YouGile двусторонняя синхронизация (e2e)', ()
 
   it('перенос/правка/коммент/файл/новая задача из CRM уезжают в YouGile, эхо не откатывает и не дублирует', async () => {
     const email = `yg4_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'YG4', email, password: 'password123', fullName: 'Иван Петров' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'YG4', email, password: 'Test-pass-2026', fullName: 'Иван Петров' }).expect(201)).body.data;
     const tok = reg.accessToken;
 
     state.users = [{ id: 'u1', email, realName: 'Иван Петров' }];

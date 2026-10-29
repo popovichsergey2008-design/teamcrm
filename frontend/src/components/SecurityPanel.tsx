@@ -19,6 +19,23 @@ type Tab = 'people' | 'policy' | 'audit' | 'reveals';
  * запись в базе, которую сервер проверяет на каждом действии. Интерфейс лишь
  * показывает и меняет правила, а не охраняет данные.
  */
+/** Названия событий входа (остальные события журнала пока показываются кодом). */
+const AUDIT_LABEL: Record<string, string> = {
+  'auth.login': 'Вход',
+  'auth.login_failed': 'Неверный пароль',
+  'auth.login_locked': 'Вход закрыт после серии неверных паролей',
+  'auth.registered': 'Регистрация',
+  'auth.email_verified': 'Почта подтверждена',
+  'auth.password_changed': 'Пароль изменён',
+  'auth.password_reset_requested': 'Запрошена смена пароля по почте',
+  'auth.password_reset': 'Пароль сменён по ссылке',
+  'auth.mfa_enabled': 'Включён вход по коду',
+  'auth.mfa_disabled': 'Выключен вход по коду',
+  'auth.mfa_failed': 'Неверный код при входе',
+  'auth.mfa_recovery_used': 'Вход по резервному коду',
+  'auth.mfa_recovery_regenerated': 'Выданы новые резервные коды',
+};
+
 export function SecurityPanel({ onClose }: { onClose: () => void }) {
   useEscape(onClose);
   const [tab, setTab] = useState<Tab>('people');
@@ -112,6 +129,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
                 <span className="sec-member-name">{m.full_name}</span>
                 <span className="dim">{roleLabel(m.base_role)}{m.role_name ? ` · ${m.role_name}` : ''}</span>
                 {m.limited > 0 && <span className="ui-badge ui-badge-warn">ограничений: {m.limited}</span>}
+                {m.mfa_enabled === false && m.base_role !== 'client' && <span className="ui-badge">без входа по коду</span>}
               </button>
             ))}
             {!members.length && <EmptyState compact icon="users" title="Сотрудников нет" hint="Пригласите команду в разделе «Команда»." />}
@@ -243,7 +261,8 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
                   <option value="required_for_all">Обязательна для всех</option>
                 </OptionSelect>
                 <span className="dim" style={{ fontSize: 12 }}>
-                  Само подключение приложения-аутентификатора появится следующим шагом — политика уже сохраняется.
+                  Каждый включает вход по коду сам: «Профиль» → «Безопасность». Если правило обязательное, а код не
+                  включён, после входа человек увидит только экран настройки. Кто ещё без кода — видно в «Людях и правах».
                 </span>
               </div>
             </div>
@@ -255,7 +274,7 @@ export function SecurityPanel({ onClose }: { onClose: () => void }) {
             {!audit.length && <EmptyState compact icon="list" title="Пока пусто" hint="Здесь появятся входы, изменения прав, удаления и раскрытия контактов." />}
             {audit.map((a) => (
               <div key={a.id} className="sec-audit">
-                <span className="sec-audit-event">{a.event_type}</span>
+                <span className="sec-audit-event">{AUDIT_LABEL[a.event_type] ?? a.event_type}</span>
                 <span className="dim">
                   {a.actor_name ?? 'система'} · {new Date(a.created_at).toLocaleString('ru-RU')}
                   {a.resource_type ? ` · ${a.resource_type} ${a.resource_id ?? ''}` : ''}

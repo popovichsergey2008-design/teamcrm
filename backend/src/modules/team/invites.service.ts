@@ -5,6 +5,8 @@ import { AppException } from '../../common/http/app-exception';
 import { UsersService } from '../users/users.service';
 import { InvitesRepository } from './invites.repository';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AccountSecurityService } from '../auth/account-security.service';
+import { assertPasswordStrong } from '../../common/auth/password-policy';
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
 
@@ -15,6 +17,7 @@ export class InvitesService {
     private readonly users: UsersService,
     private readonly notify: NotificationsService,
     private readonly consents: PolicyConsentsService,
+    private readonly security: AccountSecurityService,
   ) {}
 
   private sha256(v: string) {
@@ -112,6 +115,7 @@ export class InvitesService {
     PolicyConsentsService.assertPrivacy(input.acceptPrivacy);
     const invite = await this.repo.findValidByHash(this.sha256(input.token));
     if (!invite) throw AppException.unauthorized('Приглашение недействительно или истекло');
+    assertPasswordStrong(input.password, invite.email);
 
     const created = invite.role_code === 'client'
       ? await this.users.createClientUser(invite.tenant_id, {
@@ -122,6 +126,8 @@ export class InvitesService {
           role: invite.role_code as any, positionId: invite.position_id,
         });
     await this.repo.markAccepted(invite.id);
+    // ссылка пришла на этот адрес письмом — значит, ящик его; подтверждать второй раз незачем
+    await this.security.markUserVerified(String(invite.tenant_id), String(created.user.id));
     await this.consents.record({
       tenantId: invite.tenant_id, userId: created.user.id, policy: 'privacy',
       context: { flow: 'invite', usedExistingAccount: created.usedExistingAccount },
@@ -175,11 +181,16 @@ export class InvitesService {
     PolicyConsentsService.assertPrivacy(input.acceptPrivacy);
     const link = await this.repo.findActiveLinkByHash(this.sha256(input.token));
     if (!link) throw AppException.unauthorized('Ссылка недействительна, истекла или исчерпана');
+    assertPasswordStrong(input.password, input.email);
     const created = await this.users.createUser(link.tenant_id, {
       email: input.email, password: input.password, fullName: input.fullName,
       role: link.role_code as any, positionId: link.position_id,
     });
     await this.repo.incrementLinkUses(link.id);
+    // адрес по общей ссылке человек вписал сам — его надо подтвердить письмом
+    if (!created.usedExistingAccount) {
+      await this.security.sendUserVerification(String(link.tenant_id), String(created.user.id)).catch(() => undefined);
+    }
     await this.consents.record({
       tenantId: link.tenant_id, userId: created.user.id, policy: 'privacy',
       context: { flow: 'invite_link', usedExistingAccount: created.usedExistingAccount },

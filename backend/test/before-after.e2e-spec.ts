@@ -58,12 +58,12 @@ describe('Было/стало (e2e)', () => {
 
   it('отчёт по пунктам, без ключа — глазами, повтор без изменений, автозапуск после сдачи, 404 чужим', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Было-стало', email: `ba_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Было-стало', email: `ba_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `bam_${uniq()}@t.test`;
-      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const tok = (await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
       return { id: String(u.id), H: H(tok) };
     };
     const doer = await mk('Исполнитель Иван');
@@ -131,7 +131,7 @@ describe('Было/стало (e2e)', () => {
 
     // задача другой компании — 404
     const alien = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `baa_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `baa_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.get(`/api/tasks/${task.id}/before-after`).set(H(alien.accessToken)).expect(404);
   });
 
@@ -143,11 +143,11 @@ describe('Было/стало (e2e)', () => {
    */
   it('образец постановщика и чек-лист приёмки: без «ошибок», роль руками, «Попросить результат» один раз', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Образец', email: `bae_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Константин' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Образец', email: `bae_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Постановщик Константин' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `baed_${uniq()}@t.test`;
-    const doerUser = (await http$.post('/api/users').set(O).send({ email, fullName: 'Исполнитель', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const D = H((await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken);
+    const doerUser = (await http$.post('/api/users').set(O).send({ email, fullName: 'Исполнитель', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const D = H((await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     await http$.put('/api/handoff-gate').set(O).send({ checklist: false, comment: false, attachment: false }).expect(200);
     const project = (await http$.post('/api/projects').set(O).send({ name: 'Функции' }).expect(201)).body.data;
     const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;

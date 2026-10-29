@@ -37,14 +37,14 @@ describe('треды в чатах (e2e)', () => {
 
   it('обычный ответ остаётся в ленте с цитатой и веткой не считается', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `rp_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -73,11 +73,11 @@ describe('треды в чатах (e2e)', () => {
 
   it('цитата из чужого чата не подтягивается', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RP2', email: `rp2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'RP2', email: `rp2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `rp2_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
@@ -92,14 +92,14 @@ describe('треды в чатах (e2e)', () => {
 
   it('ответы уходят в ветку, лента остаётся чистой, «Треды» считают чужое', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'TH', email: `th_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'TH', email: `th_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `th_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -144,14 +144,14 @@ describe('треды в чатах (e2e)', () => {
 
   it('раздел «Треды»: своя ветка с чужими ответами, открытие гасит счётчик', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'TH2', email: `t2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'TH2', email: `t2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const mateEmail = `t2_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -197,14 +197,14 @@ describe('треды в чатах (e2e)', () => {
    */
   it('реакция переключается и видна обоим; закрепление живёт в шапке чата', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const mateEmail = `rp_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -239,7 +239,7 @@ describe('треды в чатах (e2e)', () => {
 
     // чужой чат недоступен: правила изоляции важнее любых реакций
     const other = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RP2', email: `rp2_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' })
+      .send({ acceptPrivacy: true, tenantName: 'RP2', email: `rp2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Чужой' })
       .expect(201)).body.data;
     await http.post(`/api/chats/${chat.id}/messages/${msg.id}/reactions`)
       .set(H(other.accessToken)).send({ emoji: '👍' }).expect(404);
@@ -255,14 +255,14 @@ describe('треды в чатах (e2e)', () => {
    */
   it('сохранённое, напоминание, упоминание и «Входящие» одной лентой', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'L2', email: `l2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'L2', email: `l2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const mateEmail = `l2_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -350,7 +350,7 @@ describe('треды в чатах (e2e)', () => {
    */
   it('задача из сообщения: связь в обе стороны и защита от второй задачи', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'L3', email: `l3_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'L3', email: `l3_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
@@ -411,7 +411,7 @@ describe('треды в чатах (e2e)', () => {
    */
   it('задача из сообщения: бот спрашивает о проекте, ответ автора дозаполняет черновик', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Draft', email: `dr_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Draft', email: `dr_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const project = (await http.post('/api/projects').set(O).send({ name: 'Панорама' }).expect(201)).body.data;
@@ -482,13 +482,13 @@ describe('треды в чатах (e2e)', () => {
    */
   it('каналы: публичный виден и открыт, закрытый не виден и не пускает', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'L4', email: `l4_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'L4', email: `l4_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const mateEmail = `l4_m_${uniq()}@t.test`;
     await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' }).expect(201);
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'Test-pass-2026', role: 'member' }).expect(201);
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -540,14 +540,14 @@ describe('треды в чатах (e2e)', () => {
    */
   it('@AI отвечает в чат, а поиск не заглядывает в чужую переписку', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'L6', email: `l6_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'L6', email: `l6_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const mateEmail = `l6_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -598,7 +598,7 @@ describe('треды в чатах (e2e)', () => {
    */
   it('внешний чат: ссылка открывает один разговор и не пускает во внутренние', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'L8', email: `l8_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'L8', email: `l8_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 

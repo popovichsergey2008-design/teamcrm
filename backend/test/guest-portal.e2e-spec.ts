@@ -40,13 +40,13 @@ describe('ТЗ-28 — гостевой портал (e2e)', () => {
 
   it('бренд, вход с согласием, протокол после публикации, подтверждение и уточнение', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Агентство', email: `gp_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
+      .send({ acceptPrivacy: true, tenantName: 'Агентство', email: `gp_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис' })
       .expect(201)).body.data;
     const mateEmail = `gpm_${uniq()}@t.test`;
     const mateUser = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
-    const mate = { ...(await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data, id: mateUser.id };
+    const mate = { ...(await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data, id: mateUser.id };
 
     // 1. Бренд: светлый цвет затемняется до читаемого; согласие на запись обязательно
     const brand = (await http$.patch('/api/settings/guest-brand').set(H(owner.accessToken))

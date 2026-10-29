@@ -38,7 +38,7 @@ describe('Enhancements v1 — Team (e2e)', () => {
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
     const reg = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Team', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' })
+      .send({ acceptPrivacy: true, tenantName: 'Team', email: `o_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Owner' })
       .expect(201);
     token = reg.body.data.accessToken;
     tenantId = reg.body.data.user.tenantId;
@@ -89,7 +89,7 @@ describe('Enhancements v1 — Team (e2e)', () => {
     const u2 = (await http
       .post('/api/users')
       .set(A())
-      .send({ email, password: 'password123', fullName: 'U2', role: 'member', positionId: posId, groupIds: [groupId] })
+      .send({ email, password: 'Test-pass-2026', fullName: 'U2', role: 'member', positionId: posId, groupIds: [groupId] })
       .expect(201)).body.data;
     const list = (await http.get('/api/users').set(A()).expect(200)).body.data;
     const row = list.find((u: any) => u.id === u2.id);
@@ -105,7 +105,7 @@ describe('Enhancements v1 — Team (e2e)', () => {
 
   it('при двух owner понижение исходного разрешено', async () => {
     const email = `co_${uniq()}@t.test`;
-    const co = (await http.post('/api/users').set(A()).send({ email, password: 'password123', fullName: 'Co', role: 'manager' }).expect(201)).body.data;
+    const co = (await http.post('/api/users').set(A()).send({ email, password: 'Test-pass-2026', fullName: 'Co', role: 'manager' }).expect(201)).body.data;
     await http.patch(`/api/users/${co.id}`).set(A()).send({ role: 'owner' }).expect(200); // теперь 2 owner
     await http.patch(`/api/users/${ownerId}`).set(A()).send({ role: 'manager' }).expect(200); // исходного можно понизить
     // вернём владельца, чтобы не мешать (не обязательно)
@@ -115,25 +115,25 @@ describe('Enhancements v1 — Team (e2e)', () => {
     const email = `inv_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(A()).send({ email, role: 'member', positionId: posId }).expect(201)).body.data;
     expect(inv.token).toBeTruthy();
-    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Invited', password: 'password123' }).expect(201);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Invited', password: 'Test-pass-2026' }).expect(201);
     // приглашённый может войти
-    await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201);
+    await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201);
     // токен одноразовый
-    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'X', password: 'password123' }).expect(401);
+    await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'X', password: 'Test-pass-2026' }).expect(401);
   });
 
   it('деактивированный сотрудник не логинится', async () => {
     const email = `de_${uniq()}@t.test`;
-    const u = (await http.post('/api/users').set(A()).send({ email, password: 'password123', fullName: 'De', role: 'member' }).expect(201)).body.data;
-    await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201);
+    const u = (await http.post('/api/users').set(A()).send({ email, password: 'Test-pass-2026', fullName: 'De', role: 'member' }).expect(201)).body.data;
+    await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201);
     await http.patch(`/api/users/${u.id}`).set(A()).send({ isActive: false }).expect(200);
-    await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(401);
+    await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(401);
   });
 
   it('RBAC: member не управляет командой; client не видит список', async () => {
     const m = synth('member');
     expect((await http.post('/api/positions').set({ Authorization: `Bearer ${m}` }).send({ name: 'X' })).status).toBe(403);
-    expect((await http.post('/api/users').set({ Authorization: `Bearer ${m}` }).send({ email: 'a@a.io', password: 'password123', fullName: 'A' })).status).toBe(403);
+    expect((await http.post('/api/users').set({ Authorization: `Bearer ${m}` }).send({ email: 'a@a.io', password: 'Test-pass-2026', fullName: 'A' })).status).toBe(403);
     const c = synth('client');
     expect((await http.get('/api/users').set({ Authorization: `Bearer ${c}` })).status).toBe(403);
   });
@@ -141,7 +141,7 @@ describe('Enhancements v1 — Team (e2e)', () => {
   it('tenant-изоляция справочников', async () => {
     const reg = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'OtherT', email: `o2_${uniq()}@t.test`, password: 'password123', fullName: 'O2' })
+      .send({ acceptPrivacy: true, tenantName: 'OtherT', email: `o2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'O2' })
       .expect(201);
     const list = (await http.get('/api/positions').set({ Authorization: `Bearer ${reg.body.data.accessToken}` }).expect(200)).body.data;
     expect(list.some((p: any) => p.id === posId)).toBe(false);
@@ -160,14 +160,14 @@ describe('Enhancements v1 — Team (e2e)', () => {
 
     // двое вступают по одной ссылке (каждый со своим e-mail)
     const e1 = `join1_${uniq()}@t.test`, e2 = `join2_${uniq()}@t.test`;
-    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link.token, email: e1, fullName: 'Первый', password: 'password123' }).expect(201);
-    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link.token, email: e2, fullName: 'Второй', password: 'password123' }).expect(201);
+    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link.token, email: e1, fullName: 'Первый', password: 'Test-pass-2026' }).expect(201);
+    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link.token, email: e2, fullName: 'Второй', password: 'Test-pass-2026' }).expect(201);
     // оба реально логинятся
-    await http.post('/api/auth/login').send({ email: e1, password: 'password123' }).expect(201);
-    await http.post('/api/auth/login').send({ email: e2, password: 'password123' }).expect(201);
+    await http.post('/api/auth/login').send({ email: e1, password: 'Test-pass-2026' }).expect(201);
+    await http.post('/api/auth/login').send({ email: e2, password: 'Test-pass-2026' }).expect(201);
 
     // лимит исчерпан (2/2) → третий не может
-    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link.token, email: `join3_${uniq()}@t.test`, fullName: 'Третий', password: 'password123' }).expect(401);
+    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link.token, email: `join3_${uniq()}@t.test`, fullName: 'Третий', password: 'Test-pass-2026' }).expect(401);
 
     // в списке видно счётчик использований
     const links = (await http.get('/api/invites/links').set(A()).expect(200)).body.data;
@@ -178,7 +178,7 @@ describe('Enhancements v1 — Team (e2e)', () => {
     const link2 = (await http.post('/api/invites/links').set(A()).send({ role: 'member' }).expect(201)).body.data;
     await http.delete(`/api/invites/links/${link2.id}`).set(A()).expect(200);
     await http.get(`/api/invites/links/${link2.token}/info`).expect(401);
-    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link2.token, email: `x_${uniq()}@t.test`, fullName: 'X', password: 'password123' }).expect(401);
+    await http.post('/api/invites/links/accept').send({ acceptPrivacy: true, token: link2.token, email: `x_${uniq()}@t.test`, fullName: 'X', password: 'Test-pass-2026' }).expect(401);
 
     // роль owner через открытую ссылку запрещена (валидация DTO)
     await http.post('/api/invites/links').set(A()).send({ role: 'owner' }).expect(400);

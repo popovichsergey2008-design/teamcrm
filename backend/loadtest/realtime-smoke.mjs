@@ -49,7 +49,7 @@ async function main() {
 
   // 1. setup: tenant + project + tasks
   const email = `load_${Date.now()}@load.test`;
-  const reg = await apiPost('/auth/register', { acceptPrivacy: true, tenantName: 'LoadTest', email, password: 'password123', fullName: 'Load' }, null);
+  const reg = await apiPost('/auth/register', { acceptPrivacy: true, tenantName: 'LoadTest', email, password: 'Test-pass-2026', fullName: 'Load' }, null);
   const token = reg.accessToken;
   const project = await apiPost('/projects', { name: 'Load Project' }, token);
   const projectId = project.id;

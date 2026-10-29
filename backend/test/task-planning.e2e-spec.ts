@@ -53,7 +53,7 @@ describe('планирование задачи: назначение и сро�
    */
   const team = async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Plan', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Plan', email: `pl_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
 
     const email = `pl_m_${uniq()}@t.test`;

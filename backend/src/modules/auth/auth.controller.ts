@@ -1,11 +1,16 @@
-import { Body, Controller, Get, Headers, Ip, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsObject, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AuthService, SessionMeta } from './auth.service';
 import { PasswordResetService } from './password-reset.service';
-import { LoginDto, LogoutDto, RefreshDto, RegisterDto } from './auth.dto';
+import {
+  ForgotPasswordDto, LoginDto, LogoutDto, MfaCodeDto, MfaDisableDto, MfaLoginDto, MfaPasswordDto,
+  RefreshDto, RegisterDto, TokenDto,
+} from './auth.dto';
+import { AccountSecurityService } from './account-security.service';
+import { UsersRepository } from '../users/users.repository';
 import { SocialService } from './social.service';
 import { QaSwitchService } from './qa-switch.service';
 import { AppException } from '../../common/http/app-exception';
@@ -33,7 +38,7 @@ class ResetLinkDto {
 }
 class ResetPasswordDto {
   @IsString() token!: string;
-  @IsString() @MinLength(8) @MaxLength(128) password!: string;
+  @IsString() @MaxLength(128) password!: string;
 }
 
 class GoogleLoginDto {
@@ -56,6 +61,8 @@ export class AuthController {
     private readonly reset: PasswordResetService,
     private readonly social: SocialService,
     private readonly qa: QaSwitchService,
+    private readonly security: AccountSecurityService,
+    private readonly users: UsersRepository,
   ) {}
 
   // ── #1562: временный вход как тестовый сотрудник (только по строке в qa_switch_access) ──
@@ -131,14 +138,91 @@ export class AuthController {
 
   @Public()
   @Get('auth/password/reset/:token')
-  resetInfo(@Param('token') token: string) {
-    return this.reset.info(token);
+  resetInfo(@Param('token') token: string, @Ip() ip: string) {
+    return this.reset.info(token, { ip });
   }
 
   @Public()
   @Post('auth/password/reset')
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.reset.complete(dto.token, dto.password);
+  resetPassword(@Body() dto: ResetPasswordDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.reset.complete(dto.token, dto.password, this.meta(ua, ip));
+  }
+
+  /** «Забыли пароль?» — письмо со ссылкой. Ответ одинаковый, есть такой аккаунт или нет. */
+  @Public()
+  @Post('auth/password/forgot')
+  @HttpCode(200)
+  forgot(@Body() dto: ForgotPasswordDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.reset.requestByEmail(dto.email, this.meta(ua, ip));
+  }
+
+  // ── подтверждение почты ──
+
+  @Public()
+  @Post('auth/email/verify')
+  @HttpCode(200)
+  verifyEmail(@Body() dto: TokenDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.security.verifyEmail(dto.token, this.meta(ua, ip));
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/email/resend')
+  @HttpCode(200)
+  async resendVerification(@CurrentUser() user: AuthUser) {
+    return this.security.resendVerification(await this.accountOf(user));
+  }
+
+  // ── двухфакторный вход (код из приложения) ──
+
+  @Public()
+  @Post('auth/login/mfa')
+  @HttpCode(200)
+  loginMfa(@Body() dto: MfaLoginDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    return this.auth.loginMfa(dto.mfaToken, dto.code, this.meta(ua, ip));
+  }
+
+  @ApiBearerAuth()
+  @Get('auth/mfa')
+  async mfaStatus(@CurrentUser() user: AuthUser) {
+    return this.security.mfaStatus(await this.accountOf(user));
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/mfa/setup')
+  @HttpCode(200)
+  async mfaSetup(@CurrentUser() user: AuthUser, @Body() dto: MfaPasswordDto) {
+    notActing(user);
+    return this.security.setup(await this.accountOf(user), dto.password);
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/mfa/enable')
+  @HttpCode(200)
+  async mfaEnable(@CurrentUser() user: AuthUser, @Body() dto: MfaCodeDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    notActing(user);
+    return this.security.enable(await this.accountOf(user), dto.code, this.meta(ua, ip));
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/mfa/disable')
+  @HttpCode(200)
+  async mfaDisable(@CurrentUser() user: AuthUser, @Body() dto: MfaDisableDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    notActing(user);
+    return this.security.disable(await this.accountOf(user), dto.password, dto.code, this.meta(ua, ip));
+  }
+
+  @ApiBearerAuth()
+  @Post('auth/mfa/recovery-codes')
+  @HttpCode(200)
+  async mfaRecovery(@CurrentUser() user: AuthUser, @Body() dto: MfaCodeDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    notActing(user);
+    return this.security.regenerateRecovery(await this.accountOf(user), dto.code, this.meta(ua, ip));
+  }
+
+  private async accountOf(user: AuthUser): Promise<string> {
+    const acc = await this.users.accountIdOf(user.tenantId, user.userId);
+    if (!acc?.account_id) throw AppException.forbidden('Нет аккаунта');
+    return String(acc.account_id);
   }
 
   @Public()

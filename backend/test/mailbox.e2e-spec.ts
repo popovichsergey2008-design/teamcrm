@@ -35,7 +35,7 @@ describe('Почта секретаря (e2e)', () => {
 
   it('почтовики, защита своего сервера, письма видит только владелец ящика', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Mail', email: `ml_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Mail', email: `ml_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     const providers = (await http$.get('/api/mailbox/providers').set(O).expect(200)).body.data;
@@ -54,8 +54,8 @@ describe('Почта секретаря (e2e)', () => {
 
     // письмо сотрудника, положенное как будто его забрал планировщик
     const mateEmail = `mlm_${uniq()}@t.test`;
-    const mate = (await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    const mate = (await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const acc = await db.one<{ id: string }>(
       `INSERT INTO mail_accounts (tenant_id, user_id, provider, email, username, imap_host, imap_port, smtp_host, smtp_port, secret_enc)
        VALUES ($1,$2,'gmail',$3,$3,'imap.gmail.com',993,'smtp.gmail.com',465,'x') RETURNING id`,

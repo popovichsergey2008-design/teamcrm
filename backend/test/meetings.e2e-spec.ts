@@ -46,7 +46,7 @@ describe('Разбор записей встреч (e2e)', () => {
   it('субтитры → стенограмма с говорящими → черновик → подтверждение создаёт задачу', async () => {
     const email = `mt_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'MT', email, password: 'password123', fullName: 'Иван Петров' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'MT', email, password: 'Test-pass-2026', fullName: 'Иван Петров' }).expect(201)).body.data;
     const tok = owner.accessToken;
 
     const project = (await http$.post('/api/projects').set(H(tok)).send({ name: 'Интеграции' }).expect(201)).body.data;
@@ -129,7 +129,7 @@ describe('Разбор записей встреч (e2e)', () => {
   it('пустой файл субтитров даёт понятную ошибку, а не падение', async () => {
     const email = `mt2_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'MT2', email, password: 'password123', fullName: 'O' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'MT2', email, password: 'Test-pass-2026', fullName: 'O' }).expect(201)).body.data;
 
     const created = (await http$.post('/api/meetings').set(H(owner.accessToken))
       .field('title', 'Пустышка')
@@ -149,7 +149,7 @@ describe('Разбор записей встреч (e2e)', () => {
   it('встречу без файла не принимаем', async () => {
     const email = `mt3_${uniq()}@t.test`;
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'MT3', email, password: 'password123', fullName: 'O' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'MT3', email, password: 'Test-pass-2026', fullName: 'O' }).expect(201)).body.data;
     await http$.post('/api/meetings').set(H(owner.accessToken)).field('title', 'Без файла').expect(400);
   });
 });

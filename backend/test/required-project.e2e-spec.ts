@@ -28,12 +28,12 @@ describe('Обязательный проект (e2e)', () => {
 
   it('без проекта — 422 PROJECT_REQUIRED; архив — 422; чужой закрытый — 403; с проектом — создаётся', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'password123', fullName: 'Анна Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'RP', email: `rp_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `rp_m_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email, fullName: 'Борис Сотрудник', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email, fullName: 'Борис Сотрудник', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     const open = (await http$.post('/api/projects').set(O).send({ name: 'Открытый' }).expect(201)).body.data;
     const closed = (await http$.post('/api/projects').set(O).send({ name: 'Закрытый' }).expect(201)).body.data;

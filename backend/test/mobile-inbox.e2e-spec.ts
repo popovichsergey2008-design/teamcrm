@@ -86,11 +86,11 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
   it('событие ложится в ящик с путём внутри приложения; курсор отдаёт только новое; прочитанное считается', async () => {
     const ownerEmail = `own_${uniq()}@t.test`;
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Ящик', email: ownerEmail, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Ящик', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Ольга' }).expect(201)).body.data;
     const execEmail = `exe_${uniq()}@t.test`;
     const exec = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: execEmail, password: 'password123', fullName: 'Иван', role: 'member' }).expect(201)).body.data;
-    const execTok = (await http.post('/api/auth/login').send({ email: execEmail, password: 'password123' }).expect(201)).body.data.accessToken;
+      .send({ email: execEmail, password: 'Test-pass-2026', fullName: 'Иван', role: 'member' }).expect(201)).body.data;
+    const execTok = (await http.post('/api/auth/login').send({ email: execEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
 
     // до событий — пусто, курсора нет
     const empty = (await http.get('/api/mobile/notifications').set(H(execTok)).expect(200)).body.data;
@@ -134,7 +134,7 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
 
   it('конфиг клиента: флаги по умолчанию, политика организации — владелец меняет, сотрудник нет', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Конфиг', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Конфиг', email: `c_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' }).expect(201)).body.data;
     const cfg = (await http.get('/api/mobile/config').set(H(owner.accessToken)).expect(200)).body.data;
     expect(cfg.features.mobile_tasks).toBe(true);
     expect(cfg.features.mobile_offline_v2).toBe(false);
@@ -153,8 +153,8 @@ describe('Mobile — ящик уведомлений и конфиг (e2e)', () 
 
     const mateEmail = `mate_${uniq()}@t.test`;
     await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const mate = (await http.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const mate = (await http.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     await http.post('/api/mobile/org-policy').set(H(mate.accessToken)).send({ pushPrivacy: 'full' }).expect(403);
     const seen = (await http.get('/api/mobile/config').set(H(mate.accessToken)).expect(200)).body.data;
     expect(seen.privacy.push).toBe('hide');

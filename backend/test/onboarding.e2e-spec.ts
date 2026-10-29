@@ -36,7 +36,7 @@ describe('онбординг владельца (e2e)', () => {
 
   const owner = async (prefix: string) => {
     const data = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: prefix, email: `${prefix}_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: prefix, email: `${prefix}_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     return H(data.accessToken);
   };
@@ -156,9 +156,9 @@ describe('онбординг владельца (e2e)', () => {
 
     const mateEmail = `ob8_m_${uniq()}@t.test`;
     await http.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' }).expect(201);
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201);
     const M = H((await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     // до этого каждый приглашённый жил по Москве, пока сам не залезал в профиль
     const me = (await http.get('/api/me').set(M).expect(200)).body.data;
@@ -201,9 +201,9 @@ describe('онбординг владельца (e2e)', () => {
     const O = await owner('ob7');
     const mateEmail = `ob7_m_${uniq()}@t.test`;
     await http.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' }).expect(201);
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' }).expect(201);
     const M = H((await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     await http.get('/api/onboarding').set(M).expect(403);
   });

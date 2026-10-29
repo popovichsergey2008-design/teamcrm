@@ -58,14 +58,14 @@ describe('Почтовые уведомления (e2e)', () => {
   it('исполнитель получает письма о задаче, автор действия — нет', async () => {
     const ownerEmail = `own_${uniq()}@t.test`;
     const reg = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Почта', email: ownerEmail, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Почта', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const tok = reg.accessToken;
 
     // исполнитель — отдельный человек, иначе письмо себе же и не полагается
     const execEmail = `exe_${uniq()}@t.test`;
     const exec = (await http.post('/api/users').set(H(tok))
-      .send({ email: execEmail, password: 'password123', fullName: 'Иван Исполнитель', role: 'member' })
+      .send({ email: execEmail, password: 'Test-pass-2026', fullName: 'Иван Исполнитель', role: 'member' })
       .expect(201)).body.data;
 
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Проект' }).expect(201)).body.data;
@@ -122,7 +122,7 @@ describe('Почтовые уведомления (e2e)', () => {
   it('настройки выключают письма, отписка из письма — тоже', async () => {
     const email = `pr_${uniq()}@t.test`;
     const reg = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Настройки', email, password: 'password123', fullName: 'Пётр Настройка' })
+      .send({ acceptPrivacy: true, tenantName: 'Настройки', email, password: 'Test-pass-2026', fullName: 'Пётр Настройка' })
       .expect(201)).body.data;
     const tok = reg.accessToken;
 

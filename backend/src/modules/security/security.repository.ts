@@ -225,14 +225,16 @@ export class SecurityRepository {
   members(tenantId: string) {
     return this.db.many<{
       id: string; full_name: string; email: string; base_role: string;
-      role_id: string | null; role_name: string | null; limited: number;
+      role_id: string | null; role_name: string | null; limited: number; mfa_enabled: boolean;
     }>(
       `SELECT u.id::text, u.full_name, u.email, r.code AS base_role,
               sr.id::text AS role_id, sr.name AS role_name,
-              (SELECT COUNT(*)::int FROM user_permission_overrides o WHERE o.user_id = u.id) AS limited
+              (SELECT COUNT(*)::int FROM user_permission_overrides o WHERE o.user_id = u.id) AS limited,
+              (a.totp_enabled_at IS NOT NULL) AS mfa_enabled
          FROM users u
          JOIN roles r ON r.id = u.role_id
          LEFT JOIN security_roles sr ON sr.id = u.security_role_id
+         LEFT JOIN accounts a ON a.id = u.account_id
         WHERE u.tenant_id=$1 AND u.is_active = TRUE
         ORDER BY r.code, u.full_name`,
       [tenantId],

@@ -21,12 +21,12 @@ describe('Mobile — устройства и отзыв сессий (e2e)', () 
   async function register() {
     const r = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Mob', email: `m_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' })
+      .send({ acceptPrivacy: true, tenantName: 'Mob', email: `m_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Owner' })
       .expect(201);
     return { token: r.body.data.accessToken as string, userId: String(r.body.data.user.id) };
   }
   async function login(email: string) {
-    const r = await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201);
+    const r = await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201);
     return { token: r.body.data.accessToken as string, userId: String(r.body.data.user.id) };
   }
 
@@ -81,7 +81,7 @@ describe('Mobile — устройства и отзыв сессий (e2e)', () 
     const owner = await register();
     const mateEmail = `mate_${uniq()}@t.test`;
     await http.post('/api/users').set(H(owner.token))
-      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
     const mate = await login(mateEmail);
     await http.post('/api/mobile/devices').set(H(mate.token)).send({
       deviceUuid: `uuid-${uniq()}`, platform: 'android', model: 'Galaxy S24',

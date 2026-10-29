@@ -36,11 +36,11 @@ describe('Проактивный секретарь (e2e)', () => {
 
   async function org() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Секретарь', email: `pro_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Секретарь', email: `pro_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `prom_${uniq()}@t.test`;
-    const u = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+    const u = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const tok = (await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
     return { owner, O, tenantId: String(owner.user.tenantId), gleb: { id: String(u.id), H: H(tok) } };
   }
 

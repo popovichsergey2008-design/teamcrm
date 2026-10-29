@@ -17,7 +17,7 @@ describe('Enhancements v1 — Account (e2e)', () => {
   async function register() {
     const r = await http
       .post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Acc', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'User' })
+      .send({ acceptPrivacy: true, tenantName: 'Acc', email: `a_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'User' })
       .expect(201);
     return { token: r.body.data.accessToken, refresh: r.body.data.refreshToken, email: r.body.data.user.email };
   }
@@ -58,10 +58,10 @@ describe('Enhancements v1 — Account (e2e)', () => {
   it('смена пароля: неверный текущий → 400; верный → 200 и отзыв прочих сессий', async () => {
     const { token, email } = await register();
     // второй вход = вторая сессия
-    const login2 = (await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data;
+    const login2 = (await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data;
 
     await http.post('/api/me/password').set(H(token)).send({ currentPassword: 'wrong', newPassword: 'newpass123' }).expect(400);
-    await http.post('/api/me/password').set(H(token)).send({ currentPassword: 'password123', newPassword: 'newpass123' }).expect(201);
+    await http.post('/api/me/password').set(H(token)).send({ currentPassword: 'Test-pass-2026', newPassword: 'newpass123' }).expect(201);
 
     // сессия-2 (её refresh) отозвана сменой пароля
     await http.post('/api/auth/refresh').send({ refreshToken: login2.refreshToken }).expect(401);
@@ -101,8 +101,8 @@ describe('Enhancements v1 — Account (e2e)', () => {
 
   it('сессии: список с текущей; отзыв; revoke-all оставляет текущую', async () => {
     const { token, email } = await register();
-    await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201); // 2-я сессия
-    await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201); // 3-я
+    await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201); // 2-я сессия
+    await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201); // 3-я
 
     let sessions = (await http.get('/api/me/sessions').set(H(token)).expect(200)).body.data;
     expect(sessions.length).toBeGreaterThanOrEqual(3);

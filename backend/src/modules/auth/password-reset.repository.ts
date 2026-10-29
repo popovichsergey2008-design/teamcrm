@@ -61,12 +61,13 @@ export class PasswordResetRepository {
   }
 
   /** После смены пароля разлогиниваем аккаунт везде — во всех его организациях. */
-  async revokeAccountSessions(accountId: string): Promise<number> {
-    const res = await this.db.query(
+  async revokeAccountSessions(accountId: string): Promise<string[]> {
+    const rows = await this.db.many<{ id: string }>(
       `UPDATE refresh_tokens SET revoked_at=now()
-        WHERE revoked_at IS NULL AND user_id IN (SELECT id FROM users WHERE account_id=$1)`,
+        WHERE revoked_at IS NULL AND user_id IN (SELECT id FROM users WHERE account_id=$1)
+        RETURNING id::text`,
       [accountId],
     );
-    return res.rowCount ?? 0;
+    return rows.map((r) => r.id);
   }
 }

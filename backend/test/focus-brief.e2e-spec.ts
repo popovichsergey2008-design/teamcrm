@@ -36,7 +36,7 @@ describe('ТЗ-27 — брифинг «Фокуса дня» (e2e)', () => {
 
   it('снимок, тройка, источники, права, «Взять в работу», настройки', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Brief', email: `b_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Петров' })
+      .send({ acceptPrivacy: true, tenantName: 'Brief', email: `b_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис Петров' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
     const me = owner.user.id;

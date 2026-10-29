@@ -29,7 +29,7 @@ describe('Client portal (e2e)', () => {
   afterAll(async () => app?.close());
 
   it('клиент видит прогресс своих проектов без финансов; изоляция по client_id', async () => {
-    const owner = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Портал', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+    const owner = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Портал', email: `o_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const tok = owner.accessToken;
     const proj = (await http.post('/api/projects').set(H(tok)).send({ name: 'Сайт клиники', budget: 500000 }).expect(201)).body.data;
     const board0 = (await http.get(`/api/projects/${proj.id}/board`).set(H(tok)).expect(200)).body.data;

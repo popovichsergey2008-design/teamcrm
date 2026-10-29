@@ -191,7 +191,7 @@ describe('Telegram-бот для сайта (e2e)', () => {
 
   it('привязанный сотрудник: /start не угоняет, текст — дейлик как раньше', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Сотрудники', email: `tgb_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Сотрудники', email: `tgb_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const staff = tg();
     const code = (await http$.post('/api/me/telegram/link-code').set(O).expect(201)).body.data.code;

@@ -54,13 +54,13 @@ describe('Аудио-доказательство задачи (e2e)', () => {
 
   it('фрагмент — с согласия, по правам задачи, ссылка подписана; убрать можно', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Пруф', email: `pr_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Пруф', email: `pr_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const tenantId = String(owner.user.tenantId);
     const ownerId = String(owner.user.id);
     const email = `prg_${uniq()}@t.test`;
-    const gleb = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const G = H((await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken);
+    const gleb = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const G = H((await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     // встреча — в закрытом проекте (Глеб её не видит), задачи — в открытом
     const closed = (await http$.post('/api/projects').set(O).send({ name: 'Закрытый' }).expect(201)).body.data;

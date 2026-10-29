@@ -36,14 +36,14 @@ describe('перенос срока «Сделал» (e2e)', () => {
 
   it('исполнитель просит — срок не двигается; постановщик подтверждает — двигается', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'DS', email: `ds_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DS', email: `ds_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `ds_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -84,14 +84,14 @@ describe('перенос срока «Сделал» (e2e)', () => {
 
   it('отказ оставляет прежний срок', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'DS2', email: `ds2_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DS2', email: `ds2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `ds2_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     const mateLogin = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mateLogin.accessToken);
 
@@ -113,7 +113,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
 
   it('постановщик переносит сам — сразу, без обряда подтверждения себе', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'DS3', email: `ds3_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DS3', email: `ds3_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;
@@ -136,7 +136,7 @@ describe('перенос срока «Сделал» (e2e)', () => {
   */
   it('у разовой задачи переносить нечего — ручка отказывает', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'DS4', email: `ds4_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DS4', email: `ds4_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const proj = (await http.post('/api/projects').set(O).send({ name: 'П' }).expect(201)).body.data;

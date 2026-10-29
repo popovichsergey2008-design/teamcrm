@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { assertPasswordStrong } from '../../common/auth/password-policy';
 import { AppException } from '../../common/http/app-exception';
 import { RoleCode } from '../../common/auth/jwt.types';
 import { PositionsRepository } from '../team/positions.repository';
@@ -85,6 +86,8 @@ export class UsersService {
     // что любой обладатель ссылки-приглашения может указать чужой e-mail и сменить чужой пароль.
     // Поэтому такой человек входит своим прежним паролем, а строка users получает хеш аккаунта.
     const existingAccount = await this.accounts.findByEmail(input.email);
+    // новый пароль — по общим правилам; пароль существующего аккаунта здесь не задаётся
+    if (!existingAccount) assertPasswordStrong(input.password, input.email);
     const account = existingAccount
       ?? (await this.accounts.create(input.email, await argon2.hash(input.password), input.fullName));
     const row = await this.repo.create({
@@ -109,6 +112,8 @@ export class UsersService {
     if (exists) throw AppException.conflict('Пользователь с таким email уже есть в организации');
     // пароль существующего аккаунта не трогаем — см. комментарий в createUser
     const existingAccount = await this.accounts.findByEmail(input.email);
+    // новый пароль — по общим правилам; пароль существующего аккаунта здесь не задаётся
+    if (!existingAccount) assertPasswordStrong(input.password, input.email);
     const account = existingAccount
       ?? (await this.accounts.create(input.email, await argon2.hash(input.password), input.fullName));
     const row = await this.repo.create({

@@ -82,7 +82,7 @@ describe('Рабочий Telegram-бот (e2e)', () => {
     work = app.get(TelegramBotWorkService);
 
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Рабочий бот', email: `tgw_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Руководитель' })
+      .send({ acceptPrivacy: true, tenantName: 'Рабочий бот', email: `tgw_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис Руководитель' })
       .expect(201)).body.data;
     O = H(owner.accessToken);
     tenantId = String(owner.user.tenantId);

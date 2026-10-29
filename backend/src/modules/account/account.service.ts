@@ -10,6 +10,8 @@ import { AccountsRepository } from '../auth/accounts.repository';
 import { VelocityService } from '../velocity/velocity.service';
 import { PlatformService } from '../platform/platform.service';
 import { QaSwitchService } from '../auth/qa-switch.service';
+import { AccountSecurityService } from '../auth/account-security.service';
+import { assertPasswordStrong } from '../../common/auth/password-policy';
 
 @Injectable()
 export class AccountService {
@@ -23,6 +25,7 @@ export class AccountService {
     private readonly velocity: VelocityService,
     private readonly platform: PlatformService,
     private readonly qa: QaSwitchService,
+    private readonly security: AccountSecurityService,
   ) {}
 
   async getMe(tenantId: string, userId: string, actorId?: string) {
@@ -37,6 +40,10 @@ export class AccountService {
       организации: «owner» там означает хозяина компании, а не разработчика CRM.
     */
     const platformRole = await this.platform.roleOf(userId);
+    const acc = await this.users.accountIdOf(tenantId, userId);
+    const protection = acc?.account_id
+      ? await this.security.mfaStatus(String(acc.account_id)).catch(() => null)
+      : null;
     return {
       id: p.id,
       // Клиенты и сделки — дело того, кто завёл компанию; приглашённым сотрудникам
@@ -73,6 +80,14 @@ export class AccountService {
       platformRole,
       /** #1562: кнопка «Войти как qa test» и полоса возврата. Без строки допуска — canSwitch: false. */
       qaSwitch: await this.qa.status({ tenantId, userId, actorId }).catch(() => ({ canSwitch: false })),
+      /** Почта подтверждена: иначе фронт показывает плашку «подтвердите почту». */
+      emailVerified: protection ? protection.emailVerified : true,
+      /** Включён ли вход по коду из приложения. */
+      mfaEnabled: !!protection?.enabled,
+      /** Организация требует второй фактор, а он не включён: фронт показывает только экран настройки. */
+      mfaSetupRequired: protection && !protection.enabled
+        ? await this.security.mfaSetupRequired({ tenant_id: tenantId, role_code: p.role_code, account_id: acc?.account_id ?? null }).catch(() => false)
+        : false,
     };
   }
 
@@ -104,8 +119,10 @@ export class AccountService {
     if (!account || !(await argon2.verify(account.password_hash, currentPassword))) {
       throw AppException.validation('Текущий пароль неверный');
     }
+    assertPasswordStrong(newPassword, account.email);
     await this.accounts.updatePassword(account.id, await argon2.hash(newPassword)); // пароль — на уровне аккаунта
     await this.sessionsSvc.revokeOthers(userId, sessionId); // прочие устройства разлогиниваются — сразу
+    await this.security.auditAccount(String(account.id), 'auth.password_changed');
     return { changed: true };
   }
 

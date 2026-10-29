@@ -36,14 +36,14 @@ describe('ТЗ-7 — отметки о прочтении переписки з�
 
   it('коллега дочитал — автор видит его в «Просмотрено»; отметка не откатывается назад', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'RD', email: `rd_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'RD', email: `rd_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const mateEmail = `rd_m_${uniq()}@t.test`;
     await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'password123', role: 'member' })
+      .send({ email: mateEmail, fullName: 'Пётр Коллега', password: 'Test-pass-2026', role: 'member' })
       .expect(201);
     const mate = (await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data;
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const M = H(mate.accessToken);
 

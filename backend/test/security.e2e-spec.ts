@@ -37,16 +37,16 @@ describe('слой безопасности (e2e)', () => {
 
   it('права, ограничение сотрудника, контакты и корзина', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Сейф', email: `sec_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Сейф', email: `sec_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
     const mateEmail = `sec_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Пётр Руководитель', password: 'password123', role: 'manager' })
+      .send({ email: mateEmail, fullName: 'Пётр Руководитель', password: 'Test-pass-2026', role: 'manager' })
       .expect(201)).body.data;
     const M = H((await http.post('/api/auth/login')
-      .send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     // Права видны самому человеку — по ним интерфейс решает, что показывать.
     const mine = (await http.get('/api/security/me').set(M).expect(200)).body.data;

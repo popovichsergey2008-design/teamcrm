@@ -41,7 +41,7 @@ describe('Согласование завершения (e2e)', () => {
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Согласование', email: `ap_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик' })
+      .send({ acceptPrivacy: true, tenantName: 'Согласование', email: `ap_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Постановщик' })
       .expect(201)).body.data;
     ownerTok = owner.accessToken;
 
@@ -195,7 +195,7 @@ describe('Согласование завершения (e2e)', () => {
       .send({ userId: String(memberId), role: 'co_assignee' }).expect(201);
 
     const other = (await http.post('/api/users').set(H(ownerTok))
-      .send({ email: `w_${uniq()}@t.test`, fullName: 'Наблюдатель', password: 'password123', role: 'member' })
+      .send({ email: `w_${uniq()}@t.test`, fullName: 'Наблюдатель', password: 'Test-pass-2026', role: 'member' })
       .expect(201)).body.data;
     await http.post(`/api/tasks/${task.id}/participants`).set(H(ownerTok))
       .send({ userId: String(other.id), role: 'watcher' }).expect(201);
@@ -216,7 +216,7 @@ describe('Согласование завершения (e2e)', () => {
 
     // Наблюдатель исполнителем не считается: в «своих» у него этой задачи нет.
     const watcherLogin = (await http.post('/api/auth/login')
-      .send({ email: other.email, password: 'password123' }).expect(201)).body.data;
+      .send({ email: other.email, password: 'Test-pass-2026' }).expect(201)).body.data;
     const theirs = (await http.get('/api/tasks/my').set(H(watcherLogin.accessToken)).expect(200)).body.data;
     expect(theirs.some((t: any) => String(t.id) === String(task.id))).toBe(false);
 

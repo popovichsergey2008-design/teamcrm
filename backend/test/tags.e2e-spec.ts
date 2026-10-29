@@ -37,7 +37,7 @@ describe('теги задач (e2e)', () => {
 
   it('базовый набор, дубли, архив и обязательное подтверждение перед созданием', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Теги', email: `tg_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Теги', email: `tg_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 

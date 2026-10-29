@@ -44,13 +44,13 @@ describe('Смарт-пинги ассистента (e2e)', () => {
   /** Организация с исполнителем, просроченной задачей и круглосуточными «рабочими» часами. */
   const setup = async (name: string) => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: name, email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик' })
+      .send({ acceptPrivacy: true, tenantName: name, email: `a_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Постановщик' })
       .expect(201)).body.data;
     const email = `a_m_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email, fullName: 'Исполнитель', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email, fullName: 'Исполнитель', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const mateToken = (await http.post('/api/auth/login')
-      .send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      .send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
 
     await http.post('/api/calendar/work').set(H(owner.accessToken))
       .send({ workStart: '00:00', workEnd: '23:59', weekendDays: [], holidays: [] }).expect(201);

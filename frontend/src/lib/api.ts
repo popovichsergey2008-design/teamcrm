@@ -164,6 +164,8 @@ export interface SecurityMember {
   role_name: string | null;
   /** Сколько прав ограничено лично у этого человека. */
   limited: number;
+  /** Включил ли вход по коду из приложения. */
+  mfa_enabled?: boolean;
 }
 
 export interface TagItem {
@@ -605,7 +607,7 @@ const BASE = apiUrl('/api');
 /** Дополнительные заголовки одного запроса: ключ идемпотентности, версия для If-Match. */
 export interface RequestExtra { idempotencyKey?: string; ifMatch?: number | null }
 
-async function rawRequest<T>(
+export async function rawRequest<T>(
   method: string,
   path: string,
   body?: unknown,
@@ -862,10 +864,13 @@ export const api = {
   mobileSync: (cursor: string | null, limit = 200) =>
     request<SyncPage>('GET', `/mobile/sync?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   // auth
-  register: (b: { tenantName: string; email: string; password: string; fullName: string; dataRegion?: string; acceptPrivacy: boolean }) =>
+  register: (b: { tenantName: string; email: string; password: string; fullName: string; dataRegion?: string; acceptPrivacy: boolean; website?: string }) =>
     rawRequest<AuthResult>('POST', '/auth/register', b, false),
+  /** Пароль верный — сессия, а при включённом втором факторе — просьба ввести код. */
   login: (b: { email: string; password: string }) =>
-    rawRequest<AuthResult>('POST', '/auth/login', b, false),
+    rawRequest<import('../types').LoginResponse>('POST', '/auth/login', b, false),
+  loginMfa: (mfaToken: string, code: string) =>
+    rawRequest<AuthResult>('POST', '/auth/login/mfa', { mfaToken, code }, false),
   /** Что включено на сервере. Ключей может не быть вовсе — тогда кнопок не будет. */
   authProviders: () => rawRequest<import('../types').AuthProviders>('GET', '/auth/providers', undefined, false),
   googleLogin: (idToken: string, tenantName?: string, acceptPrivacy?: boolean) =>
@@ -873,7 +878,7 @@ export const api = {
   telegramLogin: (data: Record<string, string>) =>
     rawRequest<import('../types').SocialAuthResult>('POST', '/auth/telegram', { data }, false),
   /** #4619: одноразовая ссылка входа из Telegram-бота (?tglogin=<код>). */
-  telegramCode: (code: string) => rawRequest<AuthResult>('POST', '/auth/telegram-code', { code }, false),
+  telegramCode: (code: string) => rawRequest<import('../types').LoginResponse>('POST', '/auth/telegram-code', { code }, false),
   logout: () => (tokens.refresh ? rawRequest('POST', '/auth/logout', { refreshToken: tokens.refresh }, false) : Promise.resolve()),
   organizations: () => request<import('../types').OrgRef[]>('GET', '/auth/organizations'),
   switchOrg: (tenantId: string) => request<AuthResult>('POST', '/auth/switch-org', { tenantId }),

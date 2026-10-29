@@ -95,6 +95,9 @@ const SupportPage = lazy(() => import('./pages/SupportPage').then((m) => ({ defa
 const ConsolePage = lazy(() => import('./pages/ConsolePage').then((m) => ({ default: m.ConsolePage })));
 // #1562: полоса «вы вошли как тестовый» — только у переключившихся
 const QaSwitchBar = lazy(() => import('./components/QaSwitchBar'));
+const VerifyEmailBar = lazy(() => import('./components/auth/VerifyEmailBar'));
+const MfaGate = lazy(() => import('./components/auth/MfaGate'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const ClientPortal = lazy(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })));
 const MeetingPage = lazy(() => import('./pages/MeetingPage').then((m) => ({ default: m.MeetingPage })));
@@ -391,9 +394,14 @@ export function App() {
   const inviteToken = params.get('invite');
   const joinToken = params.get('join');
   const resetToken = params.get('reset');
+  const verifyToken = params.get('verify');
+  /** Почта не подтверждена — плашка сверху. Узнаём из /me: в ответе входа этого поля нет. */
+  const [emailUnverified, setEmailUnverified] = useState(false);
+  /** Организация требует второй фактор, а он не включён — вместо приложения экран настройки. */
+  const [mfaGate, setMfaGate] = useState(false);
 
   useEffect(() => {
-    if (user) api.me().then((m) => setAvatarPath(m.avatarUrl)).catch(() => undefined);
+    if (user) api.me().then((m) => { setAvatarPath(m.avatarUrl); setEmailUnverified(m.emailVerified === false); setMfaGate(m.mfaSetupRequired === true); }).catch(() => undefined);
   }, [user]);
 
   /*
@@ -596,6 +604,7 @@ export function App() {
   if (inviteToken) return <Suspense fallback={null}><AcceptInvitePage token={inviteToken} /></Suspense>;
   if (joinToken) return <Suspense fallback={null}><JoinOrgPage token={joinToken} /></Suspense>;
   if (resetToken) return <Suspense fallback={null}><ResetPasswordPage token={resetToken} /></Suspense>;
+  if (verifyToken) return <Suspense fallback={null}><VerifyEmailPage token={verifyToken} /></Suspense>;
 
   if (loading) {
     return (
@@ -611,6 +620,7 @@ export function App() {
   }
   if (!user) return <LoginPage />;
 
+  if (mfaGate) return <Suspense fallback={null}><MfaGate onLogout={() => void logout()} /></Suspense>;
   // Заблокировано: ничего из содержимого не рисуем — ни в переключателе приложений, ни глазу соседа.
   if (lock.locked) return <LockScreen onUnlock={lock.unlock} />;
   // Версия оболочки ниже минимальной — только «скачать обновление».
@@ -719,6 +729,9 @@ export function App() {
       <main className="app-main" key={user.tenantId}>
         <OfflineBar online={offline.online} items={offline.items} summary={offline.summary} onRetry={offline.flush} />
         {user.qaSwitch?.actingAs && <Suspense fallback={null}><QaSwitchBar name={user.fullName} /></Suspense>}
+        {emailUnverified && !user.qaSwitch?.actingAs && (
+          <Suspense fallback={null}><VerifyEmailBar email={user.email} onVerified={() => setEmailUnverified(false)} /></Suspense>
+        )}
         {visited.has('focus') && (
           <Pane active={route.section === 'focus'}>
             <FocusPage

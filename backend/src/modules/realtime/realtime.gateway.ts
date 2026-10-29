@@ -50,6 +50,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token, {
         secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
       });
+      // пока второй фактор, обязательный в организации, не включён — живых событий не шлём
+      if (payload.mfa === 'setup') throw new Error('mfa setup required');
       const user: AuthUser = {
         userId: payload.sub,
         tenantId: payload.tenantId,

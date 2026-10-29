@@ -44,13 +44,13 @@ describe('Модератор встреч (e2e)', () => {
 
   const org = async (name: string) => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: name, email: `m_${uniq()}@t.test`, password: 'password123', fullName: 'Организатор' })
+      .send({ acceptPrivacy: true, tenantName: name, email: `m_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Организатор' })
       .expect(201)).body.data;
     const email = `m_u_${uniq()}@t.test`;
     const mate = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email, fullName: 'Участник', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email, fullName: 'Участник', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const mateToken = (await http.post('/api/auth/login')
-      .send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      .send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
     return { owner, mate, mateToken };
   };
 

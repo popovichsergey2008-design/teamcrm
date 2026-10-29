@@ -42,7 +42,7 @@ describe('права сотрудника на доске (e2e)', () => {
 
   it('сотрудник ведёт доску целиком: колонки, проект, удаление задачи', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Board', email: `bp_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Board', email: `bp_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const email = `bp_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(owner.accessToken))

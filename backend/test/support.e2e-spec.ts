@@ -35,11 +35,11 @@ describe('Поддержка (e2e)', () => {
 
   it('обращение сотрудника становится задачей владельцу в проекте поддержки', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'SUP', email: `sup_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'SUP', email: `sup_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' }).expect(201)).body.data;
     const mateEmail = `supm_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(H(owner.accessToken))
-      .send({ email: mateEmail, fullName: 'Сотрудник', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, fullName: 'Сотрудник', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const O = H(owner.accessToken);
 
     // до первого обращения проекта поддержки нет — и это не ошибка

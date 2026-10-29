@@ -36,10 +36,10 @@ describe('Волшебная палочка в чатах (e2e)', () => {
 
   async function setup() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Палочка', email: `w_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Палочка', email: `w_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `wg_${uniq()}@t.test`;
-    const gleb = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб Орлов', password: 'password123', role: 'member' }).expect(201)).body.data;
+    const gleb = (await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб Орлов', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const p1 = (await http$.post('/api/projects').set(O).send({ name: 'Сайт' }).expect(201)).body.data;
     await http$.post('/api/projects').set(O).send({ name: 'Склад' }).expect(201);
     const dm = (await http$.post('/api/chats/dm').set(O).send({ userId: gleb.id }).expect(201)).body.data;
@@ -75,7 +75,7 @@ describe('Волшебная палочка в чатах (e2e)', () => {
     await http$.post(`/api/chats/task-drafts/${draftId}/instruct`).set(O).send({ text: 'что-нибудь' }).expect(400);
 
     // закрытый проект нажавшему не виден — и в списке выбора его нет
-    const G = H((await http$.post('/api/auth/login').send({ email: gleb.email, password: 'password123' }).expect(201)).body.data.accessToken);
+    const G = H((await http$.post('/api/auth/login').send({ email: gleb.email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     await db.query(`UPDATE projects SET visibility = 'members' WHERE id = $1`, [p1.id]);
     const his = (await http$.post(`/api/chats/${dm.id}/messages/${msg.id}/task-draft`).set(G).expect(201)).body.data;
     expect(his.context.projects.map((p: any) => p.name)).not.toContain('Сайт');

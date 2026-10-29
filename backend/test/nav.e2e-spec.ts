@@ -39,7 +39,7 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
 
   it('считает то, что обещает бейдж, и скрывает риски от рядового сотрудника', async () => {
     const reg = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Nav', email: `nav_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Nav', email: `nav_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
     const tok = reg.accessToken;
     const ownerId = reg.user.id;
@@ -145,7 +145,7 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
    */
   it('счётчик «нового» гаснет от открытия задачи и не считает архивные проекты', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Unread', email: `un_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Unread', email: `un_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const memEmail = `un_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(owner.accessToken))

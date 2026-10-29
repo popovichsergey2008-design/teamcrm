@@ -23,7 +23,8 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
-const BUDGET_KB = { js: 299, css: 47 };
+// 29.10: 299 → 300 — шаг второго фактора и «Забыли пароль?» в состоянии входа (сами экраны ленивые)
+const BUDGET_KB = { js: 300, css: 47 };
 
 const html = readFileSync(join(DIST, 'index.html'), 'utf8');
 const files = [...new Set([...html.matchAll(/(?:src|href)="\/(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]))];

@@ -43,7 +43,7 @@ describe('#4675 — согласие с Политикой конфиденци�
 
   it('регистрация организации: без галочки 400, с галочкой — запись в журнал', async () => {
     const email = `pc_${uniq()}@t.test`;
-    const body = { tenantName: 'Политики', email, password: 'password123', fullName: 'Ольга' };
+    const body = { tenantName: 'Политики', email, password: 'Test-pass-2026', fullName: 'Ольга' };
     const no = await http.post('/api/auth/register').send(body).expect(400);
     expect(no.body.error.message).toBe('Чтобы зарегистрироваться, примите условия оферты и соглашений и дайте согласие на обработку персональных данных');
     await http.post('/api/auth/register').send({ ...body, acceptPrivacy: false }).expect(400);
@@ -58,7 +58,7 @@ describe('#4675 — согласие с Политикой конфиденци�
 
   it('приглашение по почте и по ссылке: без галочки 400, с галочкой — запись', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Приглашения', email: `pc_o_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Приглашения', email: `pc_o_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 

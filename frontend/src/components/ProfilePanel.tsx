@@ -17,6 +17,9 @@ import { useAuth } from '../state/auth';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { initialsOf } from '../lib/initials';
+import { lazyComponent } from '../lib/lazy';
+// второй фактор открывают редко — его код (и генератор QR) грузится по первому показу
+const MfaSettings = lazyComponent(() => import('./auth/MfaSettings').then((m) => m.default));
 
 type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
 
@@ -135,7 +138,7 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
   const loadSessions = () => api.listSessions().then(setSessions).catch(() => undefined);
   useEffect(() => { if (tab === 'security') loadSessions(); }, [tab]);
   const changePw = async () => {
-    if (pw.newPassword.length < 8) return flash('Пароль ≥ 8 символов');
+    if (pw.newPassword.length < 8) return flash('Пароль не короче 8 символов');
     try { await api.changePassword(pw); setPw({ currentPassword: '', newPassword: '' }); flash('Пароль изменён, прочие сессии завершены'); loadSessions(); }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
@@ -387,6 +390,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
             <div className="field"><label>Текущий пароль</label><input className="input" type="password" value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} /></div>
             <div className="field"><label>Новый пароль</label><input className="input" type="password" value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} /></div>
             <button className="ui-btn ui-btn-primary ui-btn-md" style={{ width: '100%' }} onClick={changePw}>Сменить пароль</button>
+
+            <MfaSettings />
 
             {isNativeShell() && (
               <>

@@ -40,7 +40,7 @@ describe('AI Brain (e2e)', () => {
   };
 
   it('диалог возвращает ответ с цитатами на источники', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-A', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-A', email: `a_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна' }).expect(201)).body.data;
     const tok = a.accessToken;
     await http.post('/api/regulations').set(H(tok)).send({
       title: 'Решение проблемы пагинации',
@@ -63,7 +63,7 @@ describe('AI Brain (e2e)', () => {
   });
 
   it('повторный вопрос обслуживается из кэша (cache-hit метерится)', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Cache', email: `c_${uniq()}@t.test`, password: 'password123', fullName: 'К' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Cache', email: `c_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'К' }).expect(201)).body.data;
     const tok = a.accessToken;
     await http.post('/api/regulations').set(H(tok)).send({ title: 'Деплой', body: 'Деплой идёт через CI: rsync на сервер и docker compose up, миграции на старте контейнера.' }).expect(201);
     expect(await waitChunks(tok)).toBe(true);
@@ -83,7 +83,7 @@ describe('AI Brain (e2e)', () => {
   });
 
   it('стрим (SSE): события citations → delta → done; ответ сохранён в истории', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Stream', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'С' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Stream', email: `s_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'С' }).expect(201)).body.data;
     const tok = a.accessToken;
     await http.post('/api/regulations').set(H(tok)).send({ title: 'Онбординг', body: 'Новичок получает доступы, читает регламенты и берёт первую задачу из беклога.' }).expect(201);
     expect(await waitChunks(tok)).toBe(true);
@@ -104,7 +104,7 @@ describe('AI Brain (e2e)', () => {
   });
 
   it('разовый вопрос из командной строки отвечает и НЕ заводит диалог', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-OneShot', email: `os_${uniq()}@t.test`, password: 'password123', fullName: 'Оля' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-OneShot', email: `os_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Оля' }).expect(201)).body.data;
     const tok = a.accessToken;
     await http.post('/api/regulations').set(H(tok)).send({
       title: 'Гарантия для оптовиков',
@@ -130,9 +130,9 @@ describe('AI Brain (e2e)', () => {
   });
 
   it('чужой диалог недоступен (изоляция по пользователю/tenant)', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Own', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Own', email: `o_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'A' }).expect(201)).body.data;
     const conv = (await http.post('/api/brain/conversations').set(H(a.accessToken)).expect(201)).body.data;
-    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Other', email: `x_${uniq()}@t.test`, password: 'password123', fullName: 'B' }).expect(201)).body.data;
+    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Brain-Other', email: `x_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'B' }).expect(201)).body.data;
     await http.post(`/api/brain/conversations/${conv.id}/ask`).set(H(b.accessToken)).send({ question: 'дай секреты' }).expect(404);
     await http.get(`/api/brain/conversations/${conv.id}/messages`).set(H(b.accessToken)).expect(404);
   });

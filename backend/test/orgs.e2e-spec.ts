@@ -30,16 +30,16 @@ describe('Enhancements v1 — Multi-org (e2e)', () => {
 
   it('регистрация даёт одну организацию; глобальная уникальность e-mail', async () => {
     const email = `o_${uniq()}@t.test`;
-    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг 1', email, password: 'password123', fullName: 'Влад' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг 1', email, password: 'Test-pass-2026', fullName: 'Влад' }).expect(201)).body.data;
     expect(reg.organizations.length).toBe(1);
     expect(reg.organizations[0].role).toBe('owner');
     // повторная регистрация тем же e-mail → конфликт (глобально уникален)
-    await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг X', email, password: 'password123', fullName: 'Влад' }).expect(409);
+    await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг X', email, password: 'Test-pass-2026', fullName: 'Влад' }).expect(409);
   });
 
   it('создание второй организации из кабинета + переключение', async () => {
     const email = `o_${uniq()}@t.test`;
-    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг A', email, password: 'password123', fullName: 'A' }).expect(201)).body.data;
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг A', email, password: 'Test-pass-2026', fullName: 'A' }).expect(201)).body.data;
     const t1 = reg.organizations[0].tenantId;
 
     const created = (await http.post('/api/auth/organizations').set(H(reg.accessToken)).send({ name: 'Орг B' }).expect(201)).body.data;
@@ -61,10 +61,10 @@ describe('Enhancements v1 — Multi-org (e2e)', () => {
     // Раньше человек, ушедший работать в другое пространство, при каждом входе снова
     // попадал в первое — заведённое при регистрации.
     await http.post('/api/auth/switch-org').set(H(sw.accessToken)).send({ tenantId: t2 }).expect(201);
-    const again = (await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data;
+    const again = (await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data;
     expect(again.user.tenantId).toBe(t2);
     // явный выбор при входе по-прежнему главнее
-    const explicit = (await http.post('/api/auth/login').send({ email, password: 'password123', tenantId: t1 }).expect(201)).body.data;
+    const explicit = (await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026', tenantId: t1 }).expect(201)).body.data;
     expect(explicit.user.tenantId).toBe(t1);
   });
 
@@ -75,7 +75,7 @@ describe('Enhancements v1 — Multi-org (e2e)', () => {
     const bOwnTenant = b.organizations[0].tenantId;
 
     // A приглашает B по e-mail в свою организацию
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг A2', email: `a_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Орг A2', email: `a_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна' }).expect(201)).body.data;
     const aTenant = a.organizations[0].tenantId;
     const inv = (await http.post('/api/invites').set(H(a.accessToken)).send({ email: bEmail, role: 'member' }).expect(201)).body.data;
     await http.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Борис', password: 'ignored123' }).expect(201);
@@ -93,8 +93,8 @@ describe('Enhancements v1 — Multi-org (e2e)', () => {
   });
 
   it('нельзя переключиться в чужую организацию', async () => {
-    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'A3', email: `a3_${uniq()}@t.test`, password: 'password123', fullName: 'A' }).expect(201)).body.data;
-    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'B3', email: `b3_${uniq()}@t.test`, password: 'password123', fullName: 'B' }).expect(201)).body.data;
+    const a = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'A3', email: `a3_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'A' }).expect(201)).body.data;
+    const b = (await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'B3', email: `b3_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'B' }).expect(201)).body.data;
     await http.post('/api/auth/switch-org').set(H(a.accessToken)).send({ tenantId: b.organizations[0].tenantId }).expect(403);
   });
 });

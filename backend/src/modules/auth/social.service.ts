@@ -6,6 +6,7 @@ import { UsersRepository } from '../users/users.repository';
 import { AuthService, SessionMeta } from './auth.service';
 import { AccountsRepository } from './accounts.repository';
 import { SocialsRepository } from './socials.repository';
+import { AccountSecurityService } from './account-security.service';
 import { googleProfile, SocialProfile, telegramProfile } from './social-verify';
 
 /** Что умеет этот сервер: кнопки на экране входа рисуются только по этому ответу. */
@@ -51,6 +52,7 @@ export class SocialService {
     private readonly accounts: AccountsRepository,
     private readonly socials: SocialsRepository,
     private readonly users: UsersRepository,
+    private readonly security: AccountSecurityService,
   ) {}
 
   private googleClientId(): string {
@@ -195,6 +197,7 @@ export class SocialService {
     if (account) {
       // Адрес подтверждён провайдером — этого достаточно, чтобы считать аккаунт своим.
       await this.socials.link(String(account.id), profile.provider, profile.externalId, email);
+      await this.security.markVerified(String(account.id));
       return this.sessionOf(String(account.id), meta);
     }
 
@@ -203,11 +206,15 @@ export class SocialService {
 
     // новый аккаунт — та же галочка Политики конфиденциальности, что у формы (#4675)
     PolicyConsentsService.assertPrivacy(acceptPrivacy);
-    return this.auth.createOwnerAccount(
+    let created = null as string | null; // присвоит обратный вызов внутри транзакции
+    const session = await this.auth.createOwnerAccount(
       email, profile.fullName, name.slice(0, 160),
-      (accountId, client) => this.socials.link(accountId, profile.provider, profile.externalId, email, client),
+      (accountId, client) => { created = accountId; return this.socials.link(accountId, profile.provider, profile.externalId, email, client); },
       meta, profile.provider,
     );
+    // адрес подтвердил провайдер — письмо со ссылкой не нужно
+    if (created) await this.security.markVerified(created);
+    return session;
   }
 
   private async sessionOf(accountId: string, meta?: SessionMeta) {

@@ -36,13 +36,13 @@ describe('Направления задачи (e2e)', () => {
 
   it('направления хранятся у задачи, автоподбор отдаёт задачу человеку нужного направления', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Dir', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Dir', email: `d_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
 
     const person = async (fullName: string, skills: string[]) => {
       const u = (await http.post('/api/users').set(O)
-        .send({ email: `d_${uniq()}@t.test`, password: 'password123', fullName, role: 'member' }).expect(201)).body.data;
+        .send({ email: `d_${uniq()}@t.test`, password: 'Test-pass-2026', fullName, role: 'member' }).expect(201)).body.data;
       await http.patch(`/api/users/${u.id}`).set(O).send({ skills }).expect(200);
       return String(u.id);
     };
@@ -87,12 +87,12 @@ describe('Направления задачи (e2e)', () => {
 
   it('ТЗ по пунктам раздаётся разным специалистам, а направления доходят до задачи', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'DirTz', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'DirTz', email: `d_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const person = async (fullName: string, skills: string[]) => {
       const u = (await http.post('/api/users').set(O)
-        .send({ email: `d_${uniq()}@t.test`, password: 'password123', fullName, role: 'member' }).expect(201)).body.data;
+        .send({ email: `d_${uniq()}@t.test`, password: 'Test-pass-2026', fullName, role: 'member' }).expect(201)).body.data;
       await http.patch(`/api/users/${u.id}`).set(O).send({ skills }).expect(200);
       return String(u.id);
     };

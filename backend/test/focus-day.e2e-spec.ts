@@ -37,7 +37,7 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
 
   it('тройка, принятие, замена, сделанное и удалённое', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Focus', email: `f_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' })
+      .send({ acceptPrivacy: true, tenantName: 'Focus', email: `f_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
     const me = owner.user.id;
@@ -136,7 +136,7 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
 
   it('решённое согласование в плане отмечается сделанным само', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Focus2', email: `f2_${uniq()}@t.test`, password: 'password123', fullName: 'Анна' })
+      .send({ acceptPrivacy: true, tenantName: 'Focus2', email: `f2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Анна' })
       .expect(201)).body.data;
     const memEmail = `f2_m_${uniq()}@t.test`;
     const inv = (await http.post('/api/invites').set(H(owner.accessToken)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
@@ -173,7 +173,7 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
   });
   it('глубокая работа: таймер, тишина, стук один раз, перерыв', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Deep', email: `d_${uniq()}@t.test`, password: 'password123', fullName: 'Юрий' })
+      .send({ acceptPrivacy: true, tenantName: 'Deep', email: `d_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Юрий' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
     const memEmail = `d_m_${uniq()}@t.test`;

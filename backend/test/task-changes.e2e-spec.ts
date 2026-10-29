@@ -32,11 +32,11 @@ describe('Изменения по задачам (e2e)', () => {
 
   it('в тест → возврат → в тест → готово → переоткрыто; автор ≠ исполнитель; список и CSV', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'CH', email: `ch_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'CH', email: `ch_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей Владелец' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const gleb = (await http$.post('/api/users').set(O)
-      .send({ email: `ch_g_${uniq()}@t.test`, fullName: 'Глеб Исполнитель', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: `ch_g_${uniq()}@t.test`, fullName: 'Глеб Исполнитель', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
     const project = (await http$.post('/api/projects').set(O).send({ name: 'Изменения' }).expect(201)).body.data;
     const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
     const col = (name: string) => String(board.columns.find((c: any) => c.name === name).id);
@@ -80,7 +80,7 @@ describe('Изменения по задачам (e2e)', () => {
     expect(pr.items[0]).toMatchObject({ toLabel: 'высокий', actorName: 'Сергей Владелец' });
 
     // без права на «Пульс» — нельзя
-    const login = (await http$.post('/api/auth/login').send({ email: gleb.email, password: 'password123' }).expect(201)).body.data;
+    const login = (await http$.post('/api/auth/login').send({ email: gleb.email, password: 'Test-pass-2026' }).expect(201)).body.data;
     await http$.get(`/api/radar/changes?${q}`).set(H(login.accessToken)).expect(403);
 
     // перестановка в той же колонке — не переход; склейка: шаги одного переноса — одна запись

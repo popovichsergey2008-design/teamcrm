@@ -35,7 +35,7 @@ describe('Inbox — авто-задачи из переписок (e2e)', () => 
 
   it('канал → вебхук принимает письмо → подтверждение черновика создаёт задачу; отклонение; изоляция ролей', async () => {
     const email = `inbox_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Inbox', email, password: 'password123', fullName: 'Босс' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Inbox', email, password: 'Test-pass-2026', fullName: 'Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const proj = (await http$.post('/api/projects').set(H(tok)).send({ name: 'Продажи' }).expect(201)).body.data;
 
@@ -98,8 +98,8 @@ describe('Inbox — авто-задачи из переписок (e2e)', () => 
     // рядовой участник (member) не имеет доступа к управлению входящими
     const memEmail = `member_${uniq()}@t.test`;
     const inv = (await http$.post('/api/invites').set(H(tok)).send({ email: memEmail, role: 'member' }).expect(201)).body.data;
-    await http$.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Работник', password: 'password123' }).expect(201);
-    const memTok = (await http$.post('/api/auth/login').send({ email: memEmail, password: 'password123' }).expect(201)).body.data.accessToken;
+    await http$.post('/api/invites/accept').send({ acceptPrivacy: true, token: inv.token, fullName: 'Работник', password: 'Test-pass-2026' }).expect(201);
+    const memTok = (await http$.post('/api/auth/login').send({ email: memEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
     await http$.get('/api/inbox/sources').set(H(memTok)).expect(403);
 
     // голосовая заметка: multipart-аудио принимается; под mock Whisper речь пустая → 400 (нужен ключ)

@@ -4,8 +4,10 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { json } from 'express';
 import { RedisIoAdapter } from './common/auth/redis-io.adapter';
 import { REQUEST_ID_HEADER, requestId } from './common/http/request-id.middleware';
+import { securityHeaders } from './common/http/security-headers.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: false });
@@ -18,6 +20,9 @@ async function bootstrap() {
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
   // Номер каждого запроса — в ответ и в журнал: нитка между экраном человека и логом.
   app.use(requestId);
+  app.use(securityHeaders);
+  // отчёты CSP браузер шлёт со своим типом содержимого — обычный разбор JSON их не читает
+  app.use('/api/csp-report', json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }));
 
   /*
     Всё приложение живёт под `/api`, кроме метрик.

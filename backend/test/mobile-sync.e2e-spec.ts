@@ -34,13 +34,13 @@ describe('Mobile — offline: Idempotency-Key, If-Match, sync (e2e)', () => {
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
 
     owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Офлайн', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Офлайн', email: `own_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга' }).expect(201)).body.data;
     const memberEmail = `mem_${uniq()}@t.test`;
     const m = (await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email: memberEmail, password: 'password123', fullName: 'Иван', role: 'member' }).expect(201)).body.data;
+      .send({ email: memberEmail, password: 'Test-pass-2026', fullName: 'Иван', role: 'member' }).expect(201)).body.data;
     member = {
       id: m.id,
-      token: (await http.post('/api/auth/login').send({ email: memberEmail, password: 'password123' }).expect(201)).body.data.accessToken,
+      token: (await http.post('/api/auth/login').send({ email: memberEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken,
     };
     proj = (await http.post('/api/projects').set(H(owner.accessToken)).send({ name: 'Общий' }).expect(201)).body.data;
     board = (await http.get(`/api/projects/${proj.id}/board`).set(H(owner.accessToken)).expect(200)).body.data;

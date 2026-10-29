@@ -36,7 +36,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('сессия: вопрос потоком с контекстом задачи, история, оценка, чужая сессия закрыта', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB', email: `ab_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB', email: `ab_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const project = (await http$.post('/api/projects').set(O).send({ name: 'Panorama' }).expect(201)).body.data;
     const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
@@ -66,8 +66,8 @@ describe('QEVO Bot (e2e)', () => {
     // оценка ответа — только своего
     await http$.post(`/api/anthill/messages/${msgs[1].id}/feedback`).set(O).send({ vote: -1, reason: 'not_found' }).expect(201);
     const mateEmail = `abm_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     await http$.get(`/api/anthill/sessions/${session.id}/messages`).set(M).expect(404);
     await http$.post(`/api/anthill/messages/${msgs[1].id}/feedback`).set(M).send({ vote: 1 }).expect(404);
 
@@ -77,7 +77,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('действие: напоминание ставится только после «Создать», отменяется и не выполняется дважды', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB2', email: `ab2_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB2', email: `ab2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const session = (await http$.post('/api/anthill/sessions').set(O).send({}).expect(201)).body.data;
 
@@ -129,7 +129,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('секретарь (ТЗ-18): настройки сводок свои, сводка собирается правилами по своим данным', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB-brief', email: `abb_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB-brief', email: `abb_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     // по умолчанию сводки выключены: секретарь не начинает писать сам
     const def = (await http$.get('/api/anthill/secretary/prefs').set(O).expect(200)).body.data;
@@ -155,8 +155,8 @@ describe('QEVO Bot (e2e)', () => {
 
     // срочное непрочитанное в личке — строкой в сводке (ТЗ-18, этап 5)
     const mateEmail = `abbm_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const dm = (await http$.post('/api/chats/dm').set(M).send({ userId: String(owner.user.id) }).expect(201)).body.data;
     await http$.post(`/api/chats/${dm.id}/messages`).set(M).send({ body: 'Срочно: прод упал, нужен доступ' }).expect(201);
     const withChat = (await http$.get('/api/anthill/secretary/brief/morning').set(O).expect(200)).body.data;
@@ -166,7 +166,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('прогон из нескольких шагов (ТЗ-18): «выполнить всё», сбой шага не роняет остальные, след в задаче, выключенная группа', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB-run', email: `abr_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB-run', email: `abr_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const tenantId = String(owner.user.tenantId);
     const userId = String(owner.user.id);
@@ -199,8 +199,8 @@ describe('QEVO Bot (e2e)', () => {
 
     // чужой прогон не подтвердить
     const mateEmail = `abrm_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     await http$.post(`/api/anthill/runs/${run.id}/confirm`).set(M).expect(404);
 
     // группа «для себя» выключена владельцем — подготовленная раньше карточка не выполнится
@@ -213,7 +213,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('память: своя, правится и удаляется; чужую не тронуть', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB3', email: `ab3_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB3', email: `ab3_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     expect((await http$.get('/api/anthill/memories').set(O).expect(200)).body.data).toEqual([]);
@@ -231,8 +231,8 @@ describe('QEVO Bot (e2e)', () => {
     await http$.patch(`/api/anthill/memories/${m.id}`).set(O).send({ title: 'Пояс', content: 'UTC+7' }).expect(200);
 
     const mateEmail = `ab3m_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     expect((await http$.get('/api/anthill/memories').set(M).expect(200)).body.data).toEqual([]);
     await http$.patch(`/api/anthill/memories/${m.id}`).set(M).send({ title: 'чужое', content: 'чужое' }).expect(404);
     await http$.delete(`/api/anthill/memories/${m.id}`).set(M).expect(404);
@@ -243,7 +243,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('регулярная задача: расписание словами, пауза и удаление', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB4', email: `ab4_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB4', email: `ab4_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     const task = (await http$.post('/api/anthill/schedules').set(O).send({
@@ -271,8 +271,8 @@ describe('QEVO Bot (e2e)', () => {
     expect(moved.label).toBe('каждую пятницу в 17:00');
 
     const mateEmail = `ab4m_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     expect((await http$.get('/api/anthill/schedules').set(M).expect(200)).body.data).toEqual([]);
     await http$.delete(`/api/anthill/schedules/${task.id}`).set(M).expect(404);
 
@@ -282,7 +282,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('навыки: стартовый набор виден всем, свой правится, чужой берут копией', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB5', email: `ab5_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB5', email: `ab5_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     // стартовый набор заводится вместе с организацией — иначе каталог пуст и непонятен
@@ -312,8 +312,8 @@ describe('QEVO Bot (e2e)', () => {
 
     // коллега видит общий, но не чужой личный
     const mateEmail = `ab5m_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const forMate = (await http$.get('/api/anthill/skills').set(M).expect(200)).body.data;
     expect(forMate.some((x: any) => String(x.id) === String(own.id))).toBe(true);
     expect(forMate.some((x: any) => String(x.id) === String(fork.id))).toBe(false);
@@ -324,7 +324,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('быстрый ответ приходит слово в слово и мимо модели; заводит его руководство', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB6', email: `ab6_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB6', email: `ab6_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     const answer = 'Инструкция по VPN: https://wiki.example/vpn';
@@ -350,8 +350,8 @@ describe('QEVO Bot (e2e)', () => {
 
     // рядовому сотруднику быстрые ответы не заводить: они звучат от имени компании
     const mateEmail = `ab6m_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     await http$.get('/api/anthill/responses').set(M).expect(403);
     await http$.post('/api/anthill/responses').set(M).send({ trigger: 'что-то', answer: 'ответ' }).expect(403);
 
@@ -360,7 +360,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('документ: собирается в файл, уходит в «Заметки» и убирается откатом', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB7', email: `ab7_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB7', email: `ab7_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const session = (await http$.post('/api/anthill/sessions').set(O).send({}).expect(201)).body.data;
 
@@ -397,11 +397,11 @@ describe('QEVO Bot (e2e)', () => {
 
   it('правка задачи: срок и исполнитель меняются только после «Создать» и возвращаются откатом', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB8', email: `ab8_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB8', email: `ab8_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mateEmail = `ab8m_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Глеб Соколов', password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: mateEmail, fullName: 'Глеб Соколов', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
 
     const project = (await http$.post('/api/projects').set(O).send({ name: 'Панорама' }).expect(201)).body.data;
     const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
@@ -445,7 +445,7 @@ describe('QEVO Bot (e2e)', () => {
 
   it('настройки агента: выключатели действуют, лимиты держат, менять может только владелец', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB9', email: `ab9_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB9', email: `ab9_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
 
     // по умолчанию агент включён всем; выключатель интернета включён — сам интернет решает тариф (ТЗ-33)
@@ -480,8 +480,8 @@ describe('QEVO Bot (e2e)', () => {
 
     // рядовой сотрудник настройки видит? нет — их смотрит руководство, меняет владелец
     const mateEmail = `ab9m_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+    await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     await http$.get('/api/anthill/admin').set(M).expect(403);
     await http$.patch('/api/anthill/admin').set(M).send({ enabled: false }).expect(403);
 
@@ -501,12 +501,12 @@ describe('QEVO Bot (e2e)', () => {
    */
   it('откат созданной ботом задачи подчиняется правилам удаления компании и кладёт её в корзину', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'AB10', email: `ab10_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'AB10', email: `ab10_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mateEmail = `ab10m_${uniq()}@t.test`;
     const mate = (await http$.post('/api/users').set(O)
-      .send({ email: mateEmail, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'password123' }).expect(201)).body.data.accessToken);
+      .send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
     const project = (await http$.post('/api/projects').set(O).send({ name: 'Откат' }).expect(201)).body.data;
     const tenantId = String(owner.user.tenantId);
 

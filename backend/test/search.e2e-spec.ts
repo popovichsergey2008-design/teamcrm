@@ -41,7 +41,7 @@ describe('ТЗ-2 — поиск (e2e)', () => {
     const marker = uniq(); // уникальное слово: в общей базе тестов ничего лишнего не подцепим
 
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Search', email: `s_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' })
+      .send({ acceptPrivacy: true, tenantName: 'Search', email: `s_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' })
       .expect(201)).body.data;
     const tok = owner.accessToken;
 
@@ -87,7 +87,7 @@ describe('ТЗ-2 — поиск (e2e)', () => {
 
   it('слишком короткий запрос ничего не ищет', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Search2', email: `s2_${uniq()}@t.test`, password: 'password123', fullName: 'К' })
+      .send({ acceptPrivacy: true, tenantName: 'Search2', email: `s2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'К' })
       .expect(201)).body.data;
     const empty = await find(owner.accessToken, 'а');
     expect(empty).toEqual({ query: 'а', tasks: [], projects: [], chats: [], messages: [], people: [], docs: [] });

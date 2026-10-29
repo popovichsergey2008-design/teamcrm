@@ -50,12 +50,12 @@ describe('Инфоцентр проекта (e2e)', () => {
 
   async function setup() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Инфоцентр', email: `hub_${uniq()}@t.test`, password: 'password123', fullName: 'Ольга Владелец' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Инфоцентр', email: `hub_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Ольга Владелец' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `hubm_${uniq()}@t.test`;
-      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const tok = (await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
       return { id: String(u.id), H: H(tok) };
     };
     const member = await mk('Дина Дизайнер');
@@ -78,7 +78,7 @@ describe('Инфоцентр проекта (e2e)', () => {
     await http$.get(url).set(stranger.H).expect(404);
     await http$.get(url).set(client).expect(403);
     const alien = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `huba_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `huba_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.get(url).set(H(alien.accessToken)).expect(404);
     await http$.post(`${url}/items`).set(stranger.H)
       .send({ section: 'knowledge', kind: 'link', title: 'x', url: 'https://example.com' }).expect(404);

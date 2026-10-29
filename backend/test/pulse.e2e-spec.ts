@@ -31,13 +31,13 @@ describe('Пульс команды (e2e)', () => {
 
   it('сводка, права, действия, балансировка, обратная связь', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Pulse', email: `pl_${uniq()}@t.test`, password: 'password123', fullName: 'Сергей' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Pulse', email: `pl_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Сергей' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const tenantId = String(owner.user.tenantId);
     const mk = async (name: string) => {
       const email = `plm_${uniq()}@t.test`;
-      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const tok = (await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
       return { id: String(u.id), H: H(tok) };
     };
     const gleb = await mk('Глеб');

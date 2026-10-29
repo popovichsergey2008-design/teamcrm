@@ -4,6 +4,8 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsS
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { InvitesService } from './invites.service';
+import { AccountSecurityService } from '../auth/account-security.service';
+import { AuthThrottleService, RULES } from '../auth/auth-throttle.service';
 
 class CreateInviteDto {
   @IsEmail() email!: string;
@@ -45,7 +47,12 @@ class AcceptInviteLinkDto {
 @ApiTags('invites')
 @Controller('invites')
 export class InvitesController {
-  constructor(private readonly invites: InvitesService) {}
+  constructor(
+    private readonly invites: InvitesService,
+    /** Приглашать можно только с подтверждённой почтой (мастер-план релиза §13). */
+    private readonly security: AccountSecurityService,
+    private readonly throttle: AuthThrottleService,
+  ) {}
 
   @ApiBearerAuth()
   @Get()
@@ -57,7 +64,8 @@ export class InvitesController {
   @ApiBearerAuth()
   @Post()
   @Roles('owner', 'manager')
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateInviteDto) {
+  async create(@CurrentUser() user: AuthUser, @Body() dto: CreateInviteDto) {
+    await this.security.assertVerified(user.tenantId, user.userId);
     return this.invites.create(user.tenantId, user.userId, dto);
   }
 
@@ -70,7 +78,8 @@ export class InvitesController {
   @ApiBearerAuth()
   @Post('batch')
   @Roles('owner', 'manager')
-  createMany(@CurrentUser() user: AuthUser, @Body() dto: InviteManyDto) {
+  async createMany(@CurrentUser() user: AuthUser, @Body() dto: InviteManyDto) {
+    await this.security.assertVerified(user.tenantId, user.userId);
     return this.invites.inviteMany(user.tenantId, user.userId, {
       emails: dto.emails, role: dto.role, positionId: dto.positionId ?? null,
     });
@@ -78,7 +87,8 @@ export class InvitesController {
 
   @Public()
   @Post('accept')
-  accept(@Body() dto: AcceptInviteDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+  async accept(@Body() dto: AcceptInviteDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    await this.throttle.hit(RULES.tokenIp, ip);
     return this.invites.accept(dto, { userAgent: ua, ip });
   }
 
@@ -93,7 +103,8 @@ export class InvitesController {
   @ApiBearerAuth()
   @Post('links')
   @Roles('owner', 'manager')
-  createLink(@CurrentUser() user: AuthUser, @Body() dto: CreateInviteLinkDto) {
+  async createLink(@CurrentUser() user: AuthUser, @Body() dto: CreateInviteLinkDto) {
+    await this.security.assertVerified(user.tenantId, user.userId);
     return this.invites.createLink(user.tenantId, user.userId, dto);
   }
 
@@ -112,7 +123,8 @@ export class InvitesController {
 
   @Public()
   @Post('links/accept')
-  acceptLink(@Body() dto: AcceptInviteLinkDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+  async acceptLink(@Body() dto: AcceptInviteLinkDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
+    await this.throttle.hit(RULES.tokenIp, ip);
     return this.invites.acceptLink(dto, { userAgent: ua, ip });
   }
 }

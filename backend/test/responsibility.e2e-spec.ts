@@ -40,12 +40,12 @@ describe('ТЗ-30 — просрочка по ответственности (e2
 
   it('сдал на тестирование — не его просрочка; вернули — окно доработки; тип колонки руками', async () => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Ответственность', email: `rs_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' })
+      .send({ acceptPrivacy: true, tenantName: 'Ответственность', email: `rs_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис' })
       .expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `rs_m_${uniq()}@t.test`;
-    const sergeyUser = (await http.post('/api/users').set(O).send({ email, fullName: 'Сергей', password: 'password123', role: 'member' }).expect(201)).body.data;
-    const S = H((await http.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken);
+    const sergeyUser = (await http.post('/api/users').set(O).send({ email, fullName: 'Сергей', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const S = H((await http.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
 
     const project = (await http.post('/api/projects').set(O).send({ name: 'Релиз' }).expect(201)).body.data;
     const board = (await http.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;

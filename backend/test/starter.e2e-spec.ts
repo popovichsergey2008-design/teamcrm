@@ -31,7 +31,7 @@ describe('Первый проект от Qevo-бота (e2e)', () => {
 
   async function owner() {
     const o = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Старт', email: `start_${uniq()}@t.test`, password: 'password123', fullName: 'Борис' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Старт', email: `start_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис' }).expect(201)).body.data;
     return { O: H(o.accessToken), userId: String(o.user.id) };
   }
 

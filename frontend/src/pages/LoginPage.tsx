@@ -6,14 +6,19 @@ import { SocialButtons } from '../components/SocialButtons';
 import { lazyComponent } from '../lib/lazy';
 // галочки согласий нужны только при регистрации — первый экран входа без них легче (#4680)
 const PolicyCheck = lazyComponent(() => import('../components/legal/PolicyCheck').then((m) => m.PolicyCheck));
+// «Забыли пароль?» и код второго фактора нужны редко — тоже лениво
+const ForgotPasswordForm = lazyComponent(() => import('../components/auth/AuthSteps').then((m) => m.ForgotPasswordForm));
+const MfaStep = lazyComponent(() => import('../components/auth/AuthSteps').then((m) => m.MfaStep));
 
 export function LoginPage() {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const { login, register, mfaPending } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenantName, setTenantName] = useState('');
   const [fullName, setFullName] = useState('');
+  /** Поле-ловушка для ботов: скрыто от людей, бот заполняет его вместе со всеми. */
+  const [website, setWebsite] = useState('');
   /** #4675: согласие с Политикой конфиденциальности — только для регистрации. */
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState(authNotice);
@@ -25,7 +30,7 @@ export function LoginPage() {
     setBusy(true);
     try {
       if (mode === 'login') await login(email, password);
-      else await register({ tenantName, email, password, fullName, acceptPrivacy: agreed });
+      else await register({ tenantName, email, password, fullName, acceptPrivacy: agreed, website });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Что-то пошло не так');
     } finally {
@@ -33,17 +38,34 @@ export function LoginPage() {
     }
   }
 
+  const head = (sub: string) => (
+    <>
+      {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
+      <div className="auth-logo">
+        <Logo size={88} />
+        <span className="logo-word">QEVO</span>
+      </div>
+      <p className="dim auth-sub">{sub}</p>
+    </>
+  );
+
+  if (mfaPending || mode === 'forgot') {
+    return (
+      <div className="center-screen">
+        <div className="card auth-card">
+          {head(mfaPending ? 'Подтвердите вход' : 'Смена пароля')}
+          {mfaPending
+            ? <MfaStep />
+            : <ForgotPasswordForm initialEmail={email} onBack={() => { setMode('login'); setError(''); }} />}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="center-screen">
       <form className="card auth-card" onSubmit={submit}>
-        {/* Первое, что видит человек. Знак крупнее слова — его и запоминают. */}
-        <div className="auth-logo">
-          <Logo size={88} />
-          <span className="logo-word">QEVO</span>
-        </div>
-        <p className="dim auth-sub">
-          {mode === 'login' ? 'Вход в систему' : 'Регистрация организации'}
-        </p>
+        {head(mode === 'login' ? 'Вход в систему' : 'Регистрация организации')}
 
         {mode === 'register' && (
           <>
@@ -55,23 +77,31 @@ export function LoginPage() {
               <label>Ваше имя</label>
               <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
             </div>
+            <input
+              className="auth-trap" tabIndex={-1} autoComplete="off" aria-hidden="true"
+              name="website" value={website} onChange={(e) => setWebsite(e.target.value)}
+            />
           </>
         )}
 
         <div className="field">
           <label>Email</label>
-          <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
         <div className="field">
           <label>Пароль</label>
           <input
             className="input"
             type="password"
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
           />
+          {mode === 'register' && (
+            <span className="dim" style={{ fontSize: 12 }}>Не короче 8 символов. Лучше фраза из нескольких слов, чем «Qwerty1!».</span>
+          )}
         </div>
 
         {mode === 'register' && <PolicyCheck checked={agreed} onChange={setAgreed} />}
@@ -85,11 +115,10 @@ export function LoginPage() {
         {/* Кнопки провайдеров появятся, только когда на сервере будут ключи. */}
         <SocialButtons acceptPrivacy={agreed} onAcceptPrivacy={setAgreed} />
 
-        {/* писем система не шлёт, поэтому честно: ссылку на смену пароля выдаёт владелец */}
         {mode === 'login' && (
-          <div className="dim" style={{ fontSize: 12, marginTop: 10, textAlign: 'center' }}>
-            Забыли пароль? Попросите владельца организации — в разделе «Команда» он выдаст вам ссылку на смену пароля.
-          </div>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm auth-toggle" onClick={() => { setMode('forgot'); setError(''); }}>
+            Забыли пароль?
+          </button>
         )}
 
         <button

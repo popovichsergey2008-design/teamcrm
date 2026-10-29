@@ -50,11 +50,11 @@ describe('Итоги клиенту в Telegram (e2e)', () => {
 
   async function org() {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Студия Луч', email: `ctg_${uniq()}@t.test`, password: 'password123', fullName: 'Борис Петров' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Студия Луч', email: `ctg_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Борис Петров' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const email = `ctgm_${uniq()}@t.test`;
-    await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'password123', role: 'member' }).expect(201);
-    const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+    await http$.post('/api/users').set(O).send({ email, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
+    const tok = (await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
     const tenantId = String(owner.user.tenantId);
     const client = await db.one<{ id: string }>(`INSERT INTO clients (tenant_id, name) VALUES ($1, 'Банк Север') RETURNING id::text`, [tenantId]);
     await db.query(`INSERT INTO client_contacts (tenant_id, client_id, first_name, email, is_primary) VALUES ($1, $2, 'Ирина', 'irina@bank.test', TRUE)`,

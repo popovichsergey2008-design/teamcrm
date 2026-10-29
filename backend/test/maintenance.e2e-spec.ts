@@ -42,13 +42,13 @@ describe('Уборка брошенного (e2e)', () => {
 
   const org = async (name: string) => {
     const owner = (await http.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: name, email: `z_${uniq()}@t.test`, password: 'password123', fullName: 'Владелец' })
+      .send({ acceptPrivacy: true, tenantName: name, email: `z_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
     const email = `z_m_${uniq()}@t.test`;
     await http.post('/api/users').set(H(owner.accessToken))
-      .send({ email, fullName: 'Сотрудник', password: 'password123', role: 'member' }).expect(201);
+      .send({ email, fullName: 'Сотрудник', password: 'Test-pass-2026', role: 'member' }).expect(201);
     const mateToken = (await http.post('/api/auth/login')
-      .send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      .send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
     const project = (await http.post('/api/projects').set(H(owner.accessToken))
       .send({ name: `Проект ${name}` }).expect(201)).body.data;
     return { owner, mateToken, project, tenantId: String(owner.user.tenantId) };

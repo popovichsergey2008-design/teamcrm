@@ -37,7 +37,7 @@ describe('Enhancements v1 — Task card (e2e)', () => {
     jwt = app.get(JwtService);
     await app.listen(0, '0.0.0.0');
     http = request(`http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`);
-    const reg = await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Card', email: `o_${uniq()}@t.test`, password: 'password123', fullName: 'Owner' }).expect(201);
+    const reg = await http.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Card', email: `o_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Owner' }).expect(201);
     token = reg.body.data.accessToken;
     tenantId = reg.body.data.user.tenantId;
     projectId = (await http.post('/api/projects').set(A()).send({ name: 'CardP' }).expect(201)).body.data.id;

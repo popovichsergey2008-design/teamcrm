@@ -39,12 +39,12 @@ describe('Ответ ИИ в обсуждении задачи (e2e)', () => {
 
   it('спасибо правилами, без ключа — понятный текст, чужая задача — 404', async () => {
     const owner = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'ИИ-ответ', email: `air_${uniq()}@t.test`, password: 'password123', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'ИИ-ответ', email: `air_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Постановщик Пётр' }).expect(201)).body.data;
     const O = H(owner.accessToken);
     const mk = async (name: string) => {
       const email = `airm_${uniq()}@t.test`;
-      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'password123', role: 'member' }).expect(201)).body.data;
-      const tok = (await http$.post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.data.accessToken;
+      const u = (await http$.post('/api/users').set(O).send({ email, fullName: name, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+      const tok = (await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken;
       return { id: String(u.id), H: H(tok) };
     };
     const nikita = await mk('Никита Адаменко');
@@ -83,7 +83,7 @@ describe('Ответ ИИ в обсуждении задачи (e2e)', () => {
 
     // задача другой компании — 404
     const alien = (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `aira_${uniq()}@t.test`, password: 'password123', fullName: 'Чужой' }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName: 'Чужие', email: `aira_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Чужой' }).expect(201)).body.data;
     await http$.post(`/api/tasks/${task.id}/ai-reply`).set(H(alien.accessToken)).send({ kind: 'thanks' }).expect(404);
   });
 });

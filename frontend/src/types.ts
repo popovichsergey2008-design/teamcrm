@@ -19,6 +19,10 @@ export interface User {
   platformRole?: 'support' | 'support_admin' | 'engineer' | 'incident_manager' | 'admin' | null;
   /** Отделы и группы человека. Приходят из GET /users; в токене авторизации их нет. */
   groups?: { id: string; name: string; kind: string }[];
+  /** Почта подтверждена. false — новая почта ждёт ссылку из письма (плашка сверху). */
+  emailVerified?: boolean;
+  /** Включён вход по коду из приложения. */
+  mfaEnabled?: boolean;
   /** #1562: временный вход как тестовый сотрудник (только по допуску на сервере). */
   qaSwitch?: { canSwitch: boolean; targetId?: string; targetName?: string; actingAs?: { actorName: string } };
   /** Путь к аватару (`/api/files/:id`) — файл лежит за авторизацией, тянется через Avatar. */
@@ -72,7 +76,15 @@ export interface AuthProviders {
  * Пришедшему впервые сервер не выдаёт сессию, а просит назвать организацию: название
  * попадёт в шапку, в письма и в приглашения, придумывать его за человека нельзя.
  */
-export type SocialAuthResult = AuthResult | { needsWorkspace: true; email: string; fullName: string };
+/** Пароль верный, но включён второй фактор: сессии ещё нет, нужен код из приложения. */
+export interface MfaChallenge {
+  mfaRequired: true;
+  mfaToken: string;
+}
+export type LoginResponse = AuthResult | MfaChallenge;
+export const isMfaChallenge = (r: unknown): r is MfaChallenge => !!r && (r as MfaChallenge).mfaRequired === true;
+
+export type SocialAuthResult = LoginResponse | { needsWorkspace: true; email: string; fullName: string };
 
 /** Воронка онбординга в консоли вендора (ТЗ-11): докуда доходят новые организации. */
 export interface FunnelDurations {

@@ -34,10 +34,10 @@ describe('Вход как тестовый сотрудник (e2e)', () => {
 
   const register = async (tenantName: string, fullName: string) =>
     (await http$.post('/api/auth/register')
-      .send({ acceptPrivacy: true, tenantName, email: `qa_${uniq()}@t.test`, password: 'password123', fullName }).expect(201)).body.data;
+      .send({ acceptPrivacy: true, tenantName, email: `qa_${uniq()}@t.test`, password: 'Test-pass-2026', fullName }).expect(201)).body.data;
   const staff = async (token: string, fullName: string) =>
     (await http$.post('/api/users').set(H(token))
-      .send({ email: `qas_${uniq()}@t.test`, fullName, password: 'password123', role: 'member' }).expect(201)).body.data;
+      .send({ email: `qas_${uniq()}@t.test`, fullName, password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
   const allow = (tenantId: string, userId: string, targetId: string) =>
     db.query(`INSERT INTO qa_switch_access (tenant_id, user_id, target_user_id) VALUES ($1,$2,$3)`, [tenantId, userId, targetId]);
 
@@ -56,7 +56,7 @@ describe('Вход как тестовый сотрудник (e2e)', () => {
     await allow(tenantId, owner.user.id, qa.id);
 
     // у коллеги строки нет — у него по-прежнему ничего
-    const col = (await http$.post('/api/auth/login').send({ email: colleague.email, password: 'password123' }).expect(201)).body.data;
+    const col = (await http$.post('/api/auth/login').send({ email: colleague.email, password: 'Test-pass-2026' }).expect(201)).body.data;
     expect((await http$.get('/api/me').set(H(col.accessToken)).expect(200)).body.data.qaSwitch.canSwitch).toBe(false);
     await http$.post('/api/auth/qa-switch').set(H(col.accessToken)).send({ targetUserId: qa.id }).expect(403);
 
@@ -78,7 +78,7 @@ describe('Вход как тестовый сотрудник (e2e)', () => {
     await http$.post('/api/auth/switch-org').set(H(as.accessToken)).send({ tenantId }).expect(403);
     await http$.post('/api/auth/organizations').set(H(as.accessToken)).send({ name: 'Побег' }).expect(403);
     await http$.post('/api/me/password').set(H(as.accessToken))
-      .send({ currentPassword: 'password123', newPassword: 'password456' }).expect(403);
+      .send({ currentPassword: 'Test-pass-2026', newPassword: 'password456' }).expect(403);
 
     // обновление токена сохраняет пометку «кто на самом деле»
     const r = (await http$.post('/api/auth/refresh').send({ refreshToken: as.refreshToken }).expect(201)).body.data;

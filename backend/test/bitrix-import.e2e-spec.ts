@@ -150,7 +150,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
 
   it('подключение → проекты → импорт доски + задач + комментариев; идемпотентно', async () => {
     ownerEmail = `own_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Имп', email: ownerEmail, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Имп', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Анна Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
 
     // connect
@@ -266,7 +266,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
   });
 
   it('нельзя подключить не-https не-localhost и дубль портала', async () => {
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Имп2', email: `own_${uniq()}@t.test`, password: 'password123', fullName: 'Б' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'Имп2', email: `own_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Б' }).expect(201)).body.data;
     const tok = reg.accessToken;
     await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: 'http://evil.example.com/rest/1/x/' }).expect(400);
     // первый ок, второй тот же портал → 409
@@ -276,7 +276,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
 
   it('задачи вне проектов: ИИ-раскладка по проектам + общая Живая лента в «Входящие»', async () => {
     ownerEmail = `ung_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'ИмпUng', email: ownerEmail, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'ИмпUng', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Анна Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const conn = (await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201)).body.data;
     const cid = conn.id;
@@ -361,7 +361,7 @@ describe('Enhancements v1 — Bitrix import (e2e)', () => {
 
   it('удаление импортированного проекта целиком (лента/refs/чанки не блокируют)', async () => {
     ownerEmail = `del_${uniq()}@t.test`;
-    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'ИмпDel', email: ownerEmail, password: 'password123', fullName: 'Анна Босс' }).expect(201)).body.data;
+    const reg = (await http$.post('/api/auth/register').send({ acceptPrivacy: true, tenantName: 'ИмпDel', email: ownerEmail, password: 'Test-pass-2026', fullName: 'Анна Босс' }).expect(201)).body.data;
     const tok = reg.accessToken;
     const conn = (await http$.post('/api/integrations/bitrix/connections').set(H(tok)).send({ webhookUrl: webhookBase }).expect(201)).body.data;
     const started = (await http$.post(`/api/integrations/bitrix/connections/${conn.id}/import`).set(H(tok)).send({ projectExternalIds: ['10'] }).expect(201)).body.data;

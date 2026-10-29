@@ -15,11 +15,16 @@ import { QaSwitchRepository } from './qa-switch.repository';
 import { QaSwitchService } from './qa-switch.service';
 import { TelegramWebAppController } from './telegram-webapp.controller';
 import { TelegramWebAppService } from './telegram-webapp.service';
+import { AccountSecurityService } from './account-security.service';
+import { AuthSecurityRepository } from './auth-security.repository';
+import { AuthThrottleService } from './auth-throttle.service';
+import { IntegrationCryptoService } from '../integrations/crypto.service';
 
 @Module({
   imports: [TenantsModule, UsersModule, TagsModule],
   controllers: [AuthController, SessionsController, TelegramWebAppController],
-  providers: [AuthService, SocialService, SocialsRepository, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService, QaSwitchRepository, QaSwitchService, TelegramWebAppService],
-  exports: [AuthService, RefreshTokenRepository, SessionsService, QaSwitchService],
+  providers: [AuthService, SocialService, SocialsRepository, RefreshTokenRepository, PasswordResetService, PasswordResetRepository, SessionsService, QaSwitchRepository, QaSwitchService, TelegramWebAppService,
+    AccountSecurityService, AuthSecurityRepository, AuthThrottleService, IntegrationCryptoService],
+  exports: [AuthService, RefreshTokenRepository, SessionsService, QaSwitchService, AccountSecurityService, AuthThrottleService],
 })
 export class AuthModule {}
