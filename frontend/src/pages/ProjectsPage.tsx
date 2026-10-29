@@ -84,6 +84,29 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
     archived: (rows ?? []).filter((p) => p.status === 'archived').length,
   }), [rows, mineId]);
 
+  /** Сколько задач с новым по всем живым проектам — для кнопки «Прочитать всё». */
+  const unreadTasks = useMemo(
+    () => (rows ?? []).filter((p) => p.status !== 'archived').reduce((n, p) => n + Number(p.unread ?? 0), 0),
+    [rows],
+  );
+  const [readingAll, setReadingAll] = useState(false);
+  /**
+   * #4691: за месяцы у постановщика копятся сотни старых событий — открывать каждую
+   * карточку ради того, чтобы погасить цифру, никто не станет.
+   */
+  const readAll = async () => {
+    setReadingAll(true);
+    try {
+      await api.markAllTasksRead();
+      load();
+      window.dispatchEvent(new CustomEvent('teamcrm:tasks-changed')); // бейдж в меню — сразу
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не получилось');
+    } finally {
+      setReadingAll(false);
+    }
+  };
+
   /** Срок человеческой строкой: в таблице важен день, а не минуты. */
   const deadline = (at: string | null) => (at
     ? new Date(at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
@@ -102,6 +125,16 @@ export function ProjectsPage({ onOpen }: { onOpen: (projectId: string) => void }
           >
             <Icon name="check-circle" size={14} /> Общие задачи
           </button>
+          {unreadTasks > 0 && (
+            <button
+              className="ui-btn ui-btn-ghost ui-btn-sm"
+              onClick={() => void readAll()}
+              disabled={readingAll}
+              title="Погасить синие цифры: всё новое в ваших задачах — прочитано"
+            >
+              <Icon name="check-check" size={14} /> Прочитать всё · {unreadTasks}
+            </button>
+          )}
           <input
             className="input projects-search"
             value={q}

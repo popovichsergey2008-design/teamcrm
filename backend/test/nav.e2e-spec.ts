@@ -180,5 +180,18 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
 
     await http.post(`/api/projects/${old.id}/archive`).set(H(owner.accessToken)).expect(201);
     expect((await counters(mem.accessToken)).tasks!.unread).toBe(0);
+
+    // #4691: цифра — число задач с новым, а не событий; «прочитать всё» гасит разом
+    const t2 = (await http.post('/api/tasks').set(H(owner.accessToken))
+      .send({ projectId: proj.id, title: 'Второе', assigneeId: mem.user.id }).expect(201)).body.data;
+    for (const body of ['раз', 'два', 'три']) {
+      await http.post(`/api/tasks/${task.id}/comments`).set(H(owner.accessToken)).send({ body }).expect(201);
+    }
+    await http.post(`/api/tasks/${t2.id}/comments`).set(H(owner.accessToken)).send({ body: 'и тут' }).expect(201);
+    expect((await counters(mem.accessToken)).tasks!.unread).toBe(2);
+    const projects = (await http.get('/api/projects').set(H(mem.accessToken)).expect(200)).body.data;
+    expect(Number(projects.find((p: any) => String(p.id) === String(proj.id)).unread)).toBe(2);
+    expect((await http.post('/api/tasks/read-all').set(H(mem.accessToken)).expect(201)).body.data.read).toBe(2);
+    expect((await counters(mem.accessToken)).tasks!.unread).toBe(0);
   });
 });

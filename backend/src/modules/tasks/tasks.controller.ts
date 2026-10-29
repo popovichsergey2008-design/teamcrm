@@ -102,6 +102,12 @@ export class TasksController {
     return this.tasks.clearRecurrence(user.tenantId, id, user.userId);
   }
 
+  /** «Отметить всё прочитанным» (#4691): все мои задачи или задачи одного проекта. */
+  @Post('read-all')
+  readAll(@CurrentUser() user: AuthUser, @Query('projectId') projectId?: string) {
+    return this.tasks.markAllRead(user.tenantId, user.userId, projectId && /^\d+$/.test(projectId) ? projectId : null);
+  }
+
   /** Карточку открыли — изменения по ней больше не новые. */
   @Post(':id/read')
   async read(@CurrentUser() user: AuthUser, @Param('id') id: string) {

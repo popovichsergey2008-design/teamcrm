@@ -15,6 +15,10 @@ import { stageSql } from './responsibility';
  *    наблюдатель или постановщик. Решение заказчика, и оно правильное: в YouGile
  *    краснеет всё подряд на доске, и на большом проекте половина карточек горит
  *    постоянно — смотреть на это перестают.
+ * 4. #4691: цифра у раздела и у проекта — число ЗАДАЧ с новым, а не событий. Событий
+ *    за пару недель набегает сотни (каждый перенос карточки — событие), и «99+» у
+ *    постановщика десятка задач ничего не говорило. На самой карточке — по-прежнему
+ *    число событий: там видно, сколько всего случилось по этой задаче.
  * 3. Задача в «Готово» (закрыта или лежит в колонке типа «готово») и удалённая — не
  *    горят (заказчик 21.10): «перенёс в Готово», «срок прошёл» по сделанной работе —
  *    не новость, а у разработчика из-за этого висело «99+». Задачу вернули из
@@ -57,6 +61,27 @@ export class TaskReadsRepository {
     );
   }
 
+  /**
+   * «Отметить всё прочитанным» (#4691): все мои живые задачи с новым — разом, или только
+   * в одном проекте. Нужна тому, у кого за месяцы накопились сотни старых событий:
+   * открывать каждую карточку ради того, чтобы погасить цифру, никто не станет.
+   */
+  async markAllRead(tenantId: string, userId: string, projectId: string | null): Promise<number> {
+    const rows = await this.db.many<{ task_id: string }>(
+      `INSERT INTO task_reads (tenant_id, task_id, user_id, last_seen_at)
+       SELECT DISTINCT $1::bigint, a.task_id, $2::bigint, now()
+         FROM task_activity a
+         JOIN tasks t ON t.id = a.task_id
+    LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
+        WHERE a.tenant_id = $1 AND ($3::bigint IS NULL OR t.project_id = $3::bigint)
+          AND ${MINE} AND ${ALIVE} AND ${FRESH}
+       ON CONFLICT (task_id, user_id) DO UPDATE SET last_seen_at = now()
+       RETURNING task_id::text`,
+      [tenantId, userId, projectId],
+    );
+    return rows.length;
+  }
+
   /** Непрочитанное по задачам одного проекта: доска раскрашивается одним запросом. */
   byProject(tenantId: string, userId: string, projectId: string): Promise<{ task_id: string; n: string }[]> {
     return this.db.many(
@@ -79,7 +104,7 @@ export class TaskReadsRepository {
    */
   byProjects(tenantId: string, userId: string): Promise<{ project_id: string; n: string }[]> {
     return this.db.many(
-      `SELECT t.project_id, COUNT(*) AS n
+      `SELECT t.project_id, COUNT(DISTINCT a.task_id) AS n
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
@@ -118,7 +143,7 @@ export class TaskReadsRepository {
    */
   async total(tenantId: string, userId: string): Promise<number> {
     const row = await this.db.one<{ n: string }>(
-      `SELECT COUNT(*) AS n
+      `SELECT COUNT(DISTINCT a.task_id) AS n
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'

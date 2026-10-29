@@ -84,6 +84,11 @@ export class TasksService {
    * Ставится по открытию карточки: увидеть изменение можно, только открыв задачу.
    * Гасить счётчик прокруткой доски нельзя — он погас бы сам собой, ничего не показав.
    */
+  /** Всё новое по моим задачам — прочитано (#4691). projectId — только в одном проекте. */
+  async markAllRead(tenantId: string, userId: string, projectId: string | null): Promise<{ read: number }> {
+    return { read: await this.reads.markAllRead(tenantId, userId, projectId) };
+  }
+
   async markRead(tenantId: string, taskId: string, userId: string): Promise<void> {
     await this.reads.markRead(tenantId, taskId, userId);
     void this.push.taskSeen(tenantId, taskId, userId);
