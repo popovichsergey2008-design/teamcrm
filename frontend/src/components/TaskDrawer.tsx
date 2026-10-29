@@ -131,6 +131,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const lastServerDeadline = useRef(initialDeadline);
   /** Что ответила кнопка «Сделал»: без строки на экране непонятно, случилось ли хоть что-то. */
   const [shiftNote, setShiftNote] = useState('');
+  /** Просьбу о переносе решили здесь — панель прячем, не ждём перечитывания карточки (#4695). */
+  const [shiftDecided, setShiftDecided] = useState(false);
+  useEffect(() => { setShiftDecided(false); }, [task.id, task.deadline_shift_to]);
   /** Куда переехала задача — строкой под полем: перенос не должен проходить молча. */
   const [movedNote, setMovedNote] = useState('');
   /** Проекты для переноса: только те, которые человек видит. */
@@ -408,7 +411,12 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const decideShift = async (approve: boolean) => {
     setErr('');
     try {
-      await api.decideDeadlineShift(task.id, approve);
+      const res = await api.decideDeadlineShift(task.id, approve);
+      // #4695: панель решения прячем сразу — не дожидаясь, пока карточка перечитается
+      setShiftDecided(true);
+      setShiftNote(approve
+        ? `Срок перенесён${res?.deadline_at ? ` на ${shiftLabel(res.deadline_at)}` : ''}.`
+        : 'Срок оставлен прежним.');
       onRefresh();
     } catch (e) {
       setErr((e as Error).message);
@@ -1016,7 +1024,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             {tplNote && <div className="tv2-note"><Icon name="check" size={13} /> {tplNote}</div>}
 
             {/* Просьба перенести срок — по тем же правилам, что приёмка: видно всем, кнопки — тому, кто решает. */}
-            {task.deadline_shift_to && (
+            {task.deadline_shift_to && !shiftDecided && (
               <div className="tv2-callout tv2-callout-warn tv2-callout-block">
                 <div className="tv2-callout-head">
                   <Icon name="calendar" size={15} />

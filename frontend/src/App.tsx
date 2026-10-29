@@ -560,10 +560,11 @@ export function App() {
   // настройки эффектов (ТЗ-23) — из аккаунта, общие на все устройства
   setEffectsPrefs(user?.uiPrefs?.effects);
   // обучение (#4605): что пройдено — из аккаунта, общее на все устройства
-  seedTour(user?.id ? String(user.id) : null, user?.uiPrefs?.tour);
+  seedTour(user?.id ? String(user.id) : null, user?.uiPrefs ? (user.uiPrefs.tour ?? {}) : undefined);
   const tourWanted = useTourWanted();
   // #4632: бот начат и не закрыт — продолжаем его и после перезагрузки
-  const welcome = useWelcome(user?.uiPrefs?.welcome?.done && !user.uiPrefs.welcome.bot);
+  // настроек ещё нет (#4696) — первый запуск не показываем: неизвестно, пройден ли он
+  const welcome = useWelcome(!user?.uiPrefs || (user.uiPrefs.welcome?.done && !user.uiPrefs.welcome.bot));
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе

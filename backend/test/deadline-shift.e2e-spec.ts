@@ -78,8 +78,12 @@ describe('перенос срока «Сделал» (e2e)', () => {
     expect(new Date(done.deadline_at).toISOString()).toBe(to.toISOString());
     expect(done.deadline_shift_to).toBeNull();
 
-    // второй раз подтверждать нечего
-    await http.post(`/api/tasks/${task.id}/deadline-shift/decide`).set(O).send({ approve: true }).expect(409);
+    // #4695: повторное «Подтвердить» (второе нажатие, вторая вкладка) — не ошибка, срок тот же
+    const again = (await http.post(`/api/tasks/${task.id}/deadline-shift/decide`).set(O)
+      .send({ approve: true }).expect(201)).body.data;
+    expect(new Date(again.deadline_at).toISOString()).toBe(to.toISOString());
+    // но решать по-прежнему может только постановщик
+    await http.post(`/api/tasks/${task.id}/deadline-shift/decide`).set(M).send({ approve: true }).expect(403);
   });
 
   it('отказ оставляет прежний срок', async () => {

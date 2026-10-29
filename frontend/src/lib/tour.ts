@@ -21,8 +21,12 @@ const START = 'qevo:tour';
 let prefs: TourPrefs = {};
 let seededFor: string | null = null;
 
+/**
+ * `from` undefined — настройки человека ещё не пришли (ответ входа их не несёт): не
+ * засеваем, иначе пустое «ничего не пройдено» запустило бы обучение заново (#4696).
+ */
 export function seedTour(userId: string | null | undefined, from: TourPrefs | undefined): void {
-  if (!userId || seededFor === userId) return;
+  if (!userId || from === undefined || seededFor === userId) return;
   seededFor = userId;
   prefs = { ...(from ?? {}) };
 }
@@ -30,7 +34,7 @@ export function seedTour(userId: string | null | undefined, from: TourPrefs | un
 export const tourPrefs = (): TourPrefs => prefs;
 export const tourDone = (key: TourKey): boolean => (prefs.done ?? []).includes(key);
 /** Есть ли что показать самому — тогда и стоит грузить показ. */
-export const tourPending = (): boolean => prefs.auto !== false && TOUR_KEYS.some((k) => !tourDone(k));
+export const tourPending = (): boolean => seededFor !== null && prefs.auto !== false && TOUR_KEYS.some((k) => !tourDone(k));
 
 function save(next: TourPrefs) {
   prefs = next;

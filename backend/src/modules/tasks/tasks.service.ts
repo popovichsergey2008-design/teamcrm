@@ -976,8 +976,13 @@ export class TasksService {
   ): Promise<TaskRow> {
     const task = await this.repo.findById(tenantId, id);
     if (!task) throw AppException.notFound('Task not found');
-    if (!task.deadline_shift_to) throw AppException.conflict('Эта задача не ждёт переноса срока');
     this.assertCanDecide(task, actor);
+    /*
+      #4695: просьбу уже решили (второе нажатие, вторая вкладка, «Сделал — срок на среду»
+      самого постановщика) — это не ошибка: результат тот, которого человек и хотел.
+      Раньше здесь был отказ 409, и под красной плашкой приходила служба заботы.
+    */
+    if (!task.deadline_shift_to) return task;
 
     const to = new Date(task.deadline_shift_to as unknown as string);
     const asked = task.deadline_shift_by ? String(task.deadline_shift_by) : null;

@@ -72,6 +72,8 @@ export class TaskReadsRepository {
        SELECT DISTINCT $1::bigint, a.task_id, $2::bigint, now()
          FROM task_activity a
          JOIN tasks t ON t.id = a.task_id
+         -- то же, что считает бейдж: архивные проекты в нём не видны — и не гасим их
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
     LEFT JOIN task_reads r ON r.task_id = a.task_id AND r.user_id = $2
         WHERE a.tenant_id = $1 AND ($3::bigint IS NULL OR t.project_id = $3::bigint)
           AND ${MINE} AND ${ALIVE} AND ${FRESH}

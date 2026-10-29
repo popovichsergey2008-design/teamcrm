@@ -79,23 +79,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SIGNED_OUT_EVENT, onSignedOut);
   }, []);
 
-  const take = (r: AuthResult) => {
+  /*
+    #4696: в ответе входа нет личных настроек (ui_prefs) — а в них записано, какое
+    обучение пройдено. Без них вход в новой вкладке показывал обучение заново.
+    Поэтому после входа сразу берём полный профиль, как при открытии страницы.
+  */
+  const take = async (r: AuthResult) => {
     setMfaToken(null);
     tokens.set(r.accessToken, r.refreshToken);
-    setUser(r.user);
+    const full = await api.me().catch(() => null);
+    setUser(full ?? r.user);
     setOrganizations(r.organizations ?? []);
   };
 
   const applySession = (r: LoginResponse) => {
     if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
-    else take(r);
+    else void take(r);
   };
 
-  const login = async (email: string, password: string) => applySession(await api.login({ email, password }));
+  const login = async (email: string, password: string) => {
+    const r = await api.login({ email, password });
+    if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
+    else await take(r);
+  };
 
   const completeMfa = async (code: string) => {
     if (!mfaToken) throw new Error('Войдите заново');
-    take(await api.loginMfa(mfaToken, code));
+    await take(await api.loginMfa(mfaToken, code));
   };
 
   const register = async (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean; website?: string }) => {
@@ -109,7 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const r = await api.switchOrg(tenantId);
     tokens.set(r.accessToken, r.refreshToken);
     disconnectSocket(); // переподключим сокет под новый токен/организацию
-    setUser(r.user);
+    // настройки (и пройденное обучение) у каждого членства свои — берём их сразу (#4696)
+    setUser((await api.me().catch(() => null)) ?? r.user);
   };
 
   const createOrg = async (name: string) => {
