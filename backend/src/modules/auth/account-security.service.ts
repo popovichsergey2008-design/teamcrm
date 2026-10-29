@@ -186,6 +186,9 @@ export class AccountSecurityService {
     if (p.typ !== 'mfa') throw AppException.unauthorized('Время на ввод кода вышло — войдите заново');
     await this.throttle.check(RULES.mfaChallenge, p.jti);
     await this.throttle.check(RULES.mfaAccount, p.acc);
+    // использованный токен отбиваем ДО проверки кода: иначе резервный код сгорел бы впустую
+    const used = await this.redis.client.exists(`mfa:used:${p.jti}`).catch(() => 0);
+    if (used) throw AppException.unauthorized('Время на ввод кода вышло — войдите заново');
 
     const viaRecovery = await this.checkCode(p.acc, code);
     if (viaRecovery === null) {

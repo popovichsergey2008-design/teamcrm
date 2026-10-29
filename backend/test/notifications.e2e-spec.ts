@@ -37,9 +37,10 @@ describe('Почтовые уведомления (e2e)', () => {
   });
   afterAll(async () => app?.close());
 
+  // письма входа (подтверждение почты новому владельцу) — не уведомления о задачах
   const readMail = (email: string) =>
     db.many<{ subject: string; event_key: string; body_text: string }>(
-      `SELECT subject, event_key, body_text FROM mail_outbox WHERE to_email=$1 ORDER BY id`, [email]);
+      `SELECT subject, event_key, body_text FROM mail_outbox WHERE to_email=$1 AND event_key NOT LIKE 'auth.%' ORDER BY id`, [email]);
 
   /**
    * Письмо ставится в очередь, не задерживая ответ пользователю, поэтому сразу
