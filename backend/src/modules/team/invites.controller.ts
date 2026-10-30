@@ -6,6 +6,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { InvitesService } from './invites.service';
 import { AccountSecurityService } from '../auth/account-security.service';
 import { AuthThrottleService, RULES } from '../auth/auth-throttle.service';
+import { BillingService } from '../billing/billing.service';
 
 class CreateInviteDto {
   @IsEmail() email!: string;
@@ -52,6 +53,7 @@ export class InvitesController {
     /** Приглашать можно только с подтверждённой почтой (мастер-план релиза §13). */
     private readonly security: AccountSecurityService,
     private readonly throttle: AuthThrottleService,
+    private readonly billing: BillingService,
   ) {}
 
   @ApiBearerAuth()
@@ -66,6 +68,7 @@ export class InvitesController {
   @Roles('owner', 'manager')
   async create(@CurrentUser() user: AuthUser, @Body() dto: CreateInviteDto) {
     await this.security.assertVerified(user.tenantId, user.userId);
+    await this.billing.assertSeat(user.tenantId);
     return this.invites.create(user.tenantId, user.userId, dto);
   }
 
@@ -80,6 +83,7 @@ export class InvitesController {
   @Roles('owner', 'manager')
   async createMany(@CurrentUser() user: AuthUser, @Body() dto: InviteManyDto) {
     await this.security.assertVerified(user.tenantId, user.userId);
+    await this.billing.assertSeat(user.tenantId, dto.emails.length);
     return this.invites.inviteMany(user.tenantId, user.userId, {
       emails: dto.emails, role: dto.role, positionId: dto.positionId ?? null,
     });

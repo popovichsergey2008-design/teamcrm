@@ -1,10 +1,30 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { PLATFORM_ROLES, PlatformService, ROLE_TITLES } from './platform.service';
 import { AiPlanService } from '../ai-plan/ai-plan.service';
+import { BillingService } from '../billing/billing.service';
+
+class BillingPlanDto {
+  @IsString() @Matches(/^[a-z0-9_-]{2,32}$/) code!: string;
+  @IsString() @MaxLength(80) title!: string;
+  @IsNumber() @Min(1) priceRub!: number;
+  @IsOptional() @IsInt() @Min(1) maxMembers?: number | null;
+  @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @IsInt() sortOrder?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}
+class TenantBillingDto {
+  /** «Вечный» доступ без оплаты (свои, партнёры, работавшие до оплаты). */
+  @IsOptional() @IsBoolean() complimentary?: boolean;
+  /** Продлить вручную до даты (ISO) — например, оплатили по счёту. */
+  @IsOptional() @IsString() periodEnd?: string;
+  @IsOptional() @IsString() plan?: string;
+  /** Продлить пробный период до даты (ISO). */
+  @IsOptional() @IsString() trialEndsAt?: string;
+}
 
 class StaffDto {
   @IsString() userId!: string;
@@ -41,7 +61,7 @@ class AiPlanDto {
 @ApiBearerAuth()
 @Controller('platform')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService, private readonly aiPlans: AiPlanService) {}
+  constructor(private readonly platform: PlatformService, private readonly aiPlans: AiPlanService, private readonly billing: BillingService) {}
 
   /** Кто я для платформы: по этому фронт решает, что вообще показывать в консоли. */
   @Get('me')
@@ -118,6 +138,38 @@ export class PlatformController {
         webCredits: Number(t.web_credits ?? 0), webUsed: Number(t.web_used ?? 0), upgradeRequestedAt: t.upgrade_requested_at,
       } : null,
     }));
+  }
+
+  // ── оплата: тарифы и подписки — только администратор техотдела ──
+
+  @Get('billing/plans')
+  async billingPlans(@CurrentUser() u: AuthUser) {
+    await this.platform.assertAdmin(u.userId);
+    return this.billing.plansAll();
+  }
+
+  @Post('billing/plans')
+  async saveBillingPlan(@CurrentUser() u: AuthUser, @Body() dto: BillingPlanDto) {
+    await this.platform.assertAdmin(u.userId);
+    return this.billing.savePlan({
+      code: dto.code, title: dto.title, priceRub: dto.priceRub, maxMembers: dto.maxMembers ?? null,
+      description: dto.description ?? '', sortOrder: dto.sortOrder ?? 0, isActive: dto.isActive ?? true,
+    });
+  }
+
+  @Get('tenants/:id/billing')
+  async tenantBilling(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    await this.platform.assertStaff(u.userId);
+    return this.billing.view(id);
+  }
+
+  @Post('tenants/:id/billing')
+  async setTenantBilling(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: TenantBillingDto) {
+    await this.platform.assertAdmin(u.userId);
+    const date = (v?: string) => (v ? new Date(v) : undefined);
+    return this.billing.setByVendor(id, {
+      complimentary: dto.complimentary, periodEnd: date(dto.periodEnd), planCode: dto.plan ?? null, trialEndsAt: date(dto.trialEndsAt),
+    });
   }
 
   /** Сменить тариф ИИ организации — только администратор техотдела. */

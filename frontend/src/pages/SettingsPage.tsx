@@ -16,6 +16,9 @@ import { FocusSettingsPanel } from '../components/FocusSettingsPanel';
 import { MailPanel } from '../components/MailPanel';
 import { GooglePanel } from '../components/google/GooglePanel';
 import { GuestBrandPanel } from '../components/GuestBrandPanel';
+import { lazyComponent } from '../lib/lazy';
+// оплата открывается редко — отдельным куском
+const BillingPanel = lazyComponent(() => import('../components/billing/BillingPanel').then((m) => m.default));
 import { navigate, Route } from '../lib/router';
 import { useState } from 'react';
 import { useAuth } from '../state/auth';
@@ -84,6 +87,13 @@ const CARDS: Card[] = [
     hint: 'Диск, Документы и Календарь: файлы при задачах, документы из QEVO, встречи в Google Календаре',
     icon: 'link',
     roles: ['owner', 'manager', 'member'],
+  },
+  {
+    // мастер-план релиза, этап 4: подписка компании через ЮKassa
+    tab: 'billing',
+    title: 'Тариф и оплата',
+    hint: 'Пробный период, тариф, оплата картой через ЮKassa и история платежей',
+    icon: 'building',
   },
   {
     // ТЗ-33: тариф ИИ, интернет-лимит и смена тарифа
@@ -222,6 +232,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'team' && canManage && <TeamPanel onClose={close} />}
       {route.tab === 'integrations' && role === 'owner' && <IntegrationsPanel onClose={close} />}
       {route.tab === 'ai-usage' && canManage && <AiUsagePanel onClose={close} />}
+      {route.tab === 'billing' && role !== 'client' && <BillingPanel canPay={role === 'owner'} onClose={close} />}
       {route.tab === 'ai-plan' && canManage && <AiPlanPanel canManage={role === 'owner'} onClose={close} />}
       {/* Личный ящик — у каждого свой (ТЗ-18): письма не видит никто, кроме хозяина. */}
       {route.tab === 'mail' && role !== 'client' && <MailPanel onClose={close} />}

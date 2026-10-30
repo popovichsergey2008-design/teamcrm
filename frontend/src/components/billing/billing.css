@@ -1,0 +1,10 @@
+.bil-note { margin-top: 6px; font-size: 12px; }
+.bil-plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 8px; }
+.bil-plan { display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev); }
+.bil-plan-current { border-color: var(--accent); }
+.bil-plan-title { font-weight: 700; }
+.bil-plan-price { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bil-plan-text { flex: 1; font-size: 12px; line-height: 1.45; }
+.bil-payments { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.bil-payments li { display: grid; grid-template-columns: 1fr 1fr auto 1.4fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+@media (max-width: 560px) { .bil-payments li { grid-template-columns: 1fr 1fr; } }

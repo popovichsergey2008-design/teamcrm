@@ -16,6 +16,7 @@ import {
 import { SKILLS } from '../team/skills';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser, RoleCode } from '../../common/auth/jwt.types';
+import { BillingService } from '../billing/billing.service';
 import { UsersService } from './users.service';
 import { Role } from './team-invariants';
 
@@ -46,7 +47,7 @@ class UpdateUserDto {
 @Controller('users')
 @Roles('owner', 'manager', 'member')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(private readonly users: UsersService, private readonly billing: BillingService) {}
 
   @Get()
   list(@CurrentUser() user: AuthUser) {
@@ -56,6 +57,7 @@ export class UsersController {
   @Post()
   @Roles('owner', 'manager')
   async create(@CurrentUser() user: AuthUser, @Body() dto: CreateUserDto) {
+    await this.billing.assertSeat(user.tenantId); // места по оплаченному тарифу
     const created = await this.users.createUser(user.tenantId, dto);
     // форма ответа прежняя (сотрудник), плюс честный флаг: если аккаунт уже существовал,
     // заданный пароль не применён — человек входит своим прежним

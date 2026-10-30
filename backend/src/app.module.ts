@@ -53,6 +53,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ChatAnalysisModule } from './modules/chat-analysis/chat-analysis.module';
 import { SecurityModule } from './modules/security/security.module';
 import { AiPlanModule } from './modules/ai-plan/ai-plan.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DiagModule } from './modules/diagnostics/diag.module';
 import { BitrixModule } from './modules/integrations/bitrix/bitrix.module';
@@ -151,6 +152,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     SecurityModule,
     // тарифы ИИ (ТЗ-33): что ИИ можно, интернет-кредиты
     AiPlanModule,
+    BillingModule,
     BitrixModule,
     YougileModule,
     FileImportModule,
