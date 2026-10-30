@@ -98,6 +98,7 @@ const QaSwitchBar = lazy(() => import('./components/QaSwitchBar'));
 const VerifyEmailBar = lazy(() => import('./components/auth/VerifyEmailBar'));
 const MfaGate = lazy(() => import('./components/auth/MfaGate'));
 const BillingBar = lazy(() => import('./components/billing/BillingBar'));
+const SystemNoticeBar = lazy(() => import('./components/SystemNoticeBar'));
 const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage').then((m) => ({ default: m.VerifyEmailPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const ClientPortal = lazy(() => import('./pages/ClientPortal').then((m) => ({ default: m.ClientPortal })));
@@ -731,6 +732,7 @@ export function App() {
       <main className="app-main" key={user.tenantId}>
         <OfflineBar online={offline.online} items={offline.items} summary={offline.summary} onRetry={offline.flush} />
         {user.qaSwitch?.actingAs && <Suspense fallback={null}><QaSwitchBar name={user.fullName} /></Suspense>}
+        <Suspense fallback={null}><SystemNoticeBar /></Suspense>
         {!user.platformStaff && <Suspense fallback={null}><BillingBar isOwner={user.role === 'owner'} /></Suspense>}
         {emailUnverified && !user.qaSwitch?.actingAs && (
           <Suspense fallback={null}><VerifyEmailBar email={user.email} onVerified={() => setEmailUnverified(false)} /></Suspense>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser } from '../../common/auth/decorators';
@@ -15,6 +15,12 @@ class BillingPlanDto {
   @IsOptional() @IsString() @MaxLength(500) description?: string;
   @IsOptional() @IsInt() sortOrder?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
+}
+class NoticeDto {
+  @IsString() @MaxLength(500) text!: string;
+  /** Сколько минут показывать (по умолчанию 90). */
+  @IsOptional() @IsInt() @Min(1) @Max(7 * 24 * 60) minutes?: number;
+  @IsOptional() @IsIn(['info', 'warn']) level?: 'info' | 'warn';
 }
 class TenantBillingDto {
   /** «Вечный» доступ без оплаты (свои, партнёры, работавшие до оплаты). */
@@ -138,6 +144,21 @@ export class PlatformController {
         webCredits: Number(t.web_credits ?? 0), webUsed: Number(t.web_used ?? 0), upgradeRequestedAt: t.upgrade_requested_at,
       } : null,
     }));
+  }
+
+  // ── объявление для всех пользователей (техработы) ──
+
+  @Post('notice')
+  async setNotice(@CurrentUser() u: AuthUser, @Body() dto: NoticeDto) {
+    await this.platform.assertAdmin(u.userId);
+    return this.platform.setNotice(u.userId, dto.text, dto.minutes ?? 90, dto.level ?? 'warn');
+  }
+
+  @Delete('notice')
+  async clearNotice(@CurrentUser() u: AuthUser) {
+    await this.platform.assertAdmin(u.userId);
+    await this.platform.clearNotice();
+    return { cleared: true };
   }
 
   // ── оплата: тарифы и подписки — только администратор техотдела ──

@@ -384,6 +384,20 @@ export class PlatformService implements OnModuleInit {
    * Только счётчики и последняя активность: содержимое чужих досок и переписок в
    * консоли не показывается никогда, сколько бы это ни было удобно поддержке.
    */
+  /** Объявление для всех (техработы): новое заменяет прежнее. */
+  async setNotice(userId: string, text: string, minutes: number, level: 'info' | 'warn') {
+    await this.clearNotice();
+    return this.db.one<{ id: string; ends_at: Date }>(
+      `INSERT INTO system_notices (text, level, ends_at, created_by)
+       VALUES ($1, $2, now() + ($3::int * interval '1 minute'), $4) RETURNING id::text, ends_at`,
+      [text.trim(), level, minutes, userId],
+    );
+  }
+
+  async clearNotice(): Promise<void> {
+    await this.db.query(`UPDATE system_notices SET ends_at = now() WHERE ends_at > now()`);
+  }
+
   async tenants(limit = 200) {
     const platform = await this.tenantId();
     return this.db.many<{
