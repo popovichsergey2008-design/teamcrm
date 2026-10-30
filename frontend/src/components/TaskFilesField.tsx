@@ -1,7 +1,7 @@
 import { Icon } from './Icon';
 import './task-drafts.css';
 import { humanSize } from '../lib/attachments';
-import { mergeFiles, MAX_TASK_FILE_BYTES } from '../lib/task-files';
+import { mergeFiles, tooBig } from '../lib/task-files';
 
 /**
  * Файлы к задаче, которой ещё нет (#4664): кнопка, перетаскивание, список выбранных.
@@ -24,7 +24,7 @@ export function TaskFilesField({ files, onChange, disabled, progress, hint, rest
   /** Имена файлов из черновика, которые вернуть не удалось: их нужно выбрать заново. */
   restored?: string[];
 }) {
-  const big = files.filter((f) => f.size > MAX_TASK_FILE_BYTES);
+  const big = files.filter((f) => tooBig(f));
   return (
     <div className="tff">
       <div
@@ -66,7 +66,7 @@ export function TaskFilesField({ files, onChange, disabled, progress, hint, rest
       )}
       {big.length > 0 && (
         <div className="error-text tff-note" role="alert">
-          Больше 25 МБ — сервер такие не примет: {big.map((f) => f.name).join(', ')}
+          Слишком большие — сервер такие не примет (файл до 25 МБ, видео до 400 МБ): {big.map((f) => f.name).join(', ')}
         </div>
       )}
       {!!restored?.length && (

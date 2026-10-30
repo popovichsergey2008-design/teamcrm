@@ -1,6 +1,9 @@
 /** Валидация и санитизация загружаемых файлов (Enhancements v1, Этап A). Чистые функции. */
+import { isVideo, MAX_VIDEO_BYTES } from './video-rules';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 МБ
+/** Предел по умолчанию: видео — 400 МБ (#4692, сервер его потом сожмёт), остальное — 25 МБ. */
+export const defaultMaxBytes = (contentType: string): number => (isVideo(contentType) ? MAX_VIDEO_BYTES : MAX_FILE_BYTES);
 
 const ALLOWED = new Set([
   'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff', 'image/heic',
@@ -41,7 +44,7 @@ export interface ValidationOk {
  * не переписывать.
  */
 export function validateUpload(
-  contentType: string, sizeBytes: number, maxBytes = MAX_FILE_BYTES, fileName?: string,
+  contentType: string, sizeBytes: number, maxBytes = defaultMaxBytes(contentType), fileName?: string,
 ): ValidationOk | ValidationError {
   const who = fileName ? `«${fileName}»: ` : '';
   const mb = Math.round(maxBytes / (1024 * 1024));

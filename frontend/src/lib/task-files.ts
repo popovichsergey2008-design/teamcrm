@@ -12,8 +12,15 @@ import { isAnonymousClipboardName, screenshotName } from './attachments';
  */
 export interface FileFailure { name: string; reason: string }
 
-/** Сервер принимает до 25 МБ на файл (backend files.validation): больше — не шлём зря. */
+/** Сервер принимает до 25 МБ на файл, видео — до 400 МБ (#4692, backend files.validation): больше — не шлём зря. */
 export const MAX_TASK_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 400 * 1024 * 1024;
+/** Причина отказа по размеру или null — видео сервер примет крупнее и сам сожмёт. */
+export function tooBig(f: { size: number; type?: string }): string | null {
+  const video = String(f.type ?? '').startsWith('video/');
+  if (f.size <= (video ? MAX_VIDEO_BYTES : MAX_TASK_FILE_BYTES)) return null;
+  return video ? 'видео больше 400 МБ' : 'больше 25 МБ';
+}
 
 export async function uploadTaskFiles(
   taskId: string,
@@ -24,7 +31,8 @@ export async function uploadTaskFiles(
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     onProgress?.(i, files.length, f.name);
-    if (f.size > MAX_TASK_FILE_BYTES) { failed.push({ name: f.name, reason: 'больше 25 МБ' }); continue; }
+    const big = tooBig(f);
+    if (big) { failed.push({ name: f.name, reason: big }); continue; }
     try { await api.uploadAttachment(taskId, f); }
     catch (e) { failed.push({ name: f.name, reason: e instanceof ApiError ? e.message : 'сеть оборвалась' }); }
   }

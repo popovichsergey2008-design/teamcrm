@@ -14,6 +14,8 @@ export interface FileRow {
   owner_id: string | null;
   uploaded_by: string;
   created_at: Date;
+  /** #4692: несжатый оригинал видео — живёт 2 дня после сжатия. */
+  original_key?: string | null;
 }
 
 @Injectable()

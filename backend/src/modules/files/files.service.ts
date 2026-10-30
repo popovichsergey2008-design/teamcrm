@@ -8,6 +8,8 @@ import { AppException } from '../../common/http/app-exception';
 import { S3Service } from './s3.client';
 import { FileRow, FilesRepository } from './files.repository';
 import { decodeUploadName, sanitizeFileName, validateUpload } from './files.validation';
+import { VideoCompressService } from './video-compress.service';
+import { isVideo, shouldCompress } from './video-rules';
 
 @Injectable()
 export class FilesService {
@@ -17,6 +19,8 @@ export class FilesService {
     private readonly s3: S3Service,
     private readonly repo: FilesRepository,
     config: ConfigService,
+    /** #4692: место под видео и очередь сжатия. */
+    private readonly video: VideoCompressService,
   ) {
     // свой ключ подписи, выведенный из секрета токенов: ссылка проигрывания — не токен входа
     this.playSecret = createHmac('sha256', config.get<string>('JWT_ACCESS_SECRET') ?? 'dev').update('file-play').digest('hex');
@@ -48,8 +52,16 @@ export class FilesService {
   async removeInternal(tenantId: string, id: string): Promise<void> {
     const file = await this.repo.findById(tenantId, id);
     if (!file) return;
-    await this.s3.client.send(new DeleteObjectCommand({ Bucket: this.s3.bucket, Key: file.object_key })).catch(() => undefined);
+    await this.dropObjects(file);
     await this.repo.delete(tenantId, id);
+  }
+
+  /** Объект файла и, если ещё лежит, несжатый оригинал видео (#4692). */
+  private async dropObjects(file: FileRow): Promise<void> {
+    await this.s3.client.send(new DeleteObjectCommand({ Bucket: this.s3.bucket, Key: file.object_key })).catch(() => undefined);
+    if (file.original_key) {
+      await this.s3.client.send(new DeleteObjectCommand({ Bucket: this.s3.bucket, Key: file.original_key })).catch(() => undefined);
+    }
   }
 
   async upload(input: {
@@ -65,6 +77,11 @@ export class FilesService {
   }): Promise<FileRow> {
     const v = validateUpload(input.contentType, input.buffer.length, input.maxBytes, input.fileName);
     if (!v.ok) throw AppException.validation(v.reason);
+    // #4692: под видео отведён общий объём — сверх него не принимаем
+    if (isVideo(input.contentType)) {
+      const problem = await this.video.spaceProblem(input.buffer.length);
+      if (problem) throw AppException.validation(problem);
+    }
 
     const safeName = sanitizeFileName(decodeUploadName(input.fileName));
     const objectKey = `${input.tenantId}/${randomUUID()}/${safeName}`;
@@ -79,7 +96,7 @@ export class FilesService {
       }),
     );
 
-    return this.repo.create({
+    const row = await this.repo.create({
       tenantId: input.tenantId,
       objectKey,
       fileName: safeName,
@@ -89,6 +106,11 @@ export class FilesService {
       ownerId: input.ownerId ?? null,
       uploadedBy: input.userId,
     });
+    // крупное видео — в очередь сжатия; пока жмётся, играет оригинал
+    if (shouldCompress({ contentType: input.contentType, sizeBytes: input.buffer.length, ownerKind: input.ownerKind })) {
+      await this.video.enqueue(input.tenantId, String(row.id)).catch(() => undefined);
+    }
+    return row;
   }
 
   /** Метаданные + поток объекта (access-control по tenant — в контроллере/здесь). */
@@ -111,7 +133,7 @@ export class FilesService {
     if (!file) throw AppException.notFound('File not found');
     const canDelete = file.uploaded_by === user.userId || user.role === 'owner' || user.role === 'manager';
     if (!canDelete) throw AppException.forbidden('Not allowed to delete this file');
-    await this.s3.client.send(new DeleteObjectCommand({ Bucket: this.s3.bucket, Key: file.object_key }));
+    await this.dropObjects(file);
     await this.repo.delete(tenantId, id);
   }
 

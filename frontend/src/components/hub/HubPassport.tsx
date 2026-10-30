@@ -14,7 +14,7 @@ import { overlayProps } from '../../lib/overlay';
 import { useEscape } from '../../hooks/useEscape';
 import { useAuth } from '../../state/auth';
 import { toastSaved } from '../../lib/notifications';
-import { MAX_TASK_FILE_BYTES } from '../../lib/task-files';
+import { tooBig } from '../../lib/task-files';
 import { HUB_CATEGORIES, dayLabel, guessFileCategory, guessLinkCategory, normalizeUrl, safeHref } from '../../lib/hub';
 import { AiMark, AskBox, DecisionRow, ItemRow, errText } from './parts';
 import { GoogleFilesBlock } from '../google/GoogleFilesBlock';
@@ -264,7 +264,8 @@ function ItemForm({ ctx, section, kinds, item, onDone }: {
         if (!files.length) { setErr('Выберите файл'); return; }
         const failed: string[] = [];
         for (const f of files) {
-          if (f.size > MAX_TASK_FILE_BYTES) { failed.push(`${f.name} (больше 25 МБ)`); continue; }
+          const big = tooBig(f);
+          if (big) { failed.push(`${f.name} (${big})`); continue; }
           setBusy(`Загружаю ${f.name}…`);
           try {
             const up = await api.uploadFile(f, 'project_hub', ctx.projectId);
