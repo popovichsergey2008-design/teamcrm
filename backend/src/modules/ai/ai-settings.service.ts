@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { DbService } from '../../database/db.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { KIMI_BASE_URL, KIMI_DEFAULT_MODEL, KIMI_FALLBACK_MODELS } from './ai.provider';
+import { TRIAL_DAYS_DEFAULT, TRIAL_TOKENS_DEFAULT, trialVerdict, TrialVerdict } from './ai-trial';
+
+/** Решение «можно ли общим ключом» живёт минуту: считать токены на каждый вызов модели незачем. */
+const TRIAL_CACHE_MS = 60_000;
 
 export interface ResolvedAi {
   openaiKey?: string;
@@ -32,6 +36,9 @@ export class AiSettingsService {
   private readonly globalOpenrouter?: string;
   private readonly globalKimi?: string;
   private readonly globalBrainModel?: string;
+  private readonly trialDays: number;
+  private readonly trialTokens: number;
+  private readonly trialCache = new Map<string, { at: number; v: TrialVerdict }>();
 
   constructor(
     private readonly db: DbService,
@@ -43,6 +50,41 @@ export class AiSettingsService {
     this.globalOpenrouter = config.get<string>('OPENROUTER_API_KEY');
     this.globalKimi = config.get<string>('KIMI_API_KEY') || undefined;
     this.globalBrainModel = config.get<string>('AI_BRAIN_MODEL');
+    this.trialDays = Number(config.get('AI_TRIAL_DAYS') ?? TRIAL_DAYS_DEFAULT) || TRIAL_DAYS_DEFAULT;
+    this.trialTokens = Number(config.get('AI_TRIAL_TOKENS') ?? TRIAL_TOKENS_DEFAULT) || TRIAL_TOKENS_DEFAULT;
+  }
+
+  /**
+   * Пробный ИИ общим ключом (#4624, см. ai-trial.ts): площадке вендора — всегда, новой
+   * организации — две недели и до лимита токенов. `fresh` — не брать из минутного кэша.
+   */
+  async trial(tenantId: string, fresh = false): Promise<TrialVerdict> {
+    const hit = this.trialCache.get(tenantId);
+    if (!fresh && hit && Date.now() - hit.at < TRIAL_CACHE_MS) return hit.v;
+    const r = await this.db.one<{
+      is_platform: boolean; created_at: Date; status: string | null; started_at: Date | null; trial_ends_at: Date | null;
+    }>(
+      `SELECT t.is_platform, t.created_at, p.status, p.started_at, p.trial_ends_at
+         FROM tenants t LEFT JOIN tenant_ai_plans p ON p.tenant_id = t.id WHERE t.id = $1`,
+      [tenantId],
+    );
+    const planTrial = r?.status === 'TRIAL' && r.started_at && r.trial_ends_at
+      ? { startedAt: new Date(r.started_at), endsAt: new Date(r.trial_ends_at) } : null;
+    const created = r ? new Date(r.created_at) : new Date(0);
+    const pre = trialVerdict({ isPlatform: !!r?.is_platform, tenantCreatedAt: created, planTrial, tokensUsed: 0 }, new Date(), this.trialDays, this.trialTokens);
+    // токены считаем только когда окно открыто: у старых компаний и площадки — незачем
+    let used = 0;
+    if (pre.allowed && pre.reason === 'trial') {
+      const u = await this.db.one<{ n: string }>(
+        `SELECT COALESCE(SUM(input_tokens + output_tokens), 0)::text AS n FROM ai_usage WHERE tenant_id = $1 AND created_at >= $2`,
+        [tenantId, pre.windowStart],
+      );
+      used = Number(u?.n ?? 0);
+    }
+    const v = trialVerdict({ isPlatform: !!r?.is_platform, tenantCreatedAt: created, planTrial, tokensUsed: used }, new Date(), this.trialDays, this.trialTokens);
+    this.trialCache.set(tenantId, { at: Date.now(), v });
+    if (this.trialCache.size > 5000) this.trialCache.clear();
+    return v;
   }
 
   /** Общие ключи сервера без организации (#4619: демо в Telegram-боте до регистрации). */
@@ -72,6 +114,14 @@ export class AiSettingsService {
       globalAnthropic: !!this.globalAnthropic,
       globalOpenrouter: !!this.globalOpenrouter,
       globalKimi: !!this.globalKimi,
+      /**
+       * Пробный ИИ общим ключом (#4624): показываем, пока своего ключа нет. `serverKey` —
+       * есть ли общий ключ на сервере вообще: без него пробовать нечем.
+       */
+      trial: (r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc) ? null : {
+        ...(await this.trial(tenantId, true)),
+        serverKey: !!(this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi),
+      },
     };
   }
 
@@ -112,12 +162,18 @@ export class AiSettingsService {
     const tAnthropic = dec(r?.anthropic_key_enc);
     const tOpenrouter = dec(r?.openrouter_key_enc);
     const tKimi = dec(r?.kimi_key_enc);
-    const openaiKey = tOpenai || this.globalOpenai;
-    const anthropicKey = tAnthropic || this.globalAnthropic;
-    const openrouterKey = tOpenrouter || this.globalOpenrouter;
-    const kimiKey = tKimi || this.globalKimi;
+    const own = !!(tOpenai || tAnthropic || tOpenrouter || tKimi);
+    // общий ключ сервера — только площадке вендора и новой компании в пробный период (#4624)
+    const useGlobal = !own && (this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi)
+      ? (await this.trial(tenantId).catch(() => null))?.allowed === true
+      : own;
+    const g = (v?: string) => (useGlobal ? v : undefined);
+    const openaiKey = tOpenai || g(this.globalOpenai);
+    const anthropicKey = tAnthropic || g(this.globalAnthropic);
+    const openrouterKey = tOpenrouter || g(this.globalOpenrouter);
+    const kimiKey = tKimi || g(this.globalKimi);
     const brainModel = r?.brain_model || this.globalBrainModel;
-    const source: ResolvedAi['source'] = (tOpenai || tAnthropic || tOpenrouter || tKimi) ? 'tenant'
+    const source: ResolvedAi['source'] = own ? 'tenant'
       : (openaiKey || anthropicKey || openrouterKey || kimiKey) ? 'global' : 'none';
     return { openaiKey, anthropicKey, openrouterKey, kimiKey, brainModel, source };
   }
