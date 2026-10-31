@@ -5,6 +5,7 @@ import { SkeletonList } from './Skeleton';
 import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { Linkify } from './Linkify';
 
 /** Лента импортированного из Битрикса проекта (read-only архив; чата пока нет). */
 export function ImportedFeedPanel({ projectId, onClose }: { projectId: string; onClose: () => void }) {
@@ -30,7 +31,7 @@ export function ImportedFeedPanel({ projectId, onClose }: { projectId: string; o
             <div className="comment-head dim">
               {m.author_name || m.author_label || '—'} · {m.posted_at ? new Date(m.posted_at).toLocaleString('ru-RU') : ''}
             </div>
-            <div style={{ whiteSpace: 'pre-wrap' }}>{m.body}</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}><Linkify text={m.body} /></div>
           </div>
         ))}
       </aside>

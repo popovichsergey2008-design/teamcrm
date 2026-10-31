@@ -106,6 +106,17 @@ export function RichEditor({ value, onChange, onUploadImage, placeholder, autoFo
     emit();
   };
 
+  // #4702: ссылка в описании открывается по клику, а не только копированием в адресную строку.
+  // Выделяют текст мышью — не мешаем: открываем только при простом щелчке без выделения.
+  const openLink = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = (e.target as HTMLElement).closest?.('a[href]') as HTMLAnchorElement | null;
+    if (!a || !/^https?:\/\//i.test(a.href)) return;
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    e.preventDefault();
+    window.open(a.href, '_blank', 'noopener,noreferrer');
+  };
+
   const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     const items = Array.from(e.clipboardData?.items ?? []);
     const image = items.find((i) => i.type.startsWith('image/'))?.getAsFile();
@@ -203,6 +214,7 @@ export function RichEditor({ value, onChange, onUploadImage, placeholder, autoFo
         onInput={emit}
         onBlur={emit}
         onPaste={onPaste}
+        onClick={openLink}
       />
     </div>
   );

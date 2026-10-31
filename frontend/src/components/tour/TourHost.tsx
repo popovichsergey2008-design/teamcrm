@@ -236,7 +236,10 @@ function Spotlight({ step, index, total, dir, onNext, onClose, onStopAll, onAsk 
   if (selector && !rect) return <div className="tour-layer tour-wait" />;
 
   const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  // #4698: видимая область, а не макет — при масштабе и экранной клавиатуре они расходятся
+  const vh = Math.min(window.innerHeight, window.visualViewport?.height ?? Infinity, document.documentElement.clientHeight || Infinity);
+  // карточка выше экрана не бывает: остальное прокручивается внутри неё
+  const maxH = vh - 32;
   const w = Math.min(360, vw - 32);
   let pos: { top: number; left: number };
   const hole = rect ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 } : null;
@@ -244,7 +247,7 @@ function Spotlight({ step, index, total, dir, onNext, onClose, onStopAll, onAsk 
     pos = { top: Math.max(16, (vh - cardH) / 2), left: (vw - w) / 2 };
   } else {
     const clampX = (x: number) => Math.min(Math.max(16, x), vw - w - 16);
-    const clampY = (y: number) => Math.min(Math.max(16, y), vh - cardH - 16);
+    const clampY = (y: number) => Math.max(16, Math.min(y, vh - Math.min(cardH, maxH) - 16));
     const below = hole.top + hole.height + GAP;
     const above = hole.top - GAP - cardH;
     const right = hole.left + hole.width + GAP;
@@ -274,7 +277,7 @@ function Spotlight({ step, index, total, dir, onNext, onClose, onStopAll, onAsk 
         aria-modal="true"
         aria-labelledby="tour-title"
         aria-describedby="tour-text"
-        style={{ top: pos.top, left: pos.left, width: w }}
+        style={{ top: pos.top, left: pos.left, width: w, maxHeight: maxH }}
       >
         <button className="tour-x" onClick={onClose} title="Закрыть обучение (Esc)" aria-label="Закрыть обучение">×</button>
         <h3 id="tour-title">{step.title}</h3>

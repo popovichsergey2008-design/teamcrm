@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DatePicker } from './DatePicker';
 import { Icon } from './Icon';
-import { api, ApiError, TagSettings } from '../lib/api';
+import { api, ApiError, request, TagSettings } from '../lib/api';
 import type { TaskTemplate, User } from '../types';
 import { TaskTagsField } from './TaskTagsField';
 import { confirmTags, EMPTY_TAGS, tagsReady, TagsValue } from '../lib/tags';
@@ -346,17 +346,26 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
   const shownWorkload = workload ?? early.info;
 
   const submit = async (o: { assigneeId?: string; deadline?: string; confirmWorkload?: boolean } = {}) => {
-    if (!title.trim()) return setErr('Введите название задачи');
+    // #4699: название пустое, а задача расписана в описании — название пишет ИИ
+    let name = title.trim();
+    if (!name && !description.trim()) return setErr('Введите название задачи или опишите задачу');
     setErr('');
     setWorkload(null);
     setBusy(true);
+    if (!name) {
+      setUploadNote('ИИ придумывает название по описанию…');
+      try { name = (await request<{ title: string }>('POST', '/nl/title', { description })).title.trim().slice(0, 255); } catch { /* ниже — понятная ошибка */ }
+      setUploadNote('');
+      if (!name) { setBusy(false); return setErr('Не получилось придумать название — впишите его сами'); }
+      setTitle(name);
+    }
     const who = o.assigneeId ?? assigneeId;
     const when = o.deadline ?? deadline;
     try {
       const created = await api.createTask({
         projectId,
         columnId,
-        title: title.trim(),
+        title: name,
         description: description.trim() || undefined,
         assigneeId: who || undefined,
         managerId: managerId || undefined,
@@ -541,7 +550,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
               id="task-create-name"
               autoFocus
               value={title}
-              placeholder="Что нужно сделать"
+              placeholder="Что нужно сделать — или ИИ назовёт по описанию"
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
             />

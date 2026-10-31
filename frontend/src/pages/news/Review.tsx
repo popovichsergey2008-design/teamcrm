@@ -6,6 +6,7 @@ import { OptionSelect } from '../../components/ui/option-select';
 import { api, ApiError, NewsCandidate, NewsPost, NewsSettings } from '../../lib/api';
 import { TYPE_META } from './shared';
 import { feedback } from '../../lib/feedback';
+import { Linkify } from '../../components/Linkify';
 
 /**
  * Очередь одобрения (§27, §16): что система предлагает опубликовать — хайлайт дня
@@ -77,7 +78,7 @@ export function ReviewPanel({ onPublished, onOpenSettings }: { onPublished: (p: 
           ) : (
             <>
               <b>{it.title}</b>
-              <div className="feed-body feed-preview">{it.body}</div>
+              <div className="feed-body feed-preview"><Linkify text={it.body} /></div>
             </>
           )}
           <div className="feed-row-actions">

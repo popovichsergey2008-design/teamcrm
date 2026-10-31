@@ -3753,7 +3753,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 <div className="later-when">
                   <Icon name={x.repeat === 'daily' ? 'refresh' : 'clock'} size={13} /> Отправлю {laterLabel(x)}
                 </div>
-                <div className="chat-body later-text">{x.body}</div>
+                <MessageText text={x.body} className="chat-body later-text" />
                 {/*
                   Состояние отложенного (задача #1349).
 

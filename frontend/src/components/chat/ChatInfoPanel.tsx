@@ -14,6 +14,7 @@ import type { User } from '../../types';
 import { initialsOf } from '../../lib/initials';
 import { confirmAction } from '../ui/dialog';
 import { ChatProjectSelect } from './ChatProjectSelect';
+import { MessageText } from '../MessageText';
 
 const KIND_LABEL: Record<string, string> = {
   dm: 'Личный диалог', group: 'Групповой чат', channel: 'Канал', project: 'Чат проекта',
@@ -380,7 +381,7 @@ function AboutBlock({ chat, manageable, onChanged }: { chat: ChatInfo['chat']; m
             )}
           </div>
           {chat.description
-            ? <div className="ci-desc">{chat.description}</div>
+            ? <MessageText text={chat.description} className="ci-desc" />
             : manageable && <button className="ci-link" onClick={() => setEditing(true)}>Добавить описание</button>}
         </>
       )}

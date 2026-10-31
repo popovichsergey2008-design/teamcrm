@@ -27,6 +27,7 @@ import { OrgService } from '../org/org.service';
 import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
 import { fastTitleFrom, NL_FAST_BUDGET_MS, NL_FAST_MAX_TOKENS, NlTiming } from './fast-path';
 import { participantIdsIn } from '../tasks/participants';
+import { plainOf, TITLE_SYSTEM, titleFromText, tidyTitle } from './task-title';
 
 type Intent = 'create_task' | 'create_deal' | 'none';
 
@@ -811,6 +812,23 @@ export class NlService {
    *
    * Модель молчит — отвечаем честно: «не смог определить», а не подставляем наугад.
    */
+  /**
+   * #4699: название пустое, описание есть — название пишет модель. Модель не ответила
+   * за 8 с или ключа нет — первая фраза описания: задача создаётся в любом случае.
+   */
+  async suggestTitle(tenantId: string, description: string): Promise<{ title: string; source: 'ai' | 'rules' }> {
+    const plain = plainOf(description).slice(0, 3000);
+    if (!plain) return { title: '', source: 'rules' };
+    try {
+      const raw = await this.ai.generate(tenantId, TITLE_SYSTEM, plain, 'nl_command', { fast: true, timeoutMs: 8000, maxTokens: 60 });
+      const title = tidyTitle(raw);
+      if (title) return { title, source: 'ai' };
+    } catch (e) {
+      this.log.warn(`название задачи без модели: ${(e as Error).message}`);
+    }
+    return { title: titleFromText(description), source: 'rules' };
+  }
+
   async suggestAssignee(
     tenantId: string, input: { title: string; description?: string | null; projectId?: string | null },
     authorId: string | null = null,

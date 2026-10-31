@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
 import type { Agenda } from '../types';
+import { MessageText } from './MessageText';
 
 /**
  * Повестка ближайшей встречи.
@@ -72,7 +73,7 @@ export function MeetingAgenda({ onJoin }: { onJoin: (roomId: string) => void }) 
             </span>
           </h3>
           {/* повестку показываем как написано: модель уже разложила её по строкам */}
-          <div className="agenda-body">{a.body}</div>
+          <MessageText text={a.body} className="agenda-body" />
         </section>
       ))}
     </>

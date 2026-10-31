@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { confirmAction } from '../ui/dialog';
 import { api, ApiError, GuestAgreement, GuestSummaryHost } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
+import { Linkify } from '../Linkify';
 
 const SIDE_LABEL: Record<string, string> = { ours: 'Мы', client: 'Клиент', both: 'Вместе', unassigned: 'Не указано' };
 const KIND_LABEL: Record<string, string> = { confirmed: 'подтвердил(а)', question: 'вопрос', correction: 'уточнение', comment: 'комментарий' };
@@ -212,7 +213,7 @@ export default function GuestSummaryPanel({ meetingId }: { meetingId: string }) 
           {unhandled.map((f) => (
             <div key={f.id} className="gsp-fb">
               <b>{f.name}</b> · {KIND_LABEL[f.kind] ?? f.kind}
-              <div>{f.body}</div>
+              <div><Linkify text={f.body} /></div>
               <Button variant="ghost" size="sm" onClick={() => void run('save', () => api.guestFeedbackHandled(meetingId, f.id))}><Icon name="check" size={13} /> Учтено</Button>
             </div>
           ))}

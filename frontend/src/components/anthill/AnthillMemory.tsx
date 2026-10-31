@@ -5,6 +5,7 @@ import type { AnthillMemory as Memory } from '../../lib/api';
 import { useAuth } from '../../state/auth';
 import { stampLabel } from '../../lib/chat-text';
 import { OptionSelect } from '../ui/option-select';
+import { Linkify } from '../Linkify';
 
 const TYPE_TITLE: Record<string, string> = { preference: 'Предпочтения', topic: 'Рабочие темы' };
 const TYPE_HINT: Record<string, string> = {
@@ -129,7 +130,7 @@ export function AnthillMemory() {
                       <span className="anthill-mem-title">{row.title}</span>
                       {row.source === 'auto' && <span className="ui-badge ui-badge-neutral" title="Агент подметил это сам">сам</span>}
                     </div>
-                    <div className="anthill-mem-body">{row.content}</div>
+                    <div className="anthill-mem-body"><Linkify text={row.content} /></div>
                     <div className="anthill-mem-acts">
                       <span className="dim">{stampLabel(row.updatedAt)}</span>
                       <button className="msg-icon" onClick={() => setEditing(row.id)} title="Исправить" aria-label="Исправить"><Icon name="edit" size={13} /></button>

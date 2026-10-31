@@ -1740,6 +1740,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .rich-text ul, .rich-area ul, .rich-text ol, .rich-area ol { margin: 0 0 8px; padding-left: 22px; }
 .rich-text li, .rich-area li { margin: 2px 0; }
 .rich-text a, .rich-area a { color: var(--accent); text-decoration: underline; }
+.rich-area a { cursor: pointer; }
 .rich-text s, .rich-area s { color: var(--text-mut); }
 /* Картинка — во всю ширину колонки, но не выше экрана; пока грузится — пустое место
    с рамкой, чтобы текст не прыгал, когда она появится. */

@@ -6,6 +6,7 @@ import { hubApi, type HubDecision, type HubItem } from '../../lib/hub-api';
 import { navigate } from '../../lib/router';
 import { platform } from '../../platform';
 import { categoryLabel, dayLabel, hostOf, itemIcon, originLabel, originPath, safeHref } from '../../lib/hub';
+import { Linkify } from '../Linkify';
 
 /** Текст ошибки сервера по-русски, без кодов. */
 export function errText(e: unknown, fallback: string): string {
@@ -80,7 +81,7 @@ export function ItemRow({ item, canEdit, compact, onPin, onEdit, onRemove, onErr
         ) : (
           <span className="hub-row-title">{item.title}</span>
         )}
-        {!compact && item.body && item.kind === 'note' && <span className="hub-row-body">{item.body}</span>}
+        {!compact && item.body && item.kind === 'note' && <span className="hub-row-body"><Linkify text={item.body} /></span>}
         {!compact && meta && <span className="hub-row-meta">{meta}</span>}
         {!compact && <AiMark item={item} inline />}
       </span>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, NewsFile, NewsPost, NewsType } from '../../lib/api';
 import type { IconName } from '../../components/Icon';
 import { MentionUser, withMentions } from '../../lib/mentions';
+import { Linkify } from '../../components/Linkify';
 
 /** Как называется и чем помечен каждый тип поста — одно место на весь раздел. */
 export const TYPE_META: Record<NewsType, { label: string; icon: IconName; tone: string }> = {
@@ -75,7 +76,7 @@ export function Body({ text, team }: { text: string; team: MentionUser[] }) {
     <>
       {withMentions(text, team).map((part, i) =>
         typeof part === 'string'
-          ? <span key={i}>{part}</span>
+          ? <span key={i}><Linkify text={part} /></span>
           : <span key={i} className="mention">@{part.name}</span>)}
     </>
   );

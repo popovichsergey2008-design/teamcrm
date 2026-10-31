@@ -36,6 +36,10 @@ class SuggestDto {
   @IsOptional() @IsString() projectId?: string;
 }
 
+class TitleDto {
+  @IsString() @MaxLength(20000) description!: string;
+}
+
 class AutoAssignDto {
   @IsString() @MaxLength(255) title!: string;
   @IsOptional() @IsString() @MaxLength(8000) description?: string;
@@ -197,6 +201,12 @@ export class NlController {
   @Post('auto-assign')
   autoAssign(@CurrentUser() u: AuthUser, @Body() dto: AutoAssignDto) {
     return this.nl.autoAssign(u.tenantId, dto, u.userId);
+  }
+
+  /** #4699: название задачи по описанию — когда поле «Название» оставили пустым. */
+  @Post('title')
+  suggestTitle(@CurrentUser() u: AuthUser, @Body() dto: TitleDto) {
+    return this.nl.suggestTitle(u.tenantId, dto.description);
   }
 
   @Post('suggest-assignee')

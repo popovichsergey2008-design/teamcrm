@@ -15,6 +15,7 @@ import { GoogleFilesBlock } from '../../components/google/GoogleFilesBlock';
 import { toastSaved } from '../../lib/notifications';
 import { useAuth } from '../../state/auth';
 import { CURRENCIES, dateRu, dateTimeRu, FILE_CATEGORY, MEMBER_ROLE, money, SOURCE, STAGE, STAGE_KEYS } from './labels';
+import { Linkify } from '../../components/Linkify';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
@@ -430,7 +431,7 @@ export function NotesTab({ clientId, onChanged }: { clientId: string; onChanged:
       {!list && <SkeletonList rows={3} />}
       {list?.map((n) => (
         <div key={n.id} className={`cl-item${n.pinned ? ' cl-pinned' : ''}`}>
-          <p className="cl-note-text">{n.body}</p>
+          <p className="cl-note-text"><Linkify text={n.body} /></p>
           <div className="cl-fields dim">
             {n.authorName} · {dateTimeRu(n.createdAt)}
             {n.isPrivate && <Badge tone="neutral"><Icon name="lock" size={11} /> личная</Badge>}

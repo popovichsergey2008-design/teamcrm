@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { useEnterSend } from '../hooks/useEnterSend';
+import { Linkify } from './Linkify';
 
 /**
  * Переписка глазами внешнего участника.
@@ -75,7 +76,7 @@ export function GuestChat({ token, orgName }: { token: string; orgName?: string 
             <div key={m.id} className={`chat-line ${mine ? 'mine' : ''}`}>
               <div className={`chat-msg ${mine ? 'mine' : ''}`}>
                 <div className="chat-author">{m.guest_name ?? m.author_name ?? 'Сотрудник'}</div>
-                <div className="chat-body">{m.body}</div>
+                <div className="chat-body"><Linkify text={m.body} /></div>
               </div>
               <div className="chat-time">
                 {new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}

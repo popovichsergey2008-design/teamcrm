@@ -445,7 +445,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   };
 
   const decisions = (backlog ?? []).filter((c) => c.kind !== 'task');
-  const listed = backlogOpen === 'decisions' ? decisions : (backlog ?? []);
+  // #4704: две строки — два разных списка: решения отдельно, задачи отдельно
+  const listed = backlogOpen === 'decisions' ? decisions : (backlog ?? []).filter((c) => c.kind === 'task');
   const critical = day.criticalCandidate;
 
   return (
@@ -591,7 +592,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         </button>
       )}
       <button type="button" className="fd-row fd-secondary" aria-expanded={backlogOpen === 'all'} onClick={() => setBacklogOpen((v) => (v === 'all' ? null : 'all'))}>
-        <Icon name="list" size={15} /> Остальные задачи и действия ({day.backlogCount})
+        <Icon name="list" size={15} /> Остальные задачи ({day.backlogCount})
         <Icon name={backlogOpen === 'all' ? 'chevron-up' : 'chevron-down'} size={14} />
       </button>
 

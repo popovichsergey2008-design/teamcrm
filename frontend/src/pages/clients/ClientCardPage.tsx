@@ -17,6 +17,7 @@ import { ago, dateTimeRu, HEALTH, money, SOURCE, STAGE, STATUS, STATUS_KEYS, TYP
 import { ContactsTab, DealsTab, NotesTab, ActivityTab, FilesTab, TasksTab, MeetingsTab, ChatsTab, ProjectsTab, ProfileTab } from './tabs';
 import { QuickTaskDialog, QuickMeetingDialog, MergeDialog } from './dialogs';
 import { useTitleHint } from '../../lib/page-title';
+import { Linkify } from '../../components/Linkify';
 
 type Tab = 'overview' | 'contacts' | 'deals' | 'projects' | 'tasks' | 'meetings' | 'chats' | 'files' | 'notes' | 'activity' | 'profile';
 
@@ -278,7 +279,7 @@ export function ClientCardPage({ clientId }: { clientId: string }) {
               {card.pinnedNotes.length > 0 && (
                 <section className="cl-box">
                   <h3><Icon name="pin" size={13} /> Закреплённые заметки</h3>
-                  {card.pinnedNotes.map((n) => <p key={n.id} className="cl-note-text">{n.body}</p>)}
+                  {card.pinnedNotes.map((n) => <p key={n.id} className="cl-note-text"><Linkify text={n.body} /></p>)}
                 </section>
               )}
               <section className="cl-box cl-box-dim">

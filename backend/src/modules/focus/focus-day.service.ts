@@ -182,7 +182,8 @@ export class FocusDayService {
         closedAt: plan.closed_at, feedback: plan.feedback,
       },
       top,
-      backlogCount: rest.length,
+      // #4704: решения считаются отдельной строкой — здесь только задачи, иначе два списка совпадают
+      backlogCount: rest.filter((c) => c.kind === 'task').length,
       waitingDecision,
       /** ТЗ-30: моя сданная работа ждёт проверки — не просрочка и не в тройке */
       waitingReview,

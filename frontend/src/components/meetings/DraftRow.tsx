@@ -9,6 +9,7 @@ import { navigate } from '../../lib/router';
 import { toastSaved } from '../../lib/notifications';
 import type { Project, User } from '../../types';
 import './draft-row.css';
+import { Linkify } from '../Linkify';
 
 /** То, что человек выбрал в строке, но ещё не сохранил: уходит в «Создать» и в пакет. */
 export interface DraftChoice { assigneeId?: string; projectId?: string; deadlineAt?: string }
@@ -162,7 +163,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
                 </button>
                 {draft.priority === 'urgent' && <span className="ui-badge ui-badge-danger draft-urgent">срочно</span>}
               </div>
-              {draft.description && <div className="dim" style={{ fontSize: 12 }}>{draft.description}</div>}
+              {draft.description && <div className="dim" style={{ fontSize: 12 }}><Linkify text={draft.description} /></div>}
               <DraftTags ids={tagsOf()} ai={((draft.ai_tag_ids ?? []) as unknown[]).map(String)} all={allTags} />
             </>
           )}

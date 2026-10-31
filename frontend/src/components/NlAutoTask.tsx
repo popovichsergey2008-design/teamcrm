@@ -15,6 +15,7 @@ import { EMPTY_TAGS, type TagsValue } from '../lib/tags';
 import { useStickyCheck } from '../lib/sticky-checks';
 import { chipDate, chipFor, DEADLINE_CHIPS, PRIORITY_LABEL, shortDay } from '../lib/auto-task';
 import './nl-auto.css';
+import { Linkify } from './Linkify';
 
 /**
  * Автоматическая постановка (#4615): срок чипами и живая сводка «Так поставлю».
@@ -247,7 +248,7 @@ export function AutoSummary({ draft, index, many, deadline, busy, onPatchTask, o
         <>
           <button type="button" className="nla-title" onClick={() => setEditing(true)} title="Изменить задачу">{t.title}</button>
           {/* описание от ИИ бывает длинным: четыре строки и «Ещё», а не обрыв многоточием (#4670) */}
-          {t.description && <ClampText className="nla-desc" lines={4}>{t.description}</ClampText>}
+          {t.description && <ClampText className="nla-desc" lines={4}><Linkify text={t.description} /></ClampText>}
           <dl className="nla-facts">
             <dt>Исполнитель</dt>
             <dd>{t.assigneeName ?? 'без исполнителя'}{t.assigneeWhy ? <span className="nla-why"> · {t.assigneeWhy}</span> : null}</dd>

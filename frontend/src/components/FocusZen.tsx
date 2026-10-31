@@ -7,6 +7,7 @@ import { focusSoundOn, setFocusSound } from '../lib/sound';
 import { readFocusMinutes, refreshFocusSession, remainingNow, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
 import { useEscape } from '../hooks/useEscape';
 import { feedback } from '../lib/feedback';
+import { Linkify } from './Linkify';
 
 /**
  * Окно глубокой работы (ТЗ-16, п. 49): таймер, задача, что считать готовым,
@@ -177,7 +178,7 @@ export function FocusZen({ session, onOpenTask }: {
             {task?.description && (
               <details className="zen-dod">
                 <summary>Что нужно сделать</summary>
-                <p>{task.description}</p>
+                <p><Linkify text={task.description} /></p>
               </details>
             )}
             {checks.length > 0 && (
