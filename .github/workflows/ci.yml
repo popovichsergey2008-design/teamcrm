@@ -146,6 +146,10 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Build info
+        # Версия сборки для консоли разработчика: commit, время коммита и номер прогона.
+        run: |
+          printf '{"sha":"%s","at":"%s","run":"%s"}' "$GITHUB_SHA" "$(git show -s --format=%cI HEAD)" "$GITHUB_RUN_NUMBER" > backend/build-info.json
       - name: Sync code to server
         # --delete держит дерево сервера равным репозиторию: без него удалённый в git файл
         # остаётся на проде навсегда. Удаление работает только внутри backend/, frontend/

@@ -30,7 +30,7 @@ function bundleVersion(): string {
 // локально не поднять, а верстку проверять надо до выкладки.
 const apiTarget = process.env.API_TARGET ?? 'http://localhost:3000';
 const BUNDLE_VERSION = bundleVersion();
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     /*
@@ -55,5 +55,11 @@ export default defineConfig({
       '/ws': { target: apiTarget, ws: true, changeOrigin: true, secure: true },
     },
   },
-  build: { outDir: 'dist', sourcemap: false },
-});
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    // Консоли платформы (owner/developer/support.qevo.one) — своя страница со своим кодом;
+    // в сборки для телефона не нужна.
+    rollupOptions: mode === 'capacitor' || mode === 'mobile-web' ? undefined : { input: { main: 'index.html', platform: 'platform.html' } },
+  },
+}));

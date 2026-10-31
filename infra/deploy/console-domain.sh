@@ -17,6 +17,10 @@
 # Запуск на сервере:  bash /opt/teamcrm/deploy/console-domain.sh
 set -euo pipefail
 
+# УСТАРЕЛ (31.10): список имён ниже без app и db — запуск выпустит сертификат без app.qevo.one.
+# Новые имена добавляет platform-domains.sh (берёт список из действующего сертификата).
+echo '[console-domain] устарел — используйте deploy/platform-domains.sh'; exit 1
+
 DOMAIN="${CONSOLE_DOMAIN:-console.qevo.one}"
 BASE="${BASE_DOMAIN:-qevo.one}"
 WEBROOT=/opt/teamcrm/nginx/html

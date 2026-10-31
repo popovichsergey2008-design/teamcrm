@@ -10,5 +10,6 @@ import { SystemNoticeController } from './system-notice.controller';
   imports: [MediaModule],
   controllers: [HealthController, CspReportController, SystemNoticeController],
   providers: [HealthService],
+  exports: [HealthService],
 })
 export class HealthModule {}

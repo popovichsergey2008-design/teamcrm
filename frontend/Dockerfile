@@ -3,7 +3,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
-COPY tsconfig*.json vite.config.ts index.html ./
+COPY tsconfig*.json vite.config.ts index.html platform.html ./
 COPY src ./src
 # знак приложения и манифест: без них сборка проходит, а в образе иконок нет —
 # и браузер получает по адресу картинки оболочку приложения с кодом 200
