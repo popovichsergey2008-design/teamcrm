@@ -78,3 +78,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .pc-tag { font-size: 11px; margin-left: 6px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-mut); }
 .pc-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 @media (max-width: 640px) { .pc-kpi-value { font-size: 18px; } .pc-top-right .dim { display: none; } }
+.pc-stack { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; max-height: 260px; overflow: auto; }
+.pc-gap { margin-top: 12px; }
+.pc-between { justify-content: space-between; }
+.pc-h-flat { margin: 0; }

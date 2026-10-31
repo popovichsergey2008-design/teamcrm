@@ -159,6 +159,27 @@ export class PcStatsService {
     };
   }
 
+  /** Расход ИИ за текущий месяц (UTC) по компаниям: чей ключ и сколько. Без текстов запросов. */
+  async aiMonth() {
+    const rows = await this.db.many<{ tenant_id: string; name: string; is_test: boolean; own_key: boolean; model: string; input: string; output: string; stored: string; calls: number }>(
+      `SELECT t.id::text AS tenant_id, t.name, t.is_test,
+              (s.openai_key_enc IS NOT NULL OR s.anthropic_key_enc IS NOT NULL OR s.openrouter_key_enc IS NOT NULL OR s.kimi_key_enc IS NOT NULL) AS own_key,
+              u.model, sum(u.input_tokens)::bigint AS input, sum(u.output_tokens)::bigint AS output,
+              sum(coalesce(u.cost_estimate, 0))::float8 AS stored, count(*)::int AS calls
+         FROM ai_usage u JOIN tenants t ON t.id=u.tenant_id LEFT JOIN ai_settings s ON s.tenant_id=u.tenant_id
+        WHERE u.created_at >= date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AND NOT u.cache_hit
+        GROUP BY t.id, t.name, t.is_test, own_key, u.model`);
+    const by = new Map<string, { tenantId: string; name: string; isTest: boolean; ownKey: boolean; usd: number; tokens: number; calls: number }>();
+    for (const r of rows) {
+      const i = Number(r.input) || 0; const o = Number(r.output) || 0;
+      const cur = by.get(r.tenant_id) ?? { tenantId: r.tenant_id, name: r.name, isTest: r.is_test, ownKey: !!r.own_key, usd: 0, tokens: 0, calls: 0 };
+      cur.usd += Number(r.stored) || estimateCost(r.model ?? '', i, o);
+      cur.tokens += i + o; cur.calls += r.calls;
+      by.set(r.tenant_id, cur);
+    }
+    return [...by.values()].map((x) => ({ ...x, usd: Math.round(x.usd * 100) / 100 })).sort((a, b) => b.usd - a.usd);
+  }
+
   // ── Компании ──
   tenants() {
     return this.db.many<{

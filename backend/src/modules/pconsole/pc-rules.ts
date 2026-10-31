@@ -16,12 +16,13 @@ export type PcRole = PcApp;
  */
 export type PcPerm =
   | 'owner.view' | 'owner.manage' | 'staff.manage'
-  | 'dev.view' | 'dev.execute'
+  | 'dev.view' | 'dev.triage' | 'dev.execute'
   | 'support.view';
 
 const ROLE_PERMS: Record<PcRole, PcPerm[]> = {
   owner: ['owner.view', 'owner.manage', 'staff.manage'],
-  developer: ['dev.view'],
+  // разбор ошибок (статус «исправлено») — да; выпуск и откат (dev.execute) — отдельно (§4.4)
+  developer: ['dev.view', 'dev.triage'],
   support: ['support.view'],
 };
 

@@ -30,6 +30,8 @@ export const RULES = {
   /** Код второго шага: 5 промахов на один вход — дальше заново с паролем. */
   mfaChallenge: { name: 'mfa:challenge', limit: 5, windowSec: 10 * 60 },
   mfaAccount: { name: 'mfa:account', limit: 20, windowSec: 60 * 60 },
+  /** Отчёты об ошибках сайта (консоль разработчика): не больше 60 с адреса за 10 минут. */
+  errorReportIp: { name: 'errors:ip', limit: 60, windowSec: 10 * 60 },
 } satisfies Record<string, ThrottleRule>;
 
 /** Сколько ждать — словами, для текста ошибки. */

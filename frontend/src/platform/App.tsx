@@ -39,7 +39,7 @@ export default function App() {
       <main className="pc-main">
         <Suspense fallback={<div className="dim">Загрузка…</div>}>
           {APP === 'owner' && <OwnerConsole me={me} />}
-          {APP === 'developer' && <DevConsole />}
+          {APP === 'developer' && <DevConsole canTriage={me.perms.includes('dev.triage')} />}
           {APP === 'support' && (
             <section className="pc-card">
               <h2>Консоль поддержки</h2>

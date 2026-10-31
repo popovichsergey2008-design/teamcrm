@@ -14,6 +14,7 @@ import { RolesGuard } from './common/auth/roles.guard';
 
 import { HealthModule } from './modules/health/health.module';
 import { PconsoleModule } from './modules/pconsole/pconsole.module';
+import { AppErrorsModule } from './modules/app-errors/app-errors.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -112,6 +113,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     MessagingModule,
     HealthModule,
     PconsoleModule,
+    AppErrorsModule,
     LeadsModule,
     AuthModule,
     UsersModule,

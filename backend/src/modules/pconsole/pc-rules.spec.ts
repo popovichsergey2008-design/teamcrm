@@ -4,7 +4,7 @@ describe('консоли платформы: права', () => {
   it('доступ в одну консоль не даёт другие', () => {
     expect(canEnter(['developer'], 'owner')).toBe(false);
     expect(permsFor(['developer'], 'owner')).toEqual([]);
-    expect(permsFor(['developer'], 'developer')).toEqual(['dev.view']);
+    expect(permsFor(['developer'], 'developer')).toEqual(['dev.view', 'dev.triage']);
   });
   it('раздавать роли может только владелец', () => {
     expect(permsFor(['owner'], 'owner')).toContain('staff.manage');

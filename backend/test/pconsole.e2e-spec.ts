@@ -75,7 +75,7 @@ describe('Консоли платформы (e2e)', () => {
     await http.post('/api/pc/auth/login').send({ email, password: PASS, app: 'owner' }).expect(403);
     const t = await signIn(email, 'developer');
     const me = (await http.get('/api/pc/me').set(H(t.accessToken)).expect(200)).body.data;
-    expect(me.perms).toEqual(['dev.view']);
+    expect(me.perms).toEqual(['dev.view', 'dev.triage']);
     await http.get('/api/pc/dev/status').set(H(t.accessToken)).expect(200);
     await http.get('/api/pc/owner/overview').set(H(t.accessToken)).expect(403);
     await http.get('/api/me').set(H(t.accessToken)).expect(401);
@@ -102,5 +102,34 @@ describe('Консоли платформы (e2e)', () => {
 
     const audit = (await http.get('/api/pc/owner/audit').set(H(o.accessToken)).expect(200)).body.data as { action: string }[];
     expect(audit.some((a) => a.action === 'staff.update')).toBe(true);
+  });
+
+  it('ошибки сайта: принимаются без входа, очищаются, группируются, разбираются разработчиком', async () => {
+    const tag = uniq();
+    const body = { source: 'web', kind: 'TypeError', message: `boom ${tag} у boris@mail.ru в задаче 4705`, stack: ['TypeError', '    at f (https://app.qevo.one/assets/A-1234abcd.js:1:2)'].join(String.fromCharCode(10)), route: '/projects/7?x=1', version: 'v1', clientId: 'c1' };
+    await http.post('/api/telemetry/error').send(body).expect(204);
+    await http.post('/api/telemetry/error').send({ ...body, message: `boom ${tag} у boris@mail.ru в задаче 4706`, clientId: 'c2' }).expect(204);
+    const t = await signIn(await staff(['developer']), 'developer');
+    let list: { id: string; message: string; hits: string; route: string }[] = [];
+    for (let i = 0; i < 20 && !list.length; i++) {
+      list = (await http.get(`/api/pc/dev/errors?q=${tag}`).set(H(t.accessToken)).expect(200)).body.data;
+      if (!list.length) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(list).toHaveLength(1);
+    expect(list[0].message).not.toContain('boris@');
+    expect(list[0].route).toBe('/projects/:id');
+    await http.post(`/api/pc/dev/errors/${list[0].id}`).set(H(t.accessToken)).send({ status: 'fixed', version: 'v2' }).expect(200);
+    const one = (await http.get(`/api/pc/dev/errors/${list[0].id}`).set(H(t.accessToken)).expect(200)).body.data;
+    expect(one.status).toBe('fixed');
+  });
+
+  it('выключатель ИИ: без причины нельзя, с причиной — в журнал', async () => {
+    const o = await signIn(await staff(['owner']), 'owner');
+    await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: true }).expect(400);
+    const r = (await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: true, sharedReason: 'проверка', monthlyBudgetUsd: 10 }).expect(200)).body.data;
+    expect(r).toMatchObject({ sharedOff: true, monthlyBudgetUsd: 10 });
+    const v = (await http.get('/api/pc/owner/ai').set(H(o.accessToken)).expect(200)).body.data;
+    expect(v.decision.shared).toBe(false);
+    await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: false, monthlyBudgetUsd: null }).expect(200);
   });
 });

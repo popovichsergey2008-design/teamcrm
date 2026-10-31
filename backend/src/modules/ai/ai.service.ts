@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { stripHallucinationEdges } from './stt-hallucinations';
+import { AiGuardService } from './ai-guard.service';
 import { AiGateway, AiPriority } from './ai-gateway';
 import { deadlineSignal, rejectAfter } from './hedge';
 import { ConfigService } from '@nestjs/config';
@@ -41,6 +42,7 @@ export class AiService {
     private readonly settings: AiSettingsService,
     private readonly prompts: PromptsService,
     private readonly gateway: AiGateway,
+    private readonly guard: AiGuardService,
   ) {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
     this.demoOpenai = config.get<string>('DEMO_OPENAI_API_KEY') || undefined;
@@ -58,7 +60,9 @@ export class AiService {
     const s = await this.settings.resolve(tenantId);
     const own = s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey
       ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey) : null;
-    const demo = this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
+    // ключ демо — наши деньги: под тем же выключателем и бюджетом, что общий ключ
+    const demo = this.demoOpenai && (await this.guard.decision().catch(() => null))?.shared !== false
+      ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
     // Whisper — только OpenAI: компания с ключом Anthropic распознаёт речь ключом демо
     const stt = s.openaiKey ? own : demo;
     const llm = own ?? demo;
@@ -90,9 +94,10 @@ export class AiService {
     generate: ((system: string, user: string, timeoutMs: number) => Promise<string>) | null;
     model: string | null;
   } {
-    const demo = this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
+    const shared = this.guard.peek().shared;
+    const demo = shared && this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
     const g = this.settings.globalKeys();
-    const global = g.source === 'global'
+    const global = shared && g.source === 'global'
       ? new RealAiProvider(g.openaiKey, g.anthropicKey, this.parserModel, g.brainModel, g.openrouterKey, g.kimiKey) : null;
     const llm = demo ?? global;
     return {

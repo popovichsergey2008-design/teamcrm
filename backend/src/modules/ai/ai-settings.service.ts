@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../../database/db.service';
+import { AiGuardService } from './ai-guard.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { KIMI_BASE_URL, KIMI_DEFAULT_MODEL, KIMI_FALLBACK_MODELS } from './ai.provider';
 import { TRIAL_DAYS_DEFAULT, TRIAL_TOKENS_DEFAULT, trialVerdict, TrialVerdict } from './ai-trial';
@@ -44,6 +45,7 @@ export class AiSettingsService {
     private readonly db: DbService,
     private readonly crypto: IntegrationCryptoService,
     config: ConfigService,
+    private readonly guard: AiGuardService,
   ) {
     this.globalOpenai = config.get<string>('OPENAI_API_KEY');
     this.globalAnthropic = config.get<string>('ANTHROPIC_API_KEY');
@@ -162,9 +164,14 @@ export class AiSettingsService {
     const tAnthropic = dec(r?.anthropic_key_enc);
     const tOpenrouter = dec(r?.openrouter_key_enc);
     const tKimi = dec(r?.kimi_key_enc);
+    // Выключатели и бюджет владельца платформы (консоль владельца): решение — до выбора
+    // ключа, поэтому резервный провайдер его не обходит. Весь ИИ выключен — как без ключа:
+    // возможности уходят на правила, как у компании без ИИ.
+    const verdict = await this.guard.decision().catch(() => ({ any: true, shared: true, reason: null }));
+    if (!verdict.any) return { brainModel: r?.brain_model || this.globalBrainModel, source: 'none' };
     const own = !!(tOpenai || tAnthropic || tOpenrouter || tKimi);
     // общий ключ сервера — только площадке вендора и новой компании в пробный период (#4624)
-    const useGlobal = !own && (this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi)
+    const useGlobal = !own && verdict.shared && (this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi)
       ? (await this.trial(tenantId).catch(() => null))?.allowed === true
       : own;
     const g = (v?: string) => (useGlobal ? v : undefined);

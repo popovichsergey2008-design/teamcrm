@@ -1,19 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
 import { DbService } from '../../database/db.service';
 import { HealthService } from '../health/health.service';
+import { BUILD } from '../../common/build-info';
 
-/** Сборка: файл кладёт CI перед выкладкой (commit, время, номер прогона). Нет файла — «нет данных». */
-function buildInfo(): { sha: string | null; at: string | null; run: string | null } {
-  const f = join(process.cwd(), 'build-info.json');
-  try {
-    if (!existsSync(f)) return { sha: null, at: null, run: null };
-    const j = JSON.parse(readFileSync(f, 'utf8'));
-    return { sha: j.sha ?? null, at: j.at ?? null, run: j.run ?? null };
-  } catch { return { sha: null, at: null, run: null }; }
-}
-const BUILD = buildInfo();
 const STARTED_AT = new Date().toISOString();
 
 /**

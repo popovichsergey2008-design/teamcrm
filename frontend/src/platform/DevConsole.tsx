@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { fmtDate, pc, PcError } from './api';
 
 interface Status {
@@ -14,7 +14,20 @@ interface Status {
 const gb = (b: number) => `${(b / 1024 ** 3).toFixed(2)} ГБ`;
 const STUCK = new Set(['pending', 'running', 'failed', 'error']);
 
-export default function DevConsole() {
+export default function DevConsole({ canTriage }: { canTriage: boolean }) {
+  const [tab, setTab] = useState<'status' | 'errors'>('status');
+  return (
+    <>
+      <nav className="pc-tabs" aria-label="Разделы">
+        <button type="button" className="pc-tab" aria-pressed={tab === 'status'} onClick={() => setTab('status')}>Состояние</button>
+        <button type="button" className="pc-tab" aria-pressed={tab === 'errors'} onClick={() => setTab('errors')}>Ошибки</button>
+      </nav>
+      {tab === 'status' ? <StatusTab /> : <ErrorsTab canTriage={canTriage} />}
+    </>
+  );
+}
+
+function StatusTab() {
   const [s, setS] = useState<Status | null>(null);
   const [err, setErr] = useState('');
   const load = () => pc<Status>('GET', '/pc/dev/status').then((v) => { setS(v); setErr(''); }).catch((e) => setErr(e instanceof PcError ? e.message : 'Не загрузилось'));
@@ -69,7 +82,109 @@ export default function DevConsole() {
           </tbody>
         </table>
       </div>
-      <p className="dim pc-meta">Сбор ошибок сайта и сервера с группировкой и поиском по request_id — следующий этап.</p>
+    </section>
+  );
+}
+
+interface ErrRow {
+  id: string; source: string; kind: string; message: string; route: string | null; first_seen: string; last_seen: string;
+  first_version: string | null; last_version: string | null; hits: string; status: string; fixed_version: string | null;
+  note: string | null; hits_24h: number; clients_7d: number;
+}
+interface ErrOne extends ErrRow {
+  stack: string | null;
+  events: { at: string; request_id: string | null; version: string | null; route: string | null; tenant_id: string | null }[];
+  byVersion: { version: string | null; n: number }[];
+}
+const SRC: Record<string, string> = { server: 'сервер', web: 'сайт', mobile: 'приложение' };
+const ST: Record<string, string> = { new: 'новая', fixed: 'исправлена', ignored: 'не важно' };
+
+function ErrorsTab({ canTriage }: { canTriage: boolean }) {
+  const [status, setStatus] = useState('new');
+  const [source, setSource] = useState('');
+  const [q, setQ] = useState('');
+  const [query, setQuery] = useState('');
+  const [rows, setRows] = useState<ErrRow[] | null>(null);
+  const [open, setOpen] = useState<ErrOne | null>(null);
+  const [err, setErr] = useState('');
+  const load = () => {
+    const p = new URLSearchParams({ ...(status ? { status } : {}), ...(source ? { source } : {}), ...(query ? { q: query } : {}) });
+    pc<ErrRow[]>('GET', `/pc/dev/errors?${p}`).then((v) => { setRows(v); setErr(''); }).catch((e) => setErr(e instanceof PcError ? e.message : 'Не загрузилось'));
+  };
+  useEffect(load, [status, source, query]); // eslint-disable-line react-hooks/exhaustive-deps
+  const show = (id: string) => pc<ErrOne>('GET', `/pc/dev/errors/${id}`).then(setOpen).catch(() => undefined);
+  const mark = async (id: string, st: string) => {
+    const version = st === 'fixed' ? (window.prompt('В какой сборке исправлено? (можно пусто)') ?? '') : '';
+    try { await pc('POST', `/pc/dev/errors/${id}`, { status: st, version: version || undefined }); load(); if (open?.id === id) void show(id); }
+    catch (e) { alert(e instanceof PcError ? e.message : 'Не получилось'); }
+  };
+  const search = (e: FormEvent) => { e.preventDefault(); setQuery(q.trim()); };
+
+  return (
+    <section>
+      <div className="pc-row pc-wrap">
+        <div className="pc-seg" role="group" aria-label="Статус">
+          {[['new', 'Новые'], ['fixed', 'Исправленные'], ['ignored', 'Не важные'], ['', 'Все']].map(([k, l]) => (
+            <button key={k} type="button" aria-pressed={status === k} onClick={() => setStatus(k)}>{l}</button>
+          ))}
+        </div>
+        <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Источник">
+          <option value="">Все источники</option><option value="server">Сервер</option><option value="web">Сайт</option><option value="mobile">Приложение</option>
+        </select>
+        <form onSubmit={search} className="pc-row">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Текст ошибки или request_id" aria-label="Поиск" />
+          <button className="pc-btn pc-btn-ghost">Найти</button>
+        </form>
+      </div>
+      {err && <p className="pc-err">{err}</p>}
+      <div className="pc-table-wrap pc-gap">
+        <table className="pc-table">
+          <thead><tr><th>Ошибка</th><th>Где</th><th>Раз всего / за сутки</th><th>Затронуто за 7 дн.</th><th>Версии</th><th>Последний раз</th><th>Статус</th></tr></thead>
+          <tbody>
+            {rows?.length === 0 && <tr><td colSpan={7} className="dim">Ничего нет.</td></tr>}
+            {rows?.map((r) => (
+              <tr key={r.id}>
+                <td><button type="button" className="pc-link" onClick={() => void show(r.id)}><b>{r.kind}</b></button><div className="pc-mono">{r.message}</div></td>
+                <td>{SRC[r.source] ?? r.source}<div className="dim pc-mono">{r.route ?? ''}</div></td>
+                <td>{r.hits} / {r.hits_24h}</td>
+                <td>{r.clients_7d}</td>
+                <td className="pc-mono">{r.first_version ?? '—'}{r.last_version && r.last_version !== r.first_version ? ` → ${r.last_version}` : ''}</td>
+                <td>{fmtDate(r.last_seen)}</td>
+                <td>{ST[r.status] ?? r.status}{r.fixed_version ? ` в ${r.fixed_version}` : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {open && (
+        <div className="pc-card pc-gap">
+          <div className="pc-row pc-between">
+            <h3 className="pc-h-flat">{open.kind}: <span className="pc-mono">{open.message}</span></h3>
+            <button type="button" className="pc-btn pc-btn-ghost" onClick={() => setOpen(null)}>Закрыть</button>
+          </div>
+          <p className="dim pc-meta">Впервые {fmtDate(open.first_seen)} ({open.first_version ?? 'версия неизвестна'}), последний раз {fmtDate(open.last_seen)}. Всего {open.hits}.</p>
+          {canTriage && (
+            <div className="pc-actions">
+              {open.status !== 'fixed' && <button type="button" className="pc-btn" onClick={() => void mark(open.id, 'fixed')}>Исправлено</button>}
+              {open.status !== 'ignored' && <button type="button" className="pc-btn pc-btn-ghost" onClick={() => void mark(open.id, 'ignored')}>Не важно</button>}
+              {open.status !== 'new' && <button type="button" className="pc-btn pc-btn-ghost" onClick={() => void mark(open.id, 'new')}>Вернуть в новые</button>}
+            </div>
+          )}
+          <p className="dim pc-meta">Исправленная ошибка, появившись снова, сама возвращается в «Новые».</p>
+          {open.stack && <pre className="pc-mono pc-stack">{open.stack}</pre>}
+          <h3>По версиям</h3>
+          <p className="pc-mono">{open.byVersion.map((v) => `${v.version ?? '—'}: ${v.n}`).join(' · ') || '—'}</p>
+          <h3>Последние случаи</h3>
+          <div className="pc-table-wrap">
+            <table className="pc-table">
+              <thead><tr><th>Когда</th><th>request_id</th><th>Версия</th><th>Путь</th><th>Компания</th></tr></thead>
+              <tbody>{open.events.map((e, i) => (
+                <tr key={i}><td>{fmtDate(e.at)}</td><td className="pc-mono">{e.request_id ?? '—'}</td><td className="pc-mono">{e.version ?? '—'}</td><td className="pc-mono">{e.route ?? ''}</td><td>{e.tenant_id ?? '—'}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

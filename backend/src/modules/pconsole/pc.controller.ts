@@ -10,6 +10,9 @@ import { PcRepository } from './pc.repository';
 import { PcStatsService } from './pc-stats.service';
 import { PcDevService } from './pc-dev.service';
 import { PC_APPS, PERIODS, PeriodKey, periodOf, safeTz } from './pc-rules';
+import { AiGuardService } from '../ai/ai-guard.service';
+import { AppErrorsService } from '../app-errors/app-errors.service';
+import { normalizeGuard } from '../ai/ai-guard';
 
 class RegisterDto {
   @IsString() @MaxLength(255) email!: string;
@@ -40,6 +43,20 @@ class NoticeDto {
   @IsString() @MaxLength(400) text!: string;
   @Type(() => Number) @IsInt() @Min(5) @Max(7 * 24 * 60) minutes!: number;
   @IsIn(['info', 'warn']) level!: 'info' | 'warn';
+}
+
+class AiGuardDto {
+  @IsBoolean() allOff!: boolean;
+  @IsOptional() @IsString() @MaxLength(300) allReason?: string;
+  @IsBoolean() sharedOff!: boolean;
+  @IsOptional() @IsString() @MaxLength(300) sharedReason?: string;
+  @IsOptional() @Type(() => Number) @Min(0) @Max(1_000_000) monthlyBudgetUsd?: number | null;
+}
+
+class ErrorStatusDto {
+  @IsIn(['new', 'fixed', 'ignored']) status!: 'new' | 'fixed' | 'ignored';
+  @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsString() @MaxLength(64) version?: string;
 }
 
 const meta = (req: Request) => ({ ip: req.ip, userAgent: String(req.headers['user-agent'] ?? '') });
@@ -81,6 +98,8 @@ export class PcController {
     private readonly repo: PcRepository,
     private readonly stats: PcStatsService,
     private readonly dev: PcDevService,
+    private readonly aiGuard: AiGuardService,
+    private readonly errors: AppErrorsService,
   ) {}
 
   @Get('me') @PcNeed('any')
@@ -148,7 +167,52 @@ export class PcController {
     return { ok: true };
   }
 
+  // ── Общий ИИ: выключатели и бюджет ──
+  @Get('owner/ai') @PcNeed('owner.view')
+  async ai() {
+    const [config, decision, sharedSpentUsd, tenants] = await Promise.all([
+      this.aiGuard.config(), this.aiGuard.decision(), this.aiGuard.sharedSpentUsd(true), this.stats.aiMonth(),
+    ]);
+    return { config, decision, sharedSpentUsd, tenants };
+  }
+
+  @Post('owner/ai') @PcNeed('owner.manage') @HttpCode(200)
+  async setAi(@CurrentPc() pc: PcAuth, @Body() dto: AiGuardDto, @Req() req: Request) {
+    const before = await this.aiGuard.config();
+    // выключить без причины нельзя: через месяц никто не вспомнит, почему ИИ молчит (§5.5)
+    if ((dto.allOff && !before.allOff && !dto.allReason?.trim()) || (dto.sharedOff && !before.sharedOff && !dto.sharedReason?.trim())) {
+      throw AppException.validation('Укажите причину выключения');
+    }
+    const next = normalizeGuard(dto);
+    await this.aiGuard.save(next);
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'ai.guard', meta: { from: before, to: next }, ip: req.ip });
+    return next;
+  }
+
   // ── Консоль разработчика ──
   @Get('dev/status') @PcNeed('dev.view')
   devStatus() { return this.dev.status(); }
+
+  @Get('dev/errors') @PcNeed('dev.view')
+  devErrors(@Query('status') status?: string, @Query('source') source?: string, @Query('q') q?: string) {
+    return this.errors.list({
+      status: ['new', 'fixed', 'ignored'].includes(status ?? '') ? status : undefined,
+      source: ['server', 'web', 'mobile'].includes(source ?? '') ? source : undefined,
+      q: q?.slice(0, 100),
+    });
+  }
+
+  @Get('dev/errors/:id') @PcNeed('dev.view')
+  async devError(@Param('id') id: string) {
+    const e = await this.errors.one(id);
+    if (!e) throw AppException.notFound('Ошибка не найдена');
+    return e;
+  }
+
+  @Post('dev/errors/:id') @PcNeed('dev.triage') @HttpCode(200)
+  async devErrorStatus(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Body() dto: ErrorStatusDto, @Req() req: Request) {
+    if (!(await this.errors.setStatus(id, dto.status, dto.note?.trim() || null, dto.version?.trim() || null))) throw AppException.notFound('Ошибка не найдена');
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'error.status', target: id, meta: { status: dto.status }, ip: req.ip });
+    return { ok: true };
+  }
 }

@@ -1,5 +1,6 @@
 import type { SupportContextInput } from '../types';
-import { platform } from '../platform';
+import { platform, platformKind } from '../platform';
+import { apiUrl } from './origin';
 
 /**
  * Технический контекст обращения (ТЗ-8, разд. 15–16).
@@ -49,12 +50,41 @@ export function noteRequestId(id: string | null | undefined): void {
  * Человек видит «что-то сломалось» — специалист увидит, что именно. Ставится один раз
  * при старте; текст сбоя режется, стек не шлём — в нём бывают адреса с параметрами.
  */
+/**
+ * Сбой — ещё и в консоль разработчика (ТЗ консолей, §4.2): сервер очистит и сгруппирует.
+ * Не больше 10 разных за загрузку страницы: петля из одной ошибки не должна заваливать сеть.
+ */
+const sentErrors = new Set<string>();
+function reportError(kind: string, message: string, stack?: string): void {
+  if (sentErrors.size >= 10 || sentErrors.has(message)) return;
+  sentErrors.add(message);
+  let clientId = '';
+  try { clientId = localStorage.getItem('qevo.cid') || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`; localStorage.setItem('qevo.cid', clientId); } catch { /* приватный режим */ }
+  const access = platform.secureStorage.get('teamcrm.access');
+  void fetch(apiUrl('/api/telemetry/error'), {
+    method: 'POST', keepalive: true,
+    headers: { 'Content-Type': 'application/json', ...(access ? { Authorization: `Bearer ${access}` } : {}) },
+    body: JSON.stringify({
+      source: platformKind() === 'capacitor' ? 'mobile' : 'web', kind: kind.slice(0, 120), message: message.slice(0, 2000),
+      stack: stack?.slice(0, 4000), route: location.pathname, version: import.meta.env.VITE_BUNDLE_VERSION, clientId,
+      requestId: lastRequestId ?? undefined,
+    }),
+  }).catch(() => undefined);
+}
+
 export function installSupportErrorCapture(): void {
   try {
-    window.addEventListener('error', (e) => noteSupportError(e.message || 'Сбой на странице'));
+    window.addEventListener('error', (e) => {
+      noteSupportError(e.message || 'Сбой на странице');
+      // «Script error.» — чужой скрипт без CORS, в нём нечего чинить
+      if (e.message && e.message !== 'Script error.') reportError(e.error?.name || 'Error', e.message, e.error?.stack);
+    });
     window.addEventListener('unhandledrejection', (e) => {
-      const r = (e as PromiseRejectionEvent).reason as { message?: string } | string | undefined;
+      const r = (e as PromiseRejectionEvent).reason as { message?: string; name?: string; stack?: string; code?: string } | string | undefined;
       noteSupportError(typeof r === 'string' ? r : r?.message || 'Необработанный сбой');
+      // ошибки API (сеть, 4xx) — не сбой кода: их видно по серверу и по обращению
+      if (r && typeof r === 'object' && (r.name === 'ApiError' || r.code)) return;
+      reportError(typeof r === 'string' ? 'UnhandledRejection' : r?.name || 'UnhandledRejection', typeof r === 'string' ? r : r?.message || 'Необработанный сбой', typeof r === 'string' ? undefined : r?.stack);
     });
   } catch { /* вне браузера */ }
 }

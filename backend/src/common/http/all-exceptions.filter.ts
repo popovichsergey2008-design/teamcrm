@@ -9,6 +9,8 @@ import {
 import { Request, Response } from 'express';
 import { ApiError, ErrorCode } from './api-response';
 import { requestIdOf } from './request-id.middleware';
+import { errorSink } from '../errors/error-report';
+import { BUILD_VERSION } from '../build-info';
 
 /** Приводит любое исключение к конверту {ok:false,error:{code,message,details}}. */
 @Catch()
@@ -49,6 +51,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     } else {
       // Номер запроса — в журнал: по нему обращение в поддержку сходится с этой строкой.
       this.logger.error(`[${requestId ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`);
+    }
+
+    // Сбои сервера (5xx) — в консоль разработчика, сгруппированными и очищенными.
+    if (status >= 500) {
+      const req = ctx.getRequest<Request & { user?: { tenantId?: string; userId?: string } }>();
+      const err = exception instanceof Error ? exception : null;
+      errorSink.report?.({
+        source: 'server', kind: err?.name ?? 'Error', message: err?.message ?? String(exception), stack: err?.stack ?? null,
+        route: `${req.method} ${req.originalUrl ?? req.url}`, requestId, tenantId: req.user?.tenantId ?? null, userId: req.user?.userId ?? null,
+        version: BUILD_VERSION,
+      });
     }
 
     const payload: ApiError = {
