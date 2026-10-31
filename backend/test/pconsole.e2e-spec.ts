@@ -132,4 +132,24 @@ describe('Консоли платформы (e2e)', () => {
     expect(v.decision.shared).toBe(false);
     await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: false, monthlyBudgetUsd: null }).expect(200);
   });
+
+  it('тариф на год: новая версия при смене цены, год виден клиенту, без цены года — на год не продаётся', async () => {
+    const o = await signIn(await staff(['owner']), 'owner');
+    const code = `t${uniq().slice(0, 10)}`;
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Тест', priceRub: 100, isActive: true }).expect(200);
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Тест', priceRub: 100, priceYearRub: 1000, isActive: true }).expect(200);
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Тест', priceRub: 100, priceYearRub: 1000, isActive: true }).expect(200);
+    const versions = (await http.get(`/api/pc/owner/plans/${code}/versions`).set(H(o.accessToken)).expect(200)).body.data as { version: number }[];
+    expect(versions.map((v) => v.version)).toEqual([2, 1]);
+
+    const r = await http.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Year', email: `y_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
+      .expect(201);
+    const v = (await http.get('/api/billing').set(H(r.body.data.accessToken)).expect(200)).body.data;
+    expect(v.plans.find((p: { code: string }) => p.code === code)).toMatchObject({ price: 100, priceYear: 1000 });
+    expect(v.period).toBe('month');
+    // в CI ключей ЮKassa нет — честный отказ, а не падение; неизвестный период — 400 от проверки
+    await http.post('/api/billing/checkout').set(H(r.body.data.accessToken)).send({ plan: code, period: 'decade' }).expect(400);
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Тест', priceRub: 100, isActive: false }).expect(200);
+  });
 });

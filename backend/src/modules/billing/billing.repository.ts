@@ -3,8 +3,8 @@ import { DbService } from '../../database/db.service';
 import { SubRow } from './billing-rules';
 
 export interface PlanRow {
-  code: string; title: string; price_rub: string; max_members: number | null;
-  description: string; sort_order: number; is_active: boolean;
+  code: string; title: string; price_rub: string; price_year_rub: string | null; max_members: number | null;
+  description: string; sort_order: number; is_active: boolean; version: number;
 }
 
 export interface TenantSubRow extends SubRow {
@@ -15,11 +15,18 @@ export interface TenantSubRow extends SubRow {
   payment_method_id: string | null;
   autopay: boolean;
   notified: Record<string, unknown>;
+  /** За что платили: период продления и цена (не меняются вместе с прайсом). */
+  period_months: number;
+  price_rub: string | null;
+  plan_version: number | null;
+  /** Тестовая компания — её может продлить тестовый платёж (только в sub()). */
+  is_test?: boolean;
 }
 
 export interface PaymentRow {
   id: string; tenant_id: string; provider_payment_id: string | null; plan_code: string; amount_rub: string;
   status: string; kind: string; created_at: Date; paid_at: Date | null; period_end: Date | null; cancel_reason: string | null;
+  period_months: number; plan_version: number | null; is_test: boolean;
 }
 
 @Injectable()
@@ -28,22 +35,45 @@ export class BillingRepository {
 
   plans(activeOnly = true): Promise<PlanRow[]> {
     return this.db.many<PlanRow>(
-      `SELECT code, title, price_rub::text, max_members, description, sort_order, is_active
+      `SELECT code, title, price_rub::text, price_year_rub::text, max_members, description, sort_order, is_active, version
          FROM billing_plans ${activeOnly ? 'WHERE is_active' : ''} ORDER BY sort_order, price_rub`,
     );
   }
 
   plan(code: string): Promise<PlanRow | null> {
-    return this.db.one<PlanRow>(`SELECT code, title, price_rub::text, max_members, description, sort_order, is_active FROM billing_plans WHERE code=$1`, [code]);
+    return this.db.one<PlanRow>(`SELECT code, title, price_rub::text, price_year_rub::text, max_members, description, sort_order, is_active, version FROM billing_plans WHERE code=$1`, [code]);
   }
 
-  async upsertPlan(p: { code: string; title: string; priceRub: number; maxMembers: number | null; description: string; sortOrder: number; isActive: boolean }) {
-    await this.db.query(
-      `INSERT INTO billing_plans (code, title, price_rub, max_members, description, sort_order, is_active, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7, now())
-       ON CONFLICT (code) DO UPDATE SET title=$2, price_rub=$3, max_members=$4, description=$5, sort_order=$6, is_active=$7, updated_at=now()`,
-      [p.code, p.title, p.priceRub, p.maxMembers, p.description, p.sortOrder, p.isActive],
-    );
+  /**
+   * Сохранить тариф. Поменялось что-то денежное или лимит — новая версия (§5.4): история
+   * цен остаётся, а действующие подписки продлеваются по своей цене, не по новой.
+   */
+  async upsertPlan(p: {
+    code: string; title: string; priceRub: number; priceYearRub?: number | null; maxMembers: number | null;
+    description: string; sortOrder: number; isActive: boolean; changedBy?: string | null;
+  }) {
+    await this.db.withTransaction(async (c) => {
+      const cur = await c.query<{ title: string; price_rub: string; price_year_rub: string | null; max_members: number | null; description: string; is_active: boolean; version: number }>(
+        `SELECT title, price_rub::text, price_year_rub::text, max_members, description, is_active, version FROM billing_plans WHERE code=$1 FOR UPDATE`, [p.code]);
+      const old = cur.rows[0];
+      // не передали годовую цену (старая ручка консоли поддержки) — оставляем прежнюю
+      const year = p.priceYearRub === undefined ? (old?.price_year_rub == null ? null : Number(old.price_year_rub)) : p.priceYearRub;
+      const changed = !old || Number(old.price_rub) !== p.priceRub || (old.price_year_rub == null ? null : Number(old.price_year_rub)) !== year
+        || old.max_members !== p.maxMembers || old.title !== p.title || old.description !== p.description || old.is_active !== p.isActive;
+      const version = old ? old.version + (changed ? 1 : 0) : 1;
+      await c.query(
+        `INSERT INTO billing_plans (code, title, price_rub, price_year_rub, max_members, description, sort_order, is_active, version, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
+         ON CONFLICT (code) DO UPDATE SET title=$2, price_rub=$3, price_year_rub=$4, max_members=$5, description=$6, sort_order=$7,
+           is_active=$8, version=$9, updated_at=now()`,
+        [p.code, p.title, p.priceRub, year, p.maxMembers, p.description, p.sortOrder, p.isActive, version]);
+      if (changed) {
+        await c.query(
+          `INSERT INTO billing_plan_versions (plan_code, version, title, price_month_rub, price_year_rub, max_members, description, is_active, changed_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (plan_code, version) DO NOTHING`,
+          [p.code, version, p.title, p.priceRub, year, p.maxMembers, p.description, p.isActive, p.changedBy ?? null]);
+      }
+    });
   }
 
   /** Подписка вместе с тем, что нужно правилам: когда создана компания, площадка ли это. */
@@ -52,7 +82,8 @@ export class BillingRepository {
       `SELECT t.id::text AS tenant_id, t.name AS tenant_name, t.created_at AS tenant_created_at, t.is_platform,
               COALESCE(s.status, 'TRIAL') AS status, s.plan_code, s.trial_ends_at, s.current_period_end,
               COALESCE(s.complimentary, FALSE) AS complimentary, s.payment_method_id,
-              COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified
+              COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified,
+              COALESCE(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version, t.is_test
          FROM tenants t LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
         WHERE t.id = $1`,
       [tenantId],
@@ -65,7 +96,8 @@ export class BillingRepository {
       `SELECT t.id::text AS tenant_id, t.name AS tenant_name, t.created_at AS tenant_created_at, t.is_platform,
               COALESCE(s.status, 'TRIAL') AS status, s.plan_code, s.trial_ends_at, s.current_period_end,
               COALESCE(s.complimentary, FALSE) AS complimentary, s.payment_method_id,
-              COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified
+              COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified,
+              COALESCE(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version
          FROM tenants t LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
         WHERE NOT t.is_platform AND NOT COALESCE(s.complimentary, FALSE)
           AND (s.current_period_end IS NULL OR s.current_period_end < now() + interval '4 days')
@@ -113,10 +145,14 @@ export class BillingRepository {
     );
   }
 
-  async createPayment(p: { tenantId: string; planCode: string; amountRub: string; kind: 'checkout' | 'autopay'; createdBy: string | null }): Promise<string> {
+  async createPayment(p: {
+    tenantId: string; planCode: string; amountRub: string; kind: 'checkout' | 'autopay'; createdBy: string | null;
+    periodMonths?: number; planVersion?: number | null;
+  }): Promise<string> {
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO billing_payments (tenant_id, plan_code, amount_rub, kind, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id::text`,
-      [p.tenantId, p.planCode, p.amountRub, p.kind, p.createdBy],
+      `INSERT INTO billing_payments (tenant_id, plan_code, amount_rub, kind, created_by, period_months, plan_version)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id::text`,
+      [p.tenantId, p.planCode, p.amountRub, p.kind, p.createdBy, p.periodMonths ?? 1, p.planVersion ?? null],
     );
     return row!.id;
   }
@@ -127,7 +163,8 @@ export class BillingRepository {
 
   paymentByProvider(providerId: string): Promise<PaymentRow | null> {
     return this.db.one<PaymentRow>(
-      `SELECT id::text, tenant_id::text, provider_payment_id, plan_code, amount_rub::text, status, kind, created_at, paid_at, period_end, cancel_reason
+      `SELECT id::text, tenant_id::text, provider_payment_id, plan_code, amount_rub::text, status, kind, created_at, paid_at, period_end, cancel_reason,
+              period_months, plan_version, is_test
          FROM billing_payments WHERE provider_payment_id=$1`,
       [providerId],
     );
@@ -135,31 +172,54 @@ export class BillingRepository {
 
   payments(tenantId: string, limit = 24): Promise<PaymentRow[]> {
     return this.db.many<PaymentRow>(
-      `SELECT id::text, tenant_id::text, provider_payment_id, plan_code, amount_rub::text, status, kind, created_at, paid_at, period_end, cancel_reason
+      `SELECT id::text, tenant_id::text, provider_payment_id, plan_code, amount_rub::text, status, kind, created_at, paid_at, period_end, cancel_reason,
+              period_months, plan_version, is_test
          FROM billing_payments WHERE tenant_id=$1 ORDER BY created_at DESC LIMIT $2`,
       [tenantId, limit],
     );
   }
 
   /** Успешный платёж: отметить и продлить подписку — одной транзакцией и ровно один раз. */
-  async applySucceeded(p: { paymentId: string; tenantId: string; planCode: string; periodEnd: Date; paymentMethodId: string | null }): Promise<boolean> {
+  async applySucceeded(p: {
+    paymentId: string; tenantId: string; planCode: string; periodEnd: Date; paymentMethodId: string | null;
+    isTest?: boolean;
+  }): Promise<boolean> {
     return this.db.withTransaction(async (c) => {
-      const upd = await c.query(
-        `UPDATE billing_payments SET status='succeeded', paid_at=now(), period_end=$2 WHERE id=$1 AND status='pending'`,
-        [p.paymentId, p.periodEnd.toISOString()],
+      // цена, период и версия — из самого платежа: подписка продлевается так, как за неё заплатили
+      const upd = await c.query<{ amount_rub: string; period_months: number; plan_version: number | null }>(
+        `UPDATE billing_payments SET status='succeeded', paid_at=now(), period_end=$2, is_test=$3::boolean
+          WHERE id=$1 AND status='pending' RETURNING amount_rub::text, period_months, plan_version`,
+        [p.paymentId, p.periodEnd.toISOString(), !!p.isTest],
       );
       if (!upd.rowCount) return false; // уже учтён (повтор уведомления)
+      const paid = upd.rows[0];
       await c.query(
-        `INSERT INTO tenant_subscriptions (tenant_id, status, plan_code, current_period_end, payment_method_id, autopay, notified)
-         VALUES ($1, 'ACTIVE', $2, $3, $4::text, $4::text IS NOT NULL, '{}'::jsonb)
+        `INSERT INTO tenant_subscriptions (tenant_id, status, plan_code, current_period_end, payment_method_id, autopay, notified,
+                                           period_months, price_rub, plan_version)
+         VALUES ($1, 'ACTIVE', $2, $3, $4::text, $4::text IS NOT NULL, '{}'::jsonb, $5::int, $6::numeric, $7::int)
          ON CONFLICT (tenant_id) DO UPDATE SET status='ACTIVE', plan_code=$2, current_period_end=$3,
            payment_method_id = COALESCE($4::text, tenant_subscriptions.payment_method_id),
            autopay = CASE WHEN $4::text IS NOT NULL THEN TRUE ELSE tenant_subscriptions.autopay END,
+           period_months=$5::int, price_rub=$6::numeric, plan_version=$7::int,
            notified='{}'::jsonb, updated_at=now()`,
-        [p.tenantId, p.planCode, p.periodEnd.toISOString(), p.paymentMethodId],
+        [p.tenantId, p.planCode, p.periodEnd.toISOString(), p.paymentMethodId, paid.period_months, paid.amount_rub, paid.plan_version],
       );
       return true;
     });
+  }
+
+  /** Тестовый платёж (магазин в тестовом режиме) у настоящей компании: не продлеваем, отмечаем. */
+  async markTestIgnored(paymentId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE billing_payments SET status='canceled', is_test=true, cancel_reason='тестовый платёж: настоящую подписку не продлевает'
+        WHERE id=$1 AND status='pending'`, [paymentId]);
+  }
+
+  /** Версии тарифа — что и когда меняли. */
+  planVersions(code: string) {
+    return this.db.many<{ version: number; title: string; price_month_rub: string; price_year_rub: string | null; max_members: number | null; is_active: boolean; changed_by: string | null; created_at: Date }>(
+      `SELECT version, title, price_month_rub::text, price_year_rub::text, max_members, is_active, changed_by, created_at
+         FROM billing_plan_versions WHERE plan_code=$1 ORDER BY version DESC LIMIT 50`, [code]);
   }
 
   async markCanceled(paymentId: string, reason: string | null): Promise<void> {

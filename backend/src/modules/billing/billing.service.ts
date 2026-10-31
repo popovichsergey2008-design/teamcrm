@@ -78,12 +78,14 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       writable: eff.writable,
       complimentary: eff.complimentary,
       plan: plan ? this.planOut(plan) : null,
+      period: (row?.period_months ?? 1) === 12 ? 'year' as const : 'month' as const,
+      lockedPrice: row?.price_rub != null ? Number(row.price_rub) : null,
       autopay: !!row?.autopay && !!row?.payment_method_id,
       autopayAvailable: this.autopayAllowed,
       members,
       plans: plans.map((p) => this.planOut(p)),
       payments: payments.map((p) => ({
-        id: p.id, plan: p.plan_code, amount: Number(p.amount_rub), status: p.status, kind: p.kind,
+        id: p.id, plan: p.plan_code, amount: Number(p.amount_rub), status: p.status, kind: p.kind, months: p.period_months, test: p.is_test,
         createdAt: p.created_at, paidAt: p.paid_at, periodEnd: p.period_end,
       })),
       configured: !!this.kassa,
@@ -92,29 +94,35 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   private planOut(p: PlanRow) {
-    return { code: p.code, title: p.title, price: Number(p.price_rub), maxMembers: p.max_members, description: p.description };
+    return {
+      code: p.code, title: p.title, price: Number(p.price_rub), priceYear: p.price_year_rub == null ? null : Number(p.price_year_rub),
+      maxMembers: p.max_members, description: p.description,
+    };
   }
 
   // ───────────── оплата ─────────────
 
   /** Начать оплату: платёж в ЮKassa и ссылка на её страницу. Только владелец (проверяет контроллер). */
-  async checkout(tenantId: string, userId: string, planCode: string): Promise<{ confirmationUrl: string; paymentId: string }> {
+  async checkout(tenantId: string, userId: string, planCode: string, period: 'month' | 'year' = 'month'): Promise<{ confirmationUrl: string; paymentId: string }> {
     if (!this.kassa) throw AppException.validation('Оплата ещё не подключена — напишите в поддержку');
     const plan = await this.repo.plan(planCode);
     if (!plan || !plan.is_active) throw AppException.validation('Такого тарифа нет');
+    if (period === 'year' && plan.price_year_rub == null) throw AppException.validation(`Тариф «${plan.title}» на год не продаётся`);
+    const months = period === 'year' ? 12 : 1;
+    const price = period === 'year' ? plan.price_year_rub! : plan.price_rub;
     const members = await this.repo.membersCount(tenantId);
     if (plan.max_members !== null && members > plan.max_members) {
       throw AppException.validation(`В компании ${members} сотрудников, а тариф «${plan.title}» — до ${plan.max_members}. Выберите тариф побольше`);
     }
     const sub = await this.repo.sub(tenantId);
-    const id = await this.repo.createPayment({ tenantId, planCode, amountRub: plan.price_rub, kind: 'checkout', createdBy: userId });
+    const id = await this.repo.createPayment({ tenantId, planCode, amountRub: price, kind: 'checkout', createdBy: userId, periodMonths: months, planVersion: plan.version });
     let pay: ProviderPayment;
     try {
       pay = await this.kassa.createRedirect({
-        amount: amountValue(plan.price_rub),
-        description: `QEVO, тариф «${plan.title}», 1 месяц — ${sub?.tenant_name ?? 'компания'}`,
+        amount: amountValue(price),
+        description: `QEVO, тариф «${plan.title}», ${months === 12 ? '1 год' : '1 месяц'} — ${sub?.tenant_name ?? 'компания'}`,
         returnUrl: `${this.base()}/settings/billing?paid=${id}`,
-        metadata: { tenant_id: tenantId, plan: planCode, payment: id },
+        metadata: { tenant_id: tenantId, plan: planCode, payment: id, months: String(months) },
         savePaymentMethod: this.autopayAllowed,
         idempotenceKey: `qevo-pay-${id}`,
       });
@@ -157,9 +165,18 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const pay = await this.kassa.get(providerId);
     if (pay.status === 'succeeded' && pay.paid) {
       const sub = await this.repo.sub(local.tenant_id);
-      const periodEnd = extendPeriod(sub?.current_period_end ? new Date(sub.current_period_end) : null, new Date());
+      // Тестовый магазин ЮKassa продлевает только тестовые компании (§12): проверка
+      // оплаты на проде не должна дарить настоящей компании оплаченный месяц.
+      if (pay.test && !sub?.is_test) {
+        await this.repo.markTestIgnored(local.id);
+        this.log.warn(`тестовый платёж ${providerId} у настоящей компании ${local.tenant_id} — подписку не продлеваем`);
+        return 'test_ignored';
+      }
+      const periodEnd = extendPeriod(sub?.current_period_end ? new Date(sub.current_period_end) : null, new Date(), local.period_months || 1);
       const saved = pay.payment_method?.saved ? pay.payment_method.id : null;
-      const applied = await this.repo.applySucceeded({ paymentId: local.id, tenantId: local.tenant_id, planCode: local.plan_code, periodEnd, paymentMethodId: saved });
+      const applied = await this.repo.applySucceeded({
+        paymentId: local.id, tenantId: local.tenant_id, planCode: local.plan_code, periodEnd, paymentMethodId: saved, isTest: !!pay.test,
+      });
       this.forget(local.tenant_id);
       if (applied) {
         this.log.log(`оплата ${providerId}: компания ${local.tenant_id}, до ${periodEnd.toISOString().slice(0, 10)}`);
@@ -238,11 +255,18 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     if (!this.kassa || !row.plan_code || !row.payment_method_id) return;
     const plan = await this.repo.plan(row.plan_code);
     if (!plan) return;
+    // Продление — по цене и периоду, за которые платили (§5.4): новый прайс действующую
+    // подписку молча не меняет. Перевод на новую цену — отдельным решением с уведомлением.
+    const months = row.period_months || 1;
+    const price = row.price_rub ?? (months === 12 ? plan.price_year_rub ?? plan.price_rub : plan.price_rub);
     const key = `qevo-renew-${row.tenant_id}-${periodEnd.toISOString().slice(0, 10)}`;
-    const id = await this.repo.createPayment({ tenantId: row.tenant_id, planCode: plan.code, amountRub: plan.price_rub, kind: 'autopay', createdBy: null });
+    const id = await this.repo.createPayment({
+      tenantId: row.tenant_id, planCode: plan.code, amountRub: price, kind: 'autopay', createdBy: null,
+      periodMonths: months, planVersion: row.plan_version,
+    });
     const pay = await this.kassa.createRecurring({
-      amount: amountValue(plan.price_rub), paymentMethodId: row.payment_method_id,
-      description: `QEVO, тариф «${plan.title}», продление на 1 месяц`,
+      amount: amountValue(price), paymentMethodId: row.payment_method_id,
+      description: `QEVO, тариф «${plan.title}», продление на ${months === 12 ? '1 год' : '1 месяц'}`,
       metadata: { tenant_id: row.tenant_id, plan: plan.code, payment: id }, idempotenceKey: key,
     });
     await this.repo.attachProviderId(id, pay.id);
@@ -266,7 +290,14 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     return this.repo.plans(false);
   }
 
-  async savePlan(p: { code: string; title: string; priceRub: number; maxMembers: number | null; description: string; sortOrder: number; isActive: boolean }) {
+  planVersions(code: string) {
+    return this.repo.planVersions(code);
+  }
+
+  async savePlan(p: {
+    code: string; title: string; priceRub: number; priceYearRub?: number | null; maxMembers: number | null;
+    description: string; sortOrder: number; isActive: boolean; changedBy?: string | null;
+  }) {
     await this.repo.upsertPlan(p);
     return this.repo.plans(false);
   }

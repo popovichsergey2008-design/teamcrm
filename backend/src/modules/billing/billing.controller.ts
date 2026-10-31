@@ -1,12 +1,13 @@
 import { Body, Controller, Get, HttpCode, Logger, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { BillingService } from './billing.service';
 
 class CheckoutDto {
   @IsString() @MaxLength(32) plan!: string;
+  @IsOptional() @IsIn(['month', 'year']) period?: 'month' | 'year';
 }
 class AutopayDto {
   @IsBoolean() on!: boolean;
@@ -32,7 +33,7 @@ export class BillingController {
   @Roles('owner')
   @HttpCode(200)
   checkout(@CurrentUser() u: AuthUser, @Body() dto: CheckoutDto) {
-    return this.billing.checkout(u.tenantId, u.userId, dto.plan);
+    return this.billing.checkout(u.tenantId, u.userId, dto.plan, dto.period ?? 'month');
   }
 
   /** Вернулся со страницы ЮKassa: сверить платёж сразу, не дожидаясь уведомления. */

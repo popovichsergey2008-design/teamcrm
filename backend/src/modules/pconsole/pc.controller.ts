@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import type { Request } from 'express';
 import { Public } from '../../common/auth/decorators';
@@ -12,6 +12,7 @@ import { PcDevService } from './pc-dev.service';
 import { PC_APPS, PERIODS, PeriodKey, periodOf, safeTz } from './pc-rules';
 import { AiGuardService } from '../ai/ai-guard.service';
 import { AppErrorsService } from '../app-errors/app-errors.service';
+import { BillingService } from '../billing/billing.service';
 import { normalizeGuard } from '../ai/ai-guard';
 
 class RegisterDto {
@@ -51,6 +52,17 @@ class AiGuardDto {
   @IsBoolean() sharedOff!: boolean;
   @IsOptional() @IsString() @MaxLength(300) sharedReason?: string;
   @IsOptional() @Type(() => Number) @Min(0) @Max(1_000_000) monthlyBudgetUsd?: number | null;
+}
+
+class PlanDto {
+  @IsString() @Matches(/^[a-z0-9_-]{2,32}$/) code!: string;
+  @IsString() @MaxLength(80) title!: string;
+  @Type(() => Number) @IsNumber() @Min(1) @Max(10_000_000) priceRub!: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(1) @Max(100_000_000) priceYearRub?: number | null;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) maxMembers?: number | null;
+  @IsOptional() @IsString() @MaxLength(500) description?: string;
+  @IsOptional() @Type(() => Number) @IsInt() sortOrder?: number;
+  @IsBoolean() isActive!: boolean;
 }
 
 class ErrorStatusDto {
@@ -100,6 +112,7 @@ export class PcController {
     private readonly dev: PcDevService,
     private readonly aiGuard: AiGuardService,
     private readonly errors: AppErrorsService,
+    private readonly billing: BillingService,
   ) {}
 
   @Get('me') @PcNeed('any')
@@ -165,6 +178,27 @@ export class PcController {
     await this.stats.clearNotice();
     await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'notice.clear', ip: req.ip });
     return { ok: true };
+  }
+
+  // ── Тарифы: месяц и год, версии цен ──
+  @Get('owner/plans') @PcNeed('owner.view')
+  plans() { return this.billing.plansAll(); }
+
+  @Get('owner/plans/:code/versions') @PcNeed('owner.view')
+  planVersions(@Param('code') code: string) { return this.billing.planVersions(code); }
+
+  @Post('owner/plans') @PcNeed('owner.manage') @HttpCode(200)
+  async savePlan(@CurrentPc() pc: PcAuth, @Body() dto: PlanDto, @Req() req: Request) {
+    const r = await this.billing.savePlan({
+      code: dto.code, title: dto.title.trim(), priceRub: dto.priceRub, priceYearRub: dto.priceYearRub ?? null,
+      maxMembers: dto.maxMembers ?? null, description: dto.description?.trim() ?? '', sortOrder: dto.sortOrder ?? 0,
+      isActive: dto.isActive, changedBy: pc.email,
+    });
+    await this.repo.audit({
+      accountId: pc.accountId, app: pc.app, action: 'plan.save', target: dto.code,
+      meta: { priceRub: dto.priceRub, priceYearRub: dto.priceYearRub ?? null, maxMembers: dto.maxMembers ?? null, isActive: dto.isActive }, ip: req.ip,
+    });
+    return r;
   }
 
   // ── Общий ИИ: выключатели и бюджет ──

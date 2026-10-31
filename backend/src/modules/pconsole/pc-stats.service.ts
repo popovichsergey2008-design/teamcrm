@@ -51,10 +51,10 @@ export class PcStatsService {
               WHERE k.created_at >= b.lo AND k.created_at < b.hi
            ) x WHERE x.uid IS NOT NULL)::int AS active_users,
          (SELECT coalesce(sum(p.amount_rub), 0) FROM billing_payments p JOIN rt ON rt.id=p.tenant_id, b
-           WHERE p.status='succeeded' AND p.paid_at >= b.lo AND p.paid_at < b.hi)::float8 AS revenue_rub,
+           WHERE p.status='succeeded' AND NOT p.is_test AND p.paid_at >= b.lo AND p.paid_at < b.hi)::float8 AS revenue_rub,
          (SELECT count(*) FROM billing_payments p JOIN rt ON rt.id=p.tenant_id, b
-           WHERE p.status='succeeded' AND p.paid_at >= b.lo AND p.paid_at < b.hi)::int AS payments,
-         (SELECT count(*) FROM (SELECT tenant_id, min(paid_at) AS first FROM billing_payments WHERE status='succeeded' GROUP BY tenant_id) f
+           WHERE p.status='succeeded' AND NOT p.is_test AND p.paid_at >= b.lo AND p.paid_at < b.hi)::int AS payments,
+         (SELECT count(*) FROM (SELECT tenant_id, min(paid_at) AS first FROM billing_payments WHERE status='succeeded' AND NOT is_test GROUP BY tenant_id) f
             JOIN rt ON rt.id=f.tenant_id, b WHERE f.first >= b.lo AND f.first < b.hi)::int AS new_paying,
          (SELECT count(*) FROM support_conversations s JOIN rt ON rt.id=s.tenant_id, b WHERE s.created_at >= b.lo AND s.created_at < b.hi)::int AS support_new,
          (SELECT count(*) FROM mobile_devices d JOIN rt ON rt.id=d.tenant_id, b WHERE d.created_at >= b.lo AND d.created_at < b.hi)::int AS installs_new,
