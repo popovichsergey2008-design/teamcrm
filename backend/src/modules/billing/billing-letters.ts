@@ -14,7 +14,26 @@ const TEXTS: Record<string, (until: Date | null) => { subject: string; lead: str
 
 export function billingLetter(kind: string, until: Date | null, url: string): { subject: string; text: string; html: string } | null {
   const t = TEXTS[kind]?.(until);
-  if (!t) return null;
+  return t ? wrap(t, url) : null;
+}
+
+const rub = (n: number) => `${n.toLocaleString('ru-RU')} ₽`;
+
+/** Перевод на новую цену (§5.4): было, станет, с какого продления. */
+export function priceMoveLetter(
+  m: { planTitle: string; oldPrice: number | null; newPrice: number; months: number; at: Date }, url: string,
+): { subject: string; text: string; html: string } {
+  const per = m.months === 12 ? 'год' : 'месяц';
+  return wrap({
+    subject: 'Изменение цены тарифа QEVO',
+    lead: `С продления ${day(m.at)} тариф «${m.planTitle}» будет стоить ${rub(m.newPrice)} за ${per}`
+      + `${m.oldPrice != null ? ` (сейчас ${rub(m.oldPrice)})` : ''}. До этой даты всё остаётся как есть. `
+      + 'Если хотите сменить тариф или отключить автопродление — это можно сделать в настройках оплаты.',
+    button: 'Открыть настройки оплаты',
+  }, url);
+}
+
+function wrap(t: { subject: string; lead: string; button: string }, url: string): { subject: string; text: string; html: string } {
   const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>QEVO</title></head>
 <body style="margin:0;padding:0;background:#f5f1ea;">
 <table cellpadding="0" cellspacing="0" border="0" role="presentation" style="width:100%;background:#f5f1ea"><tr><td align="center" style="padding:28px 12px">

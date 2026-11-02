@@ -1,9 +1,9 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '../../common/http/app-exception';
-import { amountValue, effective, Effective, extendPeriod, noticeDue } from './billing-rules';
+import { amountValue, effective, Effective, extendPeriod, moveFor, moveKey, movePrice, moveReady, noticeDue, PriceMove } from './billing-rules';
 import { BillingRepository, PlanRow, TenantSubRow } from './billing.repository';
-import { billingLetter } from './billing-letters';
+import { billingLetter, priceMoveLetter } from './billing-letters';
 import { ProviderPayment, YooKassaClient, YooKassaError } from './yookassa.client';
 
 /** Сколько живёт решение «можно ли писать» для компании: на каждый запрос в базу не ходим. */
@@ -72,7 +72,16 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     ]);
     const eff = await this.state(tenantId, true);
     const plan = row?.plan_code ? plans.find((p) => p.code === row.plan_code) ?? null : null;
+    // ближайшее продление пойдёт по новой цене — сказать на экране, не только письмом
+    const move = row && eff.status === 'ACTIVE' && !eff.complimentary && eff.until
+      ? moveFor(row, eff.until, await this.repo.activeMoves()) : null;
+    const months = row?.period_months || 1;
     return {
+      priceChange: move && eff.until ? {
+        at: eff.until, price: movePrice(move, months),
+        // письмо ещё не ушло за 14 дней — это продление пройдёт по прежней цене, новая — со следующего
+        nextPeriod: !moveReady(row?.notified?.[moveKey(move.id)], eff.until),
+      } : null,
       status: eff.status,
       until: eff.until,
       writable: eff.writable,
@@ -230,13 +239,26 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   /** Сказать владельцам о сроках, продлить автоплатежом, записать статусы. `now` — для тестов. */
   async sweep(now: Date): Promise<number> {
     let acted = 0;
+    const moves = await this.repo.activeMoves();
+    // Перевод на новую цену касается ближайшего продления — письмо один раз на перевод,
+    // сразу, а не за 4 дня: новую цену списываем, только если письмо ушло за 14 дней.
+    if (moves.length) {
+      for (const row of await this.repo.paidOn([...new Set(moves.map((m) => m.plan_code))])) {
+        const eff = effective(row, new Date(row.tenant_created_at), now, row.is_platform);
+        const move = eff.status === 'ACTIVE' && !eff.complimentary && eff.until ? moveFor(row, eff.until, moves) : null;
+        if (!move || !eff.until || row.notified?.[moveKey(move.id)]) continue;
+        await this.notifyMove(row, move, eff.until);
+        await this.repo.markNotified(row.tenant_id, moveKey(move.id));
+        acted += 1;
+      }
+    }
     for (const row of await this.repo.watchList()) {
       const eff = effective(row, new Date(row.tenant_created_at), now, row.is_platform);
       const stored = eff.status === 'GRACE' ? 'PAST_DUE' : eff.status;
       if (row.status !== stored) await this.repo.setStatus(row.tenant_id, stored);
       if (eff.status === 'ACTIVE' && row.autopay && row.payment_method_id && eff.until
         && eff.until.getTime() - now.getTime() < 86_400_000) {
-        await this.renew(row, eff.until).catch((e) => this.log.warn(`автопродление ${row.tenant_id}: ${(e as Error).message}`));
+        await this.renew(row, eff.until, moves).catch((e) => this.log.warn(`автопродление ${row.tenant_id}: ${(e as Error).message}`));
       }
       // ключ периода: новый оплаченный период — уведомления о нём заново
       const periodKey = new Date(row.current_period_end ?? row.trial_ends_at ?? row.tenant_created_at).toISOString().slice(0, 10);
@@ -251,18 +273,21 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     return acted;
   }
 
-  private async renew(row: TenantSubRow, periodEnd: Date): Promise<void> {
+  private async renew(row: TenantSubRow, periodEnd: Date, moves: PriceMove[]): Promise<void> {
     if (!this.kassa || !row.plan_code || !row.payment_method_id) return;
     const plan = await this.repo.plan(row.plan_code);
     if (!plan) return;
     // Продление — по цене и периоду, за которые платили (§5.4): новый прайс действующую
-    // подписку молча не меняет. Перевод на новую цену — отдельным решением с уведомлением.
+    // подписку молча не меняет. Перевод на новую цену — решением владельца платформы
+    // (0225), и только если письмо о нём ушло не позже чем за 14 дней до списания.
     const months = row.period_months || 1;
-    const price = row.price_rub ?? (months === 12 ? plan.price_year_rub ?? plan.price_rub : plan.price_rub);
+    const move = moveFor(row, periodEnd, moves);
+    const moved = move && moveReady(row.notified?.[moveKey(move.id)], periodEnd) ? move : null;
+    const price = moved ? amountValue(movePrice(moved, months)) : row.price_rub ?? (months === 12 ? plan.price_year_rub ?? plan.price_rub : plan.price_rub);
     const key = `qevo-renew-${row.tenant_id}-${periodEnd.toISOString().slice(0, 10)}`;
     const id = await this.repo.createPayment({
       tenantId: row.tenant_id, planCode: plan.code, amountRub: price, kind: 'autopay', createdBy: null,
-      periodMonths: months, planVersion: row.plan_version,
+      periodMonths: months, planVersion: moved ? moved.to_version : row.plan_version,
     });
     const pay = await this.kassa.createRecurring({
       amount: amountValue(price), paymentMethodId: row.payment_method_id,
@@ -271,6 +296,22 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     });
     await this.repo.attachProviderId(id, pay.id);
     await this.sync(pay.id);
+  }
+
+  /** Письмо владельцам о переводе на новую цену. */
+  private async notifyMove(row: TenantSubRow, move: PriceMove, at: Date): Promise<void> {
+    const plan = await this.repo.plan(move.plan_code);
+    const months = row.period_months || 1;
+    const letter = priceMoveLetter({
+      planTitle: plan?.title ?? move.plan_code, oldPrice: row.price_rub != null ? Number(row.price_rub) : null,
+      newPrice: movePrice(move, months), months, at,
+    }, `${this.base()}/settings/billing`);
+    for (const o of await this.repo.owners(row.tenant_id)) {
+      await this.repo.enqueueMail({
+        tenantId: row.tenant_id, userId: o.id, to: o.email, ...letter, eventKey: 'billing.price_move',
+        dedupKey: `billing:${row.tenant_id}:${o.id}:${moveKey(move.id)}`,
+      }).catch(() => undefined);
+    }
   }
 
   /** Письмо (и копия в центр/Telegram) всем владельцам компании. */
@@ -292,6 +333,33 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
   planVersions(code: string) {
     return this.repo.planVersions(code);
+  }
+
+  priceMoves(code: string) {
+    return this.repo.moves(code);
+  }
+
+  /**
+   * Перевести оплаченные подписки тарифа на его ТЕКУЩУЮ версию с даты продления
+   * applyFrom (§5.4). Цены фиксируются в переводе: следующая правка тарифа его не меняет.
+   */
+  async createPriceMove(code: string, applyFrom: string, note: string | null, by: string) {
+    const plan = await this.repo.plan(code);
+    if (!plan) throw AppException.notFound('Тариф не найден');
+    const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10); // день по Москве
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(applyFrom) || applyFrom < today) throw AppException.validation('Дата перевода — сегодня или позже');
+    const live = (await this.repo.activeMoves()).find((m) => m.plan_code === code && m.to_version === plan.version);
+    if (live) throw AppException.conflict('На эту версию тарифа перевод уже назначен — отмените его, чтобы назначить заново');
+    const id = await this.repo.createMove({
+      planCode: code, toVersion: plan.version, priceMonth: plan.price_rub, priceYear: plan.price_year_rub, applyFrom, note, by,
+    });
+    // письма — сразу, не ждать часового прохода: от них считаются 14 дней
+    void this.sweep(new Date()).catch((e) => this.log.warn(`письма о новой цене: ${(e as Error).message}`));
+    return { id, toVersion: plan.version };
+  }
+
+  cancelPriceMove(id: string, by: string) {
+    return this.repo.cancelMove(id, by);
   }
 
   async savePlan(p: {

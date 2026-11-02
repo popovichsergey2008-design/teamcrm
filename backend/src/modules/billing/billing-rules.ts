@@ -85,3 +85,40 @@ export function allowedWhenReadOnly(method: string, path: string): boolean {
   return ['/api/auth/', '/api/billing', '/api/support', '/api/legal', '/api/csp-report', '/api/mobile/devices']
     .some((prefix) => p.startsWith(prefix));
 }
+
+// ── Перевод действующих подписок на новую цену (§5.4, 0225) ──
+
+export interface PriceMove {
+  id: string; plan_code: string; to_version: number;
+  price_month_rub: string; price_year_rub: string | null; apply_from: string;
+}
+
+/** Сколько дней до списания письмо о новой цене должно уже лежать у владельца. */
+export const MOVE_NOTICE_DAYS = 14;
+
+/**
+ * Какой перевод касается продления этой подписки в periodEnd: тариф тот же, версия
+ * новее оплаченной, дата продления не раньше даты перевода. Годовую подписку переводим
+ * только если у новой версии есть цена за год. Из нескольких — самый свежий.
+ */
+export function moveFor(
+  sub: { plan_code: string | null; plan_version: number | null; period_months: number },
+  periodEnd: Date, moves: PriceMove[],
+): PriceMove | null {
+  const at = periodEnd.toISOString().slice(0, 10);
+  const year = sub.period_months === 12;
+  const fit = moves.filter((m) => m.plan_code === sub.plan_code
+    && (sub.plan_version == null || m.to_version > sub.plan_version)
+    && at >= m.apply_from && (!year || m.price_year_rub != null));
+  return fit.sort((a, b) => b.to_version - a.to_version || Number(b.id) - Number(a.id))[0] ?? null;
+}
+
+export const movePrice = (m: PriceMove, months: number): number => Number(months === 12 ? m.price_year_rub : m.price_month_rub);
+
+/** Новую цену списываем, только если о ней сказали заранее; иначе — ещё период по прежней. */
+export function moveReady(notifiedAt: unknown, periodEnd: Date): boolean {
+  const t = typeof notifiedAt === 'string' ? Date.parse(notifiedAt) : NaN;
+  return Number.isFinite(t) && periodEnd.getTime() - t >= MOVE_NOTICE_DAYS * DAY;
+}
+
+export const moveKey = (id: string) => `price_move:${id}`;

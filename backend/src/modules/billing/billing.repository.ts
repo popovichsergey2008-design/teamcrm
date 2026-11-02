@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { SubRow } from './billing-rules';
+import { PriceMove, SubRow } from './billing-rules';
 
 export interface PlanRow {
   code: string; title: string; price_rub: string; price_year_rub: string | null; max_members: number | null;
@@ -216,6 +216,52 @@ export class BillingRepository {
   }
 
   /** Версии тарифа — что и когда меняли. */
+  // ── перевод действующих подписок на новую цену (0225) ──
+  /** Оплаченные подписки на этих тарифах — кому может прийти письмо о новой цене. */
+  paidOn(planCodes: string[]): Promise<TenantSubRow[]> {
+    return this.db.many<TenantSubRow>(
+      `SELECT t.id::text AS tenant_id, t.name AS tenant_name, t.created_at AS tenant_created_at, t.is_platform,
+              s.status, s.plan_code, s.trial_ends_at, s.current_period_end, coalesce(s.complimentary, false) AS complimentary,
+              s.payment_method_id, coalesce(s.autopay, false) AS autopay, coalesce(s.notified, '{}'::jsonb) AS notified,
+              coalesce(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version
+         FROM tenant_subscriptions s JOIN tenants t ON t.id = s.tenant_id
+        WHERE s.plan_code = ANY($1::text[]) AND s.current_period_end > now()
+          AND NOT t.is_platform AND NOT coalesce(s.complimentary, false)`, [planCodes]);
+  }
+
+  activeMoves(): Promise<PriceMove[]> {
+    return this.db.many<PriceMove>(
+      `SELECT id::text, plan_code, to_version, price_month_rub::text, price_year_rub::text, to_char(apply_from, 'YYYY-MM-DD') AS apply_from
+         FROM billing_price_moves WHERE cancelled_at IS NULL`);
+  }
+
+  /** Переводы тарифа и сколько оплаченных подписок они касаются (без вечных и площадки). */
+  moves(code: string) {
+    return this.db.many<{ id: string; to_version: number; price_month_rub: string; price_year_rub: string | null; apply_from: string;
+      note: string | null; created_at: Date; cancelled_at: Date | null; by_email: string | null; affected: number; notified: number }>(
+      `SELECT m.id::text, m.to_version, m.price_month_rub::text, m.price_year_rub::text, to_char(m.apply_from, 'YYYY-MM-DD') AS apply_from,
+              m.note, m.created_at, m.cancelled_at, a.email AS by_email,
+              (SELECT count(*)::int FROM tenant_subscriptions s JOIN tenants t ON t.id = s.tenant_id
+                WHERE s.plan_code = m.plan_code AND s.current_period_end IS NOT NULL AND NOT coalesce(s.complimentary, false)
+                  AND NOT t.is_platform AND (s.plan_version IS NULL OR s.plan_version < m.to_version)) AS affected,
+              (SELECT count(*)::int FROM tenant_subscriptions s WHERE s.notified ? ('price_move:' || m.id)) AS notified
+         FROM billing_price_moves m LEFT JOIN pc_accounts a ON a.id = m.created_by
+        WHERE m.plan_code = $1 ORDER BY m.id DESC LIMIT 50`, [code]);
+  }
+
+  async createMove(m: { planCode: string; toVersion: number; priceMonth: string; priceYear: string | null; applyFrom: string; note: string | null; by: string }) {
+    const r = await this.db.one<{ id: string }>(
+      `INSERT INTO billing_price_moves (plan_code, to_version, price_month_rub, price_year_rub, apply_from, note, created_by)
+       VALUES ($1, $2, $3, $4, $5::date, $6, $7) RETURNING id::text`,
+      [m.planCode, m.toVersion, m.priceMonth, m.priceYear, m.applyFrom, m.note, m.by]);
+    return r!.id;
+  }
+
+  async cancelMove(id: string, by: string): Promise<boolean> {
+    const r = await this.db.query(`UPDATE billing_price_moves SET cancelled_at = now(), cancelled_by = $2 WHERE id = $1 AND cancelled_at IS NULL`, [id, by]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
   planVersions(code: string) {
     return this.db.many<{ version: number; title: string; price_month_rub: string; price_year_rub: string | null; max_members: number | null; is_active: boolean; changed_by: string | null; created_at: Date }>(
       `SELECT version, title, price_month_rub::text, price_year_rub::text, max_members, is_active, changed_by, created_at

@@ -11,6 +11,8 @@ export interface BillingView {
   /** За что платили: период и цена продления (не меняются вместе с прайсом). */
   period: 'month' | 'year';
   lockedPrice: number | null;
+  /** Ближайшее продление — по новой цене (перевод владельцем платформы, §5.4). */
+  priceChange: { at: string; price: number; nextPeriod: boolean } | null;
   autopay: boolean;
   autopayAvailable: boolean;
   members: number;

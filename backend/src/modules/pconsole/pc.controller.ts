@@ -66,6 +66,11 @@ class PlanDto {
   @IsBoolean() isActive!: boolean;
 }
 
+class MoveDto {
+  @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) applyFrom!: string;
+  @IsOptional() @IsString() @MaxLength(500) note?: string;
+}
+
 class ErrorStatusDto {
   @IsIn(['new', 'fixed', 'ignored']) status!: 'new' | 'fixed' | 'ignored';
   @IsOptional() @IsString() @MaxLength(500) note?: string;
@@ -190,6 +195,24 @@ export class PcController {
 
   @Get('owner/plans/:code/versions') @PcNeed('owner.view')
   planVersions(@Param('code') code: string) { return this.billing.planVersions(code); }
+
+  /** Перевод оплаченных подписок на новую цену (§5.4): список, назначить, отменить. */
+  @Get('owner/plans/:code/moves') @PcNeed('owner.view')
+  priceMoves(@Param('code') code: string) { return this.billing.priceMoves(code); }
+
+  @Post('owner/plans/:code/moves') @PcNeed('owner.manage') @HttpCode(200)
+  async createMove(@CurrentPc() pc: PcAuth, @Param('code') code: string, @Body() dto: MoveDto, @Req() req: Request) {
+    const r = await this.billing.createPriceMove(code, dto.applyFrom, dto.note?.trim() || null, pc.accountId);
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'plan.price_move', target: code, meta: { ...r, applyFrom: dto.applyFrom }, ip: req.ip });
+    return r;
+  }
+
+  @Post('owner/moves/:id/cancel') @PcNeed('owner.manage') @HttpCode(200)
+  async cancelMove(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Req() req: Request) {
+    if (!(await this.billing.cancelPriceMove(id, pc.accountId))) throw AppException.notFound('Перевод не найден или уже отменён');
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'plan.price_move_cancel', target: id, meta: {}, ip: req.ip });
+    return { ok: true };
+  }
 
   @Post('owner/plans') @PcNeed('owner.manage') @HttpCode(200)
   async savePlan(@CurrentPc() pc: PcAuth, @Body() dto: PlanDto, @Req() req: Request) {

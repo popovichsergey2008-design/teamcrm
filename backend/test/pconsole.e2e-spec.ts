@@ -10,6 +10,7 @@ import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { DbService } from '../src/database/db.service';
 import { stepOf, totpAt } from '../src/common/auth/totp';
 import { PlatformService } from '../src/modules/platform/platform.service';
+import { BillingService } from '../src/modules/billing/billing.service';
 
 /**
  * Консоли платформы: отдельные учётные записи, обязательный второй фактор, роль = одна
@@ -213,5 +214,37 @@ describe('Консоли платформы (e2e)', () => {
     const o = await signIn(await staff(['owner']), 'owner');
     const ov = (await http.get('/api/pc/owner/overview?period=today&tz=Europe/Moscow').set(H(o.accessToken)).expect(200)).body.data;
     expect(ov.apps.installs.android.firstRuns).toBeGreaterThanOrEqual(1);
+  });
+
+  it('перевод на новую цену: письмо владельцу, клиент видит новую цену, отмена', async () => {
+    const o = await signIn(await staff(['owner']), 'owner');
+    const code = `m${uniq().slice(0, 10)}`;
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Перевод', priceRub: 100, isActive: true }).expect(200);
+    const r = (await http.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Move', email: `mv_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
+      .expect(201)).body.data;
+    await db.query(
+      `INSERT INTO tenant_subscriptions (tenant_id, status, plan_code, current_period_end, period_months, price_rub, plan_version)
+       VALUES ($1, 'ACTIVE', $2, now() + interval '30 days', 1, 100, 1)
+       ON CONFLICT (tenant_id) DO UPDATE SET status='ACTIVE', plan_code=$2, current_period_end=now() + interval '30 days', period_months=1, price_rub=100, plan_version=1`,
+      [r.user.tenantId, code]);
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Перевод', priceRub: 150, isActive: true }).expect(200);
+    await http.post(`/api/pc/owner/plans/${code}/moves`).set(H(o.accessToken)).send({ applyFrom: '2020-01-01' }).expect(400);
+    const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+    const m = (await http.post(`/api/pc/owner/plans/${code}/moves`).set(H(o.accessToken)).send({ applyFrom: today }).expect(200)).body.data;
+    expect(m.toVersion).toBe(2);
+    await http.post(`/api/pc/owner/plans/${code}/moves`).set(H(o.accessToken)).send({ applyFrom: today }).expect(409);
+    await app.get(BillingService).sweep(new Date());
+
+    const v = (await http.get('/api/billing').set(H(r.accessToken)).expect(200)).body.data;
+    expect(v.priceChange).toMatchObject({ price: 150, nextPeriod: false });
+    const mail = await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM mail_outbox WHERE tenant_id=$1 AND event_key='billing.price_move'`, [r.user.tenantId]);
+    expect(mail!.n).toBe(1);
+    const moves = (await http.get(`/api/pc/owner/plans/${code}/moves`).set(H(o.accessToken)).expect(200)).body.data;
+    expect(moves[0]).toMatchObject({ affected: 1, notified: 1 });
+
+    await http.post(`/api/pc/owner/moves/${m.id}/cancel`).set(H(o.accessToken)).expect(200);
+    expect((await http.get('/api/billing').set(H(r.accessToken)).expect(200)).body.data.priceChange).toBeNull();
+    await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Перевод', priceRub: 150, isActive: false }).expect(200);
   });
 });

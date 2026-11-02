@@ -1,4 +1,4 @@
-import { allowedWhenReadOnly, amountValue, effective, extendPeriod, noticeDue, SubRow } from './billing-rules';
+import { allowedWhenReadOnly, amountValue, effective, extendPeriod, moveFor, movePrice, moveReady, noticeDue, PriceMove, SubRow } from './billing-rules';
 
 const day = 86_400_000;
 const now = new Date('2026-10-30T12:00:00Z');
@@ -53,5 +53,34 @@ describe('подписка: деньги и сроки', () => {
     expect(allowedWhenReadOnly('POST', '/api/billing/checkout')).toBe(true);
     expect(allowedWhenReadOnly('POST', '/api/auth/login')).toBe(true);
     expect(allowedWhenReadOnly('POST', '/api/tasks')).toBe(false);
+  });
+});
+
+describe('перевод на новую цену (§5.4)', () => {
+  const mv = (o: Partial<PriceMove>): PriceMove => ({ id: '1', plan_code: 'pro', to_version: 3, price_month_rub: '1490.00', price_year_rub: null, apply_from: '2026-12-01', ...o });
+  const sub = { plan_code: 'pro', plan_version: 2, period_months: 1 };
+  const dec5 = new Date('2026-12-05T10:00:00Z');
+
+  it('касается продления не раньше даты перевода и только старой версии того же тарифа', () => {
+    expect(moveFor(sub, dec5, [mv({})])?.id).toBe('1');
+    expect(moveFor(sub, new Date('2026-11-20T10:00:00Z'), [mv({})])).toBeNull();
+    expect(moveFor({ ...sub, plan_version: 3 }, dec5, [mv({})])).toBeNull();
+    expect(moveFor({ ...sub, plan_code: 'basic' }, dec5, [mv({})])).toBeNull();
+    expect(moveFor({ ...sub, plan_version: null }, dec5, [mv({})])?.id).toBe('1'); // подписки до 0222
+  });
+
+  it('годовую — только если у новой версии есть цена за год; из нескольких — самая свежая', () => {
+    expect(moveFor({ ...sub, period_months: 12 }, dec5, [mv({})])).toBeNull();
+    const y = mv({ id: '2', to_version: 4, price_year_rub: '14900.00' });
+    expect(moveFor({ ...sub, period_months: 12 }, dec5, [mv({}), y])?.id).toBe('2');
+    expect(movePrice(y, 12)).toBe(14900);
+    expect(movePrice(y, 1)).toBe(1490);
+  });
+
+  it('новую цену списываем, только если письмо ушло за 14 дней', () => {
+    expect(moveReady('2026-11-20T10:00:00Z', dec5)).toBe(true);
+    expect(moveReady('2026-11-25T10:00:00Z', dec5)).toBe(false);
+    expect(moveReady(undefined, dec5)).toBe(false);
+    expect(moveReady(true, dec5)).toBe(false);
   });
 });

@@ -9,6 +9,10 @@ interface Version {
   version: number; title: string; price_month_rub: string; price_year_rub: string | null; max_members: number | null;
   is_active: boolean; changed_by: string | null; created_at: string;
 }
+interface Move {
+  id: string; to_version: number; price_month_rub: string; price_year_rub: string | null; apply_from: string;
+  note: string | null; created_at: string; cancelled_at: string | null; by_email: string | null; affected: number; notified: number;
+}
 interface Form { code: string; title: string; priceRub: string; priceYearRub: string; maxMembers: string; description: string; sortOrder: string; isActive: boolean }
 
 const rub = (v: number | string | null) => (v == null ? '—' : `${Number(v).toLocaleString('ru-RU')} ₽`);
@@ -28,6 +32,7 @@ export default function PlansTab({ canManage }: { canManage: boolean }) {
   const [isNew, setIsNew] = useState(false);
   const [versions, setVersions] = useState<{ code: string; rows: Version[] } | null>(null);
   const [err, setErr] = useState('');
+  const [moving, setMoving] = useState<Plan | null>(null);
 
   const load = () => pc<Plan[]>('GET', '/pc/owner/plans').then(setPlans).catch((e) => setErr(e instanceof PcError ? e.message : 'Не загрузилось'));
   useEffect(() => { void load(); }, []);
@@ -68,7 +73,10 @@ export default function PlansTab({ canManage }: { canManage: boolean }) {
                 <td>{p.max_members ?? 'без ограничения'}</td>
                 <td>{p.is_active ? 'продаётся' : 'скрыт'}</td>
                 <td><button type="button" className="pc-link" onClick={() => void showVersions(p.code)}>v{p.version}</button></td>
-                <td>{canManage && <button type="button" className="pc-btn pc-btn-ghost" onClick={() => { setIsNew(false); setForm(toForm(p)); }}>Изменить</button>}</td>
+                <td className="pc-actions">
+                  {canManage && <button type="button" className="pc-btn pc-btn-ghost" onClick={() => { setIsNew(false); setForm(toForm(p)); }}>Изменить</button>}
+                  <button type="button" className="pc-btn pc-btn-ghost" onClick={() => setMoving(p)}>Перевод подписок</button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -99,6 +107,8 @@ export default function PlansTab({ canManage }: { canManage: boolean }) {
         </form>
       )}
 
+      {moving && <Moves plan={moving} canManage={canManage} onClose={() => setMoving(null)} />}
+
       {versions && (
         <div className="pc-card pc-gap">
           <div className="pc-row pc-between">
@@ -116,5 +126,71 @@ export default function PlansTab({ canManage }: { canManage: boolean }) {
         </div>
       )}
     </section>
+  );
+}
+
+const inDays = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Перевод оплаченных подписок на текущую цену тарифа (§5.4): с какой даты продления.
+ * Владельцам компаний — письмо; новую цену спишем, только если письмо ушло за 14 дней
+ * до списания, иначе ещё один период по прежней.
+ */
+function Moves({ plan, canManage, onClose }: { plan: Plan; canManage: boolean; onClose: () => void }) {
+  const [rows, setRows] = useState<Move[] | null>(null);
+  const [date, setDate] = useState(inDays(30));
+  const [note, setNote] = useState('');
+  const [err, setErr] = useState('');
+  const load = () => pc<Move[]>('GET', `/pc/owner/plans/${plan.code}/moves`).then(setRows).catch((e) => setErr(e instanceof PcError ? e.message : 'Не загрузилось'));
+  useEffect(() => { void load(); }, [plan.code]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const create = async (e: FormEvent) => {
+    e.preventDefault(); setErr('');
+    if (!window.confirm(`Перевести оплаченные подписки «${plan.title}» на ${rub(plan.price_rub)}/мес${plan.price_year_rub ? ` и ${rub(plan.price_year_rub)}/год` : ''} с продлений от ${date}? Владельцам компаний уйдёт письмо.`)) return;
+    try { await pc('POST', `/pc/owner/plans/${plan.code}/moves`, { applyFrom: date, note: note.trim() || undefined }); setNote(''); await load(); }
+    catch (x) { setErr(x instanceof PcError ? x.message : 'Не получилось'); }
+  };
+  const cancel = async (id: string) => {
+    if (!window.confirm('Отменить перевод? Продления пойдут по прежним ценам. Письма уже ушли — при необходимости предупредите клиентов сами.')) return;
+    try { await pc('POST', `/pc/owner/moves/${id}/cancel`); await load(); } catch (x) { setErr(x instanceof PcError ? x.message : 'Не получилось'); }
+  };
+
+  return (
+    <div className="pc-card pc-gap">
+      <div className="pc-row pc-between">
+        <h3 className="pc-h-flat">Перевод подписок «{plan.title}» на новую цену</h3>
+        <button type="button" className="pc-btn pc-btn-ghost" onClick={onClose}>Закрыть</button>
+      </div>
+      <p className="dim pc-meta">
+        Сейчас тариф v{plan.version}: {rub(plan.price_rub)} в месяц{plan.price_year_rub ? `, ${rub(plan.price_year_rub)} за год` : ', на год не продаётся — годовые подписки останутся на своей цене'}.
+        Перевод переносит оплаченные подписки на эти цены с первого продления не раньше выбранной даты. Владельцам компаний сразу уходит письмо;
+        новую цену спишем, только если письмо ушло не позже чем за 14 дней до списания — иначе ещё один период по прежней.
+      </p>
+      {err && <p className="pc-err">{err}</p>}
+      {canManage && (
+        <form className="pc-row pc-wrap" onSubmit={create}>
+          <label>С продлений от<input type="date" value={date} min={inDays(0)} onChange={(e) => setDate(e.target.value)} required /></label>
+          <label>Пояснение (для журнала)<input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} /></label>
+          <button className="pc-btn">Назначить перевод на v{plan.version}</button>
+        </form>
+      )}
+      <div className="pc-table-wrap pc-gap">
+        <table className="pc-table">
+          <thead><tr><th>На версию</th><th>С даты</th><th>Цены</th><th>Подписок</th><th>Письмо получили</th><th>Кто</th><th /></tr></thead>
+          <tbody>
+            {rows?.length === 0 && <tr><td colSpan={7} className="dim">Переводов не было.</td></tr>}
+            {rows?.map((m) => (
+              <tr key={m.id} className={m.cancelled_at ? 'dim' : ''}>
+                <td>v{m.to_version}</td><td>{m.apply_from}</td>
+                <td>{rub(m.price_month_rub)}/мес{m.price_year_rub ? ` · ${rub(m.price_year_rub)}/год` : ''}</td>
+                <td>{m.affected}</td><td>{m.notified}</td>
+                <td>{m.by_email ?? '—'}<div className="dim">{fmtDate(m.created_at)}{m.note ? ` · ${m.note}` : ''}</div></td>
+                <td>{m.cancelled_at ? `отменён ${fmtDate(m.cancelled_at)}` : canManage && <button type="button" className="pc-link" onClick={() => void cancel(m.id)}>Отменить</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

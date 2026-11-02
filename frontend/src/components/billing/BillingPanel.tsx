@@ -118,6 +118,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                 </div>
                 {!canPay && <div className="dim bil-note">Оплачивает владелец компании.</div>}
                 {v.lockedPrice != null && v.plan && <div className="dim bil-note">Продление — по цене, за которую вы платили: {rub(v.lockedPrice)} {v.period === 'year' ? 'за год' : 'в месяц'}. Если прайс изменится, предупредим заранее.</div>}
+                {v.priceChange && <div className="bil-note"><b>Цена меняется:</b> {v.priceChange.nextPeriod ? `со следующего продления после ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}` : `с продления ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`} — {rub(v.priceChange.price)} {v.period === 'year' ? 'за год' : 'в месяц'}.</div>}
                 {canPay && v.autopayAvailable && v.plan && (
                   <label className="bil-note">
                     <input type="checkbox" checked={v.autopay} onChange={(e) => void billingApi.autopay(e.target.checked).then(setV).catch(() => undefined)} />
