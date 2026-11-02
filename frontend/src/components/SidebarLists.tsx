@@ -3,6 +3,7 @@ import { Icon } from './Icon';
 import { useAuth } from '../state/auth';
 import { api, type RecentTask } from '../lib/api';
 import { navigate, useRoute } from '../lib/router';
+import { RECENT_LABEL, recentState, TaskStateDot } from './TaskStateDot';
 import { favorites, FAVORITES_CHANGED, initFavorites, toggleFavorite, type Favorite } from '../lib/favorites';
 import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, type TaskDraft } from '../lib/task-draft';
 import { CHAT_DRAFT_CHANGED, clearDraft, listChatDrafts } from '../lib/chat-drafts';
@@ -10,22 +11,6 @@ import './sidebar-lists.css';
 
 // новый ключ (02.11): «Избранное» теперь свёрнуто по умолчанию — у всех, и у тех, кто уже раскрывал
 const OPEN_KEY = 'qevo.sb-fav';
-
-/** #4720: на английском интерфейсе браузера — английская подпись */
-const RECENT_LABEL = typeof navigator !== 'undefined' && /^en\b/i.test(navigator.language) ? 'Recent tasks' : 'Последние задачи';
-const NOT_STARTED = /^(нов|to ?do|бэклог|backlog|в планах|план|очеред|входящ)/i;
-
-/**
- * Значок состояния задачи (#4720, как в Linear): пунктирный круг — не начата,
- * половина — в работе, три четверти — на проверке, галочка — готово, красный — просрочена.
- */
-function recentState(t: RecentTask): { cls: string; hint: string } {
-  if (t.stage === 'done') return { cls: 'sbl-st-done', hint: 'Готово' };
-  if (t.overdue) return { cls: 'sbl-st-late', hint: `Просрочена · ${t.status ?? ''}` };
-  if (t.stage === 'testing' || t.stage === 'review') return { cls: 'sbl-st-check', hint: t.status ?? 'На проверке' };
-  if (t.status && NOT_STARTED.test(t.status)) return { cls: 'sbl-st-new', hint: t.status };
-  return { cls: 'sbl-st-work', hint: t.status ?? 'В работе' };
-}
 
 function readOpen(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
@@ -125,7 +110,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
                 return (
                   <li key={t.id} className="sbl-row">
                     <button type="button" className="sbl-item" onClick={() => goRecent(t)} title={`${t.title}\n${t.projectName} · ${st.hint}`}>
-                      <span className={`sbl-st ${st.cls}`} aria-label={st.hint}>{st.cls === 'sbl-st-done' && <Icon name="check" size={9} />}</span>
+                      <TaskStateDot task={t} />
                       <span className="sbl-num">#{t.id}</span>
                       <span className="sbl-text">{t.title}</span>
                     </button>

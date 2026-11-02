@@ -2,7 +2,8 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { openSupport } from './support/SupportDock';
 import { VoiceStatus } from './VoiceStatus';
-import { api } from '../lib/api';
+import { api, type RecentTask } from '../lib/api';
+import { TaskStateDot } from './TaskStateDot';
 import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
 import { Command, findCommands } from '../lib/commands';
@@ -40,6 +41,8 @@ type Item = {
   title: string;
   hint?: string;
   icon: IconName;
+  /** вместо иконки — значок состояния задачи (#4730) */
+  dot?: ReactNode;
   run: () => void;
 };
 
@@ -77,6 +80,39 @@ export function rememberVisit(entry: Recent) {
 function readRecent(): Recent[] {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); } catch { return []; }
 }
+
+/*
+  #4730: что человек искал — четыре подсказки под «Последними задачами». Запрос
+  запоминаем, когда по нему что-то открыли: недописанные буквы в историю не идут.
+*/
+const QUERIES_KEY = 'qevo.palette-queries';
+type PastQuery = { q: string; n: number; at: number };
+
+function readQueries(): PastQuery[] {
+  try { return JSON.parse(localStorage.getItem(QUERIES_KEY) ?? '[]'); } catch { return []; }
+}
+
+function rememberQuery(q: string) {
+  try {
+    const list = readQueries();
+    const was = list.find((x) => norm(x.q) === norm(q));
+    const next = [{ q, n: (was?.n ?? 0) + 1, at: Date.now() }, ...list.filter((x) => x !== was)].slice(0, 30);
+    localStorage.setItem(QUERIES_KEY, JSON.stringify(next));
+  } catch { /* хранилище недоступно — подсказок просто не будет */ }
+}
+
+/** Два последних запроса и два самых частых из остальных. */
+function querySuggestions(): string[] {
+  const list = readQueries();
+  const out = list.slice(0, 2).map((x) => x.q);
+  for (const x of [...list].sort((a, b) => b.n - a.n || b.at - a.at)) {
+    if (out.length >= 4) break;
+    if (!out.includes(x.q)) out.push(x.q);
+  }
+  return out;
+}
+
+const RECENT_GROUP = typeof navigator !== 'undefined' && /^en\b/i.test(navigator.language) ? 'Your recent tasks' : 'Ваши последние задачи';
 
 /** Подсветка совпадения: человек должен видеть, за что зацепился поиск. */
 function highlight(text: string, query: string): ReactNode {
@@ -131,6 +167,8 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   // «Спросить ИИ» нажали на НЕвопросе; вопрос спрашивается сам
   const [asked, setAsked] = useState<string | null>(null);
   const [thinking, setThinking] = useState<'search' | 'answer' | null>(null);
+  const [recentTasks, setRecentTasks] = useState<RecentTask[]>([]);
+  const [pastQueries] = useState(querySuggestions);
 
   /*
     Esc закрывает окно откуда угодно.
@@ -166,6 +204,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     // Окно открылось сразу, содержимое подтягивается следом — ждать сеть, чтобы
     // показать поле ввода, значит потерять всю скорость.
     let alive = true;
+    api.recentTasks().then((r) => { if (alive) setRecentTasks(r); }).catch(() => undefined);
     Promise.allSettled([api.listProjects(true), api.listChats()]).then((r) => {
       if (!alive) return;
       setLocal({
@@ -355,6 +394,28 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     const add = (item: Item) => { if (!seen.has(item.key)) { seen.add(item.key); out.push(item); } };
 
     /*
+      #4730: при пустой строке первыми — свои последние задачи (шесть, со значком
+      состояния), под ними — что человек искал раньше. Начал печатать — их место
+      занимают находки.
+    */
+    if (!query) {
+      for (const t of recentTasks) {
+        add({
+          key: `rt:${t.id}`, group: RECENT_GROUP, title: t.title, hint: `#${t.id} · ${t.projectName}`,
+          icon: 'check-circle', dot: <TaskStateDot task={t} />,
+          run: () => go({ section: 'projects', projectId: t.projectId, taskId: t.id },
+            { title: t.title, path: `/projects/${t.projectId}/task/${t.id}`, icon: 'check-circle' }),
+        });
+      }
+      for (const pq of pastQueries) {
+        add({
+          key: `qh:${pq}`, group: 'Вы искали', title: pq, icon: 'clock',
+          run: () => { setQ(pq); inputRef.current?.focus(); },
+        });
+      }
+    }
+
+    /*
       Отдел заботы — ПЕРВОЙ закреплённой строкой, всегда (ТЗ-34, п. 2.3 и 4.2), с молнией
       и текстом документа дословно. Человек жмёт Ctrl+K — и помощь в одном Enter.
     */
@@ -522,7 +583,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     });
 
     return out;
-  }, [q, local, remote, role, semantic, question, thinking, inline]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, local, remote, role, semantic, question, thinking, inline, recentTasks, pastQueries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setActive(0);
@@ -539,13 +600,20 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     listRef.current?.querySelector('.palette-item.active')?.scrollIntoView({ block: 'nearest' });
   }, [active, items.length]);
 
+  // по запросу что-то открыли — запоминаем его для подсказок (#4730)
+  const runItem = (it: Item) => {
+    const query = q.trim();
+    if (query.length >= 2 && !it.key.startsWith('qh:') && it.key !== 'support:open') rememberQuery(query);
+    it.run();
+  };
+
   const onKey = (e: React.KeyboardEvent) => {
     // Удержание пробела диктует, но только пока строка пуста: иначе человек не сможет
     // поставить пробел между словами, а это дороже любого удобства.
     if (e.key === ' ' && !q && !voice.recording) { e.preventDefault(); voice.start(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => (i + 1) % items.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => (i - 1 + items.length) % items.length); }
-    else if (e.key === 'Enter') { e.preventDefault(); items[active]?.run(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (items[active]) runItem(items[active]); }
     // Escape — общим обработчиком окна выше: он работает и когда фокус не в поле.
   };
 
@@ -603,9 +671,9 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
                 <button
                   className={`palette-item${i === active ? ' active' : ''}${it.key === 'support:open' ? ' palette-pinned' : ''}`}
                   onMouseEnter={() => setActive(i)}
-                  onClick={it.run}
+                  onClick={() => runItem(it)}
                 >
-                  <Icon name={it.icon} size={16} />
+                  {it.dot ?? <Icon name={it.icon} size={16} />}
                   <span className="palette-title">{highlight(it.title, q)}</span>
                   {it.hint && <span className="palette-hint">{it.hint}</span>}
                 </button>
