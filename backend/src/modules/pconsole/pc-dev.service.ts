@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 import { DbService } from '../../database/db.service';
 import { HealthService } from '../health/health.service';
 import { BUILD } from '../../common/build-info';
@@ -62,6 +64,40 @@ export class PcDevService {
       crashes,
       storage: size && { dbBytes: Number(size.db_bytes), filesBytes: Number(size.files_bytes), files: size.files },
       generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /** История выпусков (§4.2, §8): пишет deploy/release.sh, здесь только чтение. */
+  releases() {
+    return this.db.many<{ id: string; sha: string; run: string | null; author: string | null; subject: string | null; color: string | null;
+      status: string; dev_result: string | null; prod_result: string | null; started_at: Date; finished_at: Date | null }>(
+      `SELECT id::text, sha, run, author, subject, color, status, dev_result, prod_result, started_at, finished_at
+         FROM release_versions ORDER BY started_at DESC LIMIT 50`).catch(() => []);
+  }
+
+  /**
+   * Резервные копии базы (§4.2): последняя ежедневная и еженедельная, размер, возраст.
+   * Каталог смонтирован только для чтения. Копии лежат на этом же сервере — консоль
+   * говорит это прямо: при потере сервера они пропадут вместе с ним.
+   */
+  async backups() {
+    const dir = process.env.BACKUPS_DIR || '/srv/backups';
+    let names: string[];
+    try { names = (await fs.readdir(dir)).filter((n) => n.endsWith('.dump')); } catch { return null; }
+    const files = await Promise.all(names.map(async (n) => {
+      const st = await fs.stat(join(dir, n)).catch(() => null);
+      return st ? { name: n, bytes: st.size, at: st.mtime.toISOString(), weekly: n.startsWith('weekly-') } : null;
+    }));
+    const list = files.filter((f): f is NonNullable<typeof f> => !!f).sort((a, b) => b.at.localeCompare(a.at));
+    const daily = list.filter((f) => !f.weekly);
+    const weekly = list.filter((f) => f.weekly);
+    const last = daily[0] ?? null;
+    return {
+      lastDaily: last, lastWeekly: weekly[0] ?? null, dailyCount: daily.length, weeklyCount: weekly.length,
+      totalBytes: list.reduce((a, f) => a + f.bytes, 0),
+      // ежедневная копия старше 26 часов — пропуск, а не «ещё не время»
+      stale: !last || Date.now() - Date.parse(last.at) > 26 * 3600_000,
+      offsite: false,
     };
   }
 }

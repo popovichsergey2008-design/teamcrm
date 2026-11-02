@@ -303,6 +303,12 @@ export class PcController {
   @Get('dev/status') @PcNeed('dev.view')
   devStatus() { return this.dev.status(); }
 
+  @Get('dev/releases') @PcNeed('dev.view')
+  async devReleases() {
+    const [releases, backups] = await Promise.all([this.dev.releases(), this.dev.backups()]);
+    return { releases, backups };
+  }
+
   @Get('dev/errors') @PcNeed('dev.view')
   devErrors(@Query('status') status?: string, @Query('source') source?: string, @Query('q') q?: string) {
     return this.errors.list({

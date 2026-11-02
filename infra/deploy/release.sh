@@ -46,6 +46,21 @@ DRAIN_PID="$STATE_DIR/drain.pid"
 
 say() { echo "[release] $*"; }
 
+# ── история выпусков (0229 release_versions): пишем прямо в базу, сбой записи выкладку не роняет ──
+envval() { grep -m1 "^$1=" .env | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
+PGU="$(envval POSTGRES_USER)"; PGD="$(envval POSTGRES_DB)"
+rel_sql() { docker compose exec -T crm-postgres psql -U "$PGU" -d "$PGD" -v ON_ERROR_STOP=1 -qtA "$@" 2>/dev/null; }
+bi() { python3 -c "import json,sys; print(json.load(open('backend/build-info.json')).get(sys.argv[1]) or '')" "$1" 2>/dev/null || true; }
+REL_ID=""
+rel_set() {  # rel_set <колонка> <значение>
+  [ -n "$REL_ID" ] || return 0
+  echo "UPDATE release_versions SET $1 = :'v' WHERE id = :'id'" | rel_sql -v v="$2" -v id="$REL_ID" >/dev/null || true
+}
+rel_finish() {
+  [ -n "$REL_ID" ] || return 0
+  echo "UPDATE release_versions SET status = :'s', finished_at = now() WHERE id = :'id'" | rel_sql -v s="$1" -v id="$REL_ID" >/dev/null || true
+}
+
 # Оба профиля всегда: без них compose не знает сервисов другого цвета
 # и отвечает «no such service» даже на просьбу их остановить.
 dc() { docker compose --profile blue --profile green "$@"; }
@@ -81,8 +96,28 @@ if command -v ufw >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
     || say "ВНИМАНИЕ: не удалось открыть 40041–40081/udp в ufw — созвоны через зелёный цвет могут не собраться"
 fi
 
+REL_ID="$(echo "INSERT INTO release_versions (sha, run, author, subject, commit_at, color)
+  VALUES (:'sha', NULLIF(:'run',''), NULLIF(:'author',''), NULLIF(:'subject',''), NULLIF(:'at','')::timestamptz, :'color') RETURNING id" \
+  | rel_sql -v sha="$(bi sha)" -v run="$(bi run)" -v author="$(bi author)" -v subject="$(bi subject)" -v at="$(bi at)" -v color="$NEW" | head -1 | tr -dc '0-9' || true)"
+[ -n "$REL_ID" ] && say "выпуск №$REL_ID записан в историю"
+
 say "сборка образов (живые контейнеры продолжают работать)"
 dc build "crm-api-$NEW" "crm-web-$NEW"
+
+# ── сначала dev.qevo.one (ТЗ консолей §8): та же сборка, своя база ──
+# Миграции этой сборки сначала проходят на тестовой базе, и API должен на ней
+# подняться. Не поднялся — прод не трогаем вовсе: живой цвет работает как работал.
+if [ -f /opt/teamcrm/deploy/dev-env.sh ]; then
+  say "проверяем сборку на dev.qevo.one (своя база teamcrm_dev)"
+  if bash /opt/teamcrm/deploy/dev-env.sh; then
+    rel_set dev_result "ok: dev-API поднялся на новой сборке, миграции прошли"
+  else
+    rel_set dev_result "сбой: dev-API не поднялся на новой сборке"
+    rel_finish failed
+    say "СТОП: сборка не поднялась на dev — прод не трогаем (живой цвет $OLD работает как прежде)"
+    exit 1
+  fi
+fi
 
 # ── ждём тишины ───────────────────────────────────────────────────────────────
 cat > /tmp/deploy-busy.js <<BUSY
@@ -222,8 +257,11 @@ if [ "$ok" != "1" ]; then
   fi
   dc exec -T crm-edge nginx -s reload || true
   dc stop "crm-api-$NEW" "crm-web-$NEW" || true
+  rel_set prod_result "сбой: новый цвет не ответил через nginx — вернули $OLD"
+  rel_finish rolled_back
   exit 1
 fi
+rel_set prod_result "ok: прод отвечает через nginx на цвете $NEW"
 
 # ── гасим прежний цвет ────────────────────────────────────────────────────────
 # Сокеты, висевшие на старом API, переподключатся к новому сами: страница
@@ -261,10 +299,5 @@ else
 fi
 
 dc ps
+rel_finish success
 say "готово: живой цвет — $NEW"
-
-# ── тестовая среда dev.qevo.one: тот же образ, своя база (deploy/dev-env.sh) ──
-# Последним и без права уронить выкладку: прод уже переключён и проверен.
-if [ -f /opt/teamcrm/deploy/dev-env.sh ]; then
-  bash /opt/teamcrm/deploy/dev-env.sh || say "ВНИМАНИЕ: dev-среда не обновилась — прод работает, смотрите журнал выше"
-fi

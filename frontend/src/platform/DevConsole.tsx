@@ -15,14 +15,15 @@ const gb = (b: number) => `${(b / 1024 ** 3).toFixed(2)} ГБ`;
 const STUCK = new Set(['pending', 'running', 'failed', 'error']);
 
 export default function DevConsole({ canTriage }: { canTriage: boolean }) {
-  const [tab, setTab] = useState<'status' | 'errors'>('status');
+  const [tab, setTab] = useState<'status' | 'errors' | 'releases'>('status');
   return (
     <>
       <nav className="pc-tabs" aria-label="Разделы">
         <button type="button" className="pc-tab" aria-pressed={tab === 'status'} onClick={() => setTab('status')}>Состояние</button>
         <button type="button" className="pc-tab" aria-pressed={tab === 'errors'} onClick={() => setTab('errors')}>Ошибки</button>
+        <button type="button" className="pc-tab" aria-pressed={tab === 'releases'} onClick={() => setTab('releases')}>Выпуски и копии</button>
       </nav>
-      {tab === 'status' ? <StatusTab /> : <ErrorsTab canTriage={canTriage} />}
+      {tab === 'status' ? <StatusTab /> : tab === 'errors' ? <ErrorsTab canTriage={canTriage} /> : <ReleasesTab />}
     </>
   );
 }
@@ -185,6 +186,67 @@ function ErrorsTab({ canTriage }: { canTriage: boolean }) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+interface Release {
+  id: string; sha: string; run: string | null; author: string | null; subject: string | null; color: string | null;
+  status: string; dev_result: string | null; prod_result: string | null; started_at: string; finished_at: string | null;
+}
+interface BackupFile { name: string; bytes: number; at: string }
+interface Backups { lastDaily: BackupFile | null; lastWeekly: BackupFile | null; dailyCount: number; weeklyCount: number; totalBytes: number; stale: boolean; offsite: boolean }
+
+const REL_STATUS: Record<string, string> = { deploying: 'идёт', success: 'выпущено', failed: 'не прошло dev — прод не трогали', rolled_back: 'откат' };
+const mb = (b: number) => `${(b / 1024 ** 2).toFixed(1)} МБ`;
+
+/** Выпуски (§4.2, §8): сборка → dev.qevo.one (своя база) → прод; и резервные копии базы. */
+function ReleasesTab() {
+  const [d, setD] = useState<{ releases: Release[]; backups: Backups | null } | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => { pc<{ releases: Release[]; backups: Backups | null }>('GET', '/pc/dev/releases').then(setD).catch((e) => setErr(e instanceof PcError ? e.message : 'Не загрузилось')); }, []);
+  if (err) return <p className="pc-err">{err}</p>;
+  if (!d) return <p className="dim">Загрузка…</p>;
+  const b = d.backups;
+  return (
+    <section>
+      <h3 className="pc-h-flat">Резервные копии базы</h3>
+      {!b ? <p className="dim">Нет данных — каталог копий не подключён к API.</p> : (
+        <>
+          <div className="pc-kpis pc-gap">
+            <div className="pc-kpi"><div className="pc-kpi-label">Последняя ежедневная</div>
+              <div className={`pc-kpi-value ${b.stale ? 'pc-down' : 'pc-up'}`}>{b.lastDaily ? fmtDate(b.lastDaily.at) : 'нет'}</div>
+              <div className="pc-kpi-delta dim">{b.lastDaily ? mb(b.lastDaily.bytes) : ''}{b.stale ? ' — старше суток, копия пропущена' : ''}</div></div>
+            <div className="pc-kpi"><div className="pc-kpi-label">Последняя еженедельная</div><div className="pc-kpi-value">{b.lastWeekly ? fmtDate(b.lastWeekly.at) : 'нет'}</div>
+              <div className="pc-kpi-delta dim">{b.lastWeekly ? mb(b.lastWeekly.bytes) : ''}</div></div>
+            <div className="pc-kpi"><div className="pc-kpi-label">Хранится</div><div className="pc-kpi-value">{b.dailyCount} + {b.weeklyCount}</div>
+              <div className="pc-kpi-delta dim">ежедневных + еженедельных, всего {mb(b.totalBytes)}</div></div>
+          </div>
+          {!b.offsite && <p className="pc-err pc-meta">Копии лежат на этом же сервере: при потере сервера пропадут вместе с ним. Нужна копия вне сервера.</p>}
+          <p className="dim pc-meta">Проверка восстановления: нет данных — скрипт scripts/pg_restore_test.sh запускается вручную и результат пока не записывает.</p>
+        </>
+      )}
+
+      <h3>Выпуски</h3>
+      <p className="dim pc-meta">Каждая выкладка: сначала та же сборка поднимается на dev.qevo.one со своей базой (миграции проходят там первыми), только потом — прод. Не поднялась на dev — прод не трогается.</p>
+      <div className="pc-table-wrap">
+        <table className="pc-table">
+          <thead><tr><th>Когда</th><th>Сборка</th><th>Что</th><th>dev</th><th>Прод</th><th>Итог</th></tr></thead>
+          <tbody>
+            {d.releases.length === 0 && <tr><td colSpan={6} className="dim">Записей пока нет — история ведётся с выкладки после 02.11.</td></tr>}
+            {d.releases.map((r) => (
+              <tr key={r.id} className={r.status === 'success' ? '' : r.status === 'deploying' ? 'dim' : 'pc-warn-row'}>
+                <td>{fmtDate(r.started_at)}{r.finished_at ? <div className="dim">{Math.max(1, Math.round((Date.parse(r.finished_at) - Date.parse(r.started_at)) / 60000))} мин</div> : null}</td>
+                <td className="pc-mono">{r.sha.slice(0, 7)}{r.run ? <div className="dim">CI №{r.run}</div> : null}</td>
+                <td>{r.subject ?? '—'}<div className="dim">{r.author ?? ''}</div></td>
+                <td>{r.dev_result ?? '—'}</td>
+                <td>{r.prod_result ?? '—'}{r.color ? <div className="dim">цвет {r.color}</div> : null}</td>
+                <td>{REL_STATUS[r.status] ?? r.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

@@ -110,6 +110,8 @@ x-api: &api
   volumes:
     # APK и latest.json кладёт CI в nginx/html/app — только для чтения, чтобы знать текущий выпуск.
     - ./nginx/html/app:/srv/releases:ro
+    # Резервные копии базы — только для чтения: консоль разработчика показывает, когда была последняя (ТЗ консолей §4.2).
+    - ./backups:/srv/backups:ro
   depends_on:
     crm-postgres: { condition: service_healthy }
     crm-redis: { condition: service_healthy }
