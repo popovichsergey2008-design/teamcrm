@@ -44,3 +44,5 @@
 .nla-edit .ui-field { min-width: 0; }
 .nla-edit-note { font-size: var(--fs-xs); }
 .nla-sum.nla-editing { border-color: var(--accent); }
+/* #4712: секунды обработки — видно, что работа идёт */
+.nl-job-secs { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-mut); }

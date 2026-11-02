@@ -10,7 +10,7 @@ import { NlService } from './nl.service';
 import { VoiceService } from './voice.service';
 import { BatchService } from './batch.service';
 import { AutoConfirmService } from './auto-confirm.service';
-import { isShortCommand } from './fast-path';
+import { isShortCommand, NL_MID_ON } from './fast-path';
 import { isHallucination } from '../ai/stt-hallucinations';
 
 class ParseDto {
@@ -137,7 +137,7 @@ export class NlController {
 
   @Post('parse')
   parse(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
-    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, null, { currentKind: dto.currentKind, fast: isShortCommand(dto.text) });
+    return this.nl.parse(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, null, { currentKind: dto.currentKind, fast: isShortCommand(dto.text), mid: NL_MID_ON });
   }
 
   /**
@@ -151,7 +151,7 @@ export class NlController {
   parseMany(@CurrentUser() u: AuthUser, @Body() dto: ParseDto) {
     // #4666: короткая фраза — быстрый путь (одна задача, быстрая модель с потолком, теги параллельно)
     return this.nl.parseMany(u.tenantId, u.userId, dto.text, dto.currentProjectId ?? null, {
-      currentKind: dto.currentKind, auto: dto.auto === true, fast: isShortCommand(dto.text),
+      currentKind: dto.currentKind, auto: dto.auto === true, fast: isShortCommand(dto.text), mid: NL_MID_ON,
     });
   }
 

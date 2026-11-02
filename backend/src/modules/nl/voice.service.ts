@@ -8,7 +8,7 @@ import { VoiceJobRow, VoiceRepository } from './voice.repository';
 import { DiagService } from '../diagnostics/diag.service';
 import { trackBackground } from '../../common/background-work';
 import { isHallucination } from '../ai/stt-hallucinations';
-import { isShortCommand, NlTiming, wordCount } from './fast-path';
+import { isShortCommand, NL_MID_ON, NlTiming, wordCount } from './fast-path';
 
 /** Предел Whisper на один запрос — 25 МБ; берём с запасом, дальше режем сами. */
 const CHUNK_THRESHOLD = 20 * 1024 * 1024;
@@ -21,8 +21,13 @@ const CHUNK_SECONDS = 180;
  */
 export const SYNC_MAX_BYTES = 400 * 1024;
 export const SYNC_WAIT_MS = Number(process.env.NL_VOICE_SYNC_WAIT_MS ?? 9000);
-/** До этого размера распознаём быстрой моделью (короткая речь, один запрос). */
-const FAST_STT_MAX_BYTES = 1024 * 1024;
+/**
+ * До этого размера распознаём быстрой моделью. #4712: было 1 МБ (около минуты речи) —
+ * и обычная двухминутная надиктовка шла через whisper-1 за 5–7 с вместо 2. Не справилась
+ * быстрая — сама уходит на whisper-1 (ai.provider). Выше 5 МБ (4+ минуты) не берём: у
+ * быстрой модели предел ответа около 2000 токенов, длинную речь она обрежет молча.
+ */
+const FAST_STT_MAX_BYTES = 5 * 1024 * 1024;
 
 /** Обещание с потолком: не успело — `fallback`, само оно доживает в фоне. */
 function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -159,7 +164,7 @@ export class VoiceService {
       */
       const fast = isShortCommand(text);
       const drafts = await this.nl.parseMany(job.tenant_id, job.user_id, text, currentProjectId, {
-        auto: opts.auto === true, fast, timing,
+        auto: opts.auto === true, fast, mid: NL_MID_ON, timing,
       });
       await this.repo.setDrafts(job.id, drafts);
       timing.result = 'ready';

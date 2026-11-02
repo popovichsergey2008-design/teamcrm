@@ -55,12 +55,34 @@ interface CreatedTask {
 
 /** Что происходит с записью — словами, а не кодами состояний. */
 const JOB_LABEL: Record<VoiceJob['status'], string> = {
-  queued: 'Запись сохранена, встала в очередь…',
-  transcribing: 'Расшифровываем запись…',
-  parsing: 'Формируем задачи…',
+  queued: 'Запись сохранена, отправляю на распознавание…',
+  transcribing: 'Распознаю речь…',
+  parsing: 'Разбираю поручения…',
   ready: 'Готово',
   error: 'Не получилось',
 };
+
+/**
+ * #4712: секунды с начала обработки и подпись шага по ходу разбора. Одна и та же
+ * надпись 15 секунд подряд выглядела как зависание — теперь видно, что работа идёт.
+ */
+function useElapsed(active: boolean): number {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    if (!active) { setSecs(0); return; }
+    const t0 = Date.now();
+    const t = window.setInterval(() => setSecs(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => window.clearInterval(t);
+  }, [active]);
+  return secs;
+}
+
+function jobLabel(job: VoiceJob, secs: number): string {
+  if (job.status === 'error') return job.error || JOB_LABEL.error;
+  if (job.status === 'parsing' && secs >= 15) return 'Длинная запись — дооформляю задачи…';
+  if (job.status === 'parsing' && secs >= 6) return 'Подбираю проект, исполнителя и теги…';
+  return JOB_LABEL[job.status];
+}
 
 export function NlCommandModal({ onClose, initialText, autoRecord, currentProjectId, currentKind = 'board', onCreated, draft: fromDraft }: {
   onClose: () => void;
@@ -573,6 +595,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   };
 
   const working = !!job && job.status !== 'ready' && job.status !== 'error';
+  const jobSecs = useElapsed(working);
+  const thinkSecs = useElapsed(thinking);
   const readyCount = drafts
     .filter((d, i) => !done.includes(i) && d.intent === 'create_task' && d.task?.projectId).length;
   /*
@@ -826,7 +850,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           {job && job.status !== 'ready' && (
             <div className={`nl-job${job.status === 'error' ? ' error' : ''}`} role="status">
               {working && <span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span>}
-              <span>{job.status === 'error' ? job.error || JOB_LABEL.error : JOB_LABEL[job.status]}</span>
+              <span>{jobLabel(job, jobSecs)}</span>
+              {working && jobSecs > 0 && <span className="nl-job-secs" aria-hidden="true">{jobSecs} с</span>}
               {job.status === 'error' && <Button variant="outline" size="sm" onClick={retry}>Повторить обработку</Button>}
             </div>
           )}
@@ -842,7 +867,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             restored={lostDraftFiles.filter((n) => !allFiles.some((f) => f.name === n))}
           />
           {thinking && (
-            <div className="nla-thinking" role="status"><span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> Разбираю…</div>
+            <div className="nla-thinking" role="status"><span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span> {thinkSecs >= 6 ? 'Подбираю проект, исполнителя и теги…' : 'Разбираю…'}{thinkSecs > 0 && <span className="nl-job-secs" aria-hidden="true">{thinkSecs} с</span>}</div>
           )}
           {taskDrafts.map(({ d, i }) => (
             <AutoSummary
@@ -933,7 +958,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         {job && job.status !== 'ready' && (
           <div className={`nl-job${job.status === 'error' ? ' error' : ''}`} role="status">
             {working && <span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span>}
-            <span>{job.status === 'error' ? job.error || JOB_LABEL.error : JOB_LABEL[job.status]}</span>
+            <span>{jobLabel(job, jobSecs)}</span>
+              {working && jobSecs > 0 && <span className="nl-job-secs" aria-hidden="true">{jobSecs} с</span>}
             {job.status === 'error' && (
               // Аудио сохранено — переспрашивать человека, который говорил десять минут,
               // мы не станем ни при какой ошибке.

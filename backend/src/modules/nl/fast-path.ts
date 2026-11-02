@@ -73,3 +73,62 @@ export function fastTitleFrom(text: string, people: string[] = []): string {
 export interface NlTiming {
   [k: string]: number | string | boolean | null | undefined;
 }
+
+/*
+  Средний путь (#4712, 02.11): обычная голосовая постановка — 40–250 слов, а не 14.
+
+  Замер на проде 26.10–02.11: такие записи шли полным путём (Kimi K3 с рассуждением)
+  — 10–19 с на вызов модели, а длинная надиктовка с несколькими поручениями — два
+  таких вызова подряд (счёт задач, потом разбор каждой): черновик через 17–58 с.
+
+  Теперь:
+  - поручение оформляет быстрая модель без рассуждения, с потолком; не успела — тот же
+    полный путь, что и раньше (качество не хуже прежнего, только дольше);
+  - деление на поручения — тоже быстрой моделью и коротким ответом: модель называет
+    только первые слова каждого поручения, куски речи режем сами (дословно и без
+    лишних токенов ответа), а оформляем все куски параллельно;
+  - одиночный разбор всей фразы идёт одновременно с делением: поручение одно — он и
+    есть ответ.
+*/
+
+/** Включён ли средний путь: выключить — NL_MID_PATH=0 (вернётся прежний полный разбор). */
+export const NL_MID_ON = process.env.NL_MID_PATH !== '0';
+/** Потолок быстрой модели на оформление одного поручения. */
+export const NL_MID_BUDGET_MS = Number(process.env.NL_MID_BUDGET_MS ?? 8000);
+/** Ответ на поручение: название, описание, шаги проверки. */
+export const NL_MID_MAX_TOKENS = 900;
+/** Потолок деления на поручения: ответ короткий, только начала кусков. */
+export const NL_SPLIT_BUDGET_MS = Number(process.env.NL_SPLIT_BUDGET_MS ?? 6000);
+
+const ANCHOR_WORDS = 4;
+const norm = (w: string) => w.toLowerCase().replace(/ё/g, 'е');
+
+/**
+ * Разрезать речь по началам поручений, которые назвала модель («Глебу поправить форму…»).
+ *
+ * Ищем первые слова начала подряд (до четырёх, хватит и двух совпавших) в словах текста,
+ * по порядку и без возврата назад. Не нашлось начало — его поручение пропадает из
+ * разреза; нашлось меньше двух — резать нечего, вернём пустой список (дальше одна задача).
+ * Кусок — от своего начала до начала следующего; текст ДО первого начала (общая часть:
+ * «Сергею, в проект QEVO, на завтра») остаётся общим контекстом и сюда не входит.
+ */
+export function sliceByAnchors(text: string, anchors: string[]): { index: number; part: string }[] {
+  const words = [...(text ?? '').matchAll(WORD)].map((m) => ({ w: norm(m[0]), at: m.index ?? 0 }));
+  const found: { index: number; at: number }[] = [];
+  let from = 0;
+  anchors.forEach((a, index) => {
+    const want = ((a ?? '').match(WORD) ?? []).slice(0, ANCHOR_WORDS).map(norm);
+    if (!want.length) return;
+    const need = Math.min(2, want.length);
+    for (let i = from; i < words.length; i++) {
+      let k = 0;
+      while (k < want.length && i + k < words.length && words[i + k].w === want[k]) k++;
+      if (k >= need) { found.push({ index, at: words[i].at }); from = i + k; return; }
+    }
+  });
+  if (found.length < 2) return [];
+  return found.map((f, i) => ({
+    index: f.index,
+    part: text.slice(f.at, i + 1 < found.length ? found[i + 1].at : text.length).trim(),
+  })).filter((x) => x.part.length >= 3);
+}

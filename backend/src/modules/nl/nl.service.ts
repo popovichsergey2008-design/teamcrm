@@ -25,7 +25,10 @@ import { ConfirmSource, pickAutoProject } from './auto-task';
 import { AutoConfirmService } from './auto-confirm.service';
 import { OrgService } from '../org/org.service';
 import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
-import { fastTitleFrom, NL_FAST_BUDGET_MS, NL_FAST_MAX_TOKENS, NlTiming } from './fast-path';
+import {
+  fastTitleFrom, NL_FAST_BUDGET_MS, NL_FAST_MAX_TOKENS, NL_MID_BUDGET_MS, NL_MID_MAX_TOKENS, NL_SPLIT_BUDGET_MS,
+  NlTiming, sliceByAnchors,
+} from './fast-path';
 import { participantIdsIn } from '../tasks/participants';
 import { plainOf, TITLE_SYSTEM, titleFromText, tidyTitle } from './task-title';
 
@@ -37,6 +40,8 @@ export interface ParseOpts {
   auto?: boolean;
   /** Короткая фраза: одна задача, быстрая модель с потолком по времени, теги параллельно. */
   fast?: boolean;
+  /** #4712: обычная надиктовка — быстрая модель с потолком, не успела — полный разбор. */
+  mid?: boolean;
   /** Куда записать длительности этапов (журнал таймингов). */
   timing?: NlTiming;
 }
@@ -331,15 +336,29 @@ export class NlService {
     let modelAnswered = false;
     const tModel = Date.now();
     let modelFail: string | null = null;
+    const toJson = (raw: string) => JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+    const full = () => this.ai.generate(tenantId, system, userMsg, 'nl_command', { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params });
     try {
-      /*
-        #4666: короткая фраза — быстрая модель без рассуждения и потолок по времени.
-        Не успела — заголовок правилами ниже: короткую задачу человек не должен ждать.
-      */
-      const raw = await this.ai.generate(tenantId, system, userMsg, 'nl_command', opts.fast
-        ? { promptVersionId: prompt?.versionId, fast: true, timeoutMs: NL_FAST_BUDGET_MS, maxTokens: NL_FAST_MAX_TOKENS }
-        : { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params });
-      parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      if (opts.fast) {
+        /*
+          #4666: короткая фраза — быстрая модель без рассуждения и потолок по времени.
+          Не успела — заголовок правилами ниже: короткую задачу человек не должен ждать.
+        */
+        parsed = toJson(await this.ai.generate(tenantId, system, userMsg, 'nl_command',
+          { promptVersionId: prompt?.versionId, fast: true, timeoutMs: NL_FAST_BUDGET_MS, maxTokens: NL_FAST_MAX_TOKENS }));
+      } else if (opts.mid) {
+        // #4712: обычная надиктовка — быстрая модель; не успела или ответила мусором — полный путь
+        try {
+          parsed = toJson(await this.ai.generate(tenantId, system, userMsg, 'nl_command',
+            { promptVersionId: prompt?.versionId, fast: true, timeoutMs: NL_MID_BUDGET_MS, maxTokens: NL_MID_MAX_TOKENS }));
+        } catch (e) {
+          this.log.warn(`быстрый разбор не успел: ${(e as Error).message} — полный`);
+          if (opts.timing) opts.timing.midFallback = true;
+          parsed = toJson(await full());
+        }
+      } else {
+        parsed = toJson(await full());
+      }
       modelAnswered = true;
     } catch (e) {
       modelFail = /timeout/i.test((e as Error).message) ? 'timeout' : 'error';
@@ -495,8 +514,11 @@ export class NlService {
       #4666: у короткой фразы теги подбираем ОДНОВРЕМЕННО с разбором — по самой фразе,
       с тем же потолком по времени. Раньше это был ещё один вызов модели после разбора.
     */
-    const early = opts.auto && opts.fast
-      ? this.tags.suggest(tenantId, { title: (text ?? '').trim() }, { fast: true, timeoutMs: NL_FAST_BUDGET_MS })
+    // #4712: и у обычной надиктовки — по всей фразе; пригодятся, если поручение окажется одно
+    const said = (text ?? '').trim();
+    const early = opts.auto
+      ? this.tags.suggest(tenantId, opts.fast ? { title: said } : { title: said.slice(0, 120), description: said },
+        { fast: true, timeoutMs: opts.fast ? NL_FAST_BUDGET_MS : NL_SPLIT_BUDGET_MS })
         .catch(() => null)
       : null;
     const drafts = await this.parseManyInner(tenantId, userId, text, currentProjectId, opts);
@@ -505,7 +527,7 @@ export class NlService {
     if (opts.auto) await this.autoFill(tenantId, drafts, early);
     if (opts.timing) {
       Object.assign(opts.timing, {
-        path: opts.fast ? 'fast' : 'full', parseMs: t1 - t0, tagsWaitMs: Date.now() - t1,
+        path: opts.fast ? 'fast' : opts.mid ? 'mid' : 'full', parseMs: t1 - t0, tagsWaitMs: Date.now() - t1,
         drafts: drafts.length, totalParseMs: Date.now() - t0,
       });
     }
@@ -533,6 +555,8 @@ export class NlService {
       удвоить время ответа ради редкого случая. Одиночный черновик всё равно нужен как
       запасной, поэтому считаем его сразу и отдаём, если поручение оказалось одно.
     */
+    if (opts.mid && !opts.fast) return this.parseMid(tenantId, userId, clean, currentProjectId, opts, users, orgIn, today);
+
     const single = this.parseRaw(tenantId, userId, clean, currentProjectId, null, opts);
     // Если пачка собралась, одиночный ответ не нужен — но его отказ не должен всплыть необработанным.
     single.catch(() => undefined);
@@ -618,6 +642,66 @@ export class NlService {
     }));
     const routed = parsedItems.filter((x): x is NonNullable<typeof x> => !!x);
     if (!routed.length) return [await single];
+    await this.distribute(tenantId, userId, routed);
+    return routed.map((x) => x.draft);
+  }
+
+  /**
+   * Средний путь (#4712): одиночный разбор и деление на поручения — одновременно и
+   * быстрыми моделями; поручений несколько — оформляем все куски параллельно.
+   *
+   * Модель деления отвечает коротко — только первые слова каждого поручения; куски
+   * речи режем сами (sliceByAnchors). Длинный дословный ответ был бы самой долгой
+   * частью вызова: модель «печатает» его со скоростью чтения.
+   */
+  private async parseMid(
+    tenantId: string, userId: string, clean: string, currentProjectId: string | null | undefined,
+    opts: ParseOpts, users: { id: string; name: string }[], orgIn: ReturnType<typeof orgForModel> | undefined, today: string,
+  ): Promise<NlDraft[]> {
+    const single = this.parseRaw(tenantId, userId, clean, currentProjectId, null, opts);
+    single.catch(() => undefined);
+    const tSplit = Date.now();
+    let items: any[] = [];
+    try {
+      const raw = await this.ai.generate(
+        tenantId, `${SPLIT_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT.replace('assigneeId', 'assignee')}` : ''}`,
+        JSON.stringify({ text: clean, users, today, catalog: skillsCatalog(), ...(orgIn ? { org: orgIn } : {}) }),
+        'nl_command', { fast: true, timeoutMs: NL_SPLIT_BUDGET_MS, maxTokens: 500 },
+      );
+      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      items = Array.isArray(parsed?.tasks) ? parsed.tasks.slice(0, 10) : [];
+    } catch (e) {
+      this.log.warn(`деление на поручения без модели: ${(e as Error).message}`);
+    }
+    if (opts.timing) Object.assign(opts.timing, { splitMs: Date.now() - tSplit, splitItems: items.length });
+
+    let parts = items.length >= 2 ? sliceByAnchors(clean, items.map((i) => String(i?.start ?? ''))) : [];
+    // модель не поделила или её начала не нашлись в тексте — явная нумерация правилами
+    if (parts.length < 2) {
+      const byRules = splitCommand(clean);
+      if (byRules.length >= 2) parts = byRules.map((part) => ({ index: -1, part }));
+    }
+
+    const alone = async () => {
+      const one = await single;
+      // направление — из деления, если модель отдала одно поручение
+      if (one.task) await this.distribute(tenantId, userId, [{ draft: one, item: items.length === 1 ? items[0] : null, source: clean, around: null, named: one.task.assigneeNamed ? one.task.assigneeId : null }]);
+      return [one];
+    };
+    if (parts.length < 2) return alone();
+
+    const parsedParts = await Promise.all(parts.map(async (p) => {
+      const draft = await this.parseRaw(tenantId, userId, p.part, currentProjectId, clean, opts).catch(() => null);
+      if (!draft?.task) return null;
+      const item = p.index >= 0 ? items[p.index] : null;
+      if (item?.assignee) {
+        const fromModel = matchUserInText(String(item.assignee), users);
+        if (fromModel) draft.task.modelAssigneeId = fromModel;
+      }
+      return { draft, item, source: p.part, around: clean, named: matchUserInText(p.part, users) ?? matchUserInText(clean, users) };
+    }));
+    const routed = parsedParts.filter((x): x is NonNullable<typeof x> => !!x);
+    if (routed.length < 2) return alone();
     await this.distribute(tenantId, userId, routed);
     return routed.map((x) => x.draft);
   }
@@ -711,7 +795,7 @@ export class NlService {
       // #4666: короткая фраза — теги уже подбираются параллельно разбору
       const r = early && list.length === 1 ? await early : await this.tags.suggest(tenantId, {
         title: t.title, description: t.description, checklist: t.checklist, projectName: t.projectName,
-      }).catch(() => null);
+      }, { fast: true, timeoutMs: NL_SPLIT_BUDGET_MS }).catch(() => null);
       t.autoTags = (r?.suggestions ?? []).map((x: { tagId: string; name: string; color: string | null }) => ({ id: String(x.tagId), name: x.name, color: x.color ?? null }));
     }));
   }
@@ -1038,6 +1122,20 @@ const MANY_SYSTEM = [
   'assignee — имя исполнителя из users, ТОЛЬКО если он назван по имени или ролью (по org); иначе null.',
   'Верни СТРОГО JSON: {"tasks":[{"title":"","description":"","checklist":[],"source":"",',
   '"department":"","specialization":null,"confidence":0,"assignee":null}]}',
+].join(' ');
+
+/**
+ * Деление надиктовки на поручения (#4712): только начала кусков и направление.
+ * Оформление каждого поручения — отдельно и параллельно (FALLBACK_SYSTEM / промпт nl.command).
+ */
+const SPLIT_SYSTEM = [
+  'Ты делишь надиктовку на поручения. В сообщении человека может быть НЕСКОЛЬКО поручений разным людям или про разную работу.',
+  'Одна работа — одна задача. Причины, уточнения, условия и шаги ТОЙ ЖЕ работы — не отдельные задачи.',
+  'Если поручение одно — верни одну задачу. Ничего не оформляй и не пересказывай.',
+  'Для каждой задачи: start — первые 4–6 слов её куска ДОСЛОВНО, как в тексте, без изменений;',
+  'department — код отдела из справочника во входных данных или "unknown"; specialization — направление этого отдела или null;',
+  'confidence — уверенность в направлении (0..1, честно); assignee — имя исполнителя из users, ТОЛЬКО если он назван по имени или ролью, иначе null.',
+  'Верни СТРОГО JSON: {"tasks":[{"start":"","department":"","specialization":null,"confidence":0,"assignee":null}]}',
 ].join(' ');
 
 /**
