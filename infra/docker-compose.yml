@@ -252,6 +252,71 @@ services:
       - "40041-40081:40041-40081/udp"
       - "40041-40081:40041-40081/tcp"
 
+  # ── dev.qevo.one: тестовая среда на этом же сервере (02.11, ТЗ консолей §8) ──────
+  #
+  # Тот же образ API, что и у прода, но своя база (teamcrm_dev, свой пользователь без
+  # доступа к боевой), свой Redis, свой vhost RabbitMQ и свой пользователь MinIO с одной
+  # корзиной. Боевых секретов процесс не получает: ни почты, ни Telegram, ни push, ни
+  # TURN, ни общих ключей ИИ, ни JWT прода — письма пишутся в журнал, а не уходят людям.
+  # Поднимает и обновляет deploy/dev-env.sh (зовёт release.sh после выкладки).
+  crm-redis-dev:
+    image: redis:7-alpine
+    <<: *restart
+    profiles: [dev]
+    command: ["redis-server", "--requirepass", "${DEV_REDIS_PASSWORD:-}", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    networks: [crm-net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${DEV_REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  crm-api-dev:
+    image: teamcrm-crm-api
+    <<: *restart
+    profiles: [dev]
+    depends_on:
+      crm-postgres: { condition: service_healthy }
+      crm-redis-dev: { condition: service_healthy }
+      crm-rabbitmq: { condition: service_healthy }
+    networks: [crm-net]
+    environment:
+      NODE_ENV: production
+      APP_ENV: dev
+      PORT: 3000
+      DATABASE_URL: postgres://teamcrm_dev:${DEV_POSTGRES_PASSWORD:-}@crm-postgres:5432/teamcrm_dev
+      REDIS_URL: redis://:${DEV_REDIS_PASSWORD:-}@crm-redis-dev:6379
+      RABBITMQ_URL: amqp://teamcrm_dev:${DEV_RABBITMQ_PASSWORD:-}@crm-rabbitmq:5672/dev
+      JWT_ACCESS_SECRET: ${DEV_JWT_ACCESS_SECRET:-}
+      JWT_REFRESH_SECRET: ${DEV_JWT_REFRESH_SECRET:-}
+      JWT_ACCESS_TTL: 900
+      JWT_REFRESH_TTL: 2592000
+      CORS_ORIGIN: https://dev.qevo.one
+      MINIO_ENDPOINT: http://crm-minio:9000
+      MINIO_ROOT_USER: ${DEV_MINIO_USER:-}
+      MINIO_ROOT_PASSWORD: ${DEV_MINIO_PASSWORD:-}
+      MINIO_BUCKET: teamcrm-dev
+      MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP:-}
+      MEDIASOUP_NUM_WORKERS: 1
+      MEDIASOUP_MIN_PORT: 40082
+      MEDIASOUP_MAX_PORT: 40092
+      MAIL_FROM: noreply@qevo.one
+      MAIL_FROM_NAME: QEVO dev
+      APP_BASE_URL: https://dev.qevo.one
+      PUBLIC_BASE_URL: https://dev.qevo.one
+      # ключ ИИ для теста — свой, с малым бюджетом; пусто — ИИ только по ключу компании
+      KIMI_API_KEY: ${DEV_KIMI_API_KEY:-}
+      PLATFORM_ADMIN_EMAIL: ${DEV_PLATFORM_ADMIN_EMAIL:-}
+    ports:
+      - "40082-40092:40082-40092/udp"
+      - "40082-40092:40082-40092/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   crm-web-blue:
     <<: *web
     profiles: [blue]

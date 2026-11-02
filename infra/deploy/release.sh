@@ -262,3 +262,9 @@ fi
 
 dc ps
 say "готово: живой цвет — $NEW"
+
+# ── тестовая среда dev.qevo.one: тот же образ, своя база (deploy/dev-env.sh) ──
+# Последним и без права уронить выкладку: прод уже переключён и проверен.
+if [ -f /opt/teamcrm/deploy/dev-env.sh ]; then
+  bash /opt/teamcrm/deploy/dev-env.sh || say "ВНИМАНИЕ: dev-среда не обновилась — прод работает, смотрите журнал выше"
+fi
