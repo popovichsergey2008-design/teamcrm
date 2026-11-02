@@ -11,6 +11,7 @@ import { DbService } from '../src/database/db.service';
 import { stepOf, totpAt } from '../src/common/auth/totp';
 import { PlatformService } from '../src/modules/platform/platform.service';
 import { BillingService } from '../src/modules/billing/billing.service';
+import { sharedSecret } from '../src/modules/shared-secrets/secrets-registry';
 
 /**
  * Консоли платформы: отдельные учётные записи, обязательный второй фактор, роль = одна
@@ -246,5 +247,31 @@ describe('Консоли платформы (e2e)', () => {
     await http.post(`/api/pc/owner/moves/${m.id}/cancel`).set(H(o.accessToken)).expect(200);
     expect((await http.get('/api/billing').set(H(r.accessToken)).expect(200)).body.data.priceChange).toBeNull();
     await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Перевод', priceRub: 150, isActive: false }).expect(200);
+  });
+
+  it('общие ключи: значение не возвращается никогда; активировать — сервер берёт его; отозвать — стирается', async () => {
+    const o = await signIn(await staff(['owner']), 'owner');
+    const value = `tvly-test-${uniq()}-secretvalue`;
+    const before = sharedSecret('TAVILY_API_KEY');
+    const added = await http.post('/api/pc/owner/secrets').set(H(o.accessToken)).send({ name: 'TAVILY_API_KEY', value, note: 'e2e' }).expect(200);
+    expect(JSON.stringify(added.body)).not.toContain(value);
+    expect(added.body.data.check.ok).toBeNull(); // у Tavily проверки нет — честно «не поддерживается»
+    await http.post('/api/pc/owner/secrets').set(H(o.accessToken)).send({ name: 'JWT_ACCESS_SECRET', value }).expect(400);
+    await http.post('/api/pc/owner/secrets').set(H(o.accessToken)).send({ name: 'TAVILY_API_KEY', value: 'с пробелом внутри ключа' }).expect(400);
+
+    const list = await http.get('/api/pc/owner/secrets').set(H(o.accessToken)).expect(200);
+    expect(JSON.stringify(list.body)).not.toContain(value);
+    const t = list.body.data.managed.find((m: { name: string }) => m.name === 'TAVILY_API_KEY');
+    expect(t.versions[0]).toMatchObject({ status: 'pending', last4: `…${value.slice(-4)}` });
+
+    await http.post(`/api/pc/owner/secrets/${added.body.data.id}/activate`).set(H(o.accessToken)).expect(200);
+    expect(sharedSecret('TAVILY_API_KEY')).toBe(value);
+    await http.post(`/api/pc/owner/secrets/${added.body.data.id}/revoke`).set(H(o.accessToken)).send({ reason: '' }).expect(400);
+    await http.post(`/api/pc/owner/secrets/${added.body.data.id}/revoke`).set(H(o.accessToken)).send({ reason: 'конец проверки' }).expect(200);
+    expect(sharedSecret('TAVILY_API_KEY')).toBe(before);
+    const row = await db.one<{ value_enc: string | null; status: string }>(`SELECT value_enc, status FROM platform_secrets WHERE id=$1`, [added.body.data.id]);
+    expect(row).toEqual({ value_enc: null, status: 'revoked' });
+    const audit = await db.many<{ meta: unknown }>(`SELECT meta FROM pc_audit WHERE action LIKE 'secret.%'`);
+    expect(JSON.stringify(audit)).not.toContain(value);
   });
 });

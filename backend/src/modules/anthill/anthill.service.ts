@@ -1,3 +1,4 @@
+import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { AiPlanService } from '../ai-plan/ai-plan.service';
 import { webUnavailableNote } from '../ai-plan/ai-plan.rules';
 import { ProactiveService } from '../proactive/proactive.service';
@@ -645,7 +646,7 @@ export class AnthillService {
     const own = await this.admin.webSearchKey(tenantId);
     // свой ключ клиента — поиск без нашего лимита; чтение страниц всё равно по кредитам
     const limited = (await this.aiPlan.webBlockReason(tenantId)) === 'limit';
-    const search = !!(own || process.env.TAVILY_API_KEY) && (!!own || !limited);
+    const search = !!(own || sharedSecret('TAVILY_API_KEY')) && (!!own || !limited);
     const fetch = caps['ai.web_fetch'] && !limited;
     if (!search && !fetch) return off(limited ? 'limit' : 'no_key');
     return { search, fetch, note: null };

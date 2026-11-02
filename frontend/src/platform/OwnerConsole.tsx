@@ -4,6 +4,7 @@ import { fmtDate, fmtNum, Me, pc, PcError } from './api';
 
 const AiTab = lazy(() => import('./AiTab'));
 const PlansTab = lazy(() => import('./PlansTab'));
+const SecretsTab = lazy(() => import('./SecretsTab'));
 
 type Metric = { value: number; prev?: number; deltaPct?: number | null };
 interface Overview {
@@ -32,7 +33,7 @@ interface Staff {
 interface AuditRow { id: string; at: string; who: string | null; app: string | null; action: string; target: string | null; meta: Record<string, unknown>; ip: string | null }
 
 const TABS = [
-  ['overview', 'Обзор'], ['tenants', 'Компании'], ['plans', 'Тарифы'], ['ai', 'ИИ'], ['staff', 'Сотрудники платформы'], ['notice', 'Объявление'], ['audit', 'Журнал'],
+  ['overview', 'Обзор'], ['tenants', 'Компании'], ['plans', 'Тарифы'], ['ai', 'ИИ'], ['secrets', 'Ключи'], ['staff', 'Сотрудники платформы'], ['notice', 'Объявление'], ['audit', 'Журнал'],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -55,6 +56,7 @@ export default function OwnerConsole({ me }: { me: Me }) {
       {tab === 'tenants' && <TenantsTab canManage={me.perms.includes('owner.manage')} />}
       {tab === 'plans' && <Suspense fallback={<p className="dim">Загрузка…</p>}><PlansTab canManage={me.perms.includes('owner.manage')} /></Suspense>}
       {tab === 'ai' && <Suspense fallback={<p className="dim">Загрузка…</p>}><AiTab canManage={me.perms.includes('owner.manage')} /></Suspense>}
+      {tab === 'secrets' && <Suspense fallback={<p className="dim">Загрузка…</p>}><SecretsTab canManage={me.perms.includes('owner.manage')} /></Suspense>}
       {tab === 'staff' && canStaff && <StaffTab meId={me.id} />}
       {tab === 'notice' && <NoticeTab canManage={me.perms.includes('owner.manage')} />}
       {tab === 'audit' && <AuditTab />}

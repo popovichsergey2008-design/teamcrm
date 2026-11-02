@@ -1,3 +1,4 @@
+import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { Injectable, Logger } from '@nestjs/common';
 import { stripHallucinationEdges } from './stt-hallucinations';
 import { AiGuardService } from './ai-guard.service';
@@ -33,7 +34,8 @@ export class AiService {
   private readonly logger = new Logger('AI');
   private readonly parserModel: string;
   /** Ключ OpenAI только для демо онбординга (ТЗ-24): у новой компании своего ключа нет. */
-  private readonly demoOpenai: string | undefined;
+  /** Ключ демо — из реестра консоли владельца (§5.6), без него — из .env. */
+  private get demoOpenai() { return sharedSecret('DEMO_OPENAI_API_KEY'); }
 
   constructor(
     config: ConfigService,
@@ -45,7 +47,6 @@ export class AiService {
     private readonly guard: AiGuardService,
   ) {
     this.parserModel = config.get<string>('AI_PARSER_MODEL') ?? 'claude-haiku-4-5';
-    this.demoOpenai = config.get<string>('DEMO_OPENAI_API_KEY') || undefined;
   }
 
   /**

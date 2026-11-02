@@ -1,3 +1,4 @@
+import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../../database/db.service';
@@ -32,10 +33,12 @@ const OPENROUTER_FREE_FALLBACK = [
 @Injectable()
 export class AiSettingsService {
   private readonly log = new Logger('AiSettings');
-  private readonly globalOpenai?: string;
-  private readonly globalAnthropic?: string;
-  private readonly globalOpenrouter?: string;
-  private readonly globalKimi?: string;
+  // Общие ключи — из реестра консоли владельца (§5.6, 0226), без него — из .env.
+  // Геттеры, а не поля: замена ключа в консоли доходит без перезапуска API.
+  private get globalOpenai() { return sharedSecret('OPENAI_API_KEY'); }
+  private get globalAnthropic() { return sharedSecret('ANTHROPIC_API_KEY'); }
+  private get globalOpenrouter() { return sharedSecret('OPENROUTER_API_KEY'); }
+  private get globalKimi() { return sharedSecret('KIMI_API_KEY'); }
   private readonly globalBrainModel?: string;
   private readonly trialDays: number;
   private readonly trialTokens: number;
@@ -47,10 +50,6 @@ export class AiSettingsService {
     config: ConfigService,
     private readonly guard: AiGuardService,
   ) {
-    this.globalOpenai = config.get<string>('OPENAI_API_KEY');
-    this.globalAnthropic = config.get<string>('ANTHROPIC_API_KEY');
-    this.globalOpenrouter = config.get<string>('OPENROUTER_API_KEY');
-    this.globalKimi = config.get<string>('KIMI_API_KEY') || undefined;
     this.globalBrainModel = config.get<string>('AI_BRAIN_MODEL');
     this.trialDays = Number(config.get('AI_TRIAL_DAYS') ?? TRIAL_DAYS_DEFAULT) || TRIAL_DAYS_DEFAULT;
     this.trialTokens = Number(config.get('AI_TRIAL_TOKENS') ?? TRIAL_TOKENS_DEFAULT) || TRIAL_TOKENS_DEFAULT;

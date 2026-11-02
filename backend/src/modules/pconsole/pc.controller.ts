@@ -10,6 +10,7 @@ import { PcRepository } from './pc.repository';
 import { PcStatsService } from './pc-stats.service';
 import { PcDevService } from './pc-dev.service';
 import { PcSupportService } from './pc-support.service';
+import { SharedSecretsService } from '../shared-secrets/shared-secrets.service';
 import { PC_APPS, PERIODS, PeriodKey, periodOf, safeTz } from './pc-rules';
 import { AiGuardService } from '../ai/ai-guard.service';
 import { AppErrorsService } from '../app-errors/app-errors.service';
@@ -66,6 +67,15 @@ class PlanDto {
   @IsBoolean() isActive!: boolean;
 }
 
+class SecretDto {
+  @IsString() @Matches(/^[A-Z][A-Z0-9_]{2,63}$/) name!: string;
+  // значение не попадает ни в ответ, ни в журнал; длина — чтобы не принять мусор
+  @IsString() @MaxLength(500) value!: string;
+  @IsOptional() @IsString() @MaxLength(300) note?: string;
+  @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) expiresAt?: string;
+}
+class ReasonDto { @IsString() @MaxLength(300) reason!: string }
+
 class MoveDto {
   @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) applyFrom!: string;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
@@ -120,6 +130,7 @@ export class PcController {
     private readonly errors: AppErrorsService,
     private readonly billing: BillingService,
     private readonly support: PcSupportService,
+    private readonly secretsSvc: SharedSecretsService,
   ) {}
 
   @Get('me') @PcNeed('any')
@@ -195,6 +206,35 @@ export class PcController {
 
   @Get('owner/plans/:code/versions') @PcNeed('owner.view')
   planVersions(@Param('code') code: string) { return this.billing.planVersions(code); }
+
+  // ── Общие ключи (§5.6): заменить, проверить, активировать, отозвать — не видя значения ──
+  @Get('owner/secrets') @PcNeed('owner.view')
+  secrets() { return this.secretsSvc.list(); }
+
+  @Post('owner/secrets') @PcNeed('owner.manage') @HttpCode(200)
+  async addSecret(@CurrentPc() pc: PcAuth, @Body() dto: SecretDto, @Req() req: Request) {
+    const r = await this.secretsSvc.add(dto.name, dto.value, { note: dto.note?.trim() || null, expiresAt: dto.expiresAt ?? null, by: pc.accountId });
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'secret.add', target: dto.name, meta: { version: r.version, check: r.check.ok }, ip: req.ip });
+    return r;
+  }
+
+  @Post('owner/secrets/:id/check') @PcNeed('owner.manage') @HttpCode(200)
+  checkSecret(@Param('id') id: string) { return this.secretsSvc.check(id); }
+
+  @Post('owner/secrets/:id/activate') @PcNeed('owner.manage') @HttpCode(200)
+  async activateSecret(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Req() req: Request) {
+    const r = await this.secretsSvc.activate(id, pc.accountId);
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'secret.activate', target: id, meta: { name: r.name ?? null }, ip: req.ip });
+    return r;
+  }
+
+  @Post('owner/secrets/:id/revoke') @PcNeed('owner.manage') @HttpCode(200)
+  async revokeSecret(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Body() dto: ReasonDto, @Req() req: Request) {
+    if (!dto.reason.trim()) throw AppException.validation('Укажите причину отзыва');
+    const r = await this.secretsSvc.revoke(id, pc.accountId, dto.reason.trim());
+    await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'secret.revoke', target: id, meta: { name: r.name ?? null, wasActive: r.wasActive ?? false, reason: dto.reason.trim() }, ip: req.ip });
+    return r;
+  }
 
   /** Перевод оплаченных подписок на новую цену (§5.4): список, назначить, отменить. */
   @Get('owner/plans/:code/moves') @PcNeed('owner.view')

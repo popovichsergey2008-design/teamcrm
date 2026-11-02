@@ -16,6 +16,7 @@ import { HealthModule } from './modules/health/health.module';
 import { PconsoleModule } from './modules/pconsole/pconsole.module';
 import { AppErrorsModule } from './modules/app-errors/app-errors.module';
 import { AppInstallsModule } from './modules/app-installs/app-installs.module';
+import { SharedSecretsModule } from './modules/shared-secrets/shared-secrets.module';
 import { LeadsModule } from './modules/leads/leads.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -116,6 +117,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     PconsoleModule,
     AppErrorsModule,
     AppInstallsModule,
+    SharedSecretsModule,
     LeadsModule,
     AuthModule,
     UsersModule,

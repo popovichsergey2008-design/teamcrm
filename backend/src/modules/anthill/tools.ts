@@ -1,3 +1,4 @@
+import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { randomUUID } from 'node:crypto';
 import { ProactiveService } from '../proactive/proactive.service';
 import { AiPlanService } from '../ai-plan/ai-plan.service';
@@ -429,7 +430,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           return { text: 'Интернет недоступен в тарифе организации — отвечай только по данным QEVO.', sources: [] };
         }
         const own = await admin.webSearchKey(ctx.tenantId);
-        const key = own || process.env.TAVILY_API_KEY || null;
+        const key = own || sharedSecret('TAVILY_API_KEY') || null;
         if (!key) return { text: 'Веб-поиск не настроен — отвечай только по данным QEVO.', sources: [] };
         // наружу уходит только сам вопрос — без почт, телефонов и похожего на ключи (§46)
         const query = scrubQuery(str(p.query, 300));
