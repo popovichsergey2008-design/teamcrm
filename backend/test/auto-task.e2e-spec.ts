@@ -110,7 +110,15 @@ describe('Автоматическая постановка задачи (e2e)',
       .find((n: any) => n.eventKey === 'task.auto_confirm');
     expect(center).toBeTruthy();
     expect(center.title).toBe(card.title);
-    expect(center.path).toBe(`/secretary/${card.id}`);
+    // #4665, 02.11: уведомление ведёт в чат QEVO Bot, сообщение лежит в разговоре «Поставленные задачи»
+    expect(center.path).toMatch(/^\/chat\/anthill\/thread\/\d+$/);
+    const bot = await db.one<{ content: string }>(
+      `SELECT m.content FROM ai_messages m JOIN ai_sessions s ON s.id = m.session_id
+        WHERE s.id = $1 AND s.title = 'Поставленные задачи' ORDER BY m.id DESC LIMIT 1`,
+      [center.path.split('/').pop()],
+    );
+    expect(bot?.content).toContain(`Задача поставлена от вас: #${taskId}`);
+    expect(bot?.content).toContain('- Проект: Сайт');
     expect(String(center.task?.id)).toBe(taskId);
     expect(center.details.fields.map((f: string[]) => f[0])).toEqual(['Тег', 'Проект', 'Исполнитель', 'Срок', 'Приоритет', 'Откуда']);
     expect(card.actions.map((a: any) => a.label)).toEqual(['Ок', 'Править']);
