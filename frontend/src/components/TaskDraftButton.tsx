@@ -37,7 +37,9 @@ export function TaskDraftButton() {
   }, [user?.id]);
 
   const draft = drafts[0];
-  if (!draft || hidden) return null;
+  // #4715: на компьютере черновики — в сайдбаре («Черновики»); плашка внизу — только на телефоне,
+  // где сайдбар спрятан
+  if (!draft || hidden || !phone) return null;
   const open = (d: TaskDraft) => { setListOpen(false); openDraft(d, (projectId) => navigate({ section: 'projects', projectId })); };
 
   return (

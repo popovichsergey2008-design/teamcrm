@@ -98,7 +98,6 @@
 .nav-collapsed .nav-label, .nav-collapsed .nav-kbd, .nav-collapsed .nav-user-text { display: none; }
 /* В свёрнутой панели верхняя строка складывается: знак и стрелка, ниже — только аватар. */
 .nav-collapsed .nav-org { flex-wrap: wrap; height: auto; justify-content: center; row-gap: var(--sp-1); }
-.nav-collapsed .nav-org .nav-user { order: 3; flex: 0 0 100%; padding: 6px 0; }
 .nav-collapsed .nav-cabinet { justify-content: center; }
 .nav-collapsed .nav-item, .nav-collapsed .nav-search, .nav-collapsed .nav-user { justify-content: center; }
 
@@ -114,10 +113,6 @@
   height: 34px; padding-top: 0; padding-bottom: 0;
 }
 .nav-org { display: flex; align-items: center; gap: var(--sp-2); position: relative; min-height: 34px; }
-/* Аккаунт в верхней строке занимает всё между знаком и стрелкой; плотнее, чем в подвале. */
-.nav-org .nav-user { flex: 1; min-width: 0; padding: 4px 6px; }
-/* Меню аккаунта раскрывается ВНИЗ: оно теперь наверху, и сверху места нет. */
-.nav-org .nav-menu-pop { top: calc(100% + 6px); bottom: auto; left: 0; right: auto; z-index: 30; }
 /* Знак сам цветной: подкладывать под него плашку акцента — значит спорить с ним. */
 /*
   Знак-кнопка «на главную».
@@ -181,6 +176,8 @@
    внутрь кнопки не вложить. */
 .nav-search-row { display: flex; gap: var(--sp-1); }
 .nav-search-row .nav-search { flex: 1; min-width: 0; }
+.nav-org .nav-search-row { flex: 1; min-width: 0; }
+.nav-search-top .nav-kbd { display: none; }
 .nav-search-mic {
   flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   padding: 0 10px; border-radius: var(--radius-sm); cursor: pointer;
@@ -498,7 +495,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .nav-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: 600; }
 .nav-user-role { font-size: var(--fs-xs); color: var(--text-mut); }
 /* меню профиля раскрывается вверх: снизу панели места нет */
-.nav-menu-pop { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; min-width: 210px; }
+.nav-profile .nav-menu-pop { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; min-width: 210px; max-height: calc(100vh - 90px); overflow-y: auto; }
 
 /*
   ───── Безопасные поля системных панелей (ТЗ-9, волна 12) ─────

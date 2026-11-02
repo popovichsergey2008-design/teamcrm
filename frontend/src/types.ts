@@ -43,6 +43,8 @@ export interface User {
     tour?: { auto?: boolean; done?: string[] };
     /** Первый запуск (#4620): слайды, выбор и Qevo-бот уже показаны. */
     welcome?: { done?: boolean; bot?: unknown };
+    /** Избранное (#4713): проекты и задачи для быстрого доступа из сайдбара. */
+    favorites?: { kind: 'project' | 'task'; id: string; title: string; projectId?: string }[];
   };
 }
 

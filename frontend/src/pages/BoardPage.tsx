@@ -8,6 +8,7 @@ import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '.
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
 import { lazyComponent, preloadWhenIdle } from '../lib/lazy';
+import { FavoriteStar } from '../components/FavoriteStar';
 const ProjectSettingsModal = lazyComponent(() => import('../components/ProjectSettingsModal').then((m) => m.ProjectSettingsModal));
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
 import { TaskListView } from '../components/TaskListView';
@@ -627,6 +628,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     </span>
                   )}
                 </span>
+                {/* #4713: проект — в избранное, он появится в сайдбаре */}
+                <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
                 {/*
                   «Все проекты» рядом с названием доски (задача #1374).
 

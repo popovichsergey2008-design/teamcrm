@@ -14,6 +14,7 @@ import type { Task, User } from '../types';
 import { Lightbox } from './Lightbox';
 import { DatePicker } from './DatePicker';
 import { TaskChat } from './TaskChat';
+import { FavoriteStar } from './FavoriteStar';
 import { TaskRecurrenceBlock } from './TaskRecurrence';
 import { TaskMergeModal } from './TaskMergeModal';
 import { AuthedMedia } from './AuthedMedia';
@@ -737,6 +738,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           {isDone && <Badge tone="ok"><Icon name="check" size={11} /> завершена</Badge>}
           {task.agent_assigned && <Badge tone="info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={11} /> ИИ-агент</Badge>}
           {task.is_blocked && <Badge tone="danger"><Icon name="alert" size={11} /> BLOCKED</Badge>}
+          {/* #4713: задачу — в избранное, она появится в сайдбаре */}
+          <FavoriteStar kind="task" id={String(task.id)} title={task.title} projectId={String(task.project_id)} />
           {/* Закрытие — крупной кнопкой: карточка на пол-экрана, и уходить из неё
               человек должен уверенным движением, а не целясь в мелкий значок. */}
           <Button variant="ghost" size="icon" className="tv2-close" onClick={() => void closeSafe()} title="Закрыть карточку" aria-label="Закрыть карточку">

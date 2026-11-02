@@ -1,0 +1,26 @@
+/* «Избранное» и «Черновики» в сайдбаре (#4713, #4715) — свой файл: грузится с модулем, не с первым экраном. */
+.sbl { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
+.sbl-head {
+  display: flex; align-items: center; gap: 4px; width: 100%; border: 0; background: none; padding: 4px 8px;
+  color: var(--text-mut); font: inherit; font-size: var(--fs-xs); font-weight: 600; cursor: pointer; border-radius: var(--radius-sm);
+}
+.sbl-head:hover { color: var(--text); background: var(--hover); }
+.sbl-head:focus-visible, .sbl-item:focus-visible, .sbl-x:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.sbl-count { margin-left: auto; font-weight: 500; }
+.sbl-empty { margin: 2px 8px 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.35; }
+.sbl-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.sbl-row { display: flex; align-items: center; border-radius: var(--radius-sm); }
+.sbl-row:hover { background: var(--hover); }
+.sbl-item {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 6px 8px;
+  color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; border-radius: var(--radius-sm);
+}
+.sbl-item .icon { flex: none; color: var(--text-mut); }
+.sbl-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sbl-x {
+  flex: none; border: 0; background: none; color: var(--text-mut); padding: 4px 6px; cursor: pointer; border-radius: var(--radius-sm);
+  opacity: 0;
+}
+.sbl-row:hover .sbl-x, .sbl-x:focus-visible { opacity: 1; }
+@media (hover: none) { .sbl-x { opacity: 1; } }
+.sbl-x:hover { color: var(--text); }

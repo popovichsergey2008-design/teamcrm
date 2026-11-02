@@ -18,6 +18,9 @@ import { useEscape } from '../hooks/useEscape';
 import { PRESENCE_CHANGED } from './MyStatusBar';
 import { FocusMenu, focusLine } from './FocusMenu';
 import { humanMinutes } from '../lib/human-minutes';
+import { lazyComponent } from '../lib/lazy';
+
+const SidebarLists = lazyComponent(() => import('./SidebarLists').then((m) => m.default));
 import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
@@ -514,57 +517,27 @@ export function Sidebar({
       >
         {/* ── верхний блок ── */}
         <div className="nav-top">
-          <div className="nav-org nav-profile" ref={menuRef}>
+          <div className="nav-org">
             {/*
-              Знак вместо буквы организации.
-
-              Буква отвечала на вопрос «в какой я организации», но его же решает
-              название рядом. Место в панели одно, и занимать его должен знак продукта:
-              он виден на каждом экране и каждый день.
+              Верхнего меню больше нет (#4717, 02.11): наверху — сквозной поиск, он открывается
+              из любого раздела (и по Ctrl+K). Аккаунт и личный кабинет — внизу (#4716). Знак
+              компании переехал вниз, к аккаунту, — чтобы поиску хватило ширины.
             */}
-            {/*
-              Знак — ещё и дорога домой.
-
-              Так устроен любой сайт: щелчок по логотипу возвращает на главную. У нас
-              он был просто картинкой, и выбраться из глубокой страницы можно было
-              только через меню.
-            */}
-            <button
-              className="nav-org-mark"
-              onClick={() => go({ section: home as Section })}
-              title={`${orgName} · на главную`}
-              aria-label="На главную"
-            >
-              {orgLogo
-                ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-org-logo" />
-                : <Logo size={30} />}
-            </button>
-            {/*
-              Аккаунт — наверху, над поиском (задача #1348).
-
-              Заказчик: «в левом сайдбаре вместо названия организации — аккаунт, а
-              личный кабинет поднять из самого низа наверх». Человек начинает день с
-              себя: кто он, какой у него статус, куда зайти за настройками. Название
-              пространства не пропало — оно второй строкой, когда пространств несколько,
-              и сменить его можно в этом же меню.
-            */}
-            <button
-              className={`nav-user${route.section === 'profile' ? ' active' : ''}`}
-              onClick={() => setMenuOpen((v) => !v)}
-              title={`Аккаунт: ${user.fullName} — профиль, статус, тема, пространство`}
-              aria-label="Аккаунт"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-            >
-              <Avatar path={avatarPath} fallback={initialsOf(user.fullName)} className="avatar-sm" />
-              <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
-              <span className="nav-user-text">
-                <span className="nav-user-name">{user.fullName}</span>
-                <span className="nav-user-role" title={organizations.length > 1 ? `Пространство: ${orgName}` : focusLine(focus)}>
-                  {organizations.length > 1 ? orgName : focusLine(focus)}
-                </span>
-              </span>
-            </button>
+            <div className="nav-search-row nav-search-top">
+              <button className="nav-search" onClick={() => { setOpen(false); onSearch(); }} title="Поиск и команды (Ctrl+K)">
+                <Icon name="search" size={16} />
+                <span className="nav-label">Поиск…</span>
+                <kbd className="nav-kbd">Ctrl K</kbd>
+              </button>
+              <button
+                className="nav-search-mic"
+                onClick={() => { setOpen(false); onSearch(true); }}
+                title="Сказать, что найти или что сделать"
+                aria-label="Голосовой поиск"
+              >
+                <Icon name="mic" size={16} />
+              </button>
+            </div>
             {/* Центр уведомлений (#4655) — на виду, рядом с аккаунтом: как колокольчик в шапке Битрикса */}
             <NotificationBell className="nav-bell" />
             <button
@@ -574,95 +547,6 @@ export function Sidebar({
               aria-label={collapsed ? 'Развернуть панель' : 'Свернуть панель'}
             >
               <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
-            </button>
-            {menuOpen && (
-              <div className="menu-pop nav-menu-pop" role="menu">
-                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
-                <button
-                  className="menu-item"
-                  role="menuitem"
-                  onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
-                >
-                  <Icon name="user" size={15} /> Профиль
-                </button>
-                {/* #4605: пройти обучение заново — общий обзор и подсказки разделов */}
-                <button
-                  className="menu-item"
-                  role="menuitem"
-                  onClick={() => { setMenuOpen(false); setOpen(false); restartTour(); }}
-                >
-                  <Icon name="book" size={15} /> Обучение
-                </button>
-                {/* #4620: первый запуск заново — слайды, выбор и Qevo-бот */}
-                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setOpen(false); restartWelcome(); }}>
-                  <Icon name="rocket" size={15} /> Быстрый старт
-                </button>
-                {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
-                <div className="menu-theme">
-                  <span className="dim">Пространство</span>
-                  <OptionSelect
-                    className="input nav-org-select"
-                    value={user.tenantId}
-                    onChange={(e) => { setMenuOpen(false); onSwitchOrg(e.target.value); }}
-                    aria-label="Пространство"
-                  >
-                    {organizations.map((o) => (
-                      <option key={o.tenantId} value={o.tenantId}>
-                        {organizations.length > 1 ? `${o.name} · ${roleLabel(o.role)}` : o.name}
-                      </option>
-                    ))}
-                    {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
-                    <option value="__new__">+ Создать пространство…</option>
-                  </OptionSelect>
-                </div>
-                {/* Свой статус для коллег — только руками (решение заказчика):
-                    «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
-                <div className="menu-theme">
-                  <span className="dim">Статус</span>
-                  <span className="menu-status" role="group" aria-label="Статус для коллег">
-                    {([['', 'обычный'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
-                      <button
-                        key={v}
-                        className={`menu-status-btn${(myStatus ?? '') === v ? ' active' : ''}`}
-                        onClick={() => setStatus(v === '' ? null : v)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-                <div className="menu-theme">
-                  <span className="dim">Тема</span>
-                  <ThemeSwitch />
-                </div>
-                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>
-                  <Icon name="logout" size={15} /> Выйти
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Личный кабинет — сразу под аккаунтом, над поиском: настройки ищут рядом с собой, а не в подвале. */}
-          {link({ section: 'settings' }, route.section === 'settings', 'nav-item nav-cabinet', 'Личный кабинет: профиль, команда, интеграции, настройки', (
-            <>
-              <Icon name="settings" size={18} />
-              <span className="nav-label">Личный кабинет</span>
-            </>
-          ))}
-
-          <div className="nav-search-row">
-            <button className="nav-search" onClick={() => { setOpen(false); onSearch(); }} title="Поиск и команды (Ctrl+K)">
-              <Icon name="search" size={16} />
-              <span className="nav-label">Поиск…</span>
-              <kbd className="nav-kbd">Ctrl K</kbd>
-            </button>
-            <button
-              className="nav-search-mic"
-              onClick={() => { setOpen(false); onSearch(true); }}
-              title="Сказать, что найти или что сделать"
-              aria-label="Голосовой поиск"
-            >
-              <Icon name="mic" size={16} />
             </button>
           </div>
 
@@ -826,6 +710,8 @@ export function Sidebar({
               )}
             </div>
           )}
+          {/* #4713, #4715: избранное и черновики — под разделами; модуль грузится после первого экрана */}
+          {!collapsed && <SidebarLists onGo={() => setOpen(false)} />}
           {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
           {!collapsed && <AppUpdateRow />}
 
@@ -878,6 +764,125 @@ export function Sidebar({
             </span>
           </button>
 
+          {/* #4716: личный кабинет и аккаунт — в самом низу, как принято (настройки — в подвале) */}
+          {link({ section: 'settings' }, route.section === 'settings', 'nav-item nav-cabinet', 'Личный кабинет: профиль, команда, интеграции, настройки', (
+            <>
+              <Icon name="settings" size={18} />
+              <span className="nav-label">Личный кабинет</span>
+            </>
+          ))}
+          <div className="nav-profile" ref={menuRef} style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 6 }}>
+            {/* Знак компании (её логотип, если загружен) — здесь, у аккаунта; щелчок — на главную */}
+            <button
+              className="nav-org-mark"
+              onClick={() => go({ section: home as Section })}
+              title={`${orgName} · на главную`}
+              aria-label="На главную"
+            >
+              {orgLogo
+                ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-org-logo" />
+                : <Logo size={30} />}
+            </button>
+            {/*
+              Аккаунт — внизу (#4716, 02.11; до того — наверху по #1348).
+
+              Заказчик: «в левом сайдбаре вместо названия организации — аккаунт, а
+              личный кабинет поднять из самого низа наверх». Человек начинает день с
+              себя: кто он, какой у него статус, куда зайти за настройками. Название
+              пространства не пропало — оно второй строкой, когда пространств несколько,
+              и сменить его можно в этом же меню.
+            */}
+            <button
+              className={`nav-user${route.section === 'profile' ? ' active' : ''}`}
+              onClick={() => setMenuOpen((v) => !v)}
+              title={`Аккаунт: ${user.fullName} — профиль, статус, тема, пространство`}
+              aria-label="Аккаунт"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <Avatar path={avatarPath} fallback={initialsOf(user.fullName)} className="avatar-sm" />
+              <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
+              <span className="nav-user-text">
+                <span className="nav-user-name">{user.fullName}</span>
+                <span className="nav-user-role" title={organizations.length > 1 ? `Пространство: ${orgName}` : focusLine(focus)}>
+                  {organizations.length > 1 ? orgName : focusLine(focus)}
+                </span>
+              </span>
+            </button>
+            {menuOpen && (
+              <div className="menu-pop nav-menu-pop" role="menu">
+                {/* #4716: личный кабинет — и здесь, первым: его ищут, нажав на своё имя */}
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); setOpen(false); go({ section: 'settings' }); }}
+                >
+                  <Icon name="settings" size={15} /> Личный кабинет
+                </button>
+                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
+                >
+                  <Icon name="user" size={15} /> Профиль
+                </button>
+                {/* #4605: пройти обучение заново — общий обзор и подсказки разделов */}
+                <button
+                  className="menu-item"
+                  role="menuitem"
+                  onClick={() => { setMenuOpen(false); setOpen(false); restartTour(); }}
+                >
+                  <Icon name="book" size={15} /> Обучение
+                </button>
+                {/* #4620: первый запуск заново — слайды, выбор и Qevo-бот */}
+                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setOpen(false); restartWelcome(); }}>
+                  <Icon name="rocket" size={15} /> Быстрый старт
+                </button>
+                {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
+                <div className="menu-theme">
+                  <span className="dim">Пространство</span>
+                  <OptionSelect
+                    className="input nav-org-select"
+                    value={user.tenantId}
+                    onChange={(e) => { setMenuOpen(false); onSwitchOrg(e.target.value); }}
+                    aria-label="Пространство"
+                  >
+                    {organizations.map((o) => (
+                      <option key={o.tenantId} value={o.tenantId}>
+                        {organizations.length > 1 ? `${o.name} · ${roleLabel(o.role)}` : o.name}
+                      </option>
+                    ))}
+                    {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
+                    <option value="__new__">+ Создать пространство…</option>
+                  </OptionSelect>
+                </div>
+                {/* Свой статус для коллег — только руками (решение заказчика):
+                    «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
+                <div className="menu-theme">
+                  <span className="dim">Статус</span>
+                  <span className="menu-status" role="group" aria-label="Статус для коллег">
+                    {([['', 'обычный'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        className={`menu-status-btn${(myStatus ?? '') === v ? ' active' : ''}`}
+                        onClick={() => setStatus(v === '' ? null : v)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+                <div className="menu-theme">
+                  <span className="dim">Тема</span>
+                  <ThemeSwitch />
+                </div>
+                <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>
+                  <Icon name="logout" size={15} /> Выйти
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </aside>
     </>

@@ -22,8 +22,17 @@ function readAll(storage: Store): Record<string, string> {
   } catch { return {}; }
 }
 
+/** Черновики поменялись — раздел «Черновики» в сайдбаре (#4715) перечитывает список. */
+export const CHAT_DRAFT_CHANGED = 'teamcrm:chat-draft';
+
 function writeAll(storage: Store, map: Record<string, string>): void {
   try { storage.setItem(KEY, JSON.stringify(map)); } catch { /* приватный режим — черновик проживёт до перезагрузки */ }
+  try { window.dispatchEvent(new Event(CHAT_DRAFT_CHANGED)); } catch { /* вне браузера (тесты) */ }
+}
+
+/** Все черновики переписки, свежие первыми: ключ (`chat:12`, `task:1315`, `thread:88`) и текст. */
+export function listChatDrafts(storage: Store = localStorage): { key: string; text: string }[] {
+  return Object.entries(readAll(storage)).reverse().map(([key, text]) => ({ key, text }));
 }
 
 export function readDraft(key: string, storage: Store = localStorage): string {
