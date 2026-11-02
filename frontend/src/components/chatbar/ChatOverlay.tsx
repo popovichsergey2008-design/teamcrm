@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChatsPage } from '../../pages/ChatsPage';
 import { useEscape } from '../../hooks/useEscape';
 import { TaskConversation } from '../chat/TaskConversation';
-import { AnthillPanel } from '../anthill/AnthillPanel';
+import { lazyComponent } from '../../lib/lazy';
+const AnthillPanel = lazyComponent(() => import('../anthill/AnthillPanel').then((m) => m.AnthillPanel));
 import { navigate } from '../../lib/router';
 
 const MIN_W = 360;

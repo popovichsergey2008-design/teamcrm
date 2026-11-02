@@ -96,6 +96,13 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   });
   /** «⋯ → Проверить было/стало»: вкладка откроется и сразу запустит проверку. */
   const [checkNow, setCheckNow] = useState(false);
+  // #4714: вкладка «Чат» — довести карточку до разговора, а не оставить его под блоком свойств
+  const mainRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (tab !== 'chat') return;
+    const t = window.setTimeout(() => mainRef.current?.querySelector('.task-chat-box')?.scrollIntoView({ block: 'end' }), 60);
+    return () => window.clearTimeout(t);
+  }, [tab]);
   // заголовок вкладки «#1137 Название» — ссылка из браузера скажет, о какой задаче речь (#1516)
   useTitleHint(task.id ? `task:${task.id}` : null, task.title ? `#${task.id} ${task.title}` : null);
   const [assigneeId, setAssigneeId] = useState(task.assignee_id ?? '');
@@ -704,7 +711,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             <Icon name="paperclip" size={18} /> Отпустите — приложу к задаче
           </div>
         )}
-        <div className="task-main">
+        <div className="task-main" ref={mainRef}>
         {gate && (
           <HandoffGateDialog
             block={gate.block}

@@ -2430,6 +2430,9 @@ export const api = {
     counts: { mentions: number; threads: number; dms: number; replies: number };
   }>('GET', '/chats/inbox'),
 
+  /** «В текст» у голосового (#4719): расшифровка только по просьбе. */
+  transcribeChatVoice: (chatId: string, messageId: string) =>
+    request<{ status: string | null; transcript: string | null }>('POST', `/chats/${chatId}/messages/${messageId}/transcribe`),
   /** Реакция на сообщение чата — переключатель: повторное нажатие снимает свою. */
   reactToChatMessage: (chatId: string, messageId: string, emoji: string) =>
     request<{ ok: true }>('POST', `/chats/${chatId}/messages/${messageId}/reactions`, { emoji }),

@@ -20,8 +20,10 @@ import { SkeletonList } from '../components/Skeleton';
 import { GroupChatModal } from '../components/GroupChatModal';
 import { CallStarter } from '../components/CallStarter';
 import { GuestLinkButton } from '../components/GuestLinkButton';
-import { ChatInfoPanel } from '../components/chat/ChatInfoPanel';
-import { AnthillPanel } from '../components/anthill/AnthillPanel';
+import { lazyComponent } from '../lib/lazy';
+// сведения о чате и QEVO Bot — по первому открытию (бюджет первого экрана, 02.11)
+const ChatInfoPanel = lazyComponent(() => import('../components/chat/ChatInfoPanel').then((m) => m.ChatInfoPanel));
+const AnthillPanel = lazyComponent(() => import('../components/anthill/AnthillPanel').then((m) => m.AnthillPanel));
 import { ChatAttachment } from '../components/ChatAttachment';
 import { Lightbox, LightboxItem } from '../components/Lightbox';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
@@ -3006,11 +3008,27 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           <div className="chat-transcript" role="status">
                             Расшифровываю <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
                           </div>
-                        ) : m.transcript && m.transcript !== m.body && (
-                          <details className="chat-transcript">
+                        ) : m.transcript && m.transcript !== m.body ? (
+                          // #4719: голосовое осталось голосовым — текст под ним, раскрыт: его попросили
+                          <details className="chat-transcript" open={m.body === 'Голосовое сообщение'}>
                             <summary>Текст</summary>
                             <div>{m.transcript}</div>
                           </details>
+                        ) : m.body === 'Голосовое сообщение' && m.file_id && activeId && (
+                          <button
+                            type="button"
+                            className="ui-btn ui-btn-ghost ui-btn-sm"
+                            title="Расшифровать голосовое в текст"
+                            onClick={() => {
+                              setMessages((list) => list.map((x) => (x.id === m.id ? { ...x, transcript_status: 'running' } : x)));
+                              api.transcribeChatVoice(activeId, String(m.id)).catch((e) => {
+                                setMessages((list) => list.map((x) => (x.id === m.id ? { ...x, transcript_status: null } : x)));
+                                showToast({ kind: 'info', title: 'Не расшифровалось', body: e instanceof ApiError ? e.message : 'Попробуйте ещё раз' });
+                              });
+                            }}
+                          >
+                            <Icon name="file" size={14} /> В текст
+                          </button>
                         )}
                       </div>
                       {/* Поставленные реакции видны всегда: в них весь смысл — ответить

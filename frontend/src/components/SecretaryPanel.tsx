@@ -36,13 +36,8 @@ const KIND_ICON: Record<string, IconName> = {
 };
 
 /** «2 ч 15 мин» читается быстрее, чем «135 минут». */
-export function humanMinutes(total: number): string {
-  if (total <= 0) return '0 мин';
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  if (!h) return `${m} мин`;
-  return m ? `${h} ч ${m} мин` : `${h} ч`;
-}
+import { humanMinutes } from '../lib/human-minutes';
+export { humanMinutes };
 
 function when(iso: string): string {
   const d = new Date(iso);

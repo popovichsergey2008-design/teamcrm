@@ -56,57 +56,64 @@ describe('Голосовое: расшифровка фоном (e2e)', () => {
     return pred();
   };
 
-  it('ответ сразу с «расшифровка идёт», потом событие с текстом и текст в ленте', async () => {
+  it('#4719: голосовое остаётся голосовым — расшифровка только по «В текст», текст встаёт под ним', async () => {
     const { O, dm } = await setup();
     const ai = app.get(ChatsAiService);
     let release: () => void = () => undefined;
     const gate = new Promise<void>((r) => { release = r; });
     jest.spyOn(ai, 'canTranscribe').mockResolvedValue(true);
-    jest.spyOn(ai, 'transcribe').mockImplementation(async () => { await gate; return 'глеб поправь форму к пятнице'; });
+    const heard = jest.spyOn(ai, 'transcribe').mockImplementation(async () => { await gate; return 'глеб поправь форму к пятнице'; });
     jest.spyOn(ai, 'tidyTranscript').mockResolvedValue('Глеб, поправь форму к пятнице.');
 
     const res = (await http$.post(`/api/chats/${dm.id}/clip`).set(O)
       .field('kind', 'voice')
       .attach('file', Buffer.from('voice-bytes'), { filename: 'voice.webm', contentType: 'audio/webm' })
       .expect(201)).body.data;
-    // Whisper ещё «думает», а сообщение уже есть
+    // сразу ИИ не зовётся: голосовое просто голосовое
     expect(res.body).toBe('Голосовое сообщение');
-    expect(res.transcript_status).toBe('running');
+    expect(res.transcript_status).toBeNull();
+    expect(heard).not.toHaveBeenCalled();
     expect(events.some((e) => e.event === 'chat.message' && String(e.payload.message.id) === String(res.id))).toBe(true);
-    const before = (await http$.get(`/api/chats/${dm.id}/messages`).set(O).expect(200)).body.data;
-    const list0 = Array.isArray(before) ? before : before.messages ?? before.items;
-    expect(list0.find((m: any) => String(m.id) === String(res.id)).transcript_status).toBe('running');
 
+    // «В текст»
+    const t = (await http$.post(`/api/chats/${dm.id}/messages/${res.id}/transcribe`).set(O).expect(201)).body.data;
+    expect(t.status).toBe('running');
+    // повторное нажатие, пока идёт, второй расшифровки не запускает
+    await http$.post(`/api/chats/${dm.id}/messages/${res.id}/transcribe`).set(O).expect(201);
     release();
-    const ev = await waitFor(() => events.find((e) => e.event === 'chat.message.transcript' && String(e.payload.messageId) === String(res.id)));
-    expect(ev.payload.status).toBe('ready');
-    expect(ev.payload.body).toBe('Глеб, поправь форму к пятнице.');
+    const ev = await waitFor(() => events.find((e) => e.event === 'chat.message.transcript' && String(e.payload.messageId) === String(res.id) && e.payload.status === 'ready'));
+    expect(ev.payload.transcript).toBe('Глеб, поправь форму к пятнице.');
+    expect(heard).toHaveBeenCalledTimes(1);
     const after = (await http$.get(`/api/chats/${dm.id}/messages`).set(O).expect(200)).body.data;
     const list = Array.isArray(after) ? after : after.messages ?? after.items;
     const m = list.find((x: any) => String(x.id) === String(res.id));
-    expect(m.body).toBe('Глеб, поправь форму к пятнице.');
+    // само сообщение остаётся голосовым, текст — рядом
+    expect(m.body).toBe('Голосовое сообщение');
+    expect(m.transcript).toBe('Глеб, поправь форму к пятнице.');
     expect(m.transcript_status).toBe('ready');
-    expect(m.edited_at).toBeFalsy();
     restoreAi();
   });
 
-  it('расшифровка не вышла — признак снимается, подпись остаётся; без ключа признака нет', async () => {
+  it('запись экрана расшифровывается сразу; не вышло — признак снимается, подпись остаётся; без ключа «В текст» отказывает', async () => {
     const { O, dm } = await setup();
     const ai = app.get(ChatsAiService);
     jest.spyOn(ai, 'canTranscribe').mockResolvedValue(true);
     jest.spyOn(ai, 'transcribe').mockResolvedValue('');
     const res = (await http$.post(`/api/chats/${dm.id}/clip`).set(O)
-      .attach('file', Buffer.from('voice-bytes'), { filename: 'voice.webm', contentType: 'audio/webm' })
+      .field('kind', 'screen')
+      .attach('file', Buffer.from('screen-bytes'), { filename: 'screen.webm', contentType: 'video/webm' })
       .expect(201)).body.data;
+    expect(res.transcript_status).toBe('running');
     const ev = await waitFor(() => events.find((e) => e.event === 'chat.message.transcript' && String(e.payload.messageId) === String(res.id)));
     expect(ev.payload.status).toBe('failed');
-    expect(ev.payload.body).toBe('Голосовое сообщение');
+    expect(ev.payload.body).toBe('Запись экрана');
 
     jest.spyOn(ai, 'canTranscribe').mockResolvedValue(false);
     const plain = (await http$.post(`/api/chats/${dm.id}/clip`).set(O)
       .attach('file', Buffer.from('voice-bytes'), { filename: 'voice.webm', contentType: 'audio/webm' })
       .expect(201)).body.data;
     expect(plain.transcript_status).toBeNull();
+    await http$.post(`/api/chats/${dm.id}/messages/${plain.id}/transcribe`).set(O).expect(400);
     restoreAi();
   });
 });

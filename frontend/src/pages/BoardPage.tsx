@@ -8,6 +8,7 @@ import type { Board, BoardColumn, CostOfWork, Pnl, Project, Task, User } from '.
 import { ColumnView } from '../components/ColumnView';
 import { PnlPanel } from '../components/PnlPanel';
 import { lazyComponent, preloadWhenIdle } from '../lib/lazy';
+const ProjectSettingsModal = lazyComponent(() => import('../components/ProjectSettingsModal').then((m) => m.ProjectSettingsModal));
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
 import { TaskListView } from '../components/TaskListView';
 import {
@@ -17,7 +18,6 @@ import { MineFilter } from '../components/MineFilter';
 import { takeDraftOpen, TASK_DRAFT_OPEN, type TaskDraft } from '../lib/task-draft';
 import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
-import { ProjectSettingsModal } from '../components/ProjectSettingsModal';
 import { EmptyState } from '../components/EmptyState';
 import { CareEmpty } from '../components/care';
 import { useDragEdgeScroll } from '../hooks/useDragEdgeScroll';

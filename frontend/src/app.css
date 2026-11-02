@@ -5139,8 +5139,10 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .drawer-task-chat .task-chat { display: none; }
 /* Во вкладке «Чат» карточка сама не прокручивается: заголовок и вкладки стоят,
    лента живёт внутри, поле ввода прижато к низу — иначе оно уезжает за экран. */
-.drawer-task-chat .task-main { display: flex; flex-direction: column; overflow: hidden; }
-.drawer-task-chat .task-chat-box { flex: 1 1 auto; min-height: 0; }
+/* #4714: под высоким блоком свойств чату не оставалось места — сжимался в ноль. Теперь
+   у чата своя высота, а карточка прокручивается к нему (TaskDrawer сам доводит). */
+.drawer-task-chat .task-main { display: flex; flex-direction: column; overflow: hidden auto; }
+.drawer-task-chat .task-chat-box { flex: 1 0 auto; min-height: min(560px, 72vh); }
 
 .task-chat-box { position: relative; display: flex; flex-direction: column; min-height: 0; height: 100%; width: 100%; }
 /* Шапка стоит на месте всегда: в мессенджере всегда видно, с кем говоришь. */

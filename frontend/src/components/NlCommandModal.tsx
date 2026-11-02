@@ -750,7 +750,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           </div>
           {autoNote && (
             <div className="nla-done-note" role="status">
-              <Icon name="bell" size={14} /> Через полминуты пришлю сообщение: проверьте и нажмите «Ок» или «Править».
+              <Icon name="bell" size={14} /> Через 10 секунд пришлю сообщение: проверьте и нажмите «Ок» или «Править».
             </div>
           )}
           {cardTask && (

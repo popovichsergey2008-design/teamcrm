@@ -34,6 +34,8 @@ export interface ChatListItem extends ChatRow {
 }
 
 export interface MessageRow {
+  transcript?: string | null;
+  transcript_status?: string | null;
   id: string; chat_id: string; author_id: string | null; author_name: string | null;
   body: string; file_id: string | null; file_name: string | null; content_type: string | null;
   size_bytes: string | null; created_at: Date; edited_at: Date | null;

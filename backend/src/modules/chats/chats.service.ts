@@ -1096,7 +1096,10 @@ export class ChatsService {
       Подпись нужна и без расшифровки: «вложение» без слова не отличить от документа.
     */
     const caption = kind === 'voice' ? 'Голосовое сообщение' : 'Запись экрана';
-    const stt = await this.chatAi.canTranscribe(tenantId);
+    // #4719, 02.11: голосовое остаётся голосовым — расшифровка только по кнопке «В текст»
+    // (transcribeVoice), чтобы ИИ не работал зря, когда голосовое просто слушают.
+    // Запись экрана расшифровывается сразу, как раньше.
+    const stt = kind !== 'voice' && await this.chatAi.canTranscribe(tenantId);
     const row = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: caption, fileId: String(stored.id),
     });
@@ -1146,6 +1149,32 @@ export class ChatsService {
     this.realtime.emitToUsers(tenantId, to, 'chat.message.transcript', {
       chatId, messageId, transcript: text || null, status: text ? 'ready' : 'failed', body,
     });
+  }
+
+  /**
+   * «В текст» у голосового (#4719): расшифровать по просьбе. Сообщение остаётся
+   * голосовым — текст встаёт под ним, а не вместо него. Повторное нажатие, пока идёт
+   * расшифровка или текст уже есть, ничего не запускает.
+   */
+  async transcribeVoice(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string) {
+    const chat = await this.access(tenantId, chatId, user);
+    const msg = await this.repo.messageById(messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId) || !msg.file_id) throw AppException.notFound('Голосовое не найдено');
+    if (msg.transcript_status === 'running' || (msg.transcript_status === 'ready' && msg.transcript)) {
+      return { status: msg.transcript_status, transcript: msg.transcript ?? null };
+    }
+    if (!(await this.chatAi.canTranscribe(tenantId))) throw AppException.validation('Расшифровка недоступна: не подключён ИИ для речи');
+    const { file, stream } = await this.files.getForDownload(tenantId, String(msg.file_id));
+    const chunks: Buffer[] = [];
+    for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c as Uint8Array));
+    // подпись не совпадёт с телом — clipTranscript не заменит «Голосовое сообщение» текстом
+    const keep = '[keep-voice-body]';
+    await this.repo.clipTranscript(tenantId, messageId, 'running', null, keep);
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message.transcript', { chatId, messageId, transcript: null, status: 'running' });
+    void trackBackground(this.clipText(tenantId, chatId, messageId, { buffer: Buffer.concat(chunks), originalname: file.file_name }, keep, to,
+      { bytes: file.size_bytes, mime: file.content_type, kind: 'voice', onDemand: true }));
+    return { status: 'running', transcript: null };
   }
 
   /** Вложение: файл кладётся в MinIO тем же путём, что и вложения задач. */

@@ -359,6 +359,12 @@ export class ChatsController {
     return this.chats.toggleFavorite(u.tenantId, id, u);
   }
 
+  /** «В текст» у голосового (#4719): расшифровка только по просьбе. */
+  @Post(':id/messages/:mid/transcribe')
+  transcribe(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
+    return this.chats.transcribeVoice(u.tenantId, id, u, mid);
+  }
+
   /** Реакция на сообщение — переключатель: повторное нажатие снимает свою. */
   @Post(':id/messages/:mid/reactions')
   react(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string, @Body() dto: ReactionDto) {

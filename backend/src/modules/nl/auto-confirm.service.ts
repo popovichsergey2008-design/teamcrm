@@ -10,8 +10,8 @@ import { OrgService } from '../org/org.service';
 import { directionHasLead, leadOptions } from '../org/org-rules';
 import { isSkill, Skill, SKILL_LABEL } from '../team/skills';
 
-/** Как часто смотреть, не подошло ли время сообщения: 30 секунд ± 5. */
-const TICK_MS = 5_000;
+/** Как часто смотреть, не подошло ли время сообщения: 10 секунд ± 2 (#4718). */
+const TICK_MS = 2_000;
 /** Разговор с QEVO Bot, куда падают подтверждения постановки (#4665). */
 const BOT_THREAD = 'Поставленные задачи';
 
@@ -149,8 +149,8 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       const org = await this.org.snapshot(r.tenant_id).catch(() => null);
       if (org && !directionHasLead(org, skill)) ask = leadOptions(org, skill, 3);
     }
-    // #4665, 02.11: сообщение — в чат QEVO Bot, уведомление ведёт туда же (раньше — в «Фокус»)
-    const sessionId = await this.toBotChat(r.tenant_id, r.user_id, msg.title, msg.fields, link)
+    // #4665: сообщение — ещё и в чат QEVO Bot (разговор «Поставленные задачи»)
+    await this.toBotChat(r.tenant_id, r.user_id, msg.title, msg.fields, link)
       .catch((e) => { this.log.warn(`задача ${t.id}, чат бота: ${(e as Error).message}`); return null; });
     const row = await this.proactive.propose({
       tenantId: r.tenant_id, userId: r.user_id, skill: 'autotask', kind: 'confirm',
@@ -174,7 +174,9 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       // #4665: ответ на действие самого постановщика — доходит всегда (центр, всплывашка, push, Telegram)
       direct: {
         eventKey: 'task.auto_confirm', taskId: t.id, short: msg.short, fields: msg.fields,
-        ...(sessionId ? { path: `/chat/anthill/thread/${sessionId}` } : {}),
+        // #4718: всплывашка и push ведут в саму задачу — посмотреть и поправить; сообщение
+        // в чате QEVO Bot (#4665) остаётся там, в разговоре «Поставленные задачи»
+        path: link,
       },
     });
     if (!row) this.log.warn(`задача ${t.id}: сообщение-подтверждение не создано`);

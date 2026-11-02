@@ -17,7 +17,7 @@ import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
 import { PRESENCE_CHANGED } from './MyStatusBar';
 import { FocusMenu, focusLine } from './FocusMenu';
-import { humanMinutes } from './SecretaryPanel';
+import { humanMinutes } from '../lib/human-minutes';
 import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import type { Focus } from '../types';

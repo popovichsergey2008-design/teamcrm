@@ -24,7 +24,6 @@ import { useTabAlert } from './hooks/useTabAlert';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { Icon } from './components/Icon';
-import { CommandPalette } from './components/CommandPalette';
 import { Toasts } from './components/Toasts';
 import { FocusSessionHost } from './components/FocusSessionHost';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
@@ -35,7 +34,6 @@ import { dropCache } from './lib/cache';
 import { showToast, START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
 import { lazyComponent } from './lib/lazy';
-import { SecretaryPanel } from './components/SecretaryPanel';
 import { prefetchFocus } from './pages/FocusPage';
 import { ChatBar } from './components/chatbar/ChatBar';
 import { openSupport, SupportDock } from './components/support/SupportDock';
@@ -72,6 +70,9 @@ import { promptText } from './components/ui/dialog';
 */
 const GuestMeetPage = lazy(() => import('./pages/GuestMeetPage').then((m) => ({ default: m.GuestMeetPage })));
 const OperatorCallPage = lazy(() => import('./pages/OperatorCallPage'));
+// открывают по Ctrl+K и по кнопке — первому экрану они не нужны (бюджет, 02.11)
+const CommandPalette = lazyComponent(() => import('./components/CommandPalette').then((m) => m.CommandPalette));
+const SecretaryPanel = lazyComponent(() => import('./components/SecretaryPanel').then((m) => m.SecretaryPanel));
 const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ default: m.GetAppPage })));
 // #4675: политики — публичные страницы, до входа и после
 const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
@@ -269,6 +270,9 @@ export function App() {
       window.removeEventListener(TASK_QUICK_DRAFT_OPEN, openDraft);
     };
   }, []);
+  // #4718: перешли к задаче (всплывашка «посмотреть», «Править») — окно постановки не висит поверх неё
+  const taskInRoute = route.taskId;
+  useEffect(() => { if (taskInRoute) setNl(null); }, [taskInRoute]);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
   const [secretaryOpen, setSecretaryOpen] = useState(false);
   /** Предложение секретаря из push или ссылки `/secretary/:id` (ТЗ-21). */
