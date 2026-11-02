@@ -58,7 +58,7 @@ function Rescue({ source }: { source: string }) {
 }
 
 function Badge() {
-  return <p className="care-badge"><Icon name="check-circle" size={16} /> <span>{BADGE}</span></p>;
+  return <p className="care-value"><Icon name="check-circle" size={16} /> <span>{BADGE}</span></p>;
 }
 
 export function CareEmpty({ k }: { k: CareKind }) {

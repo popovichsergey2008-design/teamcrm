@@ -37,11 +37,11 @@
 
 /* «Команда и подписка»: плашка доверия и зелёный бейдж ценности */
 .care-team { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; }
-.care-trust, .care-badge {
+.care-trust, .care-value {
   display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--radius);
   font-size: var(--fs-sm); line-height: 1.45;
 }
 .care-trust { color: var(--text); background: var(--accent-soft); border: 1px solid var(--accent-line); }
 .care-trust .icon { flex: none; margin-top: 2px; color: var(--accent); }
-.care-badge { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); font-weight: 600; }
-.care-badge .icon { flex: none; margin-top: 2px; }
+.care-value { color: var(--ok); background: var(--ok-soft); border: 1px solid var(--ok-line); font-weight: 600; }
+.care-value .icon { flex: none; margin-top: 2px; }
