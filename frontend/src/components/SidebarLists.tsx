@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { useAuth } from '../state/auth';
 import { api } from '../lib/api';
-import { navigate } from '../lib/router';
+import { navigate, useRoute } from '../lib/router';
 import { favorites, FAVORITES_CHANGED, initFavorites, toggleFavorite, type Favorite } from '../lib/favorites';
 import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, type TaskDraft } from '../lib/task-draft';
 import { CHAT_DRAFT_CHANGED, clearDraft, listChatDrafts } from '../lib/chat-drafts';
@@ -27,6 +27,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const [tasks, setTasks] = useState<TaskDraft[]>(() => listDrafts(user?.id));
   const [chats, setChats] = useState(() => listChatDrafts());
   const [open, setOpen] = useState<Record<string, boolean>>(readOpen);
+  const route = useRoute();
 
   useEffect(() => {
     const f = () => setFavs([...favorites()]);
@@ -65,8 +66,13 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
       if (t?.projectId) navigate({ section: 'projects', projectId: String(t.projectId), taskId: id });
     }
   };
-  // черновики ответов в ветке (thread:…) без чата не открыть — их не показываем
-  const chatDrafts = chats.filter((c) => c.key.startsWith('chat:') || c.key.startsWith('task:')).slice(0, 10);
+  /*
+    Черновики ответов в ветке (thread:…) без чата не открыть — их не показываем.
+    Переписку, открытую сейчас, тоже: человек печатает в ней, и строка в сайдбаре
+    повторяла каждую букву (жалоба 02.11). Черновик появится, когда он из неё уйдёт.
+  */
+  const here = new Set([route.chatId ? `chat:${route.chatId}` : '', route.taskId ? `task:${route.taskId}` : ''].filter(Boolean));
+  const chatDrafts = chats.filter((c) => (c.key.startsWith('chat:') || c.key.startsWith('task:')) && !here.has(c.key)).slice(0, 10);
   const draftCount = tasks.length + chatDrafts.length;
 
   return (
