@@ -169,7 +169,7 @@ jobs:
             --exclude node_modules --exclude dist --exclude coverage \
             --exclude .git --exclude '.env' --exclude 'nginx/certs' --exclude 'nginx/html/.well-known' --exclude 'nginx/html/app' --exclude 'nginx/html/dev-ui' --exclude 'nginx/html/promo' \
             -e "ssh -i ~/.ssh/deploy_key" \
-            backend frontend infra/docker-compose.yml infra/nginx infra/deploy \
+            backend frontend infra/docker-compose.yml infra/nginx infra/deploy infra/scripts \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/teamcrm/"
       - name: Build & restart stack
         # Вся выкладка живёт в скрипте на сервере (infra/deploy/release.sh): в YAML ей

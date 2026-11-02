@@ -98,6 +98,10 @@ export class PcDevService {
       // ежедневная копия старше 26 часов — пропуск, а не «ещё не время»
       stale: !last || Date.now() - Date.parse(last.at) > 26 * 3600_000,
       offsite: false,
+      // итог еженедельной проверки восстановления (scripts/pg_restore_test.sh, вс 04:00)
+      restoreTest: await fs.readFile(join(dir, 'restore-test.json'), 'utf8').then((t) => JSON.parse(t) as {
+        ok: boolean; message: string; tables: number; dump: string; seconds: number; at: string;
+      }).catch(() => null),
     };
   }
 }

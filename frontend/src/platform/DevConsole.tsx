@@ -195,7 +195,10 @@ interface Release {
   status: string; dev_result: string | null; prod_result: string | null; started_at: string; finished_at: string | null;
 }
 interface BackupFile { name: string; bytes: number; at: string }
-interface Backups { lastDaily: BackupFile | null; lastWeekly: BackupFile | null; dailyCount: number; weeklyCount: number; totalBytes: number; stale: boolean; offsite: boolean }
+interface Backups {
+  lastDaily: BackupFile | null; lastWeekly: BackupFile | null; dailyCount: number; weeklyCount: number; totalBytes: number; stale: boolean; offsite: boolean;
+  restoreTest: { ok: boolean; message: string; tables: number; dump: string; seconds: number; at: string } | null;
+}
 
 const REL_STATUS: Record<string, string> = { deploying: 'идёт', success: 'выпущено', failed: 'не прошло dev — прод не трогали', rolled_back: 'откат' };
 const mb = (b: number) => `${(b / 1024 ** 2).toFixed(1)} МБ`;
@@ -223,7 +226,9 @@ function ReleasesTab() {
               <div className="pc-kpi-delta dim">ежедневных + еженедельных, всего {mb(b.totalBytes)}</div></div>
           </div>
           {!b.offsite && <p className="pc-err pc-meta">Копии лежат на этом же сервере: при потере сервера пропадут вместе с ним. Нужна копия вне сервера.</p>}
-          <p className="dim pc-meta">Проверка восстановления: нет данных — скрипт scripts/pg_restore_test.sh запускается вручную и результат пока не записывает.</p>
+          {b.restoreTest
+            ? <p className={`pc-meta ${b.restoreTest.ok ? 'pc-up' : 'pc-err'}`}>Проверка восстановления {fmtDate(b.restoreTest.at)}: {b.restoreTest.ok ? 'прошла' : 'НЕ прошла'} — {b.restoreTest.message} (копия {b.restoreTest.dump}, {b.restoreTest.seconds} с). Проверяется раз в неделю, в воскресенье в 4:00.</p>
+            : <p className="dim pc-meta">Проверка восстановления: нет данных — первая запись появится после ближайшего прогона (воскресенье, 4:00).</p>}
         </>
       )}
 
