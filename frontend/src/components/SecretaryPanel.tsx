@@ -79,13 +79,16 @@ export function SecretaryPanel({ canManage = false, focusId = null, onClose }: {
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer pings-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3><Icon name="sparkles" size={18} /> AI Секретарь</h3>
+          <h3 title="Работает в фоновом режиме и автоматически выполняет поставленные на него задачи"><Icon name="sparkles" size={18} /> AI агент</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
 
+        {/* 02.11, заказчик: написать агенту — в самом верху, на любой вкладке */}
+        <Ask />
+
         <Tabs
           className="sp-tabs"
-          ariaLabel="Разделы секретаря"
+          ariaLabel="Разделы AI агента"
           value={tab}
           onValueChange={setTab}
           items={[
@@ -124,7 +127,6 @@ export function SecretaryPanel({ canManage = false, focusId = null, onClose }: {
           </div>
         )}
 
-        <Ask />
         <Gaps canManage={canManage} />
         <Proposed />
         <Maintenance canManage={canManage} />
@@ -187,7 +189,7 @@ function Ask() {
 
   return (
     <div className="secretary-ask">
-      <div className="drawer-section-title"><Icon name="sparkles" size={14} /> Спросите о делах</div>
+      <div className="drawer-section-title"><Icon name="sparkles" size={14} /> Напишите агенту</div>
       <div className="ask-row">
         <input
           className="input"
@@ -195,7 +197,7 @@ function Ask() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void ask(); }}
           placeholder="что с проектом Сайт · кто свободен · что горит"
-          aria-label="Вопрос секретарю"
+          aria-label="Сообщение AI агенту"
         />
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => void ask()} disabled={busy}>
           {busy ? 'Смотрю…' : 'Спросить'}

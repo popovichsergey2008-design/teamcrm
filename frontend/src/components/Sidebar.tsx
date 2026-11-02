@@ -752,10 +752,10 @@ export function Sidebar({
           </div>
           {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
               Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
-          <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Что система сделала за вас сама">
+          <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Работает в фоновом режиме и автоматически выполняет поставленные на него задачи">
             <Icon name="sparkles" size={18} />
             <span className="nav-label nav-secretary-text">
-              <span>AI Секретарь · {secretary?.actions ?? 0}</span>
+              <span>AI агент · {secretary?.actions ?? 0}</span>
               <span className="nav-secretary-saved">
                 {waiting > 0
                   ? <b className="nav-secretary-waiting">ждут решения: {waiting}</b>

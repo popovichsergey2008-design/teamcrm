@@ -8,17 +8,19 @@ import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, typ
 import { CHAT_DRAFT_CHANGED, clearDraft, listChatDrafts } from '../lib/chat-drafts';
 import './sidebar-lists.css';
 
-const OPEN_KEY = 'qevo.sb-lists';
+// новый ключ (02.11): «Избранное» теперь свёрнуто по умолчанию — у всех, и у тех, кто уже раскрывал
+const OPEN_KEY = 'qevo.sb-fav';
 
 function readOpen(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
 }
 
 /**
- * «Избранное» (#4713) и «Черновики» (#4715) в левом сайдбаре — под разделами.
+ * «Избранное» (#4713) в левом сайдбаре — под разделами, пунктом как остальные.
+ * Черновики (#4715) — внутри «Избранного» (заказчик, 02.11), отдельной группой внизу.
  *
  * Отдельный модуль со своими стилями: грузится после первого экрана и не утяжеляет
- * его. Обе секции сворачиваются; что свёрнуто — помнит этот браузер.
+ * его. По умолчанию свёрнуто; раскрыл — помнит этот браузер.
  */
 export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const { user } = useAuth();
@@ -44,8 +46,8 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
     };
   }, [user?.id]);
 
-  // по умолчанию обе секции раскрыты
-  const isOpen = (k: string) => open[k] !== false;
+  // по умолчанию свёрнуто (заказчик, 02.11)
+  const isOpen = (k: string) => open[k] === true;
   const flip = (k: string) => {
     const next = { ...open, [k]: !isOpen(k) };
     setOpen(next);
@@ -75,18 +77,21 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const chatDrafts = chats.filter((c) => (c.key.startsWith('chat:') || c.key.startsWith('task:')) && !here.has(c.key)).slice(0, 10);
   const draftCount = tasks.length + chatDrafts.length;
 
+  const total = favs.length + draftCount;
+  const empty = <p className="sbl-empty">Отметьте звёздочкой проект или задачу — они будут здесь. Начатые и брошенные задачи и сообщения — тоже.</p>;
+
   return (
     <div className="sbl">
-      <section className="sbl-sec">
-        <button type="button" className="sbl-head" aria-expanded={isOpen('fav')} onClick={() => flip('fav')}>
-          <span>Избранное</span>
-          <Icon name={isOpen('fav') ? 'chevron-down' : 'chevron-right'} size={13} />
-          {favs.length > 0 && <span className="sbl-count">{favs.length}</span>}
-        </button>
-        {isOpen('fav') && (
-          favs.length === 0
-            ? <p className="sbl-empty">Отметьте звёздочкой проект или задачу — они будут здесь.</p>
-            : <ul className="sbl-list">
+      <button type="button" className="nav-item" aria-expanded={isOpen('fav')} onClick={() => flip('fav')}>
+        <Icon name="star" size={18} />
+        <span className="nav-label">Избранное</span>
+        {total > 0 && <span className="sbl-count">{total}</span>}
+        <Icon name={isOpen('fav') ? 'chevron-down' : 'chevron-right'} size={14} />
+      </button>
+      {isOpen('fav') && (total === 0 ? empty : (
+        <div className="sbl-body">
+          {favs.length > 0 && (
+            <ul className="sbl-list">
               {favs.map((f) => (
                 <li key={`${f.kind}:${f.id}`} className="sbl-row">
                   <button type="button" className="sbl-item" onClick={() => goFav(f)} title={f.title}>
@@ -99,19 +104,10 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
                 </li>
               ))}
             </ul>
-        )}
-      </section>
-
-      <section className="sbl-sec">
-        <button type="button" className="sbl-head" aria-expanded={isOpen('drafts')} onClick={() => flip('drafts')}>
-          <span>Черновики</span>
-          <Icon name={isOpen('drafts') ? 'chevron-down' : 'chevron-right'} size={13} />
-          {draftCount > 0 && <span className="sbl-count">{draftCount}</span>}
-        </button>
-        {isOpen('drafts') && (
-          draftCount === 0
-            ? <p className="sbl-empty">Начатые и брошенные задачи и сообщения сохраняются здесь.</p>
-            : <ul className="sbl-list">
+          )}
+          {draftCount > 0 && (<>
+            <div className="sbl-sub">Черновики · {draftCount}</div>
+            <ul className="sbl-list">
               {tasks.map((d) => (
                 <li key={d.id} className="sbl-row">
                   <button type="button" className="sbl-item" title="Продолжить задачу" onClick={() => { onGo(); openDraft(d, (projectId) => navigate({ section: 'projects', projectId })); }}>
@@ -135,8 +131,9 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
                 </li>
               ))}
             </ul>
-        )}
-      </section>
+          </>)}
+        </div>
+      ))}
     </div>
   );
 }
