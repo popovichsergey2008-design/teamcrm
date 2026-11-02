@@ -178,9 +178,10 @@ export class AiService {
     estUsd: number, run: (provider: AiProvider) => Promise<T>, actualUsd: (result: T, provider: AiProvider) => number,
   ): Promise<T> {
     if (p.source !== 'global') return run(p.provider);
+    // бюджет не проверить (база недоступна) — платный запрос не пускаем (§10): правила вместо модели
     const hold = await this.guard.reserve(tenantId, feature, estUsd).catch((e) => {
       this.logger.warn(`резерв бюджета ИИ: ${(e as Error).message}`);
-      return null;
+      return false as const;
     });
     if (hold === false) return run(new MockAiProvider());
     if (!hold) return run(p.provider);

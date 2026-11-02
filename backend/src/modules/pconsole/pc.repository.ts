@@ -25,6 +25,8 @@ export interface PcSessionAuth {
   full_name: string;
   status: string;
   roles: string[];
+  /** Повторное подтверждение кодом ещё действует (0228). */
+  stepped: boolean;
 }
 
 /** Таблицы консолей (pc_*). Ни одной ссылки на users/chats CRM — изоляция по устройству. */
@@ -90,6 +92,10 @@ export class PcRepository {
   }
 
   /** Шаг кода запоминаем атомарно: один и тот же код второй раз не пройдёт. */
+  async markStepUp(sessionId: string, minutes: number): Promise<void> {
+    await this.db.query(`UPDATE pc_sessions SET stepup_until = now() + make_interval(mins => $2::int) WHERE id=$1`, [sessionId, minutes]);
+  }
+
   async useStep(id: string, step: number): Promise<boolean> {
     const r = await this.db.query(
       `UPDATE pc_accounts SET totp_last_step=$2 WHERE id=$1 AND (totp_last_step IS NULL OR totp_last_step < $2)`, [id, step]);
@@ -130,7 +136,8 @@ export class PcRepository {
   /** Проверка на каждый запрос: сессия жива, человек активен — роли берутся свежие, не из токена. */
   sessionAuth(sessionId: string) {
     return this.db.one<PcSessionAuth>(
-      `SELECT s.id::text AS session_id, s.app, a.id::text AS account_id, a.email, a.full_name, a.status, a.roles
+      `SELECT s.id::text AS session_id, s.app, a.id::text AS account_id, a.email, a.full_name, a.status, a.roles,
+              coalesce(s.stepup_until > now(), false) AS stepped
          FROM pc_sessions s JOIN pc_accounts a ON a.id=s.account_id
         WHERE s.id=$1 AND s.revoked_at IS NULL AND s.expires_at > now()`, [sessionId]);
   }

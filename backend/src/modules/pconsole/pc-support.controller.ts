@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, Res, UseGuard
 import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import type { Request, Response } from 'express';
 import { Public } from '../../common/auth/decorators';
-import { CurrentPc, PcAuth, PcGuard, PcNeed } from './pc.guard';
+import { CurrentPc, PcAuth, PcGuard, PcNeed, PcStepUp } from './pc.guard';
 import { PcRepository } from './pc.repository';
 import { PcSupportService } from './pc-support.service';
 import { SupportDeskService } from '../support/support-desk.service';
@@ -109,7 +109,7 @@ export class PcSupportController {
     return { incident: await this.desk.currentIncident(op.tenantId, op) };
   }
 
-  @Post('incident') @HttpCode(200)
+  @Post('incident') @PcStepUp() @HttpCode(200)
   async declare(@CurrentPc() pc: PcAuth, @Body() dto: IncidentDto, @Req() req: Request) {
     const op = await this.sup.operator(pc);
     const r = await this.desk.declareIncident(op.tenantId, op, dto.title.trim(), dto.message.trim());
@@ -117,7 +117,7 @@ export class PcSupportController {
     return r;
   }
 
-  @Post('incident/:incidentId/resolve') @HttpCode(200)
+  @Post('incident/:incidentId/resolve') @PcStepUp() @HttpCode(200)
   async resolveIncident(@CurrentPc() pc: PcAuth, @Param('incidentId') incidentId: string, @Req() req: Request) {
     const op = await this.sup.operator(pc);
     const r = await this.desk.resolveIncident(op.tenantId, op, incidentId);

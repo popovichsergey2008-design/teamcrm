@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 import type { Request } from 'express';
 import { Public } from '../../common/auth/decorators';
 import { AppException } from '../../common/http/app-exception';
-import { CurrentPc, PcAuth, PcGuard, PcNeed } from './pc.guard';
+import { CurrentPc, PcAuth, PcGuard, PcNeed, PcStepUp } from './pc.guard';
 import { PcAuthService } from './pc-auth.service';
 import { PcRepository } from './pc.repository';
 import { PcStatsService } from './pc-stats.service';
@@ -75,6 +75,7 @@ class SecretDto {
   @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) expiresAt?: string;
 }
 class ReasonDto { @IsString() @MaxLength(300) reason!: string }
+class StepUpDto { @IsString() @MaxLength(16) code!: string }
 
 class MoveDto {
   @IsString() @Matches(/^\d{4}-\d{2}-\d{2}$/) applyFrom!: string;
@@ -136,6 +137,13 @@ export class PcController {
   @Get('me') @PcNeed('any')
   me(@CurrentPc() pc: PcAuth) { return this.auth.me(pc); }
 
+  /** Повторное подтверждение кодом (§3): дальше 10 минут чувствительные действия без кода. */
+  @Post('stepup') @PcNeed('any') @HttpCode(200)
+  async stepUp(@CurrentPc() pc: PcAuth, @Body() dto: StepUpDto) {
+    await this.auth.stepUp(pc.accountId, pc.sessionId, dto.code);
+    return { ok: true, minutes: 10 };
+  }
+
   // ── Консоль владельца ──
   @Get('owner/overview') @PcNeed('owner.view')
   overview(@Query('period') period?: string, @Query('from') from?: string, @Query('to') to?: string, @Query('tz') tz?: string) {
@@ -159,7 +167,7 @@ export class PcController {
   @Get('owner/staff') @PcNeed('staff.manage')
   staff() { return this.repo.staff(); }
 
-  @Post('owner/staff/:id') @PcNeed('staff.manage') @HttpCode(200)
+  @Post('owner/staff/:id') @PcNeed('staff.manage') @PcStepUp() @HttpCode(200)
   async setStaff(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Body() dto: StaffDto, @Req() req: Request) {
     const acc = await this.repo.byId(id);
     if (!acc) throw AppException.notFound('Сотрудник не найден');
@@ -211,7 +219,7 @@ export class PcController {
   @Get('owner/secrets') @PcNeed('owner.view')
   secrets() { return this.secretsSvc.list(); }
 
-  @Post('owner/secrets') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/secrets') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async addSecret(@CurrentPc() pc: PcAuth, @Body() dto: SecretDto, @Req() req: Request) {
     const r = await this.secretsSvc.add(dto.name, dto.value, { note: dto.note?.trim() || null, expiresAt: dto.expiresAt ?? null, by: pc.accountId });
     await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'secret.add', target: dto.name, meta: { version: r.version, check: r.check.ok }, ip: req.ip });
@@ -221,14 +229,14 @@ export class PcController {
   @Post('owner/secrets/:id/check') @PcNeed('owner.manage') @HttpCode(200)
   checkSecret(@Param('id') id: string) { return this.secretsSvc.check(id); }
 
-  @Post('owner/secrets/:id/activate') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/secrets/:id/activate') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async activateSecret(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Req() req: Request) {
     const r = await this.secretsSvc.activate(id, pc.accountId);
     await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'secret.activate', target: id, meta: { name: r.name ?? null }, ip: req.ip });
     return r;
   }
 
-  @Post('owner/secrets/:id/revoke') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/secrets/:id/revoke') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async revokeSecret(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Body() dto: ReasonDto, @Req() req: Request) {
     if (!dto.reason.trim()) throw AppException.validation('Укажите причину отзыва');
     const r = await this.secretsSvc.revoke(id, pc.accountId, dto.reason.trim());
@@ -240,21 +248,21 @@ export class PcController {
   @Get('owner/plans/:code/moves') @PcNeed('owner.view')
   priceMoves(@Param('code') code: string) { return this.billing.priceMoves(code); }
 
-  @Post('owner/plans/:code/moves') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/plans/:code/moves') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async createMove(@CurrentPc() pc: PcAuth, @Param('code') code: string, @Body() dto: MoveDto, @Req() req: Request) {
     const r = await this.billing.createPriceMove(code, dto.applyFrom, dto.note?.trim() || null, pc.accountId);
     await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'plan.price_move', target: code, meta: { ...r, applyFrom: dto.applyFrom }, ip: req.ip });
     return r;
   }
 
-  @Post('owner/moves/:id/cancel') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/moves/:id/cancel') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async cancelMove(@CurrentPc() pc: PcAuth, @Param('id') id: string, @Req() req: Request) {
     if (!(await this.billing.cancelPriceMove(id, pc.accountId))) throw AppException.notFound('Перевод не найден или уже отменён');
     await this.repo.audit({ accountId: pc.accountId, app: pc.app, action: 'plan.price_move_cancel', target: id, meta: {}, ip: req.ip });
     return { ok: true };
   }
 
-  @Post('owner/plans') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/plans') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async savePlan(@CurrentPc() pc: PcAuth, @Body() dto: PlanDto, @Req() req: Request) {
     const r = await this.billing.savePlan({
       code: dto.code, title: dto.title.trim(), priceRub: dto.priceRub, priceYearRub: dto.priceYearRub ?? null,
@@ -278,7 +286,7 @@ export class PcController {
     return { config, decision, sharedSpentUsd, tenants, heldUsd: budget?.heldUsd ?? 0 };
   }
 
-  @Post('owner/ai') @PcNeed('owner.manage') @HttpCode(200)
+  @Post('owner/ai') @PcNeed('owner.manage') @PcStepUp() @HttpCode(200)
   async setAi(@CurrentPc() pc: PcAuth, @Body() dto: AiGuardDto, @Req() req: Request) {
     const before = await this.aiGuard.config();
     // выключить без причины нельзя: через месяц никто не вспомнит, почему ИИ молчит (§5.5)

@@ -13,6 +13,8 @@ import { APP_TITLE, canEnter, isPcApp, PcApp, permsFor } from './pc-rules';
 
 const ACCESS_TTL = '15m';
 const SETUP_TTL = '15m';
+/** Сколько минут после повторного подтверждения код не спрашивается снова. */
+const STEPUP_MIN = 10;
 const SESSION_DAYS = 14;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -102,6 +104,19 @@ export class PcAuthService {
     if (!dto.code) return { needCode: true };
     await this.checkCode(acc.id, acc.totp_secret_enc, dto.code, acc.totp_last_step);
     return this.session(acc.id, app, meta);
+  }
+
+  /**
+   * Повторное подтверждение кодом перед чувствительной операцией (§3): после него
+   * 10 минут в этой сессии код не спрашивается.
+   */
+  async stepUp(accountId: string, sessionId: string, code: string): Promise<void> {
+    const acc = await this.repo.byId(accountId);
+    if (!acc?.totp_secret_enc) throw AppException.forbidden('Код подтверждения не настроен — войдите заново');
+    // неверный код — 403 с просьбой повторить, а не 401: 401 консоль поймёт как «сессия кончилась»
+    try { await this.checkCode(acc.id, acc.totp_secret_enc, code, acc.totp_last_step); }
+    catch (e) { if (e instanceof AppException && e.code === 'UNAUTHORIZED') throw new AppException('FORBIDDEN', 'Неверный код', { stepUp: true }); throw e; }
+    await this.repo.markStepUp(sessionId, STEPUP_MIN);
   }
 
   private async checkCode(id: string, secretEnc: string, code: string, lastStep: string | null) {

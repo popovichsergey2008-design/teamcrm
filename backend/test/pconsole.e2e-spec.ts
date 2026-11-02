@@ -41,6 +41,8 @@ describe('Консоли платформы (e2e)', () => {
     const s = (await http.post('/api/pc/auth/mfa/setup').send({ token: r.mfaSetup }).expect(200)).body.data;
     const code = totpAt(s.secret, stepOf(Date.now()));
     const t = (await http.post('/api/pc/auth/mfa/enable').send({ token: r.mfaSetup, code }).expect(200)).body.data;
+    // чувствительные действия (§3) требуют свежего кода: подтверждаем сразу следующим шагом
+    await http.post('/api/pc/stepup').set(H(t.accessToken)).send({ code: totpAt(s.secret, stepOf(Date.now()) + 1) }).expect(200);
     return { ...t, secret: s.secret } as { accessToken: string; refreshToken: string; secret: string };
   }
 
@@ -334,5 +336,17 @@ describe('Консоли платформы (e2e)', () => {
     } finally {
       await platform.clearPlatform();
     }
+  });
+
+  it('чувствительное действие без свежего кода — отказ с просьбой подтвердить; журнал не правится', async () => {
+    const email = await staff(['owner']);
+    const r = (await http.post('/api/pc/auth/login').send({ email, password: PASS, app: 'owner' }).expect(200)).body.data;
+    const st = (await http.post('/api/pc/auth/mfa/setup').send({ token: r.mfaSetup }).expect(200)).body.data;
+    const t = (await http.post('/api/pc/auth/mfa/enable').send({ token: r.mfaSetup, code: totpAt(st.secret, stepOf(Date.now())) }).expect(200)).body.data;
+    const res = await http.post('/api/pc/owner/ai').set(H(t.accessToken)).send({ allOff: false, sharedOff: false }).expect(403);
+    expect(res.body.error.details).toEqual({ stepUp: true });
+    await http.post('/api/pc/owner/ai').set(H(t.accessToken)).set('X-Pc-Code', '000000').send({ allOff: false, sharedOff: false }).expect(403);
+    await expect(db.query(`UPDATE pc_audit SET action='x' WHERE id=(SELECT max(id) FROM pc_audit)`)).rejects.toThrow(/только дополняется/);
+    await expect(db.query(`DELETE FROM pc_audit WHERE id=(SELECT max(id) FROM pc_audit)`)).rejects.toThrow(/только дополняется/);
   });
 });

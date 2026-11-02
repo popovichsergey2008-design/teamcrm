@@ -32,21 +32,21 @@ export const signedIn = () => !!tokens;
 export const tokenHeader = (): Record<string, string> => (tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {});
 
 export class PcError extends Error {
-  constructor(public code: string, message: string) { super(message); }
+  constructor(public code: string, message: string, public details?: Record<string, unknown>) { super(message); }
 }
 
-async function raw<T>(method: string, path: string, body?: unknown, auth = true): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+async function raw<T>(method: string, path: string, body?: unknown, auth = true, extra: Record<string, string> = {}): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra };
   if (auth && tokens) headers.Authorization = `Bearer ${tokens.accessToken}`;
   let res: Response;
   try {
     res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch { throw new PcError('OFFLINE', 'Нет связи с сервером'); }
-  let env: { ok: boolean; data?: T; error?: { code: string; message: string } };
+  let env: { ok: boolean; data?: T; error?: { code: string; message: string; details?: Record<string, unknown> } };
   try { env = await res.json(); } catch {
     throw new PcError('UNAVAILABLE', res.status >= 502 ? 'Сервер обновляется — повторите через минуту' : `Ошибка ${res.status}`);
   }
-  if (!env.ok) throw new PcError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Ошибка');
+  if (!env.ok) throw new PcError(env.error?.code ?? 'INTERNAL', env.error?.message ?? 'Ошибка', env.error?.details);
   return env.data as T;
 }
 
@@ -61,12 +61,30 @@ async function refresh() {
 }
 
 export async function pc<T>(method: string, path: string, body?: unknown): Promise<T> {
-  try { return await raw<T>(method, path, body); } catch (e) {
+  try { return await withStepUp<T>(method, path, body); } catch (e) {
     if (e instanceof PcError && e.code === 'UNAUTHORIZED' && tokens) {
       await refresh();
-      return raw<T>(method, path, body);
+      return withStepUp<T>(method, path, body);
     }
     throw e;
+  }
+}
+
+/**
+ * Чувствительное действие (§3): сервер просит свежий код из приложения — спрашиваем
+ * и повторяем тот же запрос с кодом. Дальше 10 минут код не нужен.
+ */
+async function withStepUp<T>(method: string, path: string, body?: unknown): Promise<T> {
+  try { return await raw<T>(method, path, body); } catch (e) {
+    if (!(e instanceof PcError) || !e.details?.stepUp) throw e;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = window.prompt(attempt ? 'Неверный код. Введите код из приложения ещё раз:' : 'Подтвердите действие: код из приложения-аутентификатора');
+      if (!code?.trim()) throw new PcError('CANCELLED', 'Действие не подтверждено');
+      try { return await raw<T>(method, path, body, true, { 'X-Pc-Code': code.trim() }); } catch (x) {
+        if (!(x instanceof PcError) || !x.details?.stepUp) throw x;
+      }
+    }
+    throw new PcError('FORBIDDEN', 'Код не подошёл три раза — попробуйте позже');
   }
 }
 

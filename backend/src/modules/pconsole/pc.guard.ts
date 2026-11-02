@@ -8,6 +8,9 @@ import { canEnter, isPcApp, PcApp, PcPerm, permsFor } from './pc-rules';
 export const PC_PERM_KEY = 'pcPerm';
 /** Право консоли на маршрут. Без него маршрут закрыт: невыданное запрещено (§7). */
 export const PcNeed = (perm: PcPerm | 'any') => SetMetadata(PC_PERM_KEY, perm);
+export const PC_STEPUP_KEY = 'pcStepUp';
+/** Чувствительная операция (§3): нужен свежий код из приложения (заголовок X-Pc-Code), раз в 10 минут. */
+export const PcStepUp = () => SetMetadata(PC_STEPUP_KEY, true);
 
 export interface PcAuth {
   accountId: string;
@@ -44,6 +47,11 @@ export class PcGuard implements CanActivate {
     if (s.status !== 'active' || !isPcApp(s.app) || !canEnter(s.roles, s.app)) throw AppException.forbidden('Доступ закрыт');
     const perms = permsFor(s.roles, s.app);
     if (need !== 'any' && (appOf(need) !== s.app || !perms.includes(need))) throw AppException.forbidden('Недостаточно прав');
+    if (this.reflector.getAllAndOverride<boolean>(PC_STEPUP_KEY, [ctx.getHandler(), ctx.getClass()]) && !s.stepped) {
+      const code = String(req.headers?.['x-pc-code'] ?? '').trim();
+      if (!code) throw new AppException('FORBIDDEN', 'Подтвердите действие кодом из приложения', { stepUp: true });
+      await this.auth.stepUp(s.account_id, s.session_id, code);
+    }
     const auth: PcAuth = { accountId: s.account_id, sessionId: s.session_id, email: s.email, name: s.full_name, app: s.app, roles: s.roles, perms };
     req.pc = auth;
     return true;
