@@ -73,6 +73,8 @@ export interface DirectNotice {
   short: string;
   /** Пункты для строки центра: «Тег: …», «Проект: …», «Исполнитель: …». */
   fields?: [string, string][];
+  /** Куда ведёт уведомление; по умолчанию — карточка в ящике секретаря. */
+  path?: string;
 }
 
 export interface ProactivePrefs {

@@ -39,6 +39,7 @@
 .hub-card > .ui-btn-link { align-self: flex-start; }
 .hub-mission { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; }
 .hub-meta { margin: 0; display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--text-mut); }
+.hub-linkish.hub-more { padding: 0; margin-top: 2px; font-size: var(--fs-xs); }
 .hub-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .hub-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.45; }
 .hub-err { margin: 0; font-size: var(--fs-sm); color: var(--danger); }

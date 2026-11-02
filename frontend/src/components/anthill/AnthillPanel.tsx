@@ -72,7 +72,9 @@ type Live = { status: string; text: string; sources: AnthillSource[] };
  */
 /** Ответ дольше этого — сигнал «готово» (человек успел переключиться). */
 
-export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
+export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, session }: {
+  /** Открыть этот разговор: `/chat/anthill/thread/:id` из уведомления (#4665). */
+  session?: string | null;
   /** Что открыто у человека под окном — уходит ответом на «о чём речь». */
   context?: AnthillContext | null;
   onClose?: () => void;
@@ -146,6 +148,9 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen }: {
     setSessionId(id); setHistoryOpen(false); setErr('');
     try { setMessages(await api.anthillMessages(id)); } catch { setMessages([]); }
   };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (session) void openSession(session); }, [session]);
 
   const fresh = useCallback(async () => {
     const s = await api.anthillStart(ctxArg);

@@ -102,7 +102,7 @@ export class ProactiveService {
     await this.repo.markNotified(String(row.id));
     await this.push.personal({
       tenantId: row.tenant_id, userId: row.user_id, eventKey: d.eventKey,
-      title: row.title.slice(0, 120), body: d.short.slice(0, 200), path: `/secretary/${row.id}`,
+      title: row.title.slice(0, 120), body: d.short.slice(0, 200), path: d.path ?? `/secretary/${row.id}`,
       push: !quiet, toast: true, taskId: d.taskId ?? null, details: d.fields ? { fields: d.fields } : null,
     }).catch(() => false);
     if (!quiet && telegramOn) {

@@ -12,6 +12,8 @@ import { isSkill, Skill, SKILL_LABEL } from '../team/skills';
 
 /** Как часто смотреть, не подошло ли время сообщения: 30 секунд ± 5. */
 const TICK_MS = 5_000;
+/** Разговор с QEVO Bot, куда падают подтверждения постановки (#4665). */
+const BOT_THREAD = 'Поставленные задачи';
 
 interface DueRow {
   task_id: string; tenant_id: string; user_id: string; snap: string;
@@ -147,6 +149,9 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       const org = await this.org.snapshot(r.tenant_id).catch(() => null);
       if (org && !directionHasLead(org, skill)) ask = leadOptions(org, skill, 3);
     }
+    // #4665, 02.11: сообщение — в чат QEVO Bot, уведомление ведёт туда же (раньше — в «Фокус»)
+    const sessionId = await this.toBotChat(r.tenant_id, r.user_id, msg.title, msg.fields, link)
+      .catch((e) => { this.log.warn(`задача ${t.id}, чат бота: ${(e as Error).message}`); return null; });
     const row = await this.proactive.propose({
       tenantId: r.tenant_id, userId: r.user_id, skill: 'autotask', kind: 'confirm',
       sourceType: 'task', sourceId: t.id, sourceAt: new Date(), sourceLabel: `Задача #${t.id}`, sourceLink: link,
@@ -167,10 +172,38 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
       fingerprint: fingerprint({ skill: 'autotask', sourceType: 'task', sourceId: t.id }),
       expiresAt: new Date(Date.now() + 3 * 86400_000),
       // #4665: ответ на действие самого постановщика — доходит всегда (центр, всплывашка, push, Telegram)
-      direct: { eventKey: 'task.auto_confirm', taskId: t.id, short: msg.short, fields: msg.fields },
+      direct: {
+        eventKey: 'task.auto_confirm', taskId: t.id, short: msg.short, fields: msg.fields,
+        ...(sessionId ? { path: `/chat/anthill/thread/${sessionId}` } : {}),
+      },
     });
     if (!row) this.log.warn(`задача ${t.id}: сообщение-подтверждение не создано`);
     return !!row;
+  }
+
+  /**
+   * Сообщение от QEVO Bot в разговор «Поставленные задачи» — один на человека, его видно
+   * в истории бота. Возвращает номер разговора: по нему уведомление открывает чат.
+   */
+  private async toBotChat(tenantId: string, userId: string, title: string, fields: [string, string][], link: string): Promise<string> {
+    const s = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM ai_sessions
+        WHERE tenant_id=$1 AND user_id=$2 AND title=$3 AND context_entity_type IS NULL
+        ORDER BY id LIMIT 1`,
+      [tenantId, userId, BOT_THREAD],
+    ) ?? await this.db.one<{ id: string }>(
+      `INSERT INTO ai_sessions (tenant_id, user_id, title) VALUES ($1,$2,$3) RETURNING id::text`,
+      [tenantId, userId, BOT_THREAD],
+    );
+    const url = `${(process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, '')}${link}`;
+    const body = [`**${title}**`, '', ...fields.map(([k, v]) => `- ${k}: ${v}`), '',
+      `Всё верно — ничего делать не нужно. Ошибся — [откройте задачу](${url}) и поправьте.`].join(String.fromCharCode(10));
+    await this.db.query(
+      `INSERT INTO ai_messages (tenant_id, session_id, role, content) VALUES ($1,$2,'assistant',$3)`,
+      [tenantId, s!.id, body],
+    );
+    await this.db.query(`UPDATE ai_sessions SET updated_at=now() WHERE id=$1`, [s!.id]);
+    return s!.id;
   }
 
   /** Кнопки карточки: «Ок» — подтверждено постановщиком; «Править» — открыть задачу. */

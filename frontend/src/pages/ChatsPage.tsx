@@ -2553,6 +2553,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         {view === 'anthill' && (
           <AnthillPanel
             fullscreen
+            session={String(initialChatId) === 'anthill' ? initialThreadId ?? null : null}
             context={context?.taskId
               ? { type: 'task', id: context.taskId }
               : context?.projectId ? { type: 'project', id: context.projectId } : null}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../Icon';
 import { Avatar } from '../Avatar';
@@ -34,6 +34,32 @@ const HubPassport = lazyComponent(() => import('./HubPassport').then((m) => m.Hu
  *
  * `variant="button"` — для вида «Список»: кнопка «Инфоцентр» в шапке, открывающая паспорт.
  */
+/** Текст в три строки; «Ещё» — только когда он правда не влез (#4706). */
+function Clamp({ className, children }: { className: string; children: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [open, setOpen] = useState(false);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const check = () => setCut(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [children, open]);
+  return (
+    <div>
+      <p ref={ref} className={open ? className : `${className} hub-clamp`}>{children}</p>
+      {(cut || open) && (
+        <button type="button" className="hub-linkish hub-more" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? 'Свернуть' : 'Ещё'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function HubColumn({ projectId, ownerId, variant = 'column' }: {
   projectId: string;
   ownerId?: string | null;
@@ -185,9 +211,9 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
             <section className="hub-card" aria-labelledby={`hub-card-${projectId}`}>
               <h3 className="hub-card-title" id={`hub-card-${projectId}`}>{p.name}</h3>
               {p.mission
-                ? <p className="hub-mission hub-clamp">{p.mission}</p>
+                ? <Clamp className="hub-mission">{p.mission}</Clamp>
                 : cardEmpty && <p className="hub-hint">Добавьте миссию и сайт проекта — новичку не придётся спрашивать.</p>}
-              {p.audience && <p className="hub-meta hub-clamp">Для кого: {p.audience}</p>}
+              {p.audience && <Clamp className="hub-meta">Для кого: {p.audience}</Clamp>}
               {links.length > 0 && (
                 <ul className="hub-chips">
                   {links.map((l) => {
