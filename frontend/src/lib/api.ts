@@ -744,6 +744,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * уже дошёл до сервера, и повтор завёл бы вторую задачу. Здесь честнее сказать
  * человеку «сервер обновляется, повторите», чем молча сделать что-то дважды.
  */
+/** Задача из «Последних задач» (#4720); stage — тип этапа колонки, done у закрытой. */
+export interface RecentTask {
+  id: string; title: string; projectId: string; projectName: string; status: string | null;
+  stage: 'work' | 'testing' | 'review' | 'done' | string; overdue: boolean; priority: string; at: string;
+}
+
+/** Вложение к вопросу QEVO Bot, прочитанное сервером (#4726). */
+export interface AnthillAttachment { name: string; kind: 'image' | 'doc'; text: string }
+
 /** Отправка формы с файлом (multipart): конверт ответа тот же, что у request. */
 async function upload<T>(
   path: string, fields: Record<string, string | Blob | Blob[] | undefined>, signal?: AbortSignal, retried = false,
@@ -1440,6 +1449,10 @@ export const api = {
     Сессии, вопрос потоком, действия с подтверждением, оценка.
   */
   anthillSessions: () => request<AnthillSession[]>('GET', '/anthill/sessions'),
+  /** #4720: шесть последних задач, над которыми работал человек, — «Избранное» в сайдбаре. */
+  recentTasks: () => request<RecentTask[]>('GET', '/tasks/my/recent'),
+  /** #4726: скриншот, фото или документ → текст, который бот приложит к вопросу. Файл не хранится. */
+  anthillAttach: (file: File) => upload<AnthillAttachment>('/api/anthill/attachments', { file }),
   anthillStart: (context?: AnthillContext | null) => request<{ id: string }>('POST', '/anthill/sessions', context ? { context } : {}),
   anthillMessages: (id: string) => request<AnthillMessage[]>('GET', `/anthill/sessions/${id}/messages`),
   anthillDelete: (id: string) => request<{ deleted: boolean }>('DELETE', `/anthill/sessions/${id}`),
@@ -1526,6 +1539,8 @@ export const api = {
       onStep?: (s: { introId: string; message: { id: string; content: string; action: AnthillAction | null } }) => void;
       onDone?: (d: { messageId: string }) => void; onError?: (m: string) => void;
     },
+    /** #4726: вложения, уже прочитанные ботом (anthillAttach) */
+    attachments?: AnthillAttachment[],
   ): { stop: () => void; finished: Promise<void> } => {
     const ctrl = new AbortController();
     const finished = (async () => {
@@ -1534,7 +1549,10 @@ export const api = {
         res = await fetch(`${BASE}/anthill/sessions/${id}/ask`, {
           method: 'POST', signal: ctrl.signal,
           headers: { 'Content-Type': 'application/json', ...(tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {}) },
-          body: JSON.stringify({ question, context: context ?? undefined, skillId: skillId ?? undefined, deep: deep || undefined }),
+          body: JSON.stringify({
+            question, context: context ?? undefined, skillId: skillId ?? undefined, deep: deep || undefined,
+            attachments: attachments?.length ? attachments.map(({ name, text }) => ({ name, text })) : undefined,
+          }),
         });
       } catch (e) { if ((e as Error).name !== 'AbortError') on.onError?.('Нет связи с сервером'); return; }
       if (!res.ok || !res.body) { on.onError?.('Не удалось получить ответ. Попробуйте снова.'); return; }

@@ -4,6 +4,7 @@ import { fetchBlob } from '../components/AuthedMedia';
 import { EmptyState } from '../components/EmptyState';
 import { CareEmpty } from '../components/care/CareEmpty';
 import { GuestMeetsPanel } from '../components/GuestMeetsPanel';
+import { CallStarter } from '../components/CallStarter';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
 import { feedback } from '../lib/feedback';
@@ -36,7 +37,13 @@ const stamp = (sec: number) => {
  * Встречи: загрузили запись → получили стенограмму, сводку и черновики задач.
  * Задачи создаются только по подтверждению — ИИ ничего не заводит молча.
  */
-export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuestMeet: (roomId: string) => void; openMeetingId?: string }) {
+export function MeetingsPage({ onEnterGuestMeet, openMeetingId, onStartCall, inCall }: {
+  onEnterGuestMeet: (roomId: string) => void;
+  openMeetingId?: string;
+  /** #4732: начать созвон прямо отсюда — та же комната, что из панели чатов */
+  onStartCall?: (opts: { memberIds: string[]; withAi: boolean }) => void;
+  inCall?: boolean;
+}) {
   const { user } = useAuth();
   const [list, setList] = useState<any[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -113,6 +120,15 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId }: { onEnterGuest
 
   return (
     <div className="mytasks">
+      {/* #4732: созвон — прямо из встреч, не уходя в чат; кого звать — выбором людей */}
+      {onStartCall && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div className="drawer-section-title" style={{ margin: 0 }}><Icon name="phone" size={16} /> Встречи — созвоны</div>
+          <span style={{ marginLeft: 'auto' }}>
+            <CallStarter disabled={!!inCall} onStart={onStartCall} />
+          </span>
+        </div>
+      )}
       {/* Гостевые встречи идут первыми: это то, что назначают на будущее,
           тогда как разбор записей — работа с уже прошедшим. */}
       <GuestMeetsPanel onEnter={onEnterGuestMeet} />

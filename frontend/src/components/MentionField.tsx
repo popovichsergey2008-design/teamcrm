@@ -14,7 +14,12 @@ import { isEnterKey } from '../lib/enter-key';
  * не глядя. Разбор текста живёт в lib/mentions — там же он и проверяется.
  */
 
-const MAX_SUGGESTIONS = 6;
+/*
+  #4729: показываем всех участников — список прокручивается (max-height в CSS).
+  При шести «все», QEVO Bot и первые четыре имени съедали места, и шестой человек
+  чата находился только по первой букве.
+*/
+const MAX_SUGGESTIONS = 50;
 
 /**
  * «@все» — позвать всех участников общего чата (просьба заказчика). Не человек, а
@@ -216,6 +221,8 @@ export function MentionField({
               <button
                 type="button"
                 className={`mention-option${i === active ? ' mention-active' : ''}`}
+                // стрелками ниже видимой части — список доезжает до выбранного
+                ref={i === active ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(u)}
               >

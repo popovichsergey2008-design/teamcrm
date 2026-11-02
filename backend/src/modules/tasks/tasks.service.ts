@@ -189,6 +189,16 @@ export class TasksService {
     return this.repo.leftovers(tenantId, userId, today);
   }
 
+  /** #4720: «Последние задачи» в «Избранном» сайдбара — шесть, над которыми работал человек. */
+  async recent(tenantId: string, userId: string, limit = 6) {
+    const rows = await this.repo.recent(tenantId, userId, Math.min(Math.max(limit, 1), 20));
+    return rows.map((r) => ({
+      id: String(r.id), title: r.title, projectId: String(r.project_id), projectName: r.project_name,
+      status: r.column_name, stage: r.closed ? 'done' : (r.stage_type ?? 'work'), overdue: r.overdue,
+      priority: r.priority, at: r.at,
+    }));
+  }
+
   /**
    * Задача, которую заводит ЧЕЛОВЕК из формы.
    *

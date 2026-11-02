@@ -473,6 +473,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [remindFor, setRemindFor] = useState<string | null>(null);
   /** Кого позвали по «@»: id, а не имена — имена переименовываются. */
   const [mentioned, setMentioned] = useState<string[]>([]);
+  /*
+    #4723: ответ и упомянутые — про ту переписку, где их начали. Без сброса цитата
+    сообщения из группы ехала в личный чат и уходила туда вместе с новым сообщением.
+  */
+  useEffect(() => { setReplyTo(null); setMentioned([]); }, [activeId]);
   /** Клип ушёл на сервер: там его ещё расшифровывают, и это занимает секунды. */
   /** Витрина «Все каналы»: публичные каналы компании. */
   const [channelList, setChannelList] = useState<{

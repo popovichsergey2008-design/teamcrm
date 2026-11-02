@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { useAuth } from '../state/auth';
-import { api } from '../lib/api';
+import { api, type RecentTask } from '../lib/api';
 import { navigate, useRoute } from '../lib/router';
 import { favorites, FAVORITES_CHANGED, initFavorites, toggleFavorite, type Favorite } from '../lib/favorites';
 import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, type TaskDraft } from '../lib/task-draft';
@@ -10,6 +10,22 @@ import './sidebar-lists.css';
 
 // новый ключ (02.11): «Избранное» теперь свёрнуто по умолчанию — у всех, и у тех, кто уже раскрывал
 const OPEN_KEY = 'qevo.sb-fav';
+
+/** #4720: на английском интерфейсе браузера — английская подпись */
+const RECENT_LABEL = typeof navigator !== 'undefined' && /^en\b/i.test(navigator.language) ? 'Recent tasks' : 'Последние задачи';
+const NOT_STARTED = /^(нов|to ?do|бэклог|backlog|в планах|план|очеред|входящ)/i;
+
+/**
+ * Значок состояния задачи (#4720, как в Linear): пунктирный круг — не начата,
+ * половина — в работе, три четверти — на проверке, галочка — готово, красный — просрочена.
+ */
+function recentState(t: RecentTask): { cls: string; hint: string } {
+  if (t.stage === 'done') return { cls: 'sbl-st-done', hint: 'Готово' };
+  if (t.overdue) return { cls: 'sbl-st-late', hint: `Просрочена · ${t.status ?? ''}` };
+  if (t.stage === 'testing' || t.stage === 'review') return { cls: 'sbl-st-check', hint: t.status ?? 'На проверке' };
+  if (t.status && NOT_STARTED.test(t.status)) return { cls: 'sbl-st-new', hint: t.status };
+  return { cls: 'sbl-st-work', hint: t.status ?? 'В работе' };
+}
 
 function readOpen(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
@@ -29,7 +45,16 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const [tasks, setTasks] = useState<TaskDraft[]>(() => listDrafts(user?.id));
   const [chats, setChats] = useState(() => listChatDrafts());
   const [open, setOpen] = useState<Record<string, boolean>>(readOpen);
+  const [recent, setRecent] = useState<RecentTask[]>([]);
   const route = useRoute();
+  const favOpen = open.fav === true;
+  // «Последние задачи» — при раскрытии и при переходе к другой задаче (её только что открыли)
+  useEffect(() => {
+    if (!favOpen) return;
+    let live = true;
+    api.recentTasks().then((r) => { if (live) setRecent(r); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [favOpen, route.taskId]);
 
   useEffect(() => {
     const f = () => setFavs([...favorites()]);
@@ -78,6 +103,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const draftCount = tasks.length + chatDrafts.length;
 
   const total = favs.length + draftCount;
+  const goRecent = (t: RecentTask) => { onGo(); navigate({ section: 'projects', projectId: t.projectId, taskId: t.id }); };
   const empty = <p className="sbl-empty">Отметьте звёздочкой проект или задачу — они будут здесь. Начатые и брошенные задачи и сообщения — тоже.</p>;
 
   return (
@@ -88,8 +114,27 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
         {total > 0 && <span className="sbl-count">{total}</span>}
         <Icon name={isOpen('fav') ? 'chevron-down' : 'chevron-right'} size={14} />
       </button>
-      {isOpen('fav') && (total === 0 ? empty : (
+      {isOpen('fav') && (total === 0 && !recent.length ? empty : (
         <div className="sbl-body">
+          {/* #4720: «Последние задачи» — первым пунктом */}
+          {recent.length > 0 && (<>
+            <div className="sbl-sub">{RECENT_LABEL}</div>
+            <ul className="sbl-list">
+              {recent.map((t) => {
+                const st = recentState(t);
+                return (
+                  <li key={t.id} className="sbl-row">
+                    <button type="button" className="sbl-item" onClick={() => goRecent(t)} title={`${t.title}\n${t.projectName} · ${st.hint}`}>
+                      <span className={`sbl-st ${st.cls}`} aria-label={st.hint}>{st.cls === 'sbl-st-done' && <Icon name="check" size={9} />}</span>
+                      <span className="sbl-num">#{t.id}</span>
+                      <span className="sbl-text">{t.title}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {(favs.length > 0 || draftCount > 0) && <div className="sbl-sub">Отмеченные</div>}
+          </>)}
           {favs.length > 0 && (
             <ul className="sbl-list">
               {favs.map((f) => (

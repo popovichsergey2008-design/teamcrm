@@ -136,7 +136,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   /*
     #4615: автоматическая постановка — режим по умолчанию. Одно поле (текст или голос),
     срок чипами и «Поставить задачу»; проект, исполнителя, теги и приоритет система
-    ставит сама, а через 30 секунд просит постановщика проверить. «Править поля» —
+    ставит сама, а через 3 секунды просит постановщика проверить. «Править поля» —
     прежний подробный предпросмотр.
   */
   const [manual, setManual] = useState(false);
@@ -774,7 +774,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
           </div>
           {autoNote && (
             <div className="nla-done-note" role="status">
-              <Icon name="bell" size={14} /> Через 10 секунд пришлю сообщение: проверьте и нажмите «Ок» или «Править».
+              <Icon name="bell" size={14} /> Через 3 секунды пришлю сообщение: проверьте и нажмите «Ок» или «Править».
             </div>
           )}
           {cardTask && (

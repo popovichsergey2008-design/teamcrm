@@ -1,0 +1,11 @@
+/* #4726: вложения к вопросу QEVO Bot — плашки над полем ввода */
+.anthill-att-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 16px 0; }
+.anthill-att {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0;
+  padding: 3px 4px 3px 10px; border-radius: 999px; font-size: var(--fs-xs);
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.anthill-att-name { min-width: 0; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.anthill-att-state { color: var(--text-mut); white-space: nowrap; }
+.anthill-att-err { border-color: var(--danger, var(--border-2)); }
+.anthill-att-err .anthill-att-state { color: var(--danger, var(--text-mut)); white-space: normal; }

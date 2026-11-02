@@ -10,8 +10,8 @@ import { OrgService } from '../org/org.service';
 import { directionHasLead, leadOptions } from '../org/org-rules';
 import { isSkill, Skill, SKILL_LABEL } from '../team/skills';
 
-/** Как часто смотреть, не подошло ли время сообщения: 10 секунд ± 2 (#4718). */
-const TICK_MS = 2_000;
+/** Как часто смотреть, не подошло ли время сообщения: 3 секунды ± 1 (#4728). */
+const TICK_MS = 1_000;
 /** Разговор с QEVO Bot, куда падают подтверждения постановки (#4665). */
 const BOT_THREAD = 'Поставленные задачи';
 

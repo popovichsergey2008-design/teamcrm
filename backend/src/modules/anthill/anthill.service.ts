@@ -30,6 +30,8 @@ import { BriefService } from './brief.service';
 import { MailboxService } from '../mailbox/mailbox.service';
 import { PulseService } from '../radar/pulse.service';
 import { nextRun, parseSchedule, Schedule, scheduleLabel } from './schedule-ru';
+import { detectKind, extractText } from '../knowledge/file-text';
+import { decodeUploadName } from '../files/files.validation';
 
 /** Что открыто у человека — для «что здесь нужно сделать» без ссылки (разд. 4–5). */
 export interface PageContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string }
@@ -56,6 +58,15 @@ const MAX_STEPS = 5;
 const DEEP_WAVES = 3;
 const DEEP_CALLS = 6;
 
+/** Сколько текста вложения отдаём модели: длиннее — дорого, а смысл держится в начале. */
+const ATTACHMENT_MAX_CHARS = 20_000;
+const ATTACHMENT_IMAGE_SYSTEM = [
+  'Человек приложил изображение (скриншот, фото, документ) к вопросу ассистенту рабочей CRM.',
+  'Опиши его так, чтобы по описанию можно было ответить на вопрос, не видя картинки:',
+  'весь видимый текст — дословно (надписи, ошибки, цифры, таблицы), что изображено, элементы интерфейса,',
+  'что выделено или обведено. По-русски, без вступлений и догадок о том, чего не видно.',
+].join(' ');
+
 /**
  * QEVO Bot — оркестратор (ТЗ-6, разд. 48).
  *
@@ -68,6 +79,7 @@ const DEEP_CALLS = 6;
  * Модель не видит базу. Она видит текст, который инструменты собрали от имени
  * человека, — и потому не может ни увидеть лишнего, ни сослаться на выдуманное.
  */
+
 @Injectable()
 export class AnthillService {
   private readonly log = new Logger('Anthill');
@@ -140,6 +152,41 @@ export class AnthillService {
     return { deleted: true };
   }
 
+  /**
+   * Прочитать вложение к вопросу (#4726): скриншот или фото — моделью с картинкой,
+   * документ — текстом. Возвращаем текст: он уходит в вопрос контекстом, а сам файл
+   * нигде не хранится — это не загрузка в библиотеку, а «посмотри вот это».
+   */
+  async readAttachment(
+    tenantId: string, user: { userId: string; role: string },
+    file: { originalname: string; mimetype: string; buffer: Buffer },
+  ): Promise<{ name: string; kind: 'image' | 'doc'; text: string }> {
+    const settings = await this.admin.get(tenantId);
+    this.assertAgent(settings, user.role);
+    await this.security.require(tenantId, user.userId, 'ai.use', 'Вам закрыт доступ к QEVO Bot — его открывает владелец организации.');
+    const name = (decodeUploadName(file.originalname) || 'file').slice(0, 200);
+    const mime = (file.mimetype || '').toLowerCase();
+    if (/^image\/(png|jpe?g|webp|gif)$/.test(mime)) {
+      const out = await this.ai.generate(tenantId, ATTACHMENT_IMAGE_SYSTEM, `Файл: ${name}`, 'anthill_answer', {
+        images: [{ mime: mime === 'image/jpg' ? 'image/jpeg' : mime, base64: file.buffer.toString('base64') }],
+        maxTokens: 1500,
+      }).catch((e) => {
+        this.log.warn(`вложение-картинка не прочитано: ${(e as Error).message}`);
+        throw AppException.conflict('Не удалось разобрать изображение — попробуйте ещё раз или опишите словами.');
+      });
+      const text = String(out ?? '').trim();
+      if (!text) throw AppException.conflict('На изображении ничего не удалось разобрать.');
+      return { name, kind: 'image', text: text.slice(0, ATTACHMENT_MAX_CHARS) };
+    }
+    if (!detectKind(name, mime)) {
+      throw AppException.validation('Такой файл бот пока не читает: подойдут картинки (PNG, JPG, WebP), PDF, Word, Excel и текстовые файлы.');
+    }
+    const r = await extractText(file.buffer, name, mime);
+    if (!r) throw AppException.validation('В файле не нашлось текста — если это скан, пришлите его картинкой.');
+    const cut = r.text.length > ATTACHMENT_MAX_CHARS;
+    return { name, kind: 'doc', text: `${r.text.slice(0, ATTACHMENT_MAX_CHARS)}${cut ? '\n[…дальше документ обрезан]' : ''}` };
+  }
+
   // ── вопрос ──
   async ask(
     tenantId: string, user: { userId: string; role: string }, sessionId: string,
@@ -156,6 +203,8 @@ export class AnthillService {
      * себя называет и как держится. Указание приходит целиком, готовой строкой.
      */
     identity?: string | null,
+    /** #4726: прочитанные вложения (скриншот, фото, документ) — текстом, см. readAttachment */
+    attachments: { name: string; text: string }[] = [],
   ): Promise<void> {
     const text = String(question ?? '').trim();
     if (text.length < 2) throw AppException.validation('Слишком короткий вопрос');
@@ -186,7 +235,9 @@ export class AnthillService {
     }
     const tctx: ToolContext = { tenantId, user, now: new Date(), base: this.base(), timezone: await this.repo.userTz(tenantId, user.userId) };
 
-    await this.repo.addMessage({ tenantId, sessionId, role: 'user', content: text });
+    // в ленте — вопрос и имена файлов; содержимое вложений идёт модели контекстом ниже
+    const named = attachments.map((a) => `📎 ${a.name}`).join('\n');
+    await this.repo.addMessage({ tenantId, sessionId, role: 'user', content: named ? `${text}\n${named}` : text });
     if (!session.title) await this.repo.setTitle(String(session.id), text);
 
     const history = (await this.repo.messages(sessionId, settings.limits.contextMessages)).slice(0, -1)
@@ -201,6 +252,10 @@ export class AnthillService {
       const r = await this.runTool(tctx, pageCtx.type === 'task' ? 'get_task' : pageCtx.type === 'project' ? 'get_project' : pageCtx.type === 'meeting' ? 'get_meeting' : 'chat_recent',
         pageCtx.type === 'task' ? { taskId: pageCtx.id } : pageCtx.type === 'project' ? { project: pageCtx.id } : pageCtx.type === 'meeting' ? { meetingId: pageCtx.id } : { chatId: pageCtx.id, limit: 40 });
       if (r) { pageText = `ТЕКУЩИЙ КОНТЕКСТ (открыто у человека):\n${r.text}`; sources.push(...r.sources); }
+    }
+    if (attachments.length) {
+      const att = attachments.map((a) => `— «${a.name}»:\n${a.text}`).join('\n\n');
+      pageText = `${pageText ? `${pageText}\n\n` : ''}ВЛОЖЕНИЯ, приложенные человеком к вопросу (уже прочитаны; отвечай с опорой на них):\n${att}`;
     }
     if (aborted()) return;
 

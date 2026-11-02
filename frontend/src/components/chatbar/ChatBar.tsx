@@ -39,7 +39,7 @@ interface BarUser { id: string; fullName: string; avatarUrl?: string | null; isA
  * статусы и последнее сообщение. Нажатие открывает переписку окном ПОВЕРХ текущей
  * страницы, а не вместо неё.
  *
- * Данные — те же, что у раздела «Чаты & Миты» (`/chats`), плюс присутствие; свои
+ * Данные — те же, что у раздела «Чаты & Созвоны» (`/chats`), плюс присутствие; свои
  * таблицы Chat Bar не заводит. Обновляется по тем же событиям сокета, что и раздел.
  */
 export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, onNewChat, currentUserId, onCallUserIds, activeChatId, onStartCall, inCall }: {

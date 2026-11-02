@@ -3,7 +3,9 @@ import { Icon } from '../Icon';
 import { RichText } from '../RichText';
 import { VoiceStatus } from '../VoiceStatus';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillAction, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
+import type { AnthillAction, AnthillAttachment, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
+import { shrinkImage } from '../../lib/image-shrink';
+import './anthill-attach.css';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
@@ -115,6 +117,23 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
   const busy = live !== null;
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /**
+   * Вложения к вопросу (#4726): скриншот, фото, документ. Сервер читает файл сразу —
+   * к отправке у нас уже текст, и сам вопрос не ждёт распознавания.
+   */
+  const [att, setAtt] = useState<{ key: number; name: string; data?: AnthillAttachment; error?: string }[]>([]);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const reading = att.some((a) => !a.data && !a.error);
+  const addFiles = (files: File[]) => {
+    for (const raw of files.slice(0, Math.max(0, 5 - att.length))) {
+      const key = Date.now() + Math.random();
+      setAtt((list) => [...list, { key, name: raw.name || 'скриншот.png' }]);
+      void shrinkImage(raw).then((f) => api.anthillAttach(f))
+        .then((data) => setAtt((list) => list.map((a) => (a.key === key ? { ...a, data } : a))))
+        .catch((e) => setAtt((list) => list.map((a) => (a.key === key
+          ? { ...a, error: e instanceof ApiError ? e.message : 'Не удалось прочитать файл' } : a))));
+    }
+  };
 
   const ctxArg = useMemo(
     () => (useCtx && context ? { type: context.type, id: String(context.id) } : null),
@@ -185,15 +204,19 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
   // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
   const draftEnter = useEnterSend(() => { void send(draft); });
   const send = async (text: string) => {
-    const question = text.trim();
-    if (!question || busy) return;
+    const ready = att.flatMap((a) => (a.data ? [a.data] : []));
+    // только файл без слов — тоже вопрос: «посмотри, что тут»
+    const question = text.trim() || (ready.length ? 'Посмотри вложение: что на нём и что с этим делать?' : '');
+    if (!question || busy || reading) return;
     setErr('');
     let id: string;
     try { id = sessionId ?? await fresh(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось начать разговор'); return; }
     setDraft('');
+    setAtt([]);
+    const named = ready.map((a) => `📎 ${a.name}`).join('\n');
     setMessages((prev) => [...prev, {
-      id: `me-${Date.now()}`, role: 'user', content: question, citations: [],
+      id: `me-${Date.now()}`, role: 'user', content: named ? `${question}\n${named}` : question, citations: [],
       createdAt: new Date().toISOString(), action: null,
     }]);
 
@@ -233,7 +256,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
         feedback('ai.completed');
       },
       onError: (m) => setErr(m || 'Не удалось получить ответ. Попробуйте снова.'),
-    });
+    }, ready);
     stopRef.current = run.stop;
     await run.finished;
     stopRef.current = null;
@@ -588,7 +611,35 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
           <Icon name="search" size={13} /> Глубокий анализ
         </Toggle>
         <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} hint="нажмите «стоп», когда закончите" />
+        {att.length > 0 && (
+          <div className="anthill-att-list">
+            {att.map((a) => (
+              <span key={a.key} className={`anthill-att${a.error ? ' anthill-att-err' : ''}`} title={a.error ?? a.name}>
+                <Icon name={a.data?.kind === 'image' || /\.(png|jpe?g|webp|gif)$/i.test(a.name) ? 'image' : 'paperclip'} size={12} />
+                <span className="anthill-att-name">{a.name}</span>
+                <span className="anthill-att-state">{a.error ? a.error : a.data ? 'прочитано' : 'читаю…'}</span>
+                <button className="msg-icon" onClick={() => setAtt((list) => list.filter((x) => x.key !== a.key))} aria-label={`Убрать ${a.name}`}>
+                  <Icon name="close" size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="chat-input anthill-input">
+          <input
+            ref={fileRef} type="file" hidden multiple
+            accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.docx,.xlsx,.txt,.md,.csv,.json"
+            onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.currentTarget.value = ''; }}
+          />
+          <button
+            className="ui-btn ui-btn-ghost ui-btn-sm"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy || att.length >= 5}
+            title="Приложить скриншот, фото или документ — бот прочитает и ответит с учётом файла. Скриншот можно вставить Ctrl+V"
+            aria-label="Приложить файл"
+          >
+            <Icon name="paperclip" size={16} />
+          </button>
           <textarea
             ref={inputRef}
             className="input"
@@ -596,6 +647,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
             value={draft}
             placeholder={busy ? 'QEVO Bot отвечает…' : deep ? 'Что разобрать по-крупному?' : 'Спросите или попросите сделать…'}
             onChange={(e) => setDraft(e.target.value)}
+            // скриншот из буфера (Ctrl+V) — сразу вложением
+            onPaste={(e) => {
+              const files = [...e.clipboardData.files];
+              if (files.length) { e.preventDefault(); addFiles(files); }
+            }}
             onKeyDown={draftEnter.onKeyDown}
             onCompositionEnd={draftEnter.onCompositionEnd}
             disabled={busy}
@@ -615,7 +671,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
               <Icon name="stop" size={14} /> Остановить
             </button>
           ) : (
-            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void send(draft); }} disabled={!draft.trim()} title="Отправить" aria-label="Отправить">
+            <button
+              className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void send(draft); }}
+              disabled={reading || (!draft.trim() && !att.some((a) => a.data))}
+              title={reading ? 'Дочитываю вложение…' : 'Отправить'} aria-label="Отправить"
+            >
               <Icon name="send" size={16} />
             </button>
           )}

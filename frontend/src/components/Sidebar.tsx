@@ -101,11 +101,11 @@ const MENU: Item[] = [
   },
   {
     section: 'chat',
-    label: 'Чаты & Миты',
+    label: 'Чаты & Созвоны',
     icon: 'chat',
     hint: 'Личные, групповые и проектные обсуждения, созвоны',
     subs: [
-      { label: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
+      { label: 'Встречи — созвоны', icon: 'record', route: { section: 'chat', view: 'meetings' } },
     ],
   },
   {
@@ -671,7 +671,7 @@ export function Sidebar({
                     ))}
                   </span>
                 ))}
-                {/* #1567: идущий созвон — сразу под «Чаты & Миты», а не в самом низу под прокруткой */}
+                {/* #1567: идущий созвон — сразу под «Чаты & Созвоны», а не в самом низу под прокруткой */}
                 {item.section === 'chat' && callWidget}
               </div>
             );
@@ -712,6 +712,32 @@ export function Sidebar({
           )}
           {/* #4713, #4715: избранное и черновики — под разделами; модуль грузится после первого экрана */}
           {!collapsed && <SidebarLists onGo={() => setOpen(false)} />}
+          {/*
+            #4727: AI агент и личный кабинет — в конце прокрутки, ниже всех пунктов меню
+            (раньше стояли над прокруткой и отнимали у неё место). Внизу остаётся аккаунт.
+          */}
+          <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
+                Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
+            <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Работает в фоновом режиме и автоматически выполняет поставленные на него задачи">
+              <Icon name="sparkles" size={18} />
+              <span className="nav-label nav-secretary-text">
+                <span>AI агент · {secretary?.actions ?? 0}</span>
+                <span className="nav-secretary-saved">
+                  {waiting > 0
+                    ? <b className="nav-secretary-waiting">ждут решения: {waiting}</b>
+                    : secretary && secretary.savedMinutes > 0 ? `сэкономлено ${humanMinutes(secretary.savedMinutes)}` : 'действий сегодня'}
+                </span>
+              </span>
+            </button>
+
+            {link({ section: 'settings' }, route.section === 'settings', 'nav-item nav-cabinet', 'Личный кабинет: профиль, команда, интеграции, настройки', (
+              <>
+                <Icon name="settings" size={18} />
+                <span className="nav-label">Личный кабинет</span>
+              </>
+            ))}
+          </div>
           {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
           {!collapsed && <AppUpdateRow />}
 
@@ -750,27 +776,6 @@ export function Sidebar({
               <SupportArt />
             </button>
           </div>
-          {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
-              Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
-          <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Работает в фоновом режиме и автоматически выполняет поставленные на него задачи">
-            <Icon name="sparkles" size={18} />
-            <span className="nav-label nav-secretary-text">
-              <span>AI агент · {secretary?.actions ?? 0}</span>
-              <span className="nav-secretary-saved">
-                {waiting > 0
-                  ? <b className="nav-secretary-waiting">ждут решения: {waiting}</b>
-                  : secretary && secretary.savedMinutes > 0 ? `сэкономлено ${humanMinutes(secretary.savedMinutes)}` : 'действий сегодня'}
-              </span>
-            </span>
-          </button>
-
-          {/* #4716: личный кабинет и аккаунт — в самом низу, как принято (настройки — в подвале) */}
-          {link({ section: 'settings' }, route.section === 'settings', 'nav-item nav-cabinet', 'Личный кабинет: профиль, команда, интеграции, настройки', (
-            <>
-              <Icon name="settings" size={18} />
-              <span className="nav-label">Личный кабинет</span>
-            </>
-          ))}
           <div className="nav-profile" ref={menuRef} style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 6 }}>
             {/* Знак компании (её логотип, если загружен) — здесь, у аккаунта; щелчок — на главную */}
             <button

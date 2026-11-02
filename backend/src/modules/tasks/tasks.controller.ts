@@ -167,6 +167,12 @@ export class TasksController {
     return this.tasks.setFocusDate(user.tenantId, id, user.userId, dto.date ?? null);
   }
 
+  /** #4720: последние задачи, над которыми работал человек, — для «Избранного» в сайдбаре. */
+  @Get('my/recent')
+  recent(@CurrentUser() user: AuthUser) {
+    return this.tasks.recent(user.tenantId, user.userId, 6);
+  }
+
   /** Незакрытое со вчера и раньше — для разбора хвостов при первом входе за день. */
   @Get('my/leftovers')
   leftovers(@CurrentUser() user: AuthUser, @Query('today') today?: string) {

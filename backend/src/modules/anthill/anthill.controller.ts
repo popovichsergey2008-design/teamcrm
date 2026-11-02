@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -51,8 +52,14 @@ class SecretaryPrefsDto {
   @IsOptional() @IsInt() meetingBriefMin?: number | null;
   @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) vipUserIds?: string[];
 }
+/** #4726: вложение, уже прочитанное ботом (POST anthill/attachments). */
+class AttachmentDto {
+  @IsString() @MaxLength(200) name!: string;
+  @IsString() @MaxLength(21000) text!: string;
+}
 class AskDto {
   @IsString() @MinLength(2) @MaxLength(8000) question!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(5) @ValidateNested({ each: true }) @Type(() => AttachmentDto) attachments?: AttachmentDto[];
   @IsOptional() @ValidateNested() @Type(() => ContextDto) context?: ContextDto;
   /** Навык выбран руками — тогда агент не подбирает свой. */
   @IsOptional() @IsString() @MaxLength(32) skillId?: string;
@@ -213,6 +220,17 @@ export class AnthillController {
   }
 
   /**
+   * Вложение к вопросу (#4726): скриншот, фото или документ → текст для модели.
+   * Файл не сохраняется: бот прочитал и забыл, в вопрос уходит только текст.
+   */
+  @Post('attachments')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  readAttachment(@CurrentUser() u: AuthUser, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw AppException.validation('Приложите файл');
+    return this.anthill.readAttachment(u.tenantId, u, file);
+  }
+
+  /**
    * Вопрос — потоком (SSE): status* → delta* → sources | action → done.
    * Разрыв соединения = «Остановить»: набранная часть уже сохранена по мере прихода.
    */
@@ -228,7 +246,10 @@ export class AnthillController {
     res.on('close', () => { closed = true; });
     const send = (event: string, data: unknown) => { if (!closed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); };
     try {
-      await this.anthill.ask(u.tenantId, u, id, dto.question, dto.context ?? null, (e) => send(e.type, e), () => closed, dto.skillId ?? null, dto.deep === true);
+      await this.anthill.ask(
+        u.tenantId, u, id, dto.question, dto.context ?? null, (e) => send(e.type, e), () => closed,
+        dto.skillId ?? null, dto.deep === true, null, dto.attachments ?? [],
+      );
     } catch (e) {
       send('error', { text: e instanceof AppException ? e.message : 'Не удалось получить ответ. Попробуйте снова.' });
     } finally {

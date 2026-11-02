@@ -130,7 +130,7 @@ export function AutoSummary({ draft, index, many, deadline, busy, onPatchTask, o
   const dropPerson = (role: PeopleRole, id: string) => (
     onPatchTask({ [role]: (t[role] ?? []).filter((x: string) => String(x) !== id) })
   );
-  // в автоматической постановке теги подтверждает «Ок» через 30 секунд — поле в режиме правки
+  // в автоматической постановке теги подтверждает «Ок» через 3 секунды — поле в режиме правки
   const tagsValue: TagsValue = { ...EMPTY_TAGS, tagIds: tags.map((x) => String(x.id)), confirmed: true };
   const onTags = (next: TagsValue) => {
     const known = new Map(tags.map((x) => [String(x.id), x.name]));

@@ -145,9 +145,16 @@ function Pane({ active, children }: { active: boolean; children: ReactNode }) {
 function useAppHeight(): void {
   useEffect(() => {
     const vv = window.visualViewport;
+    // #4721: открыта клавиатура — нижние вкладки прячем, иначе они встают над клавиатурой
+    // и закрывают инструменты под полем ввода (микрофон, отправку)
+    let full = 0;
+    let width = window.innerWidth;
     const apply = () => {
       const h = Math.round(vv?.height ?? window.innerHeight);
+      if (window.innerWidth !== width) { width = window.innerWidth; full = 0; } // повернули экран
+      full = Math.max(full, h);
       document.documentElement.style.setProperty('--app-h', `${h}px`);
+      document.documentElement.classList.toggle('kb-open', full - h > 150);
     };
     apply();
     vv?.addEventListener('resize', apply);
@@ -804,7 +811,7 @@ export function App() {
           <Suspense fallback={pageFallback}><PostCallPage meetingId={route.meetingId} roomId={route.roomId} /></Suspense>
         )}
         {route.section === 'chat' && route.view === 'meetings' && (
-          <Suspense fallback={pageFallback}><MeetingsPage openMeetingId={route.meetingId} onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>
+          <Suspense fallback={pageFallback}><MeetingsPage openMeetingId={route.meetingId} onEnterGuestMeet={(roomId) => { setCallInvite([]); setCallId(roomId); }} onStartCall={startCallFromPanel} inCall={!!callId} /></Suspense>
         )}
         {route.section === 'calendar' && (
           <Suspense fallback={pageFallback}><CalendarPage onStartCall={(roomId) => { setCallInvite([]); setCallId(roomId); }} /></Suspense>

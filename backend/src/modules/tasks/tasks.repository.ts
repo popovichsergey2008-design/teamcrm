@@ -335,6 +335,31 @@ export class TasksRepository {
     );
   }
 
+  /**
+   * #4720: последние задачи, над которыми человек работал сам — создал, написал,
+   * перенёс, приложил файл (журнал task_activity). Свежая — первой.
+   */
+  recent(tenantId: string, userId: string, limit: number) {
+    return this.db.many<{
+      id: string; title: string; project_id: string; project_name: string; column_name: string | null;
+      stage_type: string | null; closed: boolean; overdue: boolean; priority: string; at: string;
+    }>(
+      `SELECT t.id, t.title, t.project_id, p.name AS project_name, c.name AS column_name, c.stage_type,
+              t.closed_at IS NOT NULL AS closed,
+              (t.closed_at IS NULL AND t.deadline_at IS NOT NULL AND t.deadline_at < now()) AS overdue,
+              t.priority, a.at
+         FROM (SELECT task_id, max(created_at) AS at FROM task_activity
+                WHERE tenant_id = $1 AND actor_id = $2 GROUP BY task_id
+                ORDER BY at DESC LIMIT 40) a
+         JOIN tasks t ON t.id = a.task_id AND t.tenant_id = $1 AND t.deleted_at IS NULL
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
+         LEFT JOIN board_columns c ON c.id = t.column_id
+        ORDER BY a.at DESC
+        LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
   /** Незакрытые задачи, запланированные на прошедшие дни, — «хвосты» для разбора. */
   leftovers(tenantId: string, userId: string, today: string): Promise<(TaskRow & { project_name: string })[]> {
     return this.db.many(
