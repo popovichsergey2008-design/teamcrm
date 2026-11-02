@@ -271,10 +271,11 @@ export class PcController {
   // ── Общий ИИ: выключатели и бюджет ──
   @Get('owner/ai') @PcNeed('owner.view')
   async ai() {
-    const [config, decision, sharedSpentUsd, tenants] = await Promise.all([
-      this.aiGuard.config(), this.aiGuard.decision(), this.aiGuard.sharedSpentUsd(true), this.stats.aiMonth(),
+    const [config, decision, sharedSpentUsd, tenants, budget] = await Promise.all([
+      this.aiGuard.config(), this.aiGuard.decision(), this.aiGuard.sharedSpentUsd(true), this.stats.aiMonth(), this.aiGuard.budgetNow(),
     ]);
-    return { config, decision, sharedSpentUsd, tenants };
+    // heldUsd — зарезервировано идущими запросами (§5.5): потолок считает и их
+    return { config, decision, sharedSpentUsd, tenants, heldUsd: budget?.heldUsd ?? 0 };
   }
 
   @Post('owner/ai') @PcNeed('owner.manage') @HttpCode(200)

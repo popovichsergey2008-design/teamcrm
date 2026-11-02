@@ -165,7 +165,33 @@ export class AiService {
     const embedModel = (s.openaiKey || s.openrouterKey) ? 'text-embedding-3-small' : 'mock-embed';
     const brainModel = s.brainModel
       ?? (s.kimiKey ? KIMI_DEFAULT_MODEL : s.anthropicKey ? 'claude-3-5-sonnet' : s.openaiKey ? 'gpt-4o-mini' : s.openrouterKey ? 'meta-llama/llama-3.3-70b-instruct:free' : 'mock-llm');
-    return { provider, embedModel, brainModel };
+    return { provider, embedModel, brainModel, source: s.source };
+  }
+
+  /**
+   * Запрос общим ключом — под резервом бюджета месяца (§5.5): оценка резервируется до
+   * запроса, после — списывается факт. Не влезает в потолок — как без общего ключа:
+   * заглушка, возможности уходят на правила. Свой ключ компании резерв не трогает.
+   */
+  private async budgeted<T>(
+    tenantId: string, feature: string, p: { provider: AiProvider; source: string },
+    estUsd: number, run: (provider: AiProvider) => Promise<T>, actualUsd: (result: T, provider: AiProvider) => number,
+  ): Promise<T> {
+    if (p.source !== 'global') return run(p.provider);
+    const hold = await this.guard.reserve(tenantId, feature, estUsd).catch((e) => {
+      this.logger.warn(`резерв бюджета ИИ: ${(e as Error).message}`);
+      return null;
+    });
+    if (hold === false) return run(new MockAiProvider());
+    if (!hold) return run(p.provider);
+    let spent = estUsd;
+    try {
+      const res = await run(p.provider);
+      spent = actualUsd(res, p.provider);
+      return res;
+    } finally {
+      void this.guard.settle(hold, spent).catch(() => undefined);
+    }
   }
 
   transcribe(tenantId: string, audioRefOrText: string): Promise<string> {
@@ -248,11 +274,14 @@ export class AiService {
       images?: { mime: string; base64: string }[];
     } & FastOpts,
   ): Promise<{ text: string; model: string; degraded: boolean }> {
-    const { provider, brainModel } = await this.providerFor(tenantId);
+    const p = await this.providerFor(tenantId);
+    const { brainModel } = p;
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
     const maxTokens = opts?.maxTokens
       ?? (typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined);
+    const inTok = estimateTokens(system + masked);
+    let provider: AiProvider = p.provider;
     /*
       #4666: потолок по времени. Человек ждёт на экране — не успела модель, отказ
       «timeout», и вызывающий собирает ответ правилами. Запрос к модели отменяется.
@@ -260,11 +289,14 @@ export class AiService {
     const dl = opts?.timeoutMs ? deadlineSignal(opts.timeoutMs) : null;
     let text: string;
     try {
-      const work = this.gateway.run(this.priorityOf(feature), () => provider.generate(system, masked, {
-        model: opts?.model || undefined, maxTokens, images: opts?.images,
-        ...(opts?.fast ? { fast: true } : {}), ...(dl ? { signal: dl.signal } : {}),
-      }));
-      text = dl ? await rejectAfter(work, dl.signal) : await work;
+      text = await this.budgeted(tenantId, feature, p, estimateCost(model, inTok, maxTokens ?? 1500), (prov) => {
+        provider = prov;
+        const work = this.gateway.run(this.priorityOf(feature), () => prov.generate(system, masked, {
+          model: opts?.model || undefined, maxTokens, images: opts?.images,
+          ...(opts?.fast ? { fast: true } : {}), ...(dl ? { signal: dl.signal } : {}),
+        }));
+        return dl ? rejectAfter(work, dl.signal) : work;
+      }, (t, prov) => estimateCost(prov.lastModel || model, inTok, estimateTokens(t)));
     } finally {
       dl?.cancel();
     }
@@ -273,7 +305,7 @@ export class AiService {
     // неправду — «работает gpt-5», хотя отвечала совсем другая.
     await this.recordUsage(
       tenantId, feature, provider.lastModel || model,
-      estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
+      inTok, estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
     );
     /*
       degraded — ключи есть, но ни один бэкенд не ответил (кончились деньги, сбой API),
@@ -288,14 +320,20 @@ export class AiService {
     tenantId: string, system: string, user: string, onDelta: (t: string) => void, feature = 'brain',
     opts?: { promptVersionId?: string | null; model?: string | null; params?: Record<string, unknown> },
   ): Promise<string> {
-    const { provider, brainModel } = await this.providerFor(tenantId);
+    const p = await this.providerFor(tenantId);
+    const { brainModel } = p;
     const masked = maskPII(user).masked;
     const model = opts?.model || brainModel;
     const maxTokens = typeof opts?.params?.max_tokens === 'number' ? (opts.params.max_tokens as number) : undefined;
-    const text = await this.gateway.run(
-      this.priorityOf(feature),
-      () => provider.generateStream(system, masked, { model: opts?.model || undefined, maxTokens }, onDelta),
-    );
+    const inTok = estimateTokens(system + masked);
+    let provider: AiProvider = p.provider;
+    const text = await this.budgeted(tenantId, feature, p, estimateCost(model, inTok, maxTokens ?? 1500), (prov) => {
+      provider = prov;
+      return this.gateway.run(
+        this.priorityOf(feature),
+        () => prov.generateStream(system, masked, { model: opts?.model || undefined, maxTokens }, onDelta),
+      );
+    }, (t, prov) => estimateCost(prov.lastModel || model, inTok, estimateTokens(t)));
     await this.recordUsage(
       tenantId, feature, provider.lastModel || model,
       estimateTokens(system + masked), estimateTokens(text), false, 0, opts?.promptVersionId ?? null,
@@ -305,10 +343,14 @@ export class AiService {
 
   /** Эмбеддинг текста (PII маскируется до провайдера) + durable-метеринг. */
   async embed(tenantId: string, text: string, feature = 'embedding'): Promise<number[]> {
-    const { provider, embedModel } = await this.providerFor(tenantId);
+    const p = await this.providerFor(tenantId);
+    const { embedModel } = p;
     const { masked } = maskPII(text);
+    const tok = estimateTokens(masked);
     // Индексация — самая терпеливая работа в системе: пропускаем вперёд всех живых.
-    const vec = await this.gateway.run(this.priorityOf(feature), () => provider.embed(masked));
+    const vec = await this.budgeted(tenantId, feature, p, estimateCost(embedModel, tok, 0),
+      (prov) => this.gateway.run(this.priorityOf(feature), () => prov.embed(masked)),
+      () => estimateCost(embedModel, tok, 0));
     await this.recordUsage(tenantId, feature, embedModel, estimateTokens(masked), 0, false);
     return vec;
   }

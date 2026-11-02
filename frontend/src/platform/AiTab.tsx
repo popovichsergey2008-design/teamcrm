@@ -6,6 +6,7 @@ interface AiView {
   config: Guard;
   decision: { any: boolean; shared: boolean; reason: string | null };
   sharedSpentUsd: number;
+  heldUsd: number;
   tenants: { tenantId: string; name: string; isTest: boolean; ownKey: boolean; usd: number; tokens: number; calls: number }[];
 }
 
@@ -38,7 +39,7 @@ export default function AiTab({ canManage }: { canManage: boolean }) {
   };
 
   if (!v || !form) return err ? <p className="pc-err">{err}</p> : <p className="dim">Загрузка…</p>;
-  const left = v.config.monthlyBudgetUsd == null ? null : Math.max(0, v.config.monthlyBudgetUsd - v.sharedSpentUsd);
+  const left = v.config.monthlyBudgetUsd == null ? null : Math.max(0, v.config.monthlyBudgetUsd - v.sharedSpentUsd - (v.heldUsd ?? 0));
   const shared = v.tenants.filter((t) => !t.ownKey);
 
   return (
@@ -52,7 +53,8 @@ export default function AiTab({ canManage }: { canManage: boolean }) {
         </div>
         <div className="pc-kpi"><div className="pc-kpi-label">Общий ключ: расход за месяц</div><div className="pc-kpi-value">{usd(v.sharedSpentUsd)}</div>
           <div className="pc-kpi-delta dim">оценка по прайсу моделей, месяц по UTC</div></div>
-        <div className="pc-kpi"><div className="pc-kpi-label">Остаток бюджета</div><div className="pc-kpi-value">{left == null ? 'без потолка' : usd(left)}</div></div>
+        <div className="pc-kpi"><div className="pc-kpi-label">Остаток бюджета</div><div className="pc-kpi-value">{left == null ? 'без потолка' : usd(left)}</div>
+          {left != null && <div className="pc-kpi-delta dim">резерв идущих запросов: {usd(v.heldUsd ?? 0)} — запрос, который не влезает, не уходит к модели</div>}</div>
       </div>
 
       <form className="pc-card pc-form pc-gap" onSubmit={save}>

@@ -12,6 +12,7 @@ import { stepOf, totpAt } from '../src/common/auth/totp';
 import { PlatformService } from '../src/modules/platform/platform.service';
 import { BillingService } from '../src/modules/billing/billing.service';
 import { sharedSecret } from '../src/modules/shared-secrets/secrets-registry';
+import { AiGuardService } from '../src/modules/ai/ai-guard.service';
 
 /**
  * Консоли платформы: отдельные учётные записи, обязательный второй фактор, роль = одна
@@ -273,5 +274,23 @@ describe('Консоли платформы (e2e)', () => {
     expect(row).toEqual({ value_enc: null, status: 'revoked' });
     const audit = await db.many<{ meta: unknown }>(`SELECT meta FROM pc_audit WHERE action LIKE 'secret.%'`);
     expect(JSON.stringify(audit)).not.toContain(value);
+  });
+
+  it('бюджет общего ИИ: одновременные запросы не перебирают потолок, резерв снимается фактом', async () => {
+    const o = await signIn(await staff(['owner']), 'owner');
+    const g = app.get(AiGuardService);
+    await g.syncBudget().catch(() => undefined);
+    const spent = await g.sharedSpentUsd(true);
+    // потолок = уже потрачено + ровно на 3 запроса по 0,01 $
+    await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: false, monthlyBudgetUsd: Math.round((spent + 0.035) * 1e6) / 1e6 }).expect(200);
+    await db.query(`UPDATE ai_budget_month SET spent_usd = $1, held_usd = 0 WHERE month = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM')`, [spent]);
+    (g as unknown as { cfg: null }).cfg = null;
+    const holds = await Promise.all(Array.from({ length: 8 }, () => g.reserve(null, 'e2e', 0.01)));
+    const ok = holds.filter((h): h is string => typeof h === 'string');
+    expect(ok).toHaveLength(3);
+    for (const id of ok) await g.settle(id, 0);
+    const v = (await http.get('/api/pc/owner/ai').set(H(o.accessToken)).expect(200)).body.data;
+    expect(v.heldUsd).toBe(0);
+    await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: false, monthlyBudgetUsd: null }).expect(200);
   });
 });
