@@ -1022,6 +1022,14 @@ export class SupportDeskRepository {
   }
 
   /** Какому разговору принадлежит комната созвона — спрашивается при обработке записи. */
+  async liveHuddleRoomBy(conversationId: string, userId: string): Promise<string | null> {
+    const r = await this.db.one<{ room_id: string }>(
+      `SELECT room_id FROM support_huddles
+        WHERE conversation_id=$1 AND started_by=$2 AND ended_at IS NULL AND started_at > now() - interval '4 hours'
+        ORDER BY id DESC LIMIT 1`, [conversationId, userId]);
+    return r?.room_id ?? null;
+  }
+
   huddleByRoom(roomId: string) {
     return this.db.one<{ id: string; conversation_id: string; tenant_id: string }>(
       `SELECT h.id::text, h.conversation_id::text, c.tenant_id::text

@@ -54,10 +54,12 @@ export class PcSupportService {
         )).rows[0].id;
         await c.query(`UPDATE pc_accounts SET crm_user_id=$2 WHERE id=$1`, [pc.accountId, id]);
       }
-      // в службе заботы — первой линией; снять с дежурства можно, профиль при этом остаётся
+      // первая линия; владелец платформы с ролью поддержки — руководитель службы
+      // (известные проблемы, массовый сбой). Снять с дежурства можно, профиль остаётся.
+      const role = pc.roles.includes('owner') ? 'support_admin' : 'support';
       await c.query(
-        `INSERT INTO platform_staff (user_id, tenant_id, role, active) VALUES ($1, $2, 'support', true)
-         ON CONFLICT (user_id) DO NOTHING`, [id, tenantId]);
+        `INSERT INTO platform_staff (user_id, tenant_id, role, active) VALUES ($1, $2, $3, true)
+         ON CONFLICT (user_id) DO UPDATE SET role = EXCLUDED.role`, [id, tenantId, role]);
       return id;
     });
     const op: Operator = { userId, tenantId, role: 'member', email: pc.email };

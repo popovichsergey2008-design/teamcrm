@@ -1913,6 +1913,17 @@ export class SupportDeskService implements OnModuleInit {
     return inc;
   }
 
+  /** Открытый массовый сбой — для консоли поддержки. */
+  async currentIncident(tenantId: string, user: { userId: string; role: string }) {
+    await this.assertAgent(tenantId, user);
+    return this.repo.openIncident((await this.platform.tenantId()) ?? tenantId);
+  }
+
+  /** Последний созвон разговора, начатый этим специалистом за 4 часа: вернуться в ту же комнату. */
+  async myLiveHuddleRoom(conversationId: string, userId: string): Promise<string | null> {
+    return this.repo.liveHuddleRoomBy(conversationId, userId);
+  }
+
   /** Починили — сказать всем, кому говорили о сбое. */
   async resolveIncident(tenantId: string, user: { userId: string; role: string }, id: string) {
     await this.assertIncident(tenantId, user);

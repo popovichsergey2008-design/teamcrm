@@ -71,6 +71,7 @@ import { promptText } from './components/ui/dialog';
   настройки, консоль, гостевые страницы. Пока кусок едет, на его месте крутилка.
 */
 const GuestMeetPage = lazy(() => import('./pages/GuestMeetPage').then((m) => ({ default: m.GuestMeetPage })));
+const OperatorCallPage = lazy(() => import('./pages/OperatorCallPage'));
 const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ default: m.GetAppPage })));
 // #4675: политики — публичные страницы, до входа и после
 const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
@@ -597,6 +598,8 @@ export function App() {
 
   // Гость по ссылке `/meet/<токен>` — до всякой авторизации: у него нет учётной записи,
   // и экран входа на его пути означал бы «встреча только для сотрудников».
+  // оператор консоли поддержки по пропуску из support.qevo.one — тоже до входа
+  if (meetPathId === 'op') return <Suspense fallback={pageFallback}><OperatorCallPage /></Suspense>;
   if (guestMeetToken) return <Suspense fallback={pageFallback}><GuestMeetPage token={guestMeetToken} /></Suspense>;
   // «Скачать приложение» — тоже до входа: ссылку присылают новому сотруднику (волна 12).
   if (window.location.pathname.replace(/\/+$/, '') === '/get') return <Suspense fallback={pageFallback}><GetAppPage /></Suspense>;

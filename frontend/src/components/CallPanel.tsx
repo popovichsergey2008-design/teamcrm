@@ -78,7 +78,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
    * Гостевой вход по ссылке: свой токен и свои ICE-серверы, потому что учётной записи
    * у гостя нет. Внутри окна он отличается только урезанными правами.
    */
-  guest?: { token: string; iceServers: RTCIceServer[]; userId: string };
+  guest?: { token: string; iceServers: RTCIceServer[]; userId: string; host?: boolean };
   /** Гость пришёл в созвон Отдела заботы (ссылка «Служба заботы · …»): показ — только вкладки QEVO (ТЗ-34). */
   supportGuest?: boolean;
   /** Чем кончился звонок: по этому решают, открыть ли итоги встречи (ТЗ-22). */
@@ -154,7 +154,9 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
   /** Гости, стучащиеся в дверь (видит только сотрудник). */
   const [knocks, setKnocks] = useState<Knock[]>([]);
   /** Состояние самого гостя: пока не впустили — сцены нет. */
-  const [guestState, setGuestState] = useState<'waiting' | 'in' | 'rejected'>(isGuest ? 'waiting' : 'in');
+  /** Оператор консоли поддержки (support.qevo.one): вход по пропуску, но хозяин комнаты — впускает клиента. */
+  const opHost = !!guest?.host;
+  const [guestState, setGuestState] = useState<'waiting' | 'in' | 'rejected'>(isGuest && !opHost ? 'waiting' : 'in');
   const [guestNote, setGuestNote] = useState('');
   /** Организатор этой встречи (или начавший созвон): ему — «Завершить для всех» и «Закрыть вход». */
   const [hostRole, setHostRole] = useState(false);
@@ -902,7 +904,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
         recording={recording}
         peerCount={peers.length}
         detached={!!pipWin}
-        knocks={isGuest ? [] : knocks}
+        knocks={isGuest && !opHost ? [] : knocks}
         onKnock={answerKnock}
         onMic={toggleMic}
         onCam={toggleCam}

@@ -13,6 +13,7 @@ import { PlatformService } from '../src/modules/platform/platform.service';
 import { BillingService } from '../src/modules/billing/billing.service';
 import { sharedSecret } from '../src/modules/shared-secrets/secrets-registry';
 import { AiGuardService } from '../src/modules/ai/ai-guard.service';
+import { GuestLinksService } from '../src/modules/media/guest-links.service';
 
 /**
  * Консоли платформы: отдельные учётные записи, обязательный второй фактор, роль = одна
@@ -292,5 +293,46 @@ describe('Консоли платформы (e2e)', () => {
     const v = (await http.get('/api/pc/owner/ai').set(H(o.accessToken)).expect(200)).body.data;
     expect(v.heldUsd).toBe(0);
     await http.post('/api/pc/owner/ai').set(H(o.accessToken)).send({ allOff: false, sharedOff: false, monthlyBudgetUsd: null }).expect(200);
+  });
+
+  it('поддержка: созвон по пропуску оператора, доступ к настройкам, известные проблемы, сбой', async () => {
+    const platform = app.get(PlatformService);
+    const vendor = (await http.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Vendor2', email: `v2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Вендор' })
+      .expect(201)).body.data;
+    const client = (await http.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Клиент2', email: `c2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Клиент' })
+      .expect(201)).body.data;
+    await platform.declarePlatform(String(vendor.user.tenantId), String(vendor.user.id));
+    try {
+      const C = H(client.accessToken);
+      const conv = (await http.post('/api/support/desk/messages').set(C).send({ text: 'Позовите специалиста, нужен созвон' }).expect(201)).body.data;
+      await http.post(`/api/support/desk/${conv.id}/call/request`).set(C).expect(201);
+
+      // первая линия: известные проблемы и сбой — не её
+      const line = await signIn(await staff(['support']), 'support');
+      await http.post('/api/pc/support/incident').set(H(line.accessToken)).send({ title: 'x', message: 'y' }).expect(403);
+
+      // руководитель службы (владелец платформы с ролью поддержки)
+      const lead = await signIn(await staff(['owner', 'support']), 'support');
+      const L = H(lead.accessToken);
+      const acc = (await http.post(`/api/pc/support/${conv.id}/call/accept`).set(L).expect(200)).body.data;
+      expect(acc.pass.token).toBeTruthy();
+      const op = app.get(GuestLinksService).verifyOperator(acc.pass.token);
+      expect(op).toMatchObject({ kind: 'support-op', roomId: acc.pass.roomId });
+      expect(acc.conversation.messages.some((m: { body: string }) => /подключайтесь: https?:\/\//.test(m.body))).toBe(true);
+      expect((await http.post(`/api/pc/support/${conv.id}/call/pass`).set(L).expect(200)).body.data.pass.roomId).toBe(acc.pass.roomId);
+
+      const grants = (await http.post(`/api/pc/support/${conv.id}/access`).set(L).send({ reason: 'посмотреть колонки' }).expect(200)).body.data;
+      expect(grants[0]).toMatchObject({ status: 'requested' });
+
+      await http.get('/api/pc/support/known').set(L).expect(200);
+      const inc = (await http.post('/api/pc/support/incident').set(L).send({ title: 'Не грузятся доски', message: 'Чиним' }).expect(200)).body.data;
+      expect((await http.get('/api/pc/support/incident').set(L).expect(200)).body.data.incident.title).toBe('Не грузятся доски');
+      await http.post(`/api/pc/support/incident/${inc.id}/resolve`).set(L).expect(200);
+      expect((await http.get('/api/pc/support/incident').set(L).expect(200)).body.data.incident).toBeNull();
+    } finally {
+      await platform.clearPlatform();
+    }
   });
 });

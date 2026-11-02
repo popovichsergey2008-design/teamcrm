@@ -19,10 +19,34 @@ interface Conversation {
   id: string; subject: string | null; orgName: string | null; status: string; statusText: string; priority: string;
   agentId: string | null; me: string; createdAt: string; aiMode: string; aiSummary: string | null; handoffNote: string | null;
   csat: number | null; messages: Msg[]; client: Client | null;
+  call: { id: string; byUserId: string; byName: string | null; byRole: string; at: string } | null;
   context: { route?: string | null; app_version?: string | null; browser?: string | null; os?: string | null; platform?: string | null;
     native_version?: string | null; device?: string | null; last_error?: string | null; network?: string | null } | null;
 }
 interface Note { id: string; authorName: string | null; body: string; createdAt: string }
+interface Pass { token: string; iceServers: RTCIceServer[]; userId: string; roomId: string; name: string }
+interface Grant { id: string; engineer: string | null; projectName: string | null; reason: string | null; status: string; requestedAt: string; expiresAt: string | null }
+interface Snapshot {
+  project: { name: string; visibility: string; owner_name: string | null; client_name: string | null } | null;
+  columns: { name: string; tasks: number }[]; members: { full_name: string }[]; expiresAt: string;
+}
+interface Known { id: string; taskId: string; title: string; pattern: string; active: boolean; fixed: boolean }
+interface Incident { id: string; title: string; message: string; started_at: string }
+
+const GRANT_TEXT: Record<string, string> = { requested: 'ждёт решения клиента', granted: 'разрешён', declined: 'клиент отказал', revoked: 'клиент закрыл', expired: 'истёк' };
+
+/** Созвон оператора открывается в CRM (там экран созвона): пропуск — во фрагменте адреса, на сервер он не уходит. */
+function openCall(pass: Pass) {
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(pass)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const host = window.location.hostname.startsWith('support.') ? window.location.hostname.replace(/^support\./, 'app.') : window.location.host;
+  window.open(`${window.location.protocol}//${host}/meet/op#${b64}`, '_blank', 'noopener');
+}
+
+/** Ссылки в сообщениях — кликабельные: клиент присылает адрес созвона, если комнату поднял он. */
+function Linked({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s<>"]+)/g);
+  return <>{parts.map((x, i) => (i % 2 ? <a key={i} href={x} target="_blank" rel="noopener noreferrer">{x}</a> : x))}</>;
+}
 interface Availability {
   engineers: { userId: string; name: string; status: string; statusText: string }[];
   available: number; medianSec: number | null;
@@ -45,7 +69,7 @@ const err = (e: unknown) => (e instanceof PcError ? e.message : 'Не получ
  * сюда не попадают; очередь и открытый разговор консоль спрашивает сама.
  */
 export default function SupportConsole() {
-  const [tab, setTab] = useState<'queue' | 'stats'>('queue');
+  const [tab, setTab] = useState<'queue' | 'known' | 'stats'>('queue');
   const [avail, setAvail] = useState<Availability | null>(null);
   const [status, setStatus] = useState<string>(() => { try { return localStorage.getItem('pc:support:status') ?? 'available'; } catch { return 'available'; } });
 
@@ -66,6 +90,7 @@ export default function SupportConsole() {
       <div className="pc-row pc-wrap pc-between pc-sup-bar">
         <nav className="pc-tabs pc-h-flat" aria-label="Разделы">
           <button type="button" className="pc-tab" aria-pressed={tab === 'queue'} onClick={() => setTab('queue')}>Обращения</button>
+          <button type="button" className="pc-tab" aria-pressed={tab === 'known'} onClick={() => setTab('known')}>Известные проблемы и сбой</button>
           <button type="button" className="pc-tab" aria-pressed={tab === 'stats'} onClick={() => setTab('stats')}>Сводка</button>
         </nav>
         <div className="pc-row pc-wrap">
@@ -76,7 +101,7 @@ export default function SupportConsole() {
           {avail && <span className="dim">Свободно специалистов: {avail.available}</span>}
         </div>
       </div>
-      {tab === 'queue' ? <Queue /> : <Stats avail={avail} />}
+      {tab === 'queue' ? <Queue /> : tab === 'known' ? <KnownAndIncident /> : <Stats avail={avail} />}
     </>
   );
 }
@@ -131,6 +156,8 @@ function ConversationView({ id, onChanged }: { id: string; onChanged: () => void
   const [notes, setNotes] = useState<Note[] | null>(null);
   const [note, setNote] = useState('');
   const [hint, setHint] = useState<string | null>(null);
+  const [grants, setGrants] = useState<Grant[] | null>(null);
+  const [snap, setSnap] = useState<Snapshot | null>(null);
   const feed = useRef<HTMLDivElement>(null);
   const count = useRef(0);
 
@@ -176,6 +203,31 @@ function ConversationView({ id, onChanged }: { id: string; onChanged: () => void
     try { await pc('POST', `/pc/support/${id}/bug`, { title: title.trim() || undefined, kind: 'bug' }); await load(); setHint('Баг заведён в проекте разработки'); }
     catch (x) { setE(err(x)); } finally { setBusy(false); }
   };
+  const acceptCall = async () => {
+    setBusy(true); setE('');
+    try {
+      const r = await pc<{ conversation: Conversation; pass: Pass }>('POST', `/pc/support/${id}/call/accept`);
+      setC((p) => ({ ...r.conversation, client: p?.client ?? null, me: p?.me ?? '' }));
+      openCall(r.pass);
+      onChanged();
+    } catch (x) { setE(err(x)); } finally { setBusy(false); }
+  };
+  const backToCall = async () => {
+    try {
+      const r = await pc<{ pass: Pass | null }>('POST', `/pc/support/${id}/call/pass`);
+      if (r.pass) openCall(r.pass); else setE('Идущего созвона нет — если клиент поднял комнату сам, ссылка на неё есть в разговоре');
+    } catch (x) { setE(err(x)); }
+  };
+  const loadGrants = () => pc<Grant[]>('GET', `/pc/support/${id}/access`).then(setGrants).catch((x) => setE(err(x)));
+  const askAccess = async () => {
+    const reason = window.prompt('Зачем нужен доступ к настройкам проекта клиента (на 15 минут, клиент увидит причину)?');
+    if (reason === null) return;
+    try { setGrants(await pc<Grant[]>('POST', `/pc/support/${id}/access`, { reason: reason.trim() || undefined })); await load(); } catch (x) { setE(err(x)); }
+  };
+  const viewGrant = async (g: Grant) => {
+    try { setSnap(await pc<Snapshot>('GET', `/pc/support/${id}/access/${g.id}`)); } catch (x) { setE(err(x)); }
+  };
+
   const openFile = async (m: Msg) => {
     try {
       const res = await fetch(`/api/pc/support/${id}/files/${m.fileId}`, { headers: tokenHeader() });
@@ -226,12 +278,50 @@ function ConversationView({ id, onChanged }: { id: string; onChanged: () => void
         {c.messages.map((m) => (
           <div key={m.id} className={`pc-sup-msg pc-sup-${m.kind}`}>
             {m.kind !== 'system' && <div className="pc-sup-author">{m.authorName ?? (m.kind === 'user' ? 'Клиент' : 'Служба заботы')} <span className="dim">{fmtDate(m.createdAt)}</span></div>}
-            {m.body && <div className="pc-sup-body">{m.body}</div>}
+            {m.body && <div className="pc-sup-body"><Linked text={m.body} /></div>}
             {m.fileId && <button type="button" className="pc-link" onClick={() => void openFile(m)}>{m.fileName ?? 'файл'}</button>}
           </div>
         ))}
       </div>
 
+      {!closed && (
+        <div className="pc-sup-call">
+          {c.call && c.call.byRole === 'user' && (
+            <>
+              <b>Клиент просит созвон</b>
+              <button type="button" className="pc-btn" disabled={busy} onClick={() => void acceptCall()}>Принять созвон</button>
+              <button type="button" className="pc-btn pc-btn-ghost" disabled={busy} onClick={() => void act('call/decline')}>Сейчас неудобно</button>
+            </>
+          )}
+          {c.call && c.call.byRole !== 'user' && <span className="dim">Созвон предложен — ждём согласия клиента. Когда он согласится, ссылка на созвон появится в разговоре.</span>}
+          {!c.call && <button type="button" className="pc-btn pc-btn-ghost" disabled={busy} onClick={() => void act('call/request')}>Предложить созвон</button>}
+          <button type="button" className="pc-btn pc-btn-ghost" onClick={() => void backToCall()}>Вернуться в созвон</button>
+          <button type="button" className="pc-btn pc-btn-ghost" onClick={() => void (grants ? setGrants(null) : loadGrants())}>Доступ к настройкам</button>
+        </div>
+      )}
+      {grants && (
+        <div className="pc-card pc-gap">
+          <div className="pc-row pc-between"><b>Доступ к настройкам проекта клиента</b><button type="button" className="pc-link" onClick={() => { setGrants(null); setSnap(null); }}>Скрыть</button></div>
+          <p className="dim pc-meta">15 минут, только по разрешению клиента и только проект, который он сам выберет. Клиент может закрыть доступ в любой момент; каждый просмотр — в журнале.</p>
+          {grants.length === 0 && <p className="dim">Доступа не просили.</p>}
+          {grants.map((g) => (
+            <div key={g.id} className="pc-row pc-wrap pc-between">
+              <span>{g.projectName ?? 'проект не выбран'} — {GRANT_TEXT[g.status] ?? g.status}{g.expiresAt && g.status === 'granted' ? ` до ${fmtDate(g.expiresAt)}` : ''}{g.reason ? <span className="dim"> · {g.reason}</span> : null}</span>
+              {g.status === 'granted' && <button type="button" className="pc-link" onClick={() => void viewGrant(g)}>Открыть</button>}
+            </div>
+          ))}
+          <button type="button" className="pc-btn pc-gap" onClick={() => void askAccess()}>Попросить доступ</button>
+          {snap?.project && (
+            <div className="pc-sup-card pc-gap">
+              <b>{snap.project.name}</b>
+              <div className="dim">видимость: {snap.project.visibility}{snap.project.owner_name ? ` · руководитель ${snap.project.owner_name}` : ''}{snap.project.client_name ? ` · клиент ${snap.project.client_name}` : ''}</div>
+              <div>Колонки: {snap.columns.map((col) => `${col.name} (${col.tasks})`).join(' → ') || '—'}</div>
+              <div>Участники: {snap.members.map((mm) => mm.full_name).join(', ') || '—'}</div>
+              <div className="dim">доступ до {fmtDate(snap.expiresAt)}</div>
+            </div>
+          )}
+        </div>
+      )}
       {e && <p className="pc-err">{e}</p>}
       {!closed && (
         <form className="pc-sup-reply" onSubmit={send}>
@@ -258,6 +348,81 @@ function ConversationView({ id, onChanged }: { id: string; onChanged: () => void
         </div>
       )}
     </div>
+  );
+}
+
+/** Известные проблемы и массовый сбой — у руководителя службы (у первой линии сервер ответит отказом). */
+function KnownAndIncident() {
+  const [known, setKnown] = useState<Known[] | null>(null);
+  const [inc, setInc] = useState<Incident | null | undefined>(undefined);
+  const [e, setE] = useState('');
+  const [form, setForm] = useState({ taskId: '', title: '', pattern: '' });
+  const [incForm, setIncForm] = useState({ title: '', message: '' });
+  const load = () => {
+    pc<Known[]>('GET', '/pc/support/known').then(setKnown).catch((x) => setE(err(x)));
+    pc<{ incident: Incident | null }>('GET', '/pc/support/incident').then((r) => setInc(r.incident)).catch(() => setInc(null));
+  };
+  useEffect(load, []);
+
+  const addKnown = async (ev: FormEvent) => {
+    ev.preventDefault(); setE('');
+    try { await pc('POST', '/pc/support/known', { taskId: form.taskId, title: form.title, pattern: form.pattern || undefined }); setForm({ taskId: '', title: '', pattern: '' }); load(); }
+    catch (x) { setE(err(x)); }
+  };
+  const toggle = async (k: Known) => { try { setKnown(await pc<Known[]>('POST', `/pc/support/known/${k.id}`, { active: !k.active })); } catch (x) { setE(err(x)); } };
+  const declare = async (ev: FormEvent) => {
+    ev.preventDefault();
+    if (!window.confirm('Объявить сбой? Сообщение уйдёт во все открытые разговоры всех компаний.')) return;
+    try { await pc('POST', '/pc/support/incident', incForm); setIncForm({ title: '', message: '' }); load(); } catch (x) { setE(err(x)); }
+  };
+  const resolve = async () => {
+    if (!inc || !window.confirm('Сбой исправлен? Всем, кому говорили о нём, уйдёт «Исправлено».')) return;
+    try { await pc('POST', `/pc/support/incident/${inc.id}/resolve`); load(); } catch (x) { setE(err(x)); }
+  };
+
+  return (
+    <section>
+      {e && <p className="pc-err">{e}</p>}
+      <h3>Массовый сбой</h3>
+      {inc ? (
+        <div className="pc-card pc-sup-note">
+          <b>Идёт сбой: {inc.title}</b> <span className="dim">с {fmtDate(inc.started_at)}</span>
+          <p>{inc.message}</p>
+          <button type="button" className="pc-btn" onClick={() => void resolve()}>Исправлено — сообщить всем</button>
+        </div>
+      ) : (
+        <form className="pc-card pc-form" onSubmit={declare}>
+          <p className="dim pc-meta">Одно честное сообщение вместо двадцати одинаковых разговоров: уйдёт во все открытые обращения, панель поддержки покажет полосу.</p>
+          <label>Что сломалось<input value={incForm.title} onChange={(ev) => setIncForm({ ...incForm, title: ev.target.value })} maxLength={200} required /></label>
+          <label>Что сказать клиентам<textarea value={incForm.message} onChange={(ev) => setIncForm({ ...incForm, message: ev.target.value })} maxLength={1000} rows={2} required /></label>
+          <button className="pc-btn">Объявить сбой</button>
+        </form>
+      )}
+
+      <h3>Известные проблемы</h3>
+      <p className="dim pc-meta">Задача в проекте разработки + слова-приметы: обращение с такими словами помощник сразу узнаёт и честно говорит, что исправление готовится.</p>
+      <div className="pc-table-wrap">
+        <table className="pc-table">
+          <thead><tr><th>Задача</th><th>Проблема</th><th>Приметы</th><th>Состояние</th><th /></tr></thead>
+          <tbody>
+            {known?.length === 0 && <tr><td colSpan={5} className="dim">Пока нет.</td></tr>}
+            {known?.map((k) => (
+              <tr key={k.id} className={k.active && !k.fixed ? '' : 'dim'}>
+                <td>#{k.taskId}</td><td>{k.title}</td><td className="pc-mono">{k.pattern}</td>
+                <td>{k.fixed ? 'исправлено' : k.active ? 'узнаём' : 'выключено'}</td>
+                <td>{!k.fixed && <button type="button" className="pc-link" onClick={() => void toggle(k)}>{k.active ? 'Выключить' : 'Включить'}</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <form className="pc-row pc-wrap pc-gap" onSubmit={addKnown}>
+        <label>Номер задачи<input value={form.taskId} onChange={(ev) => setForm({ ...form, taskId: ev.target.value })} maxLength={20} required /></label>
+        <label>Проблема<input value={form.title} onChange={(ev) => setForm({ ...form, title: ev.target.value })} maxLength={200} required /></label>
+        <label>Приметы через запятую<input value={form.pattern} onChange={(ev) => setForm({ ...form, pattern: ev.target.value })} maxLength={300} /></label>
+        <button className="pc-btn">Добавить</button>
+      </form>
+    </section>
   );
 }
 

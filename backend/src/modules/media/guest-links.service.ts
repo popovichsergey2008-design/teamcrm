@@ -36,6 +36,19 @@ const STAY_AFTER_START_H = 4;
 const HOST_CALL_EVERY_MS = 2 * 60_000;
 
 /** Что лежит в гостевом JWT. Намеренно НЕ совместимо с AccessTokenPayload. */
+/**
+ * Пропуск оператора консоли поддержки (support.qevo.one) в ОДНУ комнату созвона.
+ * У оператора нет учётки CRM — он входит этим пропуском как сотрудник-хозяин комнаты
+ * и сам впускает клиента, который стучится по гостевой ссылке.
+ */
+export interface OperatorPassPayload {
+  kind: 'support-op';
+  uid: string;
+  tenantId: string;
+  roomId: string;
+  name: string;
+}
+
 export interface GuestTokenPayload {
   kind: 'guest';
   gid: string;
@@ -691,6 +704,22 @@ export class GuestLinksService {
   /** Ссылка ещё действует: не отозвана и не истекла. */
   async linkActive(tenantId: string, linkId: string): Promise<boolean> {
     return !!(await this.repo.findActive(tenantId, linkId));
+  }
+
+  /** Пропуск оператора поддержки в комнату (см. OperatorPassPayload): 4 часа, одна комната. */
+  async operatorPass(tenantId: string, roomId: string, userId: string, name: string) {
+    const payload: OperatorPassPayload = { kind: 'support-op', uid: String(userId), tenantId: String(tenantId), roomId, name: name.slice(0, 60) };
+    const token = await this.jwt.signAsync(payload, { secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'), expiresIn: GUEST_TOKEN_TTL_SEC });
+    return { token, roomId, userId: String(userId), name: payload.name, iceServers: this.media.iceServers(String(userId)) };
+  }
+
+  verifyOperator(token: string): OperatorPassPayload | null {
+    try {
+      const p = this.jwt.verify<OperatorPassPayload>(token, { secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET') });
+      return p?.kind === 'support-op' && p.roomId && p.tenantId && p.uid ? p : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Проверка гостевого токена — для шлюза сигналинга. */

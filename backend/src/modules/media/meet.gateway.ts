@@ -12,7 +12,7 @@ import { MediaService, optimalLayers } from './media.service';
 import { RecordingService } from './recording.service';
 import { DiagService } from '../diagnostics/diag.service';
 import { AI_PARTICIPANT, MeetingRoom } from './media.types';
-import { GuestLinksService, GuestTokenPayload } from './guest-links.service';
+import { GuestLinksService, GuestTokenPayload, OperatorPassPayload } from './guest-links.service';
 import { Ringing } from './ringing';
 import { PushService } from '../notifications/push.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
@@ -23,6 +23,15 @@ const PATH = '/ws/meet';
  * Что гостю МОЖНО. Именно белый список, а не запреты: при добавлении нового сообщения
  * в протокол забыть внести его в запреты — значит молча выдать гостю новое право.
  */
+/** Оператору поддержки — то же, что гостю, плюс права хозяина своей комнаты: впустить, закрыть вход, завершить. */
+const OPERATOR_ALLOWED = new Set([
+  'meet.join', 'meet.create-transport', 'meet.connect-transport', 'meet.produce',
+  'meet.consume', 'meet.resume-consumer', 'meet.producer-pause', 'meet.producer-resume',
+  'meet.producer-close', 'meet.hand-raise', 'meet.hand-lower', 'meet.reaction', 'meet.pointer',
+  'meet.restart-ice', 'meet.set-consumer-layers', 'meet.get-participants', 'meet.leave',
+  'meet.guest-admit', 'meet.guest-reject', 'meet.lock', 'meet.end-all',
+]);
+
 const GUEST_ALLOWED = new Set([
   'meet.join', 'meet.create-transport', 'meet.connect-transport', 'meet.produce',
   'meet.consume', 'meet.resume-consumer', 'meet.producer-pause', 'meet.producer-resume',
@@ -58,6 +67,8 @@ interface Client {
   guestLinkId?: string;
   /** Сотрудник стоит за дверью чужого созвона — в этой комнате. */
   knockRoomId?: string;
+  /** Оператор консоли поддержки: входит по пропуску только в эту комнату, хозяином. */
+  opRoomId?: string;
   /** Последняя подсветка (ТЗ-29) — предохранитель от потока отметок. */
   lastPointerAt?: number;
 }
@@ -137,14 +148,15 @@ export class MeetGateway implements OnModuleInit {
       const user = this.authenticate(raw);
       // гостевой токен подписан тем же ключом, но это НЕ пользователь: у него свой разбор
       const guest = user ? null : this.guests.verify(raw ?? '');
+      const op = user || guest ? null : this.guests.verifyOperator(raw ?? '');
       // заказчику (роль client) командные созвоны недоступны — у него свой портал
-      if ((!user && !guest) || user?.role === 'client') {
+      if ((!user && !guest && !op) || user?.role === 'client') {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();
         return;
       }
       this.wss!.handleUpgrade(req, socket, head, (ws) =>
-        void (guest ? this.onGuestConnect(ws, guest) : this.onConnect(ws, user!)));
+        void (op ? this.onOperatorConnect(ws, op) : guest ? this.onGuestConnect(ws, guest) : this.onConnect(ws, user!)));
     });
     this.log.log(`сигналинг созвонов слушает ${PATH}`);
   }
@@ -211,6 +223,14 @@ export class MeetGateway implements OnModuleInit {
     });
   }
 
+  /** Оператор консоли поддержки — по пропуску в одну комнату (support.qevo.one, 02.11). */
+  private onOperatorConnect(ws: WebSocket, op: OperatorPassPayload): void {
+    this.wire({
+      ws, userId: String(op.uid), tenantId: String(op.tenantId), displayName: op.name,
+      meetingId: null, isGuest: false, opRoomId: op.roomId,
+    });
+  }
+
   /** Общая обвязка сокета: приём сообщений и уборка при обрыве — одна на всех. */
   private wire(client: Client): void {
     const ws = client.ws;
@@ -269,6 +289,7 @@ export class MeetGateway implements OnModuleInit {
     if (typeof meetingId !== 'string') return null;
     // гость заперт в своей комнате: её id зашит в токене, знание чужого id ничего не даёт
     if (c.isGuest && meetingId !== c.guestRoomId) return null;
+    if (c.opRoomId && meetingId !== c.opRoomId) return null;
     const room = this.media.getRoom(meetingId);
     return room && room.tenantId === c.tenantId ? room : null;
   }
@@ -276,11 +297,25 @@ export class MeetGateway implements OnModuleInit {
   private async handle(c: Client, msg: { type: string; payload?: Record<string, any> }): Promise<void> {
     const p = msg.payload ?? {};
     if (c.isGuest && !GUEST_ALLOWED.has(msg.type)) return;
+    if (c.opRoomId && !OPERATOR_ALLOWED.has(msg.type)) return;
     let room = this.roomFor(c, p.meeting_id);
 
     switch (msg.type) {
       case 'meet.join': {
         if (c.isGuest) return this.knock(c);
+        // оператор поддержки — хозяин своей комнаты: входит сразу и впускает клиента
+        if (c.opRoomId) {
+          room ??= await this.media.ensureRoom(c.tenantId, c.opRoomId, null).catch(() => null);
+          if (!room) return this.send(c.ws, 'meet.error', { message: 'Созвон не найден' });
+          room.allowed.add(c.userId);
+          (room.hosts ??= new Set()).add(c.userId);
+          await this.joinRoom(c, room);
+          for (const g of this.lobby.get(room.id)?.values() ?? []) {
+            this.send(c.ws, 'meet.guest-knocking', { meeting_id: room.id, guest_id: g.userId, name: g.displayName, employee: !g.isGuest });
+          }
+          this.send(c.ws, 'meet.role', { meeting_id: room.id, host: true, meeting: false, locked: !!room.locked });
+          return;
+        }
         /*
           Комнаты ещё нет, но у неё есть ссылка (встреча календаря или гостевая) — поднимаем.
           Раньше её поднимал только гость, и сотрудник, пришедший первым по «Войти в

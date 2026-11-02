@@ -14,6 +14,7 @@ import { PcSupportService } from './pc-support.service';
 import { PlatformModule } from '../platform/platform.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { SupportModule } from '../support/support.module';
+import { MediaModule } from '../media/media.module';
 
 /**
  * Консоли платформы (owner / developer / support.qevo.one). Чаты и уведомления CRM
@@ -21,7 +22,7 @@ import { SupportModule } from '../support/support.module';
  * ради консоли поддержки — оператор работает с обращениями её же методами (0223).
  */
 @Module({
-  imports: [JwtModule.register({}), AuthModule, HealthModule, PlatformModule, RealtimeModule, SupportModule],
+  imports: [JwtModule.register({}), AuthModule, HealthModule, PlatformModule, RealtimeModule, SupportModule, MediaModule],
   // PcSupportController — первым: его «support/presence» и «support/queue» не должны уйти в «support/:id»
   controllers: [PcAuthController, PcSupportController, PcController],
   providers: [PcRepository, PcAuthService, PcStatsService, PcDevService, PcSupportService, PcGuard, IntegrationCryptoService],
