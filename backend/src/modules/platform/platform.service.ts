@@ -224,7 +224,7 @@ export class PlatformService implements OnModuleInit {
       `SELECT s.user_id::text, s.tenant_id::text, u.full_name, s.role, s.active, s.skills,
               s.max_conversations
          FROM platform_staff s JOIN users u ON u.id = s.user_id
-        WHERE u.is_active
+        WHERE (u.is_active OR u.is_service)
         ORDER BY s.active DESC, u.full_name`,
     );
   }
@@ -240,13 +240,15 @@ export class PlatformService implements OnModuleInit {
    * Сверяем и организацию: право читать чужие обращения не должно достаться человеку
    * клиентской компании ни по ошибке в данных, ни после переезда учётки. Раньше это
    * держалось на проверке в соседнем методе — теперь на самом правиле.
+   * Служебный профиль оператора консоли (is_service, 0223) неактивен намеренно — его
+   * пускаем: он не входит в CRM, а работает только через support.qevo.one.
    */
   async roleOf(userId: string): Promise<PlatformRole | null> {
     const platform = await this.tenantId();
     if (!platform) return null;
     const row = await this.db.one<{ role: string }>(
       `SELECT s.role FROM platform_staff s JOIN users u ON u.id = s.user_id
-        WHERE s.user_id=$1 AND s.tenant_id=$2 AND u.tenant_id=$2 AND u.is_active`,
+        WHERE s.user_id=$1 AND s.tenant_id=$2 AND u.tenant_id=$2 AND (u.is_active OR u.is_service)`,
       [userId, platform],
     );
     return row && (PLATFORM_ROLES as string[]).includes(row.role) ? (row.role as PlatformRole) : null;

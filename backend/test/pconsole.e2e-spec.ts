@@ -9,6 +9,7 @@ import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { DbService } from '../src/database/db.service';
 import { stepOf, totpAt } from '../src/common/auth/totp';
+import { PlatformService } from '../src/modules/platform/platform.service';
 
 /**
  * Консоли платформы: отдельные учётные записи, обязательный второй фактор, роль = одна
@@ -151,5 +152,51 @@ describe('Консоли платформы (e2e)', () => {
     // в CI ключей ЮKassa нет — честный отказ, а не падение; неизвестный период — 400 от проверки
     await http.post('/api/billing/checkout').set(H(r.body.data.accessToken)).send({ plan: code, period: 'decade' }).expect(400);
     await http.post('/api/pc/owner/plans').set(H(o.accessToken)).send({ code, title: 'Тест', priceRub: 100, isActive: false }).expect(200);
+  });
+
+  it('поддержка: своя учётка консоли, служебный профиль без входа в CRM, обращение клиента — взял и ответил', async () => {
+    const platform = app.get(PlatformService);
+    const vendor = (await http.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Vendor', email: `v_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Вендор' })
+      .expect(201)).body.data;
+    const client = (await http.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Клиент', email: `c_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Клиент' })
+      .expect(201)).body.data;
+    await platform.declarePlatform(String(vendor.user.tenantId), String(vendor.user.id));
+    try {
+      const conv = (await http.post('/api/support/desk/messages').set(H(client.accessToken))
+        .send({ text: 'Позовите специалиста: не открывается доска' }).expect(201)).body.data;
+
+      const s = await signIn(await staff(['support']), 'support');
+      await http.get('/api/pc/owner/overview').set(H(s.accessToken)).expect(403);
+      const avail = (await http.post('/api/pc/support/presence').set(H(s.accessToken)).send({ status: 'available' }).expect(200)).body.data;
+      expect(avail.available).toBeGreaterThanOrEqual(1);
+
+      const queue = (await http.get('/api/pc/support/queue').set(H(s.accessToken)).expect(200)).body.data as { id: string; orgName: string }[];
+      expect(queue.find((q) => String(q.id) === String(conv.id))?.orgName).toBe('Клиент');
+      const view = (await http.get(`/api/pc/support/${conv.id}`).set(H(s.accessToken)).expect(200)).body.data;
+      expect(view.client.company).toBe('Клиент');
+      expect(view.client.subscription.status).toBe('TRIAL');
+      expect(view.client.ai.text).toBeTruthy();
+      await http.post(`/api/pc/support/${conv.id}/join`).set(H(s.accessToken)).expect(200);
+      await http.post(`/api/pc/support/${conv.id}/reply`).set(H(s.accessToken)).send({ text: 'Смотрим, минуту' }).expect(200);
+
+      // клиент видит ответ в своём разговоре
+      const mine = (await http.get(`/api/support/desk/${conv.id}`).set(H(client.accessToken)).expect(200)).body.data;
+      expect(mine.messages.some((m: { body: string }) => m.body.includes('Смотрим'))).toBe(true);
+
+      // служебный профиль: в организации вендора, неактивен — в команде и чатах его нет, войти в CRM нельзя
+      const u = await db.one<{ is_active: boolean; is_service: boolean; tenant_id: string; account_id: string | null }>(
+        `SELECT u.is_active, u.is_service, u.tenant_id::text, u.account_id::text
+           FROM pc_accounts a JOIN users u ON u.id = a.crm_user_id WHERE a.id = (SELECT max(id) FROM pc_accounts WHERE 'support' = ANY(roles))`);
+      expect(u).toMatchObject({ is_active: false, is_service: true, tenant_id: String(vendor.user.tenantId), account_id: null });
+      const team = (await http.get('/api/users').set(H(vendor.accessToken)).expect(200)).body.data as { fullName?: string; full_name?: string }[];
+      expect(team.some((m) => (m.fullName ?? m.full_name) === 'Сотрудник')).toBe(false);
+
+      const audit = await db.many<{ action: string }>(`SELECT action FROM pc_audit WHERE target=$1`, [`conversation:${conv.id}`]);
+      expect(audit.map((a) => a.action)).toContain('support.join');
+    } finally {
+      await platform.clearPlatform();
+    }
   });
 });

@@ -9,6 +9,7 @@ import { PcAuthService } from './pc-auth.service';
 import { PcRepository } from './pc.repository';
 import { PcStatsService } from './pc-stats.service';
 import { PcDevService } from './pc-dev.service';
+import { PcSupportService } from './pc-support.service';
 import { PC_APPS, PERIODS, PeriodKey, periodOf, safeTz } from './pc-rules';
 import { AiGuardService } from '../ai/ai-guard.service';
 import { AppErrorsService } from '../app-errors/app-errors.service';
@@ -113,6 +114,7 @@ export class PcController {
     private readonly aiGuard: AiGuardService,
     private readonly errors: AppErrorsService,
     private readonly billing: BillingService,
+    private readonly support: PcSupportService,
   ) {}
 
   @Get('me') @PcNeed('any')
@@ -153,6 +155,8 @@ export class PcController {
     await this.repo.setStaff(id, { status, roles }, pc.accountId);
     // отобранная роль или блокировка — сессии этих консолей заканчиваются сразу (§7)
     for (const app of acc.roles) if (status !== 'active' || !roles.includes(app)) await this.repo.revokeAll(id, app);
+    // поддержка: без роли — служба заботы перестаёт слать обращения его служебному профилю
+    await this.support.syncStaff(id, status === 'active' && roles.includes('support'));
     await this.repo.audit({
       accountId: pc.accountId, app: pc.app, action: 'staff.update', target: acc.email,
       meta: { from: { status: acc.status, roles: acc.roles }, to: { status, roles } }, ip: req.ip,

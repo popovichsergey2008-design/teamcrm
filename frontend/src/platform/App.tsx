@@ -4,6 +4,7 @@ import { APP, Me, pc, pcPublic, PcError, setTokens, signedIn, signOut } from './
 
 const OwnerConsole = lazy(() => import('./OwnerConsole'));
 const DevConsole = lazy(() => import('./DevConsole'));
+const SupportConsole = lazy(() => import('./SupportConsole'));
 
 const TITLE = { owner: 'Консоль владельца', developer: 'Консоль разработчика', support: 'Консоль поддержки' } as const;
 const ROLE_LABEL = { owner: 'Владелец платформы', developer: 'Разработчик', support: 'Поддержка' } as const;
@@ -40,12 +41,7 @@ export default function App() {
         <Suspense fallback={<div className="dim">Загрузка…</div>}>
           {APP === 'owner' && <OwnerConsole me={me} />}
           {APP === 'developer' && <DevConsole canTriage={me.perms.includes('dev.triage')} />}
-          {APP === 'support' && (
-            <section className="pc-card">
-              <h2>Консоль поддержки</h2>
-              <p>Обращения пока работают на прежнем адресе — <a href="https://console.qevo.one">console.qevo.one</a>. Переезд сюда — следующий этап.</p>
-            </section>
-          )}
+          {APP === 'support' && <SupportConsole />}
         </Suspense>
       </main>
     </div>

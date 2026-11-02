@@ -41,6 +41,6 @@ import { FileImportModule } from '../integrations/file/file-import.module';
   // консьерж (ТЗ-29) — ПЕРВЫМ: его «support/desk/concierge…» не должен уйти в «support/desk/:id»
   controllers: [SupportConciergeController, SupportPublicController, SupportController, SupportDeskController],
   providers: [SupportService, SupportRepository, SupportDeskService, SupportDeskRepository, SupportConciergeService, SupportConciergeRepository],
-  exports: [SupportDeskService],
+  exports: [SupportDeskService, SupportConciergeService],
 })
 export class SupportModule {}

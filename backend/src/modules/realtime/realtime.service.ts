@@ -111,6 +111,8 @@ export class RealtimeService {
 
   /** Кто сейчас онлайн: сокеты по пользователю (мессенджер показывает точку «в сети»). */
   private readonly online = new Map<string, number>();
+  /** Присутствие операторов консоли поддержки: ключ → до какого времени «в сети». */
+  private readonly beats = new Map<string, number>();
 
   static internalRoom(tenantId: string, projectId: string) {
     return `project:${tenantId}:${projectId}`;
@@ -168,12 +170,30 @@ export class RealtimeService {
     const n = (this.online.get(k) ?? 1) - 1;
     if (n <= 0) this.online.delete(k); else this.online.set(k, n);
   }
+  /**
+   * Присутствие без сокета: оператор консоли поддержки (support.qevo.one) к realtime CRM
+   * не подключён — консоль раз в 30 с говорит «я здесь». Молчит дольше 90 с — не в сети.
+   */
+  presenceBeat(tenantId: string, userId: string) {
+    this.beats.set(this.key(tenantId, userId), Date.now() + 90_000);
+  }
+  presenceGone(tenantId: string, userId: string) {
+    this.beats.delete(this.key(tenantId, userId));
+  }
+  private liveBeats(): string[] {
+    const now = Date.now();
+    const out: string[] = [];
+    for (const [k, until] of this.beats) { if (until > now) out.push(k); else this.beats.delete(k); }
+    return out;
+  }
   isOnline(tenantId: string, userId: string): boolean {
-    return this.online.has(this.key(tenantId, userId));
+    const k = this.key(tenantId, userId);
+    return this.online.has(k) || (this.beats.get(k) ?? 0) > Date.now();
   }
   onlineUsers(tenantId: string): string[] {
     const prefix = `${tenantId}:`;
-    return [...this.online.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+    const keys = new Set([...this.online.keys(), ...this.liveBeats()]);
+    return [...keys].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
   }
 
   /**

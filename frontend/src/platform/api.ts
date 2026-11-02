@@ -28,6 +28,8 @@ export function setTokens(t: Tokens | null) {
   try { if (t) localStorage.setItem(KEY, JSON.stringify(t)); else localStorage.removeItem(KEY); } catch { /* приватный режим */ }
 }
 export const signedIn = () => !!tokens;
+/** Для запросов мимо pc() — файлы разговора поддержки отдаются потоком, не конвертом. */
+export const tokenHeader = (): Record<string, string> => (tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {});
 
 export class PcError extends Error {
   constructor(public code: string, message: string) { super(message); }

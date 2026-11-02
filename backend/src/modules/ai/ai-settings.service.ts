@@ -99,6 +99,15 @@ export class AiSettingsService {
     return { ...s, source: s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey ? 'global' : 'none' };
   }
 
+  /** Есть ли общий ключ сервера и свой у компании — для карточки клиента в консоли поддержки. */
+  async keysOf(tenantId: string): Promise<{ own: boolean; global: boolean }> {
+    const r = await this.row(tenantId).catch(() => null);
+    return {
+      own: !!(r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc),
+      global: !!(this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi),
+    };
+  }
+
   private row(tenantId: string) {
     return this.db.one<any>(`SELECT * FROM ai_settings WHERE tenant_id=$1`, [tenantId]);
   }

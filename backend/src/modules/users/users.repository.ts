@@ -56,7 +56,7 @@ export class UsersRepository {
     return this.db.many<UserRow>(
       `SELECT u.*, r.code AS role_code
          FROM users u JOIN roles r ON r.id = u.role_id
-        WHERE u.tenant_id = $1 ORDER BY u.created_at ASC`,
+        WHERE u.tenant_id = $1 AND NOT u.is_service ORDER BY u.created_at ASC`,
       [tenantId],
     );
   }
@@ -74,7 +74,7 @@ export class UsersRepository {
          FROM users u
          JOIN roles r ON r.id = u.role_id
          LEFT JOIN positions p ON p.id = u.position_id
-        WHERE u.tenant_id = $1 ORDER BY u.created_at ASC`,
+        WHERE u.tenant_id = $1 AND NOT u.is_service ORDER BY u.created_at ASC`,
       [tenantId],
     );
   }
