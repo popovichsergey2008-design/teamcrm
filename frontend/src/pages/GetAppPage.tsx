@@ -58,7 +58,7 @@ export function GetAppPage() {
           )}
           {release && (
             <>
-              <a className="ui-btn ui-btn-primary ui-btn-md getapp-download" href={release.apkUrl} download>
+              <a className="ui-btn ui-btn-primary ui-btn-md getapp-download" href={`${release.apkUrl}?src=site`} download>
                 <Icon name="download" size={16} /> Скачать APK · версия {release.latestNative}
                 {release.sizeBytes ? <span> · {humanSize(release.sizeBytes)}</span> : null}
               </a>

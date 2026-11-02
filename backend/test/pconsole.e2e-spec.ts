@@ -199,4 +199,19 @@ describe('Консоли платформы (e2e)', () => {
       await platform.clearPlatform();
     }
   });
+
+  it('установки: первый запуск, обновление, подделанное скачивание не считается; владелец видит цифры', async () => {
+    const id = '0a8f7e2c-1b3d-4c5e-9f60-' + Date.now().toString(16).padStart(12, '0').slice(-12);
+    await http.post('/api/telemetry/launch').send({ installationId: id, platform: 'android', version: '1.51' }).expect(204);
+    await http.post('/api/telemetry/launch').send({ installationId: id, platform: 'android', version: '1.52' }).expect(204);
+    await http.post('/api/telemetry/launch').send({ installationId: 'не-номер', platform: 'android' }).expect(400);
+    const ev = await db.many<{ kind: string }>(`SELECT kind FROM app_install_events WHERE installation_id=$1 ORDER BY id`, [id]);
+    expect(ev.map((e) => e.kind)).toEqual(['first_run', 'update']);
+    // снаружи признак зеркала nginx не поставить: без него скачивание не пишется
+    await http.get('/api/telemetry/download').set('X-Original-URI', '/app/qevo-9.99.apk').expect(204);
+    expect((await db.one<{ n: number }>(`SELECT count(*)::int AS n FROM app_downloads WHERE file='qevo-9.99.apk'`))!.n).toBe(0);
+    const o = await signIn(await staff(['owner']), 'owner');
+    const ov = (await http.get('/api/pc/owner/overview?period=today&tz=Europe/Moscow').set(H(o.accessToken)).expect(200)).body.data;
+    expect(ov.apps.installs.android.firstRuns).toBeGreaterThanOrEqual(1);
+  });
 });

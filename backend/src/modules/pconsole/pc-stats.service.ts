@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { AppInstallsService } from '../app-installs/app-installs.service';
 import { DbService } from '../../database/db.service';
 import { effective, SubRow } from '../billing/billing-rules';
 import { estimateCost } from '../ai/usage-catalog';
@@ -26,7 +27,7 @@ interface Counts {
  */
 @Injectable()
 export class PcStatsService {
-  constructor(private readonly db: DbService) {}
+  constructor(private readonly db: DbService, @Optional() private readonly installs?: AppInstallsService) {}
 
   private async counts(from: string, to: string, tz: string): Promise<Counts> {
     const r = await this.db.one<Counts>(
@@ -120,10 +121,11 @@ export class PcStatsService {
   }
 
   async overview(p: Period, tz: string) {
-    const [cur, prev, ai, prevAi, subs, series] = await Promise.all([
+    const [cur, prev, ai, prevAi, subs, series, apps] = await Promise.all([
       this.counts(p.from, p.to, tz), this.counts(p.prevFrom, p.prevTo, tz),
       this.ai(p.from, p.to, tz), this.ai(p.prevFrom, p.prevTo, tz),
       this.subscriptions(), this.series(p, tz),
+      this.installs ? this.installs.stats(p.from, p.to, tz) : Promise.resolve(null),
     ]);
     const m = (cur: number, prev: number) => ({ value: cur, prev, deltaPct: deltaPct(cur, prev) });
     return {
@@ -149,10 +151,12 @@ export class PcStatsService {
       },
       subscriptions: subs,
       series,
+      /** Скачивания APK и запуски экземпляров (§5.3); null — источник ещё пуст: «нет данных». */
+      apps,
       /** Чего пока нет в данных — показываем «нет данных», а не ноль (§5.3). */
-      unavailable: ['downloads', 'refunds', 'pwaInstalls', 'storeInstalls'],
+      unavailable: ['refunds', 'storeInstalls'],
       sources: {
-        installs: 'приложение Android: первый запуск экземпляра (mobile_devices)',
+        installs: 'устройства Android по входу в аккаунт (mobile_devices); запуски экземпляров и скачивания APK — с 02.11',
         revenue: 'ЮKassa: подтверждённые платежи',
         aiCost: 'оценка по прайсу моделей, USD',
       },

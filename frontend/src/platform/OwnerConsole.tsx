@@ -15,6 +15,11 @@ interface Overview {
   series: { unit: 'day' | 'month'; points: { bucket: string; users: number; companies: number }[] };
   unavailable: string[];
   sources: Record<string, string>;
+  apps: {
+    since: string;
+    downloads: { total: number; bySource: Record<string, number> } | null;
+    installs: Record<string, { firstRuns: number; updates: number; active: number }> | null;
+  } | null;
 }
 interface Tenant {
   id: string; name: string; created_at: string; is_test: boolean; is_platform: boolean; people: number;
@@ -81,8 +86,8 @@ const CARDS: { key: string; label: string; money?: 'rub' | 'usd'; hint?: string 
   { key: 'aiCostUsd', label: 'Расход ИИ (оценка)', money: 'usd' },
   { key: 'aiTokens', label: 'Токенов ИИ' },
   { key: 'supportNew', label: 'Обращений в поддержку' },
-  { key: 'installsNew', label: 'Новые установки Android' },
-  { key: 'installsActive', label: 'Активные установки Android' },
+  { key: 'installsNew', label: 'Новые устройства Android (по входу)', hint: 'Устройство, с которого впервые вошли в аккаунт. Не то же, что установка.' },
+  { key: 'installsActive', label: 'Активные устройства Android (по входу)' },
 ];
 
 function money(v: number, cur: 'rub' | 'usd') {
@@ -133,9 +138,9 @@ function OverviewTab() {
               const m = data.metrics[c.key];
               return <Kpi key={c.key} label={c.label} hint={c.hint} value={c.money ? money(m.value, c.money) : fmtNum(m.value)} delta={m.deltaPct} />;
             })}
-            <Kpi label="Скачивания" value="Нет данных" hint="Раздачу APK пока не считаем" />
             <Kpi label="Возвраты" value="Нет данных" />
           </div>
+          <Apps apps={data.apps} />
           <h3>Регистрации {data.series.unit === 'day' ? 'по дням' : 'по месяцам'}</h3>
           <Bars points={data.series.points} />
           <p className="dim pc-meta">Активность: {data.activityRule}. Установки: {data.sources.installs}. Поступления: {data.sources.revenue}. ИИ: {data.sources.aiCost}.</p>
@@ -143,6 +148,42 @@ function OverviewTab() {
       )}
       {!data && !err && ready && <p className="dim">Считаю…</p>}
     </section>
+  );
+}
+
+const SOURCE_LABEL: Record<string, string> = { site: 'страница «Скачать»', app: 'обновление из приложения', direct: 'прямая ссылка' };
+const PLATFORM_LABEL: Record<string, string> = { android: 'Android', ios: 'iOS', pwa: 'PWA (установлен с сайта)', desktop: 'Компьютер' };
+
+/** Скачивания и установки (§5.3): источники раздельно, без сложения скачиваний с установками. */
+function Apps({ apps }: { apps: Overview['apps'] }) {
+  const none = 'Нет данных';
+  const platforms = apps?.installs ? Object.entries(apps.installs) : [];
+  const sum = (k: 'firstRuns' | 'updates' | 'active') => platforms.reduce((a, [, v]) => a + v[k], 0);
+  return (
+    <>
+      <h3>Приложение</h3>
+      <div className="pc-kpis">
+        <Kpi label="Скачивания APK" value={apps?.downloads ? fmtNum(apps.downloads.total) : none}
+          hint="Выдачи файла с нашего сервера; повтор с того же адреса в течение часа — одно скачивание. Скачивание — ещё не установка." />
+        <Kpi label="Первые запуски" value={apps?.installs ? fmtNum(sum('firstRuns')) : none} hint="Новый экземпляр приложения или PWA запустился впервые." />
+        <Kpi label="Обновления" value={apps?.installs ? fmtNum(sum('updates')) : none} hint="Установленный экземпляр перешёл на новую версию — не новая установка." />
+        <Kpi label="Активные установки" value={apps?.installs ? fmtNum(sum('active')) : none} hint="Экземпляры, которые запускались за период." />
+      </div>
+      {(apps?.downloads || platforms.length > 0) && (
+        <div className="pc-table-wrap pc-gap">
+          <table className="pc-table">
+            <thead><tr><th>Разрез</th><th>Первые запуски</th><th>Обновления</th><th>Активные</th></tr></thead>
+            <tbody>
+              {platforms.map(([p, v]) => <tr key={p}><td>{PLATFORM_LABEL[p] ?? p}</td><td>{fmtNum(v.firstRuns)}</td><td>{fmtNum(v.updates)}</td><td>{fmtNum(v.active)}</td></tr>)}
+              {apps?.downloads && Object.entries(apps.downloads.bySource).map(([s, n]) => (
+                <tr key={s}><td>Скачивания: {SOURCE_LABEL[s] ?? s}</td><td colSpan={3}>{fmtNum(n)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="dim pc-meta">Учёт скачиваний и запусков начат {apps?.since ?? '02.11.2026'}; до этой даты данных нет. Удаления приложения не видны — достоверного источника нет. Магазинов приложений пока нет.</p>
+    </>
   );
 }
 

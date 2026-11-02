@@ -32,6 +32,8 @@ export const RULES = {
   mfaAccount: { name: 'mfa:account', limit: 20, windowSec: 60 * 60 },
   /** Отчёты об ошибках сайта (консоль разработчика): не больше 60 с адреса за 10 минут. */
   errorReportIp: { name: 'errors:ip', limit: 60, windowSec: 10 * 60 },
+  // запуск приложения: при старте и раз в сутки — с одного адреса бывает целый офис
+  launchIp: { name: 'launch:ip', limit: 120, windowSec: 10 * 60 },
 } satisfies Record<string, ThrottleRule>;
 
 /** Сколько ждать — словами, для текста ошибки. */

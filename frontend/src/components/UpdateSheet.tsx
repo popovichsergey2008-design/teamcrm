@@ -79,7 +79,7 @@ export function UpdateSheet({ release, required, onClose }: {
     if (stateRef.current === 'loading') return;
     setState('loading'); setShare(0);
     const result = await platform.appUpdate.install(
-      { url: release.apkUrl, sha256: release.sha256, version: release.latestNative },
+      { url: `${release.apkUrl}?src=app`, sha256: release.sha256, version: release.latestNative },
       setShare,
     );
     if (result === 'installing') { setOpened(true); setState('installing'); return; }
@@ -143,7 +143,7 @@ export function UpdateSheet({ release, required, onClose }: {
 
       <div className="update-actions">
         {self === false || state === 'failed' ? (
-          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => platform.openExternal(release.apkUrl)}>
+          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => platform.openExternal(`${release.apkUrl}?src=app`)}>
             Скачать в браузере
           </button>
         ) : state === 'permission' ? (
