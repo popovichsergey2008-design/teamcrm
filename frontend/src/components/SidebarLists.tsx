@@ -9,19 +9,13 @@ import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, typ
 import { CHAT_DRAFT_CHANGED, clearDraft, listChatDrafts } from '../lib/chat-drafts';
 import './sidebar-lists.css';
 
-// новый ключ (02.11): «Избранное» теперь свёрнуто по умолчанию — у всех, и у тех, кто уже раскрывал
-const OPEN_KEY = 'qevo.sb-fav';
-
-function readOpen(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') as Record<string, boolean>; } catch { return {}; }
-}
-
 /**
  * «Избранное» (#4713) в левом сайдбаре — под разделами, пунктом как остальные.
  * Черновики (#4715) — внутри «Избранного» (заказчик, 02.11), отдельной группой внизу.
  *
  * Отдельный модуль со своими стилями: грузится после первого экрана и не утяжеляет
- * его. По умолчанию свёрнуто; раскрыл — помнит этот браузер.
+ * его. #4733: при каждой загрузке страницы свёрнуто — и «Избранное», и «Последние
+ * задачи» внутри него (тоже кнопка, раскрывается отдельно); отмеченное — ниже.
  */
 export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const { user } = useAuth();
@@ -29,7 +23,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
   const [favs, setFavs] = useState<Favorite[]>(favorites);
   const [tasks, setTasks] = useState<TaskDraft[]>(() => listDrafts(user?.id));
   const [chats, setChats] = useState(() => listChatDrafts());
-  const [open, setOpen] = useState<Record<string, boolean>>(readOpen);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
   const [recent, setRecent] = useState<RecentTask[]>([]);
   const route = useRoute();
   const favOpen = open.fav === true;
@@ -56,13 +50,9 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
     };
   }, [user?.id]);
 
-  // по умолчанию свёрнуто (заказчик, 02.11)
+  // по умолчанию свёрнуто (заказчик, 02.11; #4733 — и после перезагрузки тоже)
   const isOpen = (k: string) => open[k] === true;
-  const flip = (k: string) => {
-    const next = { ...open, [k]: !isOpen(k) };
-    setOpen(next);
-    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* приватный режим */ }
-  };
+  const flip = (k: string) => setOpen((prev) => ({ ...prev, [k]: !prev[k] }));
 
   const goFav = (f: Favorite) => {
     onGo();
@@ -101,10 +91,14 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
       </button>
       {isOpen('fav') && (total === 0 && !recent.length ? empty : (
         <div className="sbl-body">
-          {/* #4720: «Последние задачи» — первым пунктом */}
+          {/* #4720: «Последние задачи» — первым пунктом; #4733 — кнопкой, свёрнуты */}
           {recent.length > 0 && (<>
-            <div className="sbl-sub">{RECENT_LABEL}</div>
-            <ul className="sbl-list">
+            <button type="button" className="sbl-sub sbl-fold" aria-expanded={isOpen('recent')} onClick={() => flip('recent')}>
+              <Icon name={isOpen('recent') ? 'chevron-down' : 'chevron-right'} size={12} />
+              {RECENT_LABEL}
+              <span className="sbl-count">{recent.length}</span>
+            </button>
+            {isOpen('recent') && <ul className="sbl-list">
               {recent.map((t) => {
                 const st = recentState(t);
                 return (
@@ -117,7 +111,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
                   </li>
                 );
               })}
-            </ul>
+            </ul>}
             {(favs.length > 0 || draftCount > 0) && <div className="sbl-sub">Отмеченные</div>}
           </>)}
           {favs.length > 0 && (
