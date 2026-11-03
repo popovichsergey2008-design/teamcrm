@@ -31,25 +31,30 @@
   display: flex; flex-direction: column; gap: 6px; padding: 10px 12px;
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 1px 2px rgba(16,24,40,.05); color: var(--text);
+  /* длинная ссылка без пробелов («Для кого: …https://docs…») не должна выталкивать текст за колонку */
+  min-width: 0; overflow-wrap: anywhere;
 }
 .hub-card-title { margin: 0; font-size: var(--fs-md); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .hub-card-label { margin: 0; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); }
 .hub-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin: 0 -6px -4px; }
 .hub-card-foot .ui-btn-link { padding: 0 6px; }
 .hub-card > .ui-btn-link { align-self: flex-start; }
-.hub-mission { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; }
-.hub-meta { margin: 0; display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--text-mut); }
+.hub-mission { margin: 0; font-size: var(--fs-sm); color: var(--text-dim); line-height: 1.45; overflow-wrap: anywhere; }
+.hub-meta { margin: 0; display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); color: var(--text-mut); overflow-wrap: anywhere; }
 .hub-linkish.hub-more { padding: 0; margin-top: 2px; font-size: var(--fs-xs); }
 .hub-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .hub-hint { margin: 0; font-size: var(--fs-xs); color: var(--text-mut); line-height: 1.45; }
 .hub-err { margin: 0; font-size: var(--fs-sm); color: var(--danger); }
 
 .hub-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+/* длинное название ссылки обрезается многоточием, а не распирает колонку */
+.hub-chips > li { min-width: 0; max-width: 100%; }
 .hub-chip {
-  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 999px;
+  display: block; max-width: 100%; padding: 2px 8px; border-radius: 999px;
   background: var(--bg-elev-2); color: var(--text); font-size: var(--fs-xs); text-decoration: none;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
 }
+.hub-chip .icon { vertical-align: -2px; margin-right: 4px; }
 .hub-chip:hover { background: var(--hover); }
 .hub-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
