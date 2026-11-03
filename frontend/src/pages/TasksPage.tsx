@@ -13,6 +13,7 @@ import { Spinner } from '../components/ui/spinner';
 import { Toggle } from '../components/ui/toggle';
 import { Menu } from '@base-ui/react/menu';
 import { Tooltip } from '../components/ui/tooltip';
+import { FavoriteStar } from '../components/FavoriteStar';
 import { api, TagItem } from '../lib/api';
 import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
 import {
@@ -222,10 +223,15 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
   */
   const sortBy = (column: SortColumn) => setFilters((f) => ({ ...f, ...nextSortState(f, column), page: 1 }));
 
-  const projectOptions = useMemo(
-    () => [{ value: '', label: 'Все проекты' }, ...projects.map((p) => ({ value: String(p.id), label: p.name }))],
-    [projects],
-  );
+  /** #4735: проекты — множественным выбором; в фильтре они строкой через запятую. */
+  const pickedProjects = filters.projectId ? filters.projectId.split(',').filter(Boolean) : [];
+  const toggleProject = (id: string, on: boolean) => {
+    const next = on ? [...pickedProjects.filter((x) => x !== id), id] : pickedProjects.filter((x) => x !== id);
+    patch({ projectId: next.join(',') });
+  };
+  const projectLabel = pickedProjects.length === 0 ? 'Все проекты'
+    : pickedProjects.length === 1 ? (projects.find((p) => String(p.id) === pickedProjects[0])?.name ?? 'Проект')
+      : `Проекты: ${pickedProjects.length}`;
   const peopleOptions = useMemo(
     () => [
       { value: '', label: 'Любой исполнитель' },
@@ -321,6 +327,8 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
             </Menu.Portal>
           </Menu.Root>
         </span>
+        {/* #4735: «Мои задачи» — в «Избранное» сайдбара, оттуда сюда одним нажатием */}
+        <FavoriteStar kind="view" id="my-tasks" title="Мои задачи" className="ui-toggle ui-toggle-sm" />
         <span className="tasks-v2-sep" aria-hidden />
         <Toggle
           pressed={picked.includes('all')}
@@ -364,7 +372,36 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
       </div>
 
       <div className={`ui-toolbar tasks-v2-filters${filtersOpen ? ' open' : ''}`}>
-        <Select ariaLabel="Проект" size="sm" value={filters.projectId} onValueChange={(v) => patch({ projectId: v })} options={projectOptions} />
+        <Menu.Root>
+          <Menu.Trigger className="ui-select-trigger ui-input-sm" aria-label="Проекты" title="Выбрать один или несколько проектов">
+            <span className="ui-select-value">{projectLabel}</span>
+            <Icon name="chevron-down" size={14} />
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Positioner className="ui-positioner" sideOffset={4} align="start">
+              <Menu.Popup className="ui-popup ui-menu" style={{ maxHeight: 360, overflowY: 'auto' }}>
+                <Menu.Item className="ui-menu-item" onClick={() => patch({ projectId: '' })}>
+                  <span className="tasks-my-check" aria-hidden>{pickedProjects.length === 0 && <Icon name="check" size={14} />}</span>
+                  <span className="ui-menu-label">Все проекты</span>
+                </Menu.Item>
+                {projects.map((p) => (
+                  <Menu.CheckboxItem
+                    key={p.id}
+                    className="ui-menu-item"
+                    checked={pickedProjects.includes(String(p.id))}
+                    onCheckedChange={(on) => toggleProject(String(p.id), on)}
+                    closeOnClick={false}
+                  >
+                    <span className="tasks-my-check" aria-hidden>
+                      <Menu.CheckboxItemIndicator><Icon name="check" size={14} /></Menu.CheckboxItemIndicator>
+                    </span>
+                    <span className="ui-menu-label">{p.name}</span>
+                  </Menu.CheckboxItem>
+                ))}
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
         <Select ariaLabel="Исполнитель" size="sm" value={filters.assigneeId} onValueChange={(v) => patch({ assigneeId: v })} options={peopleOptions} />
         <Select ariaLabel="Приоритет" size="sm" value={filters.priority} onValueChange={(v) => patch({ priority: v })} options={PRIORITY_OPTIONS} />
         <Select ariaLabel="Срок" size="sm" value={filters.due} onValueChange={(v) => patch({ due: v })} options={DUE_OPTIONS} />

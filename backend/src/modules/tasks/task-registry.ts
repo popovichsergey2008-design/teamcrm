@@ -236,7 +236,10 @@ export function buildRegistry(tenantId: string, userId: string, f: RegistryFilte
     return `$${params.length}`;
   };
 
-  if (f.projectId) where.push(`t.project_id = ${add(f.projectId)}`);
+  // #4735: один проект или несколько через запятую («12,15,31») — фильтр с множественным выбором
+  const projectIds = String(f.projectId ?? '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x));
+  if (projectIds.length === 1) where.push(`t.project_id = ${add(projectIds[0])}`);
+  else if (projectIds.length > 1) where.push(`t.project_id = ANY(${add(projectIds)}::bigint[])`);
 
   if (f.assigneeId === 'none') where.push('t.assignee_id IS NULL');
   else if (f.assigneeId) where.push(`t.assignee_id = ${add(f.assigneeId)}`);

@@ -268,9 +268,10 @@ export class TaskRegistryQueryDto {
   @MaxLength(120)
   q?: string;
 
+  /** Один проект или несколько через запятую (#4735). */
   @IsOptional()
   @IsString()
-  @MaxLength(32)
+  @MaxLength(1000)
   projectId?: string;
 
   /** Идентификатор либо `none` — «без исполнителя». */

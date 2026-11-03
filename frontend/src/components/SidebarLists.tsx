@@ -56,7 +56,8 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
 
   const goFav = (f: Favorite) => {
     onGo();
-    if (f.kind === 'project') navigate({ section: 'projects', projectId: f.id });
+    if (f.kind === 'view') navigate({ section: 'tasks' }); // #4735: «Мои задачи» по всем проектам
+    else if (f.kind === 'project') navigate({ section: 'projects', projectId: f.id });
     else if (f.projectId) navigate({ section: 'projects', projectId: f.projectId, taskId: f.id });
   };
   const goChatDraft = async (key: string) => {
@@ -119,7 +120,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
               {favs.map((f) => (
                 <li key={`${f.kind}:${f.id}`} className="sbl-row">
                   <button type="button" className="sbl-item" onClick={() => goFav(f)} title={f.title}>
-                    <Icon name={f.kind === 'project' ? 'folder' : 'check-circle'} size={15} />
+                    <Icon name={f.kind === 'project' ? 'folder' : f.kind === 'view' ? 'user' : 'check-circle'} size={15} />
                     <span className="sbl-text">{f.kind === 'task' ? `#${f.id} ` : ''}{f.title}</span>
                   </button>
                   <button type="button" className="sbl-x" onClick={() => toggleFavorite(f)} title="Убрать из избранного" aria-label={`Убрать «${f.title}» из избранного`}>

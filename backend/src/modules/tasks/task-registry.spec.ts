@@ -80,6 +80,12 @@ describe('buildRegistry: фильтры', () => {
     expect(q.params).toEqual(['1', '7', DAY_END, '12', '9', 'high']);
   });
 
+  it('#4735: несколько проектов через запятую — одним параметром-массивом, мусор отбрасывается', () => {
+    const q = buildRegistry('1', '7', { ...base, projectId: '12, 15,x;DROP,31' });
+    expect(q.where).toContain('t.project_id = ANY($4::bigint[])');
+    expect(q.params).toEqual(['1', '7', DAY_END, ['12', '15', '31']]);
+  });
+
   it('выдуманный приоритет не попадает в запрос', () => {
     const q = buildRegistry('1', '7', { ...base, priority: 'сверхсрочно' });
     expect(q.where).not.toContain('t.priority');
