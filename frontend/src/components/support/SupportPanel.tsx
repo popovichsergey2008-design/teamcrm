@@ -970,7 +970,7 @@ export default function SupportPanel({ embedded = false, request, open: openProp
                             : m.authorName ?? (m.kind === 'user' ? 'Клиент' : 'Специалист')}
                         <span className="dim support-msg-time">{stampLabel(m.createdAt)}</span>
                       </div>
-                      {m.body && <MessageText text={m.body} className="support-msg-text" />}
+                      {m.body && <MessageText text={m.body} className="support-msg-text" sectionLinks />}
                       {/*
                         Файл берём через ручку разговора, а не общую /files/:id.
 

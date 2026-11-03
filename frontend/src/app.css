@@ -1870,7 +1870,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   background: var(--bg-elev); border-top: 1px solid var(--border);
 }
 /* Несохранённое видно боковым зрением: одной рамки для этого мало. */
-.task-save-bar.is-dirty { border-top-color: var(--accent); background: var(--accent-soft); }
+/* #4738: подсветка поверх сплошного фона — в тёмной теме --accent-soft прозрачен и сквозь полосу просвечивала карточка */
+.task-save-bar.is-dirty { border-top-color: var(--accent); background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-elev); }
 .task-save-bar.is-dirty .task-save-note { color: var(--accent); font-weight: 600; }
 
 /*

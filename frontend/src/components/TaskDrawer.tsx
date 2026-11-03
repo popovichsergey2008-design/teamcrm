@@ -475,6 +475,48 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
   // BLOCKED — не правка полей, а метка состояния: её ставят и снимают одним нажатием.
   const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
+
+  /*
+    «Копировать задачу» (#4736): новая задача с тем же содержимым — название с пометкой
+    «(копия)», описание, исполнитель, соисполнители, наблюдатели, приоритет, оценка,
+    направления, теги и чек-лист (пункты не отмечены). Срок — только если ещё не прошёл.
+    Постановщик — тот, кто копирует; встаёт в первую колонку. Открываем копию сразу:
+    поправить пару полей и запустить, не прописывая заново.
+  */
+  const [copying, setCopying] = useState(false);
+  const copyTask = async () => {
+    setCopying(true); setErr('');
+    try {
+      const checklist = (await api.listChecklist(String(task.id)).catch(() => [])).map((i: { text: string }) => i.text).filter(Boolean);
+      const labelIds = (task.labels ?? []).map((l) => String(l.id));
+      const future = task.deadline_at && new Date(task.deadline_at).getTime() > Date.now() ? task.deadline_at : undefined;
+      const copy = await api.createTask({
+        projectId: String(task.project_id),
+        title: `${task.title} (копия)`.slice(0, 255),
+        description: task.description ?? undefined,
+        assigneeId: task.assignee_id ?? undefined,
+        priority: task.priority,
+        deadlineAt: future,
+        estimateHours: task.estimate_hours ? Number(task.estimate_hours) : undefined,
+        requiresApproval: task.requires_approval,
+        directions: task.directions?.length ? task.directions : undefined,
+        checklist: checklist.length ? checklist : undefined,
+        labelIds,
+        // теги взяты у исходной задачи, которую уже подтвердили, — второй раз не спрашиваем
+        tagsConfirmed: labelIds.length > 0, confirmedWithoutTags: labelIds.length === 0,
+        coAssigneeIds: participants.filter((x) => x.role === 'co_assignee').map((x) => String(x.user_id)),
+        watcherIds: participants.filter((x) => x.role === 'watcher').map((x) => String(x.user_id)),
+        // копируют осознанно — предупреждение о нагрузке исполнителя не останавливает
+        confirmWorkload: true,
+      });
+      toastSaved('Копия создана', 'Поправьте, что нужно, — задача уже на доске');
+      navigate({ section: 'projects', projectId: String(copy.project_id), taskId: String(copy.id) });
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось скопировать задачу');
+    } finally {
+      setCopying(false);
+    }
+  };
   // сменить статус = переместить в колонку доски (наверх колонки)
   const [moving, setMoving] = useState(false);
   /** Открыто окно объединения: поиск дубля и предпросмотр. */
@@ -877,6 +919,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             )}
             <MenuItem onSelect={() => { setCheckNow(true); setTab('check'); }} icon={<Icon name="eye" size={15} />} disabled={moving}>
               Проверить было/стало
+            </MenuItem>
+            <MenuItem onSelect={() => void copyTask()} icon={<Icon name="copy" size={15} />} disabled={moving || copying}>
+              {copying ? 'Копирую…' : 'Копировать задачу'}
             </MenuItem>
             {/* Шаблон — про СПОСОБ работы, поэтому среди действий над задачей целиком. */}
             <MenuItem onSelect={() => setSaveTpl(true)} icon={<Icon name="copy" size={15} />} disabled={moving}>

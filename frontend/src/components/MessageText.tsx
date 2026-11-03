@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { mdToHtml } from '../lib/rich-text';
 import { markFragment } from '../lib/quote-mark';
 import { hydrateImages } from './RichText';
+import { linkSections } from '../lib/section-links';
 
 /**
  * Текст сообщения: ссылки кликаются, упоминания выделены, разметка видна.
@@ -15,9 +16,11 @@ import { hydrateImages } from './RichText';
  * Хранится по-прежнему ТЕКСТ с лёгкой разметкой: сообщения уходят в письма, в
  * Telegram, в поиск и к ИИ — там HTML был бы мусором.
  */
-export function MessageText({ text, className, mark }: {
+export function MessageText({ text, className, mark, sectionLinks }: {
   text: string;
   className?: string;
+  /** «Настройки» → «Интеграции» в тексте — ссылками на разделы (#4737, ответы поддержки). */
+  sectionLinks?: boolean;
   /** Процитированный кусок — подсветить его внутри текста, пока сообщение «найдено». */
   mark?: string | null;
 }) {
@@ -30,6 +33,12 @@ export function MessageText({ text, className, mark }: {
     if (!root) return;
     return hydrateImages(root);
   }, [html]);
+
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !sectionLinks) return;
+    return linkSections(root);
+  }, [html, sectionLinks]);
 
   // Подсветка цитаты живёт поверх готовой разметки и снимается, не оставляя следа.
   useEffect(() => {

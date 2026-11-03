@@ -374,3 +374,7 @@
   .support-head-drag .support-head-handle { cursor: grab; }
   .support-dock.care-dragging .support-head-drag { cursor: grabbing; }
 }
+
+/* #4737: «Настройки» → «Интеграции» в ответе поддержки — ссылки на разделы */
+.msg-section-link { color: var(--accent); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; cursor: pointer; }
+.msg-section-link:hover { text-decoration-style: solid; }
