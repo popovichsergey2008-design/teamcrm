@@ -65,6 +65,14 @@ type Item = {
   subs?: { label: string; icon: IconName; route: Route; roles?: Role[] }[];
 };
 
+/*
+  #4725: «Избранное» — такой же пункт меню, как разделы: его перетаскивают, двигают
+  шестерёнкой и прячут. Раздела-страницы за ним нет — это блок списков, поэтому ключ
+  не входит в маршруты, а главной страницей его сделать нельзя.
+*/
+const FAV = 'fav' as Section;
+const FAV_ITEM: Item = { section: FAV, label: 'Избранное', icon: 'star', hint: 'Избранное, последние задачи и черновики' };
+
 const MENU: Item[] = [
   {
     section: 'focus',
@@ -259,7 +267,8 @@ export function Sidebar({
 
   const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
     && (!i.devOnly || CLIENTS_ENABLED));
-  const ordered = applyOrder(allowed, prefs);
+  // «Избранное» по умолчанию — под разделами, как было до настройки (#4725)
+  const ordered = applyOrder([...allowed, FAV_ITEM], prefs);
   const menuItems = applyHidden(ordered, prefs);
   const hiddenItems = ordered.filter((i) => isHidden(i.section, prefs));
   // Меню уже трогали: только тогда «Вернуть по умолчанию» вообще имеет смысл.
@@ -287,6 +296,8 @@ export function Sidebar({
   const startDrag = (e: { button: number; pointerType: string; clientY: number; target: EventTarget }, section: string) => {
     if (e.button !== 0 || e.pointerType !== 'mouse' || collapsed) return;
     if ((e.target as HTMLElement).closest('.nav-gear')) return;
+    // у «Избранного» тянут за заголовок: строки внутри — ссылки, клик по ним не должен стать переносом
+    if ((e.target as HTMLElement).closest('.sbl-body')) return;
     const groups = Array.from(navRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? []);
     const from = menuItems.findIndex((i) => i.section === section);
     if (from < 0 || groups.length !== menuItems.length) return;
@@ -563,6 +574,7 @@ export function Sidebar({
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav ref={navRef} className={`nav-main${drag ? ' nav-editing' : ''}`} aria-label="Разделы">
           {menuItems.map((item) => {
+            if (item.section === FAV && collapsed) return null;
             // реестр задач живёт внутри «Проектов» — там и подсветка
             const active = route.section === item.section || (item.section === 'projects' && route.section === 'tasks');
             // Ноль не показываем вовсе — по ТЗ панель молчит, пока от человека
@@ -598,11 +610,12 @@ export function Sidebar({
                 key={item.section}
                 className={`nav-group${drag?.section === item.section ? ' nav-group-dragged' : ''}`}
                 data-tour={`nav-${item.section}`}
-                onMouseEnter={() => onHoverSection(item.section)}
+                onMouseEnter={() => { if (item.section !== FAV) onHoverSection(item.section); }}
                 onPointerDown={(e) => startDrag(e, item.section)}
                 style={drag ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(idx)}px)` } : undefined}
               >
-                {link({ section: item.section }, active, 'nav-item', item.label, (
+                {/* #4713, #4715, #4725: избранное и черновики; модуль грузится после первого экрана */}
+                {item.section === FAV ? <SidebarLists onGo={() => setOpen(false)} /> : link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
                     <span className="nav-label">{item.label}</span>
@@ -641,7 +654,7 @@ export function Sidebar({
                       </button>
                     )}
                   >
-                    {home === item.section
+                    {item.section === FAV ? null : home === item.section
                       ? <MenuItem disabled icon={<Icon name="home" size={15} />} onSelect={() => undefined}>Это главная страница</MenuItem>
                       : <MenuItem icon={<Icon name="home" size={15} />} onSelect={() => makeHome(item.section)}>Сделать главной страницей</MenuItem>}
                     {idx > 0 && <MenuItem icon={<Icon name="arrow-up" size={15} />} onSelect={() => shift(item.section, -1)}>Переместить выше</MenuItem>}
@@ -692,7 +705,10 @@ export function Sidebar({
                 <>
                   {hiddenItems.map((item) => (
                     <div key={item.section} className="nav-archive-row">
-                      {link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
+                      {/* у «Избранного» страницы нет — только вернуть в меню */}
+                      {item.section === FAV ? (
+                        <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
+                      ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
                         <>
                           <Icon name={item.icon} size={16} />
                           <span className="nav-label">{item.label}</span>
@@ -710,8 +726,6 @@ export function Sidebar({
               )}
             </div>
           )}
-          {/* #4713, #4715: избранное и черновики — под разделами; модуль грузится после первого экрана */}
-          {!collapsed && <SidebarLists onGo={() => setOpen(false)} />}
           {/*
             #4727: AI-агент и личный кабинет — в конце прокрутки, ниже всех пунктов меню
             (раньше стояли над прокруткой и отнимали у неё место). Внизу остаётся аккаунт.
