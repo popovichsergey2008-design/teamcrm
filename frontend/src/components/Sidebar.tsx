@@ -713,16 +713,16 @@ export function Sidebar({
           {/* #4713, #4715: избранное и черновики — под разделами; модуль грузится после первого экрана */}
           {!collapsed && <SidebarLists onGo={() => setOpen(false)} />}
           {/*
-            #4727: AI агент и личный кабинет — в конце прокрутки, ниже всех пунктов меню
+            #4727: AI-агент и личный кабинет — в конце прокрутки, ниже всех пунктов меню
             (раньше стояли над прокруткой и отнимали у неё место). Внизу остаётся аккаунт.
           */}
           <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {/* AI Секретарь: показываем ровно то, что записано в журнале действий.
+            {/* AI-агент (бывший AI Секретарь, #4724): показываем ровно то, что записано в журнале действий.
                 Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
-            <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Работает в фоновом режиме и автоматически выполняет поставленные на него задачи">
+            <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Работает в фоновом режиме">
               <Icon name="sparkles" size={18} />
               <span className="nav-label nav-secretary-text">
-                <span>AI агент · {secretary?.actions ?? 0}</span>
+                <span>AI-агент · {secretary?.actions ?? 0}</span>
                 <span className="nav-secretary-saved">
                   {waiting > 0
                     ? <b className="nav-secretary-waiting">ждут решения: {waiting}</b>

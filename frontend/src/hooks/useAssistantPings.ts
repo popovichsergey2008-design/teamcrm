@@ -25,8 +25,8 @@ export function useAssistantPings(enabled: boolean, onOpenFocus: () => void): vo
     const socket = getSocket();
 
     const onPing = (p: PingPayload) => {
-      showToast({ title: 'Секретарь напоминает', body: p.text, section: 'focus' });
-      showNotification('Секретарь напоминает', p.text, () => open.current());
+      showToast({ title: 'AI-агент напоминает', body: p.text, section: 'focus' });
+      showNotification('AI-агент напоминает', p.text, () => open.current());
       notifyPingArrived();
       // без звука: напоминание о просроченной задаче — не срочный вызов, а фон
     };

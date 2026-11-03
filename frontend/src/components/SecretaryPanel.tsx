@@ -79,16 +79,18 @@ export function SecretaryPanel({ canManage = false, focusId = null, onClose }: {
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer pings-drawer" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3 title="Работает в фоновом режиме и автоматически выполняет поставленные на него задачи"><Icon name="sparkles" size={18} /> AI агент</h3>
+          <h3><Icon name="sparkles" size={18} /> AI-агент</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
+        {/* #4724: чем агент отличается от QEVO Bot — первой строкой, текст заказчика дословно */}
+        <p className="muted" style={{ margin: '0 0 10px' }}>Работает в фоновом режиме и автоматически выполняет поставленные на него задачи</p>
 
         {/* 02.11, заказчик: написать агенту — в самом верху, на любой вкладке */}
         <Ask />
 
         <Tabs
           className="sp-tabs"
-          ariaLabel="Разделы AI агента"
+          ariaLabel="Разделы AI-агента"
           value={tab}
           onValueChange={setTab}
           items={[
@@ -197,7 +199,7 @@ function Ask() {
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void ask(); }}
           placeholder="что с проектом Сайт · кто свободен · что горит"
-          aria-label="Сообщение AI агенту"
+          aria-label="Сообщение AI-агенту"
         />
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => void ask()} disabled={busy}>
           {busy ? 'Смотрю…' : 'Спросить'}

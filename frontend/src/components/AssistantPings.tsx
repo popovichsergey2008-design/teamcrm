@@ -230,7 +230,7 @@ export function AssistantPings({ today, onOpenTask, onPlanned }: {
       */}
       <button className="ping-strip" onClick={() => setOpen(true)} title="Открыть напоминания секретаря">
         <Icon name="bell" size={15} />
-        <span className="ping-strip-label">Секретарь напоминает</span>
+        <span className="ping-strip-label">AI-агент напоминает</span>
         <span className={`ping-strip-count${urgent > 0 ? ' urgent' : ''}`}>{items.length}</span>
         <span className="ping-strip-preview">{pingPreview(items)}</span>
         <span className="ping-strip-go">Разобрать <Icon name="chevron-right" size={14} /></span>
