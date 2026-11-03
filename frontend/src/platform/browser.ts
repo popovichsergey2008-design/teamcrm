@@ -50,6 +50,28 @@ function notificationPermission(): NotificationPermissionState {
 /** Показанные системные уведомления браузера: прочитанное закрываем (#1531). */
 const shown = new Set<{ n: Notification; key: string | null }>();
 
+/*
+  #4710: Windows убирает уведомление браузера через ~5 с — заказчик не успевал прочитать.
+  Пока вкладка не на виду, уведомление держится, пока его не нажмут или не закроют
+  (requireInteraction); тег общий, поэтому на экране всегда одно — последнее.
+  Вернулся в окно сам — системное убираем: всё пришедшее ждёт в «Пропущенных» внутри.
+*/
+let stickyWatch = false;
+function closeStickyOnReturn() {
+  if (stickyWatch || typeof document === 'undefined') return;
+  stickyWatch = true;
+  const close = () => {
+    if (document.hidden) return;
+    for (const s of [...shown]) {
+      if (!s.n.requireInteraction) continue;
+      try { s.n.close(); } catch { /* уже закрыто */ }
+      shown.delete(s);
+    }
+  };
+  document.addEventListener('visibilitychange', close);
+  window.addEventListener('focus', close);
+}
+
 export const browserBridge: PlatformBridge = {
   info(): PlatformInfo {
     return { kind: buildKind(), os: detectOs(), nativeVersion: null, bundleVersion: BUNDLE_VERSION, model: deviceModel() };
@@ -72,7 +94,9 @@ export const browserBridge: PlatformBridge = {
     show(title, body, onClick, key) {
       if (notificationPermission() !== 'granted') return;
       try {
-        const n = new Notification(title, { body, tag: 'teamcrm-chat', renotify: true } as NotificationOptions);
+        const sticky = document.hidden || !document.hasFocus();
+        if (sticky) closeStickyOnReturn();
+        const n = new Notification(title, { body, tag: 'teamcrm-chat', renotify: true, requireInteraction: sticky } as NotificationOptions);
         n.onclick = () => { window.focus(); n.close(); onClick?.(); };
         shown.add({ n, key: key ?? null });
         n.onclose = () => { for (const s of shown) if (s.n === n) shown.delete(s); };
