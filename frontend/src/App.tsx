@@ -600,7 +600,7 @@ export function App() {
     user?.id ? String(user.id) : null,
     // открытый чат — в разделе или в окне поверх CRM: по нему всплывашки не нужны
     route.section === 'chat' && !route.view ? openChatId : overlayActive,
-    () => navigate({ section: 'chat' }),
+    (chatId, threadId) => navigate({ section: 'chat', chatId, threadId: chatId ? threadId : undefined }),
   );
   // заголовок вкладки мигает, когда появилось новое: в соседней вкладке иначе не видно
   useTabAlert(crmAlive, counters, unread);

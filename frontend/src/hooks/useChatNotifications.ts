@@ -13,7 +13,7 @@ import { playMessageChime } from '../lib/sound';
  * @param meId кто я — о собственных сообщениях не уведомляем
  * @param openChatId чат, открытый прямо сейчас — по нему уведомление не показываем
  */
-export function useChatNotifications(enabled: boolean, meId: string | null, openChatId: string | null, onOpenChats: () => void) {
+export function useChatNotifications(enabled: boolean, meId: string | null, openChatId: string | null, onOpenChats: (chatId?: string, threadId?: string) => void) {
   const [unread, setUnread] = useState(0);
   /** Режим уведомлений по чатам — из списка: тихие чаты не звучат и не считаются в панели. */
   const modes = useRef<Map<string, string>>(new Map());
@@ -62,8 +62,10 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       const body = m.body?.trim() || (m.file_name ? `Файл: ${m.file_name}` : 'Вложение');
       // Показываем сразу двумя способами: системное уведомление видно и при свёрнутом
       // окне, но требует разрешения; своё — работает всегда, пока вкладка открыта.
-      showNotification(title, body, () => openChats.current());
-      showToast({ title, body, chatId: String(p.chatId), threadId: m.thread_root_id ? String(m.thread_root_id) : undefined });
+      const threadId = m.thread_root_id ? String(m.thread_root_id) : undefined;
+      // #4710: щелчок по системному уведомлению ведёт в сам чат (и ветку), а не в общий список
+      showNotification(title, body, () => openChats.current(String(p.chatId), threadId));
+      showToast({ title, body, chatId: String(p.chatId), threadId });
       playMessageChime();
     };
 
