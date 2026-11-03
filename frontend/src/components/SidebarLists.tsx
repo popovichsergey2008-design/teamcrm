@@ -6,27 +6,27 @@ import { navigate, useRoute } from '../lib/router';
 import { RECENT_LABEL, recentState, TaskStateDot } from './TaskStateDot';
 import { favorites, FAVORITES_CHANGED, initFavorites, toggleFavorite, type Favorite } from '../lib/favorites';
 import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, type TaskDraft } from '../lib/task-draft';
-import { CHAT_DRAFT_CHANGED, clearDraft, listChatDrafts } from '../lib/chat-drafts';
 import './sidebar-lists.css';
 
 /**
- * «Избранное» (#4713) в левом сайдбаре — под разделами, пунктом как остальные.
- * Черновики (#4715) — внутри «Избранного» (заказчик, 02.11), отдельной группой внизу.
+ * «Избранное» (#4713) и «Черновики» (#4715) в левом сайдбаре — пунктами меню, как
+ * разделы: каждый перетаскивается, двигается шестерёнкой и прячется (Sidebar.tsx).
+ * 03.11, заказчик: черновики — отдельным пунктом, и только задачи: недописанные
+ * сообщения чатов сюда не попадают (они и так ждут в поле ввода своего чата).
  *
  * Отдельный модуль со своими стилями: грузится после первого экрана и не утяжеляет
  * его. #4733: при каждой загрузке страницы свёрнуто — и «Избранное», и «Последние
  * задачи» внутри него (тоже кнопка, раскрывается отдельно); отмеченное — ниже.
  */
-export default function SidebarLists({ onGo }: { onGo: () => void }) {
+export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void; part?: 'fav' | 'drafts' }) {
   const { user } = useAuth();
   initFavorites(user?.uiPrefs);
   const [favs, setFavs] = useState<Favorite[]>(favorites);
   const [tasks, setTasks] = useState<TaskDraft[]>(() => listDrafts(user?.id));
-  const [chats, setChats] = useState(() => listChatDrafts());
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [recent, setRecent] = useState<RecentTask[]>([]);
   const route = useRoute();
-  const favOpen = open.fav === true;
+  const favOpen = part === 'fav' && open.fav === true;
   // «Последние задачи» — при раскрытии и при переходе к другой задаче (её только что открыли)
   useEffect(() => {
     if (!favOpen) return;
@@ -37,15 +37,13 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
 
   useEffect(() => {
     const f = () => setFavs([...favorites()]);
-    const d = () => { setTasks(listDrafts(user?.id)); setChats(listChatDrafts()); };
+    const d = () => setTasks(listDrafts(user?.id));
     window.addEventListener(FAVORITES_CHANGED, f);
     window.addEventListener(TASK_DRAFT_CHANGED, d);
-    window.addEventListener(CHAT_DRAFT_CHANGED, d);
     window.addEventListener('storage', d);
     return () => {
       window.removeEventListener(FAVORITES_CHANGED, f);
       window.removeEventListener(TASK_DRAFT_CHANGED, d);
-      window.removeEventListener(CHAT_DRAFT_CHANGED, d);
       window.removeEventListener('storage', d);
     };
   }, [user?.id]);
@@ -60,27 +58,42 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
     else if (f.kind === 'project') navigate({ section: 'projects', projectId: f.id });
     else if (f.projectId) navigate({ section: 'projects', projectId: f.projectId, taskId: f.id });
   };
-  const goChatDraft = async (key: string) => {
-    const [kind, id] = key.split(':');
-    onGo();
-    if (kind === 'chat') navigate({ section: 'chat', chatId: id });
-    else if (kind === 'task') {
-      const t = await api.taskBrief(id).catch(() => null);
-      if (t?.projectId) navigate({ section: 'projects', projectId: String(t.projectId), taskId: id });
-    }
-  };
-  /*
-    Черновики ответов в ветке (thread:…) без чата не открыть — их не показываем.
-    Переписку, открытую сейчас, тоже: человек печатает в ней, и строка в сайдбаре
-    повторяла каждую букву (жалоба 02.11). Черновик появится, когда он из неё уйдёт.
-  */
-  const here = new Set([route.chatId ? `chat:${route.chatId}` : '', route.taskId ? `task:${route.taskId}` : ''].filter(Boolean));
-  const chatDrafts = chats.filter((c) => (c.key.startsWith('chat:') || c.key.startsWith('task:')) && !here.has(c.key)).slice(0, 10);
-  const draftCount = tasks.length + chatDrafts.length;
-
-  const total = favs.length + draftCount;
   const goRecent = (t: RecentTask) => { onGo(); navigate({ section: 'projects', projectId: t.projectId, taskId: t.id }); };
-  const empty = <p className="sbl-empty">Отметьте звёздочкой проект или задачу — они будут здесь. Начатые и брошенные задачи и сообщения — тоже.</p>;
+
+  if (part === 'drafts') {
+    return (
+      <div className="sbl">
+        <button type="button" className="nav-item" aria-expanded={isOpen('drafts')} onClick={() => flip('drafts')}>
+          <Icon name="edit" size={18} />
+          <span className="nav-label">Черновики</span>
+          {tasks.length > 0 && <span className="sbl-count">{tasks.length}</span>}
+          <Icon name={isOpen('drafts') ? 'chevron-down' : 'chevron-right'} size={14} />
+        </button>
+        {isOpen('drafts') && (!tasks.length
+          ? <p className="sbl-empty">Начали задачу и закрыли окно, не поставив, — она будет здесь.</p>
+          : (
+            <div className="sbl-body">
+              <ul className="sbl-list">
+                {tasks.map((d) => (
+                  <li key={d.id} className="sbl-row">
+                    <button type="button" className="sbl-item" title="Продолжить задачу" onClick={() => { onGo(); openDraft(d, (projectId) => navigate({ section: 'projects', projectId })); }}>
+                      <Icon name="edit" size={15} />
+                      <span className="sbl-text">{draftLabel(d)}</span>
+                    </button>
+                    <button type="button" className="sbl-x" onClick={() => removeDraft(d.id)} title="Удалить черновик" aria-label="Удалить черновик задачи">
+                      <Icon name="close" size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+      </div>
+    );
+  }
+
+  const total = favs.length;
+  const empty = <p className="sbl-empty">Отметьте звёздочкой проект, задачу или «Мои задачи» — они будут здесь.</p>;
 
   return (
     <div className="sbl">
@@ -113,7 +126,7 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
                 );
               })}
             </ul>}
-            {(favs.length > 0 || draftCount > 0) && <div className="sbl-sub">Отмеченные</div>}
+            {favs.length > 0 && <div className="sbl-sub">Отмеченные</div>}
           </>)}
           {favs.length > 0 && (
             <ul className="sbl-list">
@@ -130,33 +143,6 @@ export default function SidebarLists({ onGo }: { onGo: () => void }) {
               ))}
             </ul>
           )}
-          {draftCount > 0 && (<>
-            <div className="sbl-sub">Черновики · {draftCount}</div>
-            <ul className="sbl-list">
-              {tasks.map((d) => (
-                <li key={d.id} className="sbl-row">
-                  <button type="button" className="sbl-item" title="Продолжить задачу" onClick={() => { onGo(); openDraft(d, (projectId) => navigate({ section: 'projects', projectId })); }}>
-                    <Icon name="edit" size={15} />
-                    <span className="sbl-text">{draftLabel(d)}</span>
-                  </button>
-                  <button type="button" className="sbl-x" onClick={() => removeDraft(d.id)} title="Удалить черновик" aria-label="Удалить черновик задачи">
-                    <Icon name="close" size={12} />
-                  </button>
-                </li>
-              ))}
-              {chatDrafts.map((c) => (
-                <li key={c.key} className="sbl-row">
-                  <button type="button" className="sbl-item" title="Вернуться к сообщению" onClick={() => void goChatDraft(c.key)}>
-                    <Icon name="chat" size={15} />
-                    <span className="sbl-text">{c.key.startsWith('task:') ? `Чат задачи #${c.key.slice(5)}: ` : ''}{c.text.replace(/\s+/g, ' ').slice(0, 80)}</span>
-                  </button>
-                  <button type="button" className="sbl-x" onClick={() => clearDraft(c.key)} title="Удалить черновик" aria-label="Удалить черновик сообщения">
-                    <Icon name="close" size={12} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>)}
         </div>
       ))}
     </div>

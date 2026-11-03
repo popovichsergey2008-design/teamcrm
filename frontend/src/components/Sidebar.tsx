@@ -71,7 +71,12 @@ type Item = {
   не входит в маршруты, а главной страницей его сделать нельзя.
 */
 const FAV = 'fav' as Section;
-const FAV_ITEM: Item = { section: FAV, label: 'Избранное', icon: 'star', hint: 'Избранное, последние задачи и черновики' };
+const FAV_ITEM: Item = { section: FAV, label: 'Избранное', icon: 'star', hint: 'Избранное и последние задачи' };
+/** #4715 (03.11): «Черновики» — отдельный пункт меню, устроен так же, как «Избранное». */
+const DRAFTS = 'drafts' as Section;
+const DRAFTS_ITEM: Item = { section: DRAFTS, label: 'Черновики', icon: 'edit', hint: 'Начатые и не поставленные задачи' };
+/** Пункты-блоки без своей страницы: ссылкой не открываются, главной не становятся. */
+const isBlock = (s: Section) => s === FAV || s === DRAFTS;
 
 const MENU: Item[] = [
   {
@@ -268,7 +273,7 @@ export function Sidebar({
   const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
     && (!i.devOnly || CLIENTS_ENABLED));
   // «Избранное» по умолчанию — под разделами, как было до настройки (#4725)
-  const ordered = applyOrder([...allowed, FAV_ITEM], prefs);
+  const ordered = applyOrder([...allowed, FAV_ITEM, DRAFTS_ITEM], prefs);
   const menuItems = applyHidden(ordered, prefs);
   const hiddenItems = ordered.filter((i) => isHidden(i.section, prefs));
   // Меню уже трогали: только тогда «Вернуть по умолчанию» вообще имеет смысл.
@@ -574,7 +579,7 @@ export function Sidebar({
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav ref={navRef} className={`nav-main${drag ? ' nav-editing' : ''}`} aria-label="Разделы">
           {menuItems.map((item) => {
-            if (item.section === FAV && collapsed) return null;
+            if (isBlock(item.section) && collapsed) return null;
             // реестр задач живёт внутри «Проектов» — там и подсветка
             const active = route.section === item.section || (item.section === 'projects' && route.section === 'tasks');
             // Ноль не показываем вовсе — по ТЗ панель молчит, пока от человека
@@ -610,12 +615,12 @@ export function Sidebar({
                 key={item.section}
                 className={`nav-group${drag?.section === item.section ? ' nav-group-dragged' : ''}`}
                 data-tour={`nav-${item.section}`}
-                onMouseEnter={() => { if (item.section !== FAV) onHoverSection(item.section); }}
+                onMouseEnter={() => { if (!isBlock(item.section)) onHoverSection(item.section); }}
                 onPointerDown={(e) => startDrag(e, item.section)}
                 style={drag ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(idx)}px)` } : undefined}
               >
                 {/* #4713, #4715, #4725: избранное и черновики; модуль грузится после первого экрана */}
-                {item.section === FAV ? <SidebarLists onGo={() => setOpen(false)} /> : link({ section: item.section }, active, 'nav-item', item.label, (
+                {isBlock(item.section) ? <SidebarLists onGo={() => setOpen(false)} part={item.section === DRAFTS ? 'drafts' : 'fav'} /> : link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
                     <span className="nav-label">{item.label}</span>
@@ -654,7 +659,7 @@ export function Sidebar({
                       </button>
                     )}
                   >
-                    {item.section === FAV ? null : home === item.section
+                    {isBlock(item.section) ? null : home === item.section
                       ? <MenuItem disabled icon={<Icon name="home" size={15} />} onSelect={() => undefined}>Это главная страница</MenuItem>
                       : <MenuItem icon={<Icon name="home" size={15} />} onSelect={() => makeHome(item.section)}>Сделать главной страницей</MenuItem>}
                     {idx > 0 && <MenuItem icon={<Icon name="arrow-up" size={15} />} onSelect={() => shift(item.section, -1)}>Переместить выше</MenuItem>}
@@ -705,8 +710,8 @@ export function Sidebar({
                 <>
                   {hiddenItems.map((item) => (
                     <div key={item.section} className="nav-archive-row">
-                      {/* у «Избранного» страницы нет — только вернуть в меню */}
-                      {item.section === FAV ? (
+                      {/* у «Избранного» и «Черновиков» страницы нет — только вернуть в меню */}
+                      {isBlock(item.section) ? (
                         <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
                       ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
                         <>
