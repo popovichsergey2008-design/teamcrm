@@ -43,7 +43,8 @@ export function useNotificationCenter(signedIn: boolean): void {
       load();
       if (!p?.toast || !p.title || isNativeShell()) return;
       if (document.hidden) showNotification(p.title, p.body ?? '', () => openInboxItem(p.id, p.path), { key: p.path });
-      else showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path });
+      // #4742: «Задача поставлена от вас — проверьте» ждёт «Ок/Править», поэтому не гаснет сама
+      else showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path, sticky: p.eventKey === 'task.auto_confirm' });
       const now = Date.now();
       if (!OWN_CHIME.has(p.eventKey ?? '') && now - lastChime > CHIME_GAP_MS) {
         lastChime = now;

@@ -72,7 +72,7 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       });
       // «Сохранено» гаснет быстрее: это ответ на действие, а не новость, ради
       // которой стоит держать место на экране.
-      arm(item, item.kind === 'saved' ? SAVED_LIFETIME_MS : LIFETIME_MS);
+      if (!item.sticky) arm(item, item.kind === 'saved' ? SAVED_LIFETIME_MS : LIFETIME_MS);
     };
     window.addEventListener(TOAST_EVENT, onToast);
     return () => {
@@ -118,7 +118,7 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       onClick={() => open(t)}
       // читают — не гасим; ушли — даём дочитать
       onMouseEnter={live ? () => clearTimeout(timers.current.get(t.id)) : undefined}
-      onMouseLeave={live ? () => arm(t, t.kind === 'saved' ? SAVED_LIFETIME_MS : AFTER_HOVER_MS) : undefined}
+      onMouseLeave={live && !t.sticky ? () => arm(t, t.kind === 'saved' ? SAVED_LIFETIME_MS : AFTER_HOVER_MS) : undefined}
       title={t.kind === 'saved' ? 'Скрыть'
         : t.section === 'feed' ? 'Открыть ленту'
         : t.section === 'focus' ? 'Открыть фокус дня'

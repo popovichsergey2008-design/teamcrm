@@ -66,6 +66,8 @@ export interface ToastPayload {
   kind?: 'info' | 'saved';
   /** Пробивается сквозь глубокую работу (ТЗ-16): стук «срочно», безопасность. */
   critical?: boolean;
+  /** Не гаснет сама — висит, пока не закроют или не откроют (#4742: «Задача поставлена от вас»). */
+  sticky?: boolean;
 }
 export function showToast(payload: ToastPayload): void {
   // В глубоком фокусе — тишина. Ответ на действие самого человека («сохранено») не
