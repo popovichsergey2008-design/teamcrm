@@ -227,12 +227,13 @@ export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): Com
   }
 
   // ── решения (п. 45): одна строка и кнопка, не ещё один ящик ──
+  // #4734: ведёт в «AI-агент → Ждут решения» (/secretary); /focus/inbox — это почтовые каналы, там этих решений нет
   const waitN = f.waiting.proposals + f.waiting.approvals;
   if (waitN > 0) {
     cand.push({
       weight: f.boss ? 75 : 50, section: 'decide',
-      s: { text: `От вас ждут ${waitN} ${plural(waitN, 'решение', 'решения', 'решений')}.`, refs: [src({ kind: 'decisions', label: `Ждут решения: ${waitN}`, link: '/focus/inbox' })] },
-      action: { kind: 'decisions', label: 'Разобрать', link: '/focus/inbox' },
+      s: { text: `От вас ждут ${waitN} ${plural(waitN, 'решение', 'решения', 'решений')}.`, refs: [src({ kind: 'decisions', label: `Ждут решения: ${waitN}`, link: '/secretary' })] },
+      action: { kind: 'decisions', label: 'Посмотреть решения', link: '/secretary' },
     });
   }
 
@@ -268,8 +269,8 @@ export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): Com
     const n = f.clients.followups;
     cand.push({
       weight: 45, section: 'clients',
-      s: { text: `Клиентам готовы ${n} ${plural(n, 'письмо', 'письма', 'писем')} по итогам встреч — ждут вашей отправки.`, refs: [src({ kind: 'clients', label: `Письма клиентам: ${n}`, link: '/focus/inbox' })] },
-      action: { kind: 'clients', label: 'Посмотреть письма', link: '/focus/inbox' },
+      s: { text: `Клиентам готовы ${n} ${plural(n, 'письмо', 'письма', 'писем')} по итогам встреч — ждут вашей отправки.`, refs: [src({ kind: 'clients', label: `Письма клиентам: ${n}`, link: '/secretary' })] },
+      action: { kind: 'clients', label: 'Посмотреть письма', link: '/secretary' },
     });
   }
 

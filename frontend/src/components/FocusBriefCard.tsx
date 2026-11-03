@@ -124,7 +124,8 @@ export default function FocusBriefCard({ initial }: { initial: FocusBrief }) {
   const go = (link: string | null, ev: FocusBriefEvent) => {
     if (!link) return;
     trackBrief(ev);
-    navigate(link);
+    // #4734: брифинги до 03.11 вели решения в почтовые каналы (/focus/inbox) — их место в «AI-агент → Ждут решения»
+    navigate(link === '/focus/inbox' ? '/secretary' : link);
   };
 
   const openSettings = async () => {
@@ -189,7 +190,7 @@ export default function FocusBriefCard({ initial }: { initial: FocusBrief }) {
       {ready.actions.length > 0 && (
         <div className="fb-actions">
           {ready.actions.map((x) => (
-            <Button key={x.kind} variant="outline" size="sm" onClick={() => go(x.link, 'action_opened')}>{x.label}</Button>
+            <Button key={x.kind} variant="outline" size="sm" onClick={() => go(x.link, 'action_opened')}>{x.kind === 'decisions' ? 'Посмотреть решения' : x.label}</Button>
           ))}
         </div>
       )}
