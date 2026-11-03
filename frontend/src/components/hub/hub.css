@@ -13,7 +13,7 @@
 .hub-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 6px 4px 12px; }
 .hub-head-title { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
 .hub-head-acts { display: inline-flex; gap: 0; }
-.hub-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 8px; }
+.hub-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 8px; }
 
 .hub-badge {
   display: flex; align-items: center; gap: 6px; margin: 2px 8px 4px; padding: 6px 10px;
@@ -58,8 +58,10 @@
 .hub-chip:hover { background: var(--hover); }
 .hub-chip:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 
-.hub-owner { display: flex; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
-.hub-owner-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hub-owner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
+/* узко для имени и кнопки в один ряд — «Написать» уходит строкой ниже, а не режет «руководитель» по буквам */
+.hub-owner-text { flex: 1 1 110px; min-width: 0; display: flex; flex-direction: column; }
+.hub-owner .hub-meta { overflow-wrap: normal; }
 .hub-owner-name { font-size: var(--fs-sm); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* строки записей */
@@ -69,6 +71,10 @@
 .hub-row-compact { align-items: center; padding: 4px 2px; gap: 6px; }
 .hub-row-icon { flex: none; display: inline-flex; color: var(--text-dim); padding-top: 2px; }
 .hub-row-compact .hub-row-icon { padding-top: 0; }
+/* название в базе знаний — в две строки, а не «Документ Google: …» после двух слов */
+.hub-row-compact .hub-row-title {
+  white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35;
+}
 .hub-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .hub-row-title { font-size: var(--fs-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .hub-row-body { font-size: var(--fs-sm); color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
