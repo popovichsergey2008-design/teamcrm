@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { TOAST_EVENT, ToastPayload } from '../lib/notifications';
+import { notifyChatsChanged, TOAST_EVENT, ToastPayload } from '../lib/notifications';
+import { api } from '../lib/api';
 
 interface Toast extends ToastPayload { id: number }
 // #4710: на секунду дольше — заказчик не успевал прочитать
@@ -8,7 +9,8 @@ const LIFETIME_MS = 7000;
 const SAVED_LIFETIME_MS = 2500;
 /** Убрали мышь с всплывашки, которую читали, — ещё столько, чтобы дочитать. */
 const AFTER_HOVER_MS = 3000;
-const MAX_VISIBLE = 3;
+// #4710: столбиком, как в Telegram — несколько сразу, новое снизу
+const MAX_VISIBLE = 4;
 const MAX_MISSED = 20;
 
 /**
@@ -19,7 +21,8 @@ const MAX_MISSED = 20;
  * Это видно всегда: клик открывает чат с сообщением.
  *
  * #4710: исчезнувшее не пропадает — оно уходит в «Пропущенные» (строка внизу справа),
- * оттуда его можно открыть. Пока мышь на всплывашке, она не гаснет.
+ * оттуда его можно открыть. Пока мышь на всплывашке, она не гаснет. Как в Telegram:
+ * столбиком, у сообщения — «Прочитано», над столбиком — «Прочитать все» и «Скрыть все».
  */
 export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport, onOpenInbox }: {
   onOpenChat: (chatId?: string, threadId?: string) => void;
@@ -78,6 +81,23 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Сообщение прочитано: чат отмечаем на сервере, его всплывашки убираем отовсюду. */
+  const markRead = (list: Toast[]) => {
+    const chats = [...new Set(list.filter((t) => t.chatId && (!t.section || t.section === 'chat')).map((t) => t.chatId as string))];
+    const gone = new Set(list.map((t) => t.id));
+    for (const t of [...items, ...missed]) if (t.chatId && chats.includes(t.chatId)) gone.add(t.id);
+    for (const id of gone) drop(id);
+    if (chats.length) void Promise.allSettled(chats.map((id) => api.markChatRead(id))).then(notifyChatsChanged);
+  };
+  /** Скрыть с глаз, но не потерять: всё видимое — в «Пропущенные». */
+  const hideAll = () => {
+    for (const t of items) clearTimeout(timers.current.get(t.id));
+    const news = items.filter((t) => t.kind !== 'saved');
+    setMissed((prev) => [...news.reverse(), ...prev.filter((x) => !news.some((n) => n.id === x.id))].slice(0, MAX_MISSED));
+    setItems([]);
+    setMissedOpen(false);
+  };
+
   const open = (t: Toast) => {
     drop(t.id);
     // «Сохранено» никуда не ведёт: щелчок просто убирает её с глаз.
@@ -115,10 +135,22 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
         <span className="toast-title">{t.title}</span>
         <span className="toast-body">{t.body}</span>
       </span>
+      {t.chatId && (!t.section || t.section === 'chat') && (
+        <span
+          className="toast-close"
+          role="button"
+          aria-label="Отметить прочитанным"
+          title="Прочитано"
+          onClick={(e) => { e.stopPropagation(); markRead([t]); }}
+        >
+          <Icon name="check-check" size={14} />
+        </span>
+      )}
       <span
         className="toast-close"
         role="button"
         aria-label="Скрыть"
+        title="Скрыть"
         onClick={(e) => { e.stopPropagation(); drop(t.id); }}
       >
         <Icon name="close" size={13} />
@@ -127,8 +159,19 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
   );
 
   if (!items.length && !missed.length) return null;
+  const shownCards = [...(missedOpen ? missed : []), ...items].filter((t) => t.kind !== 'saved');
   return (
     <div className="toasts" style={missedOpen ? { maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' } : undefined}>
+      {shownCards.length >= 2 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+          <button className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => markRead(shownCards)}>
+            <Icon name="check-check" size={14} /> Прочитать все
+          </button>
+          <button className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => (missedOpen && !items.length ? setMissedOpen(false) : hideAll())}>
+            <Icon name="close" size={14} /> Скрыть все
+          </button>
+        </div>
+      )}
       {missedOpen && missed.map((t) => card(t, false))}
       {missed.length > 0 && (
         <button className="toast" onClick={() => setMissedOpen((v) => !v)} aria-expanded={missedOpen} title={missedOpen ? 'Свернуть' : 'Показать, что пришло, пока вас не было'}>

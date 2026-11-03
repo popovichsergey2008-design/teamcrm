@@ -53,10 +53,12 @@ const shown = new Set<{ n: Notification; key: string | null }>();
 /*
   #4710: Windows убирает уведомление браузера через ~5 с — заказчик не успевал прочитать.
   Пока вкладка не на виду, уведомление держится, пока его не нажмут или не закроют
-  (requireInteraction); тег общий, поэтому на экране всегда одно — последнее.
-  Вернулся в окно сам — системное убираем: всё пришедшее ждёт в «Пропущенных» внутри.
+  (requireInteraction). Как в Telegram, они встают столбиком — у каждого свой тег, новое
+  не затирает прежнее (больше трёх Windows уберёт в Центр уведомлений, Win+N).
+  Вернулся в окно сам — системные убираем: всё пришедшее ждёт в «Пропущенных» внутри.
 */
 let stickyWatch = false;
+let notifySeq = 0;
 function closeStickyOnReturn() {
   if (stickyWatch || typeof document === 'undefined') return;
   stickyWatch = true;
@@ -96,7 +98,7 @@ export const browserBridge: PlatformBridge = {
       try {
         const sticky = document.hidden || !document.hasFocus();
         if (sticky) closeStickyOnReturn();
-        const n = new Notification(title, { body, tag: 'teamcrm-chat', renotify: true, requireInteraction: sticky } as NotificationOptions);
+        const n = new Notification(title, { body, tag: `qevo-${++notifySeq}`, requireInteraction: sticky } as NotificationOptions);
         n.onclick = () => { window.focus(); n.close(); onClick?.(); };
         shown.add({ n, key: key ?? null });
         n.onclose = () => { for (const s of shown) if (s.n === n) shown.delete(s); };
