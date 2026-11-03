@@ -545,7 +545,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
             </Field>
           )}
 
-          <Field label="Название" htmlFor="task-create-name">
+          {/* #4743: мелкой строкой под полем — название можно не писать */}
+          <Field label="Название" htmlFor="task-create-name" hint="Можно оставить пустым — название по описанию автоматически заполнит AI-агент">
             <Input
               id="task-create-name"
               autoFocus

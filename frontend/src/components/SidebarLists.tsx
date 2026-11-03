@@ -70,7 +70,7 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
           <Icon name={isOpen('drafts') ? 'chevron-down' : 'chevron-right'} size={14} />
         </button>
         {isOpen('drafts') && (!tasks.length
-          ? <p className="sbl-empty">Начали задачу и закрыли окно, не поставив, — она будет здесь.</p>
+          ? <p className="sbl-empty">Начали задачу, закрыли окно и не поставили — она будет здесь.</p>
           : (
             <div className="sbl-body">
               <ul className="sbl-list">
