@@ -1,7 +1,7 @@
 import { ProjectResolverService } from '../nl/project-resolver.service';
 import { TagsService } from '../tags/tags.service';
 import { ProjectViewer } from '../../common/access/project-visibility';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { OrgService } from '../org/org.service';
 import { orgLines } from '../org/org-rules';
 import { Readable } from 'stream';
@@ -46,9 +46,33 @@ async function toBuffer(stream: Readable): Promise<Buffer> {
 /** Больше десяти задач с одной встречи — уже не разбор, а засорение доски. */
 const MAX_AUTO_TASKS = 10;
 
+/** Обработка, не сдвинувшаяся столько времени, — оборвалась (выкладка, падение процесса). */
+const STUCK_AFTER_MIN = 120;
+
 @Injectable()
-export class MeetingsService {
+export class MeetingsService implements OnModuleInit {
   private readonly log = new Logger('Meetings');
+
+  /**
+   * #4772: встреча висела «Расшифровываю…» с 23.10 — процесс перезапустили посреди
+   * расшифровки, и продолжить её было некому. При старте подбираем такие встречи и
+   * начинаем заново: дорожки и файлы лежат в хранилище. Через минуту после старта —
+   * чтобы в сине-зелёной выкладке не перехватить работу у ещё живого прежнего цвета
+   * (а порог в два часа его и так не заденет).
+   */
+  onModuleInit(): void {
+    if (process.env.NODE_ENV === 'test') return;
+    const t = setTimeout(() => { void this.resumeStuck(); }, 60_000);
+    t.unref?.();
+  }
+
+  private async resumeStuck(): Promise<void> {
+    const stuck = await this.repo.stuck(STUCK_AFTER_MIN).catch(() => []);
+    for (const m of stuck) {
+      this.log.warn(`встреча ${m.id} зависла в «${m.status}» — запускаю обработку заново`);
+      await this.retry(m.tenant_id, m.id).catch((e) => this.log.warn(`встреча ${m.id}: ${(e as Error).message}`));
+    }
+  }
 
   /**
    * Кому рассказать о готовом разборе созвона.
@@ -428,13 +452,25 @@ export class MeetingsService {
   private async processNow(tenantId: string, meetingId: string): Promise<void> {
     try {
       const meeting = await this.repo.get(tenantId, meetingId);
-      if (!meeting?.file_id) return;
+      if (!meeting) return;
+      /*
+        #4772: у созвона источник — дорожки участников, а сведённый файл может так и не
+        появиться (процесс оборвался, пока ffmpeg сводил). Раньше без файла повтор молча
+        выходил, и встреча висела «Расшифровываю…» с 23.10. Нет ни файла, ни дорожек —
+        это ошибка, а не вечное ожидание.
+      */
+      const callTracks = meeting.source === 'call' ? await this.repo.tracks(tenantId, meetingId) : [];
+      if (!meeting.file_id && !callTracks.length) {
+        await this.repo.setStatus(meetingId, 'error', 'Запись встречи не сохранилась — расшифровать нечего');
+        await this.postcall.failRest(tenantId, meetingId);
+        return;
+      }
 
       await this.repo.setStatus(meetingId, 'transcribing');
       await this.postcall.mark(tenantId, meetingId, { transcript: 'running' });
 
       // Созвон с сохранёнными дорожками — по дорожкам, как в первый раз: с именами говорящих.
-      const tracks = meeting.source === 'call' ? await this.repo.tracks(tenantId, meetingId) : [];
+      const tracks = callTracks;
       let replies: (Reply & { speakerUserId?: string | null })[];
       if (tracks.length) {
         const loaded = [];
@@ -447,7 +483,7 @@ export class MeetingsService {
         }
         replies = await this.transcribeTracks(tenantId, loaded);
       } else {
-        const { stream } = await this.files.getForDownload(tenantId, meeting.file_id);
+        const { stream } = await this.files.getForDownload(tenantId, String(meeting.file_id));
         const source = await toBuffer(stream);
         replies = meeting.source === 'transcript'
           ? parseSubtitles(source.toString('utf8'))

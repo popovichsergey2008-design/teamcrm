@@ -282,7 +282,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <>
             <button type="button" className="fd-title" onClick={() => open(item)} disabled={!item.taskId}>
               <Icon name={kindIcon(item.kind)} size={isMission ? 18 : 15} /> {item.title}
+              {item.taskId && <span className="dim fd-num"> #{item.taskId}</span>}
             </button>
+            {item.about && <p className="fd-about">{item.about}</p>}
             <div className="fd-meta">
               {item.projectName && <Badge tone="outline">{item.projectName}</Badge>}
               {due && <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>}

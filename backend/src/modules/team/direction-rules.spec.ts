@@ -1,4 +1,4 @@
-import { directionsFromText, listItemsCount } from './direction-rules';
+import { directionsFromText, listItemsCount, skillFromTag } from './direction-rules';
 
 describe('направления задачи по тексту', () => {
   it.each([
@@ -34,5 +34,16 @@ describe('пункты ТЗ', () => {
   it('считает нумерованные и маркированные строки', () => {
     expect(listItemsCount('ТЗ:\n1. Сделать API\n2) Сверстать форму\n- Написать текст\nитог')).toBe(3);
     expect(listItemsCount('Просто одно поручение')).toBe(0);
+  });
+});
+
+describe('#4769: направление по тегу задачи', () => {
+  it('теги заказчика', () => {
+    expect(skillFromTag('Программная задача')).toBe('backend');
+    expect(skillFromTag('Дизайнерская задача')).toBe('design');
+    expect(skillFromTag('Контентная задача')).toBe('content');
+    expect(skillFromTag('Линкбилдинг')).toBe('content');
+    expect(skillFromTag('Клиент-менеджер')).toBeNull();
+    expect(skillFromTag('Отложенная задача')).toBeNull();
   });
 });

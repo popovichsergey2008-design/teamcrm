@@ -59,7 +59,7 @@ export function SecretaryBriefs() {
         <div className="anthill-adm-day">
           <span className="anthill-adm-text">
             <span>Перед встречей — справка</span>
-            <span className="dim">клиент, цель, прошлые решения, просрочки участников; без фактов не приходит</span>
+            <span className="dim">клиент, цель, прошлые решения, просрочки участников; без фактов не приходит. Приходит в колокольчик уведомлений, а также на телефон и в Telegram — по галочкам ниже</span>
           </span>
           <Select
             ariaLabel="Справка перед встречей"

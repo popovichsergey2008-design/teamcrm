@@ -6,6 +6,7 @@ import type { AnthillActionRow, AnthillReminder, AnthillSchedule } from '../../l
 import { stampLabel } from '../../lib/chat-text';
 import { confirmAction } from '../ui/dialog';
 import { SecretaryBriefs } from './SecretaryBriefs';
+import { navigate } from '../../lib/router';
 
 const GROUPS: { key: string; title: string }[] = [
   { key: 'active', title: 'Активные' },
@@ -97,7 +98,18 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
   return (
     <div className="anthill-pane">
       <div className="anthill-pane-head">
-        <span className="dim">Агент делает это сам, по расписанию — и приносит результат в «Заметки».</span>
+        {/* #4771: «Заметки» — чат с самим собой в «Чатах»; ссылкой, чтобы не искать, где это */}
+        <span className="dim">
+          Агент делает это сам, по расписанию — и приносит результат в чат{' '}
+          <button
+            type="button"
+            className="link-btn"
+            onClick={() => { void api.openSelfChat().then((c) => navigate({ section: 'chat', chatId: String(c.id) })).catch(() => navigate({ section: 'chat' })); }}
+          >
+            «Заметки»
+          </button>{' '}
+          (раздел «Чаты», вверху списка) и присылает уведомление.
+        </span>
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => setAdding((v) => !v)}>
           <Icon name="plus" size={13} /> Новая
         </button>

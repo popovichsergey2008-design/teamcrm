@@ -3,7 +3,7 @@ import { AppException } from '../../common/http/app-exception';
 import { AiService, FastOpts } from '../ai/ai.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TagsRepository } from './tags.repository';
-import { canCreateTag, confidenceBand, findSimilarTag, TagCreatePolicy, tagsGatePassed } from './tag-rules';
+import { canCreateTag, confidenceBand, deferralAllowed, findSimilarTag, isDeferralTag, TagCreatePolicy, tagsGatePassed } from './tag-rules';
 
 /**
  * Базовый набор тегов организации (ТЗ, п. 3).
@@ -26,6 +26,8 @@ const SUGGEST_SYSTEM = `Ты классифицируешь задачи ком�
 Выбери подходящие теги ТОЛЬКО из списка. Новые теги не придумывай.
 Одной задаче может подойти несколько тегов (например «Программная задача» и «Клиент-менеджер»).
 Если ничего не подходит — верни пустой список и, если уместно, предложи название нового тега.
+Тег про отложенную работу ставь, ТОЛЬКО если в тексте прямо сказано отложить, сделать потом или вернуться позже.
+Задача со сроком, «сегодня», «срочно» или просто с поручением — не отложенная.
 Ответ строго JSON: {"tags":[{"id":"<id тега>","confidence":0.0-1.0}],"proposed":"<название или null>"}`;
 
 /**
@@ -238,11 +240,14 @@ export class TagsService {
     }
 
     const known = new Map(tags.map((t) => [String(t.id), t]));
+    const said = [payload.task.title, payload.task.description, ...payload.task.checklist].join(' ');
     const sure: any[] = [];
     const maybe: any[] = [];
     for (const item of Array.isArray(parsed?.tags) ? parsed.tags : []) {
       const tag = known.get(String(item?.id));
       if (!tag) continue; // выдуманный тег молча отбрасываем
+      // #4773: «отложить» — решение человека; без прямых слов об этом подсказку не берём
+      if (isDeferralTag(tag) && !deferralAllowed(said)) continue;
       const band = confidenceBand(item?.confidence);
       if (band === 'drop') continue;
       const view = { tagId: String(tag.id), name: tag.name, color: tag.color, confidence: Number(item.confidence) };

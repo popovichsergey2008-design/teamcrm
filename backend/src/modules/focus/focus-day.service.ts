@@ -6,6 +6,7 @@ import { FocusDayRepository, ItemLive, ItemRow, PlanRow } from './focus-day.repo
 import { Candidate, pickTop3, SCORE_VERSION, Scored, scoreCandidate } from './rule-of-3';
 import { closeDayAvailable, nextWorkStart, tomorrowOf, zonedTime } from './close-day';
 import { PresenceService } from '../presence/presence.service';
+import { descriptionText } from '../before-after/before-after.rules';
 
 export type Viewer = { tenantId: string; userId: string; role: string };
 
@@ -573,6 +574,23 @@ function isDone(i: ItemRow, l: ItemLive): boolean {
   return false;
 }
 
+/**
+ * Первая содержательная строка описания — пояснение к названию в «Фокусе дня» (#4768:
+ * «Проверить и принять: Важно внедрить после мита» — непонятно, что проверять; в описании
+ * первой строкой «ВАУ-ФИЧА 1: Экран финала созвона…»). Повтор названия не показываем.
+ */
+export function aboutLine(description: string | null, title: string | null): string | null {
+  const text = descriptionText(description);
+  const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+  const t = norm(title ?? '');
+  for (const raw of text.split(/\n+/)) {
+    const line = raw.replace(/\s+/g, ' ').trim();
+    if (line.length < 8 || (t && norm(line) === t)) continue;
+    return line.length > 160 ? `${line.slice(0, 157).trimEnd()}…` : line;
+  }
+  return null;
+}
+
 function present(i: ItemRow, l: ItemLive | undefined) {
   const gone = !!l?.gone;
   return {
@@ -588,6 +606,8 @@ function present(i: ItemRow, l: ItemLive | undefined) {
       : i.item_type === 'approval' && l?.approval_subject ? `Согласовать: ${l.approval_subject}`
       : l?.task_title ?? i.title_snapshot,
     unavailable: gone,
+    // #4768: название — как у задачи, а строкой ниже — суть из описания: «что проверять»
+    about: gone ? null : aboutLine(l?.task_about ?? null, l?.task_title ?? null),
     projectName: gone ? null : l?.project_name ?? null,
     deadlineAt: gone ? null : l?.deadline_at ?? null,
     priority: gone ? null : l?.priority ?? null,

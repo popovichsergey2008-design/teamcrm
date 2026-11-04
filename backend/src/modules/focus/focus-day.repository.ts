@@ -58,6 +58,8 @@ export interface ItemLive {
   checklist_total: number;
   checklist_done: number;
   assignee_name: string | null;
+  /** #4768: начало описания — по одному названию не понять, что проверять. */
+  task_about: string | null;
 }
 
 /** Условие «проект виден человеку $2» — то же, что в списке проектов. */
@@ -446,6 +448,7 @@ export class FocusDayRepository {
     return this.db.many<ItemLive>(
       `SELECT i.id AS item_id,
               CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN t.title END AS task_title,
+              CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN left(t.description, 800) END AS task_about,
               CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN t.project_id END AS project_id,
               CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN p.name END AS project_name,
               t.deadline_at, t.priority,

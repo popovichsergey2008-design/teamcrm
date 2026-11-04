@@ -1,4 +1,4 @@
-import { canCreateTag, confidenceBand, findSimilarTag, normalizeTagName, tagsGatePassed } from './tag-rules';
+import { canCreateTag, confidenceBand, deferralAllowed, findSimilarTag, isDeferralTag, normalizeTagName, tagsGatePassed } from './tag-rules';
 
 describe('теги: имя, дубли, доверие к ИИ, право создавать', () => {
   it('имя для сравнения не зависит от регистра, пробелов и «ё»', () => {
@@ -61,5 +61,23 @@ describe('теги: имя, дубли, доверие к ИИ, право со�
     // Организация выключила разметку — ворота не работают вовсе.
     expect(tagsGatePassed({ aiTagging: false, requireConfirmation: true }, {})).toBe(true);
     expect(tagsGatePassed({ aiTagging: true, requireConfirmation: false }, {})).toBe(true);
+  });
+});
+
+describe('#4773: тег «Отложенная задача» — только когда прямо сказали отложить', () => {
+  const deferred = { name: 'Отложенная задача', ai_description: 'Сохранить, но пока не брать в работу' };
+  it('узнаём тег по названию', () => {
+    expect(isDeferralTag(deferred)).toBe(true);
+    expect(isDeferralTag({ name: 'Программная задача', ai_description: 'Разработка: бэкенд' })).toBe(false);
+  });
+  it('случаи заказчика — не отложенные', () => {
+    expect(deferralAllowed('Расшифровать мит, указанный на скрине. Необходимо расшифровать мит, который до сих пор стоит. Дедлайн на сегодня')).toBe(false);
+    expect(deferralAllowed('Обучить нейросеть добавлению исполнителя в задачи. Нейроагент должен автоматически подставлять проект')).toBe(false);
+  });
+  it('прямо сказали отложить — можно; со сроком — нет', () => {
+    expect(deferralAllowed('Редизайн отчётов — отложить до следующего квартала')).toBe(true);
+    expect(deferralAllowed('Вернуться к интеграции, когда будет ключ API')).toBe(true);
+    expect(deferralAllowed('Отложить, но сделать до 15 ноября')).toBe(false);
+    expect(deferralAllowed('Отложить на потом', true)).toBe(false);
   });
 });

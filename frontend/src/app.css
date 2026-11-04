@@ -2379,7 +2379,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .toast:hover { border-color: var(--accent); }
 .toast-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .toast-title { font-size: var(--fs-sm); font-weight: 600; }
-.toast-body { font-size: var(--fs-xs); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #4774: до трёх строк — «Тег · Проект · Исполнитель» постановки видно целиком, а не «Исполн…» */
+.toast-body { font-size: var(--fs-xs); color: var(--text-dim); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
 .toast-close { color: var(--text-mut); flex-shrink: 0; }
 .toast-close:hover { color: var(--text); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

@@ -6,13 +6,15 @@ import { navigate, useRoute } from '../lib/router';
 import { RECENT_LABEL, recentState, TaskStateDot } from './TaskStateDot';
 import { favorites, FAVORITES_CHANGED, initFavorites, toggleFavorite, type Favorite } from '../lib/favorites';
 import { draftLabel, listDrafts, openDraft, removeDraft, TASK_DRAFT_CHANGED, type TaskDraft } from '../lib/task-draft';
+import { CHAT_DRAFT_CHANGED, clearDraft, listChatDrafts } from '../lib/chat-drafts';
 import './sidebar-lists.css';
 
 /**
  * «Избранное» (#4713) и «Черновики» (#4715) в левом сайдбаре — пунктами меню, как
  * разделы: каждый перетаскивается, двигается шестерёнкой и прячется (Sidebar.tsx).
- * 03.11, заказчик: черновики — отдельным пунктом, и только задачи: недописанные
- * сообщения чатов сюда не попадают (они и так ждут в поле ввода своего чата).
+ * 03.11, заказчик: черновики — отдельным пунктом. #4770 (04.11): и недописанные сообщения
+ * чатов тоже — но с названием чата и текстом, а не строкой «@» (её и просили убрать в
+ * #4715): обрывки без слов (одна «@», знаки) не показываем.
  *
  * Отдельный модуль со своими стилями: грузится после первого экрана и не утяжеляет
  * его. #4733: при каждой загрузке страницы свёрнуто — и «Избранное», и «Последние
@@ -23,6 +25,8 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
   initFavorites(user?.uiPrefs);
   const [favs, setFavs] = useState<Favorite[]>(favorites);
   const [tasks, setTasks] = useState<TaskDraft[]>(() => listDrafts(user?.id));
+  const [chats, setChats] = useState(() => listChatDrafts());
+  const [chatNames, setChatNames] = useState<Record<string, string>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [recent, setRecent] = useState<RecentTask[]>([]);
   const route = useRoute();
@@ -37,13 +41,15 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
 
   useEffect(() => {
     const f = () => setFavs([...favorites()]);
-    const d = () => setTasks(listDrafts(user?.id));
+    const d = () => { setTasks(listDrafts(user?.id)); setChats(listChatDrafts()); };
     window.addEventListener(FAVORITES_CHANGED, f);
     window.addEventListener(TASK_DRAFT_CHANGED, d);
+    window.addEventListener(CHAT_DRAFT_CHANGED, d);
     window.addEventListener('storage', d);
     return () => {
       window.removeEventListener(FAVORITES_CHANGED, f);
       window.removeEventListener(TASK_DRAFT_CHANGED, d);
+      window.removeEventListener(CHAT_DRAFT_CHANGED, d);
       window.removeEventListener('storage', d);
     };
   }, [user?.id]);
@@ -60,17 +66,48 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
   };
   const goRecent = (t: RecentTask) => { onGo(); navigate({ section: 'projects', projectId: t.projectId, taskId: t.id }); };
 
+  /*
+    #4770: черновики сообщений. Ветки (thread:…) без чата не открыть — не показываем;
+    переписку, открытую сейчас, тоже: человек печатает в ней, и строка повторяла бы каждую
+    букву. Обрывок без слов («@», точка) — не черновик.
+  */
+  const here = new Set([route.chatId ? `chat:${route.chatId}` : '', route.taskId ? `task:${route.taskId}` : ''].filter(Boolean));
+  const chatDrafts = part === 'drafts'
+    ? chats.filter((c) => (c.key.startsWith('chat:') || c.key.startsWith('task:')) && !here.has(c.key)
+      && c.text.replace(/@\S*/g, '').replace(/[^\p{L}\p{N}]+/gu, '').length >= 3).slice(0, 10)
+    : [];
+  const draftsOpen = part === 'drafts' && open.drafts === true;
+  // названия чатов — когда раскрыли: без них строка «чат 12: …» ни о чём не говорит
+  useEffect(() => {
+    if (!draftsOpen || !chatDrafts.some((c) => c.key.startsWith('chat:'))) return;
+    let live = true;
+    api.listChats().then((list) => {
+      if (live) setChatNames(Object.fromEntries((list as { id: unknown; title?: string | null }[]).map((c) => [String(c.id), c.title ?? 'Чат'])));
+    }).catch(() => undefined);
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftsOpen, chats.length]);
+  const chatLabel = (key: string) => key.startsWith('task:') ? `Чат задачи #${key.slice(5)}` : (chatNames[key.slice(5)] ?? 'Чат');
+  const goChatDraft = async (key: string) => {
+    onGo();
+    const id = key.slice(5);
+    if (key.startsWith('chat:')) { navigate({ section: 'chat', chatId: id }); return; }
+    const t = await api.taskBrief(id).catch(() => null);
+    if (t?.projectId) navigate({ section: 'projects', projectId: String(t.projectId), taskId: id });
+  };
+
   if (part === 'drafts') {
+    const count = tasks.length + chatDrafts.length;
     return (
       <div className="sbl">
         <button type="button" className="nav-item" aria-expanded={isOpen('drafts')} onClick={() => flip('drafts')}>
           <Icon name="edit" size={18} />
           <span className="nav-label">Черновики</span>
-          {tasks.length > 0 && <span className="sbl-count">{tasks.length}</span>}
+          {count > 0 && <span className="sbl-count">{count}</span>}
           <Icon name={isOpen('drafts') ? 'chevron-down' : 'chevron-right'} size={14} />
         </button>
-        {isOpen('drafts') && (!tasks.length
-          ? <p className="sbl-empty">Начали задачу, закрыли окно и не поставили — она будет здесь.</p>
+        {isOpen('drafts') && (!count
+          ? <p className="sbl-empty">Начали задачу, закрыли окно и не поставили — она будет здесь. Недописанное сообщение в чате — тоже.</p>
           : (
             <div className="sbl-body">
               <ul className="sbl-list">
@@ -81,6 +118,17 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
                       <span className="sbl-text">{draftLabel(d)}</span>
                     </button>
                     <button type="button" className="sbl-x" onClick={() => removeDraft(d.id)} title="Удалить черновик" aria-label="Удалить черновик задачи">
+                      <Icon name="close" size={12} />
+                    </button>
+                  </li>
+                ))}
+                {chatDrafts.map((c) => (
+                  <li key={c.key} className="sbl-row">
+                    <button type="button" className="sbl-item" title={`Вернуться к сообщению — ${chatLabel(c.key)}`} onClick={() => void goChatDraft(c.key)}>
+                      <Icon name="chat" size={15} />
+                      <span className="sbl-text"><b>{chatLabel(c.key)}:</b> {c.text.replace(/\s+/g, ' ').slice(0, 80)}</span>
+                    </button>
+                    <button type="button" className="sbl-x" onClick={() => clearDraft(c.key)} title="Удалить черновик" aria-label="Удалить черновик сообщения">
                       <Icon name="close" size={12} />
                     </button>
                   </li>

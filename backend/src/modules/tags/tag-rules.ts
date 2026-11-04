@@ -100,3 +100,24 @@ export function tagsGatePassed(
   const chosen = Array.isArray(input.tagIds) ? input.tagIds.filter(Boolean) : [];
   return input.confirmed === true && chosen.length > 0;
 }
+
+/*
+  #4773: «Отложенная задача» вставала сама на «Расшифровать мит… дедлайн на сегодня» —
+  модель читала описание тега («зависит от будущего события, вернуться позже») слишком
+  широко. Тег «отложить» — решение человека, поэтому подсказку ИИ пропускаем, только
+  если в тексте ПРЯМО сказано отложить, и нет ни срока, ни «сегодня/срочно».
+*/
+const DEFERRAL_TAG = /отлож|на потом|бэклог|backlog/i;
+const DEFERRAL_SAID = /отлож|на потом|потом|позже|не сейчас|не срочно|вернуться|вернёмся|вернемся|когда (будет|появ|закончим|сделаем)|после того как|в будущем|бэклог/i;
+const URGENT_SAID = /сегодня|срочно|горит|asap|завтра|дедлайн|до \d|к \d|в течение/i;
+
+/** Тег про отложенную работу (по названию или описанию). */
+export function isDeferralTag(tag: { name: string; ai_description?: string | null }): boolean {
+  return DEFERRAL_TAG.test(tag.name) || DEFERRAL_TAG.test(String(tag.ai_description ?? '').slice(0, 40));
+}
+
+/** Можно ли верить подсказке ИИ поставить тег «отложить» на эту задачу. */
+export function deferralAllowed(text: string, hasDeadline = false): boolean {
+  const t = String(text ?? '');
+  return !hasDeadline && DEFERRAL_SAID.test(t) && !URGENT_SAID.test(t);
+}

@@ -15,7 +15,7 @@ import { matchUserInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
 import { MIN_CONFIDENCE, SURE_CONFIDENCE } from './assignee-pick';
 import { Department, departmentOf, isDepartment, isSkill, Skill, skillsCatalog } from '../team/skills';
-import { directionsFromText, listItemsCount, MAX_AUTO_DIRECTIONS, TASK_DIRECTIONS } from '../team/direction-rules';
+import { directionsFromText, listItemsCount, MAX_AUTO_DIRECTIONS, skillFromTag, TASK_DIRECTIONS } from '../team/direction-rules';
 import {
   cleanTitle, pickApproval, pickDeadline, pickEstimate, pickPriority,
   taskTitleFrom,
@@ -524,7 +524,7 @@ export class NlService {
     const drafts = await this.parseManyInner(tenantId, userId, text, currentProjectId, opts);
     const t1 = Date.now();
     // #4615: проект уже выбран в разборе; здесь — руководитель отдела и теги
-    if (opts.auto) await this.autoFill(tenantId, drafts, early);
+    if (opts.auto) await this.autoFill(tenantId, drafts, early, userId);
     if (opts.timing) {
       Object.assign(opts.timing, {
         path: opts.fast ? 'fast' : opts.mid ? 'mid' : 'full', parseMs: t1 - t0, tagsWaitMs: Date.now() - t1,
@@ -785,7 +785,7 @@ export class NlService {
    * Автоматическая постановка (#4615): исполнитель уже выбран одним правилом, здесь —
    * пометка «авто» и теги, подобранные ИИ (принимаются сами).
    */
-  private async autoFill(tenantId: string, drafts: NlDraft[], early: Promise<any> | null = null): Promise<void> {
+  private async autoFill(tenantId: string, drafts: NlDraft[], early: Promise<any> | null = null, userId: string | null = null): Promise<void> {
     const list = drafts.filter((d) => d.task);
     if (!list.length) return;
     for (const d of list) d.task!.auto = true;
@@ -798,6 +798,34 @@ export class NlService {
       }, { fast: true, timeoutMs: NL_SPLIT_BUDGET_MS }).catch(() => null);
       t.autoTags = (r?.suggestions ?? []).map((x: { tagId: string; name: string; color: string | null }) => ({ id: String(x.tagId), name: x.name, color: x.color ?? null }));
     }));
+    if (userId) await this.assignByTag(tenantId, userId, list);
+  }
+
+  /**
+   * #4769: исполнителя не назвали, а по словам направление не понять — его называет тег,
+   * подобранный ИИ («Программная задача» → разработка → руководитель отдела, у заказчика —
+   * Сергей). Прежде такая задача уходила наименее загруженному, кем бы он ни был.
+   */
+  private async assignByTag(tenantId: string, userId: string, list: NlDraft[]): Promise<void> {
+    const open = list.filter((d) => d.task && !d.task.assigneeNamed && ['load', 'none'].includes(String(d.task.assigneeSource ?? '')));
+    if (!open.length) return;
+    const org = await this.org.snapshot(tenantId).catch(() => null);
+    if (!org) return;
+    const seers = await this.org.seers(tenantId, open.map((d) => d.task!.projectId).filter((p): p is string => !!p)).catch(() => new Map<string, Set<string>>());
+    for (const d of open) {
+      const t = d.task!;
+      const tag = (t.autoTags ?? []).find((x) => skillFromTag(x.name));
+      const skill = tag ? skillFromTag(tag.name) : null;
+      if (!tag || !skill) continue;
+      const see = t.projectId ? seers.get(String(t.projectId)) ?? new Set<string>() : null;
+      const c = this.org.decide(org, (u) => !see || see.has(String(u)), { authorId: userId, text: '', directions: [skill] });
+      if (!c.userId || !['lead', 'deputy', 'member'].includes(c.source)) continue;
+      t.assigneeId = c.userId;
+      t.assigneeName = c.name;
+      t.assigneeWhy = `${c.reason} — по тегу «${tag.name}»`;
+      t.assigneeSource = c.source;
+      if (!t.directions?.length) t.directions = [skill];
+    }
   }
 
   /** Последний проект, где человек ставил задачи (#4615: проект без вопросов). */

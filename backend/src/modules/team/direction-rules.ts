@@ -72,3 +72,21 @@ export function directionsFromText(text: string): Skill[] {
 export function listItemsCount(text: string): number {
   return String(text ?? '').split(/\r?\n/).filter((l) => /^\s*(\d{1,2}[.)]|[-•*–])\s+\S/.test(l)).length;
 }
+
+/*
+  #4769: направление по тегу задачи. Слова текста не всегда называют работу («Обучить
+  нейросеть добавлению исполнителя» — не «бэкенд» и не «фронтенд»), а тег, подобранный ИИ,
+  — называет: «Программная задача». Им пользуемся, только когда по словам направления нет.
+*/
+const TAG_SKILL: [RegExp, Skill][] = [
+  [/программ|разработ|backend|frontend|бэкенд|фронтенд/i, 'backend'],
+  [/дизайн/i, 'design'],
+  [/контент|текст|seo|сео|линкбилд/i, 'content'],
+  [/тестир|\bqa\b/i, 'qa'],
+];
+
+/** Направление по названию тега; не понять — null. */
+export function skillFromTag(name: string): Skill | null {
+  for (const [re, skill] of TAG_SKILL) if (re.test(String(name ?? ''))) return skill;
+  return null;
+}

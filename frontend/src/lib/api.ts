@@ -221,6 +221,8 @@ export interface FocusItem {
   projectId: string | null;
   /** null — задача удалена или больше не видна: старое название не показываем */
   title: string | null;
+  /** #4768: суть из описания задачи — по одному названию не всегда понятно, что делать */
+  about?: string | null;
   unavailable: boolean;
   projectName: string | null;
   deadlineAt: string | null;

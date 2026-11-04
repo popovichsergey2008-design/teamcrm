@@ -141,6 +141,16 @@ export class MeetingsRepository {
     return row ? String(row.meeting_id) : null;
   }
 
+  /** #4772: обработка не двигалась дольше `minutes` — значит, оборвалась. */
+  stuck(minutes: number): Promise<{ id: string; tenant_id: string; status: string }[]> {
+    return this.db.many(
+      `SELECT id::text, tenant_id::text, status FROM meetings
+        WHERE status IN ('queued', 'transcribing', 'analyzing') AND updated_at < now() - make_interval(mins => $1)
+        ORDER BY id LIMIT 20`,
+      [minutes],
+    );
+  }
+
   async setStatus(id: string, status: string, error: string | null = null): Promise<void> {
     await this.db.query(`UPDATE meetings SET status=$2, error=$3, updated_at=now() WHERE id=$1`, [id, status, error]);
   }

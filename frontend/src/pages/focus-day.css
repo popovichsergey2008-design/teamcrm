@@ -75,6 +75,9 @@
 .fd-mission .fd-title .icon { color: var(--accent); }
 .fd-title:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 6px; }
 .fd-title:disabled { cursor: default; }
+/* #4768: суть задачи из описания — под названием */
+.fd-about { margin: 2px 0 0; font-size: var(--fs-sm); line-height: 1.4; color: var(--text-dim); overflow-wrap: anywhere; }
+.fd-num { font-weight: 400; }
 .fd-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
 .fd-check { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
 .fd-progress { height: 6px; border-radius: 99px; background: var(--bg-elev-2); overflow: hidden; }
