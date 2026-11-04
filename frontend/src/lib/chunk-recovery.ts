@@ -30,8 +30,13 @@ export function reloadOnce(): boolean {
 }
 
 export function installChunkRecovery(): void {
-  // Vite сам сообщает о сбое подгрузки куска — по нему и обновляемся
+  // Vite сам сообщает о сбое подгрузки куска — по нему и обновляемся. Но то же событие
+  // приходит и с ошибкой кода ПОСЛЕ загрузки (`import(…).then(m => m.f())` он оборачивает
+  // целиком): 04.11 гость созвона получал 401 «Сессия истекла» из проверки итогов и
+  // страница перезагружалась через секунду после входа во встречу. Обновляемся только
+  // на настоящий сбой загрузки.
   window.addEventListener('vite:preloadError', (ev) => {
+    if (!isChunkError((ev as Event & { payload?: unknown }).payload)) return;
     if (reloadOnce()) ev.preventDefault();
   });
   window.addEventListener('unhandledrejection', (ev) => {

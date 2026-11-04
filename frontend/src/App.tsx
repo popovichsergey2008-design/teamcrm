@@ -442,6 +442,8 @@ export function App() {
 
   const [followupId, setFollowupId] = useState('');
   useEffect(() => {
+    // гость созвона и экран входа — без учётной записи: спрашивать итоги некому (04.11)
+    if (!user?.id) return;
     const show = (e: unknown) => { const id = (e as { id?: string }).id ?? (e as CustomEvent).detail; if (id) setFollowupId(String(id)); };
     const socket = getSocket();
     socket.on('followup.ready', show);
@@ -451,7 +453,7 @@ export function App() {
       void import('./components/followup/pending').then((m) => m.pendingFollowup()).then((id) => { if (id) setFollowupId(id); }).catch(() => undefined);
     }, 4000);
     return () => { window.clearTimeout(late); socket.off('followup.ready', show); window.removeEventListener('qevo:followup', show); };
-  }, []);
+  }, [user?.id]);
 
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.
   // Подраздел («Клиенты») адрес занимает под себя, доска под ним остаётся как есть.
