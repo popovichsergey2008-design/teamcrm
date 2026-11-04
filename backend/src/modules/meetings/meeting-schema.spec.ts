@@ -1,4 +1,4 @@
-import { validateMeetingAnalysis } from './meeting-schema';
+import { meetingPlans, validateMeetingAnalysis } from './meeting-schema';
 
 describe('Встречи: валидация разбора LLM', () => {
   const ok = {
@@ -47,5 +47,27 @@ describe('Встречи: валидация разбора LLM', () => {
     expect(value!.decisions).toHaveLength(2); // число и null выброшены, остались две строки
     expect(value!.decisions[1].text).toHaveLength(500);
     expect(value!.risks).toEqual([]);
+  });
+});
+
+describe('#4749: договорённости о следующей встрече', () => {
+  it('день обязателен, время — только ЧЧ:ММ, участники — строки', () => {
+    expect(meetingPlans([
+      { title: 'Созвон по сайту', date: '2026-11-06', time: '9:30', participants: ['Глеб Ковалёв', 7, ''], at: '12:03', quote: 'созвонимся в пятницу в полдесятого' },
+      { title: 'Без дня', date: null, time: '10:00' },
+      { title: 'Кривой день', date: '06.11.2026', time: '10:00' },
+      { title: 'Время словами', date: '2026-11-07', time: 'утром' },
+      { title: '', date: '2026-11-07', time: '10:00' },
+    ])).toEqual([
+      { title: 'Созвон по сайту', date: '2026-11-06', time: '09:30', participants: ['Глеб Ковалёв'], durationMinutes: null, quote: 'созвонимся в пятницу в полдесятого', sec: 723 },
+      { title: 'Время словами', date: '2026-11-07', time: null, participants: [], durationMinutes: null, quote: null, sec: null },
+    ]);
+    expect(meetingPlans([{ title: 'X', date: '2026-11-07', time: '25:00' }])[0].time).toBeNull();
+    expect(meetingPlans('мусор')).toEqual([]);
+  });
+
+  it('разбор без поля meetings — пустой список, а не ошибка', () => {
+    const { value } = validateMeetingAnalysis({ summary: 'итоги', tasks: [] });
+    expect(value!.meetings).toEqual([]);
   });
 });

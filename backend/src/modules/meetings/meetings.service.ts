@@ -23,6 +23,9 @@ import { AudioProofService } from './audio-proof.service';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
 import { trackBackground } from '../../common/background-work';
+import { CalendarService } from '../calendar/calendar.service';
+import { zonedToUtc } from '../tasks/recurrence';
+import { MeetingPlan } from './meeting-schema';
 
 /** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
 const MAX_RECORDING_BYTES = 600 * 1024 * 1024;
@@ -81,6 +84,8 @@ export class MeetingsService {
     private readonly tags: TagsService,
     /** #4615, 23.10: структура компании — модели в разбор и подбор «руководителю дизайна». */
     @Optional() private readonly org?: OrgService,
+    /** #4749: договорились о следующей встрече — ставим её в календарь. */
+    @Optional() private readonly calendar?: CalendarService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -782,6 +787,55 @@ export class MeetingsService {
     // теги — до автосоздания: задачи, созданные сразу, должны родиться с ними
     await this.suggestDraftTags(tenantId, meetingId);
     await this.afterMeeting(tenantId, meetingId, quickSummary ?? value.summary, value.decisions.length);
+    if (value.meetings.length) await this.scheduleAgreed(tenantId, meetingId, value.meetings, team, replies, meeting);
+  }
+
+  /**
+   * #4749: на встрече договорились о следующей — агент ставит её в календарь сам, как и
+   * встречу из переписки. Без дня и времени не ставим: угадывать время нельзя. Кого назвали
+   * поимённо — их, иначе всех, кто был на встрече. Организатор — кто предложил, иначе тот,
+   * кто загрузил запись. Напоминания за 10 и за 5 минут. Не вышло (время прошло, у
+   * участников занято) — встреча просто не ставится: она есть в итогах словами.
+   */
+  private async scheduleAgreed(
+    tenantId: string, meetingId: string, plans: MeetingPlan[], team: { id: string; full_name: string }[],
+    replies: Reply[], meeting: { title?: string | null; created_by?: string | null; happened_at?: Date | string | null } | null,
+  ): Promise<void> {
+    if (!this.calendar) return;
+    const tz = await this.repo.timezoneOf(tenantId).catch(() => 'Europe/Moscow');
+    const audience = (await this.repo.audience(tenantId, meetingId).catch(() => [])).map((r) => String(r.user_id));
+    for (const p of plans) {
+      try {
+        if (!p.time) continue;
+        const [y, m, d] = p.date.split('-').map(Number);
+        const start = zonedToUtc(y, m, d, p.time, tz);
+        if (Number.isNaN(start.getTime()) || start.getTime() <= Date.now()) continue;
+        const named = [...new Set(p.participants.map((n) => matchTeamMember(team, n)).filter((x): x is string => !!x))];
+        const people = named.length >= 2 ? named : [...new Set([...named, ...audience])];
+        const proposer = speakerAt(replies, p.sec, p.quote).speakerUserId;
+        const organizer = (proposer && people.includes(String(proposer)) ? String(proposer) : null)
+          ?? (meeting?.created_by ? String(meeting.created_by) : null) ?? people[0] ?? null;
+        if (!organizer || new Set([organizer, ...people]).size < 2) continue;
+        if (await this.repo.hasEventAt(tenantId, organizer, start)) continue;
+        const end = new Date(start.getTime() + (p.durationMinutes ?? 30) * 60_000);
+        const from = meeting?.title ? `Договорились на встрече «${meeting.title}».` : 'Договорились на встрече.';
+        await this.calendar.create(tenantId, { userId: organizer, role: 'member' }, {
+          title: p.title.slice(0, 255),
+          description: [from, p.quote ? `«${p.quote}»` : ''].filter(Boolean).join('\n'),
+          startsAt: start.toISOString(),
+          endsAt: end.toISOString(),
+          scope: 'personal',
+          participantIds: people.filter((id) => id !== organizer),
+          reminders: [10, 5],
+        });
+        void this.secretary.record({
+          tenantId, userId: organizer, kind: 'meeting_summary',
+          summary: `Встреча со встречи поставлена в календарь: «${p.title}»`, subjectType: 'meeting', subjectId: meetingId,
+        });
+      } catch (e) {
+        this.log.log(`встреча ${meetingId}: «${p.title}» не поставил — ${(e as Error).message}`);
+      }
+    }
   }
 
   /**

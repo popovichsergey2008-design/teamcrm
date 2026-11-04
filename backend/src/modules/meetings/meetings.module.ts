@@ -1,6 +1,7 @@
 import { NlModule } from '../nl/nl.module';
 import { Module } from '@nestjs/common';
 import { TagsModule } from '../tags/tags.module';
+import { CalendarModule } from '../calendar/calendar.module';
 import { AiModule } from '../ai/ai.module';
 import { ClientsModule } from '../clients/clients.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
@@ -18,7 +19,8 @@ import { PostcallService } from './postcall.service';
 
 /** Этап 6, М2: разбор записей встреч. Свои созвоны появятся позже — источник записи внешний. */
 @Module({
-  imports: [AiModule, TasksModule, KnowledgeModule, TaskCardModule, NotificationsModule, ClientsModule, PromptsModule, NlModule, TagsModule],
+  // календарь — #4749: договорённость о следующей встрече агент ставит туда сам
+  imports: [AiModule, TasksModule, KnowledgeModule, TaskCardModule, NotificationsModule, ClientsModule, PromptsModule, NlModule, TagsModule, CalendarModule],
   controllers: [MeetingsController, AudioProofController],
   providers: [MeetingsService, MeetingsRepository, PostcallService, PostcallRepository, AudioProofService],
   exports: [MeetingsService, MeetingsRepository, PostcallService], // репозиторий нужен уборке: черновики со встреч

@@ -537,6 +537,24 @@ export class MeetingsRepository {
     );
   }
 
+  /** Пояс организации: «в 15:00» на встрече — по её часам, а не по серверу. */
+  async timezoneOf(tenantId: string): Promise<string> {
+    const row = await this.db.one<{ timezone: string | null }>(`SELECT timezone FROM tenants WHERE id = $1`, [tenantId]);
+    return row?.timezone || 'Europe/Moscow';
+  }
+
+  /**
+   * #4749: у этого организатора на это время уже есть встреча — повторный разбор
+   * («Разобрать заново») второй раз её не ставит.
+   */
+  async hasEventAt(tenantId: string, ownerId: string, startsAt: Date): Promise<boolean> {
+    const row = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM calendar_events WHERE tenant_id = $1 AND owner_id = $2 AND starts_at = $3 LIMIT 1`,
+      [tenantId, ownerId, startsAt],
+    );
+    return !!row;
+  }
+
   async linkEvent(meetingId: string, eventId: string): Promise<void> {
     await this.db.query(`UPDATE meetings SET event_id=$2 WHERE id=$1`, [meetingId, eventId]);
   }

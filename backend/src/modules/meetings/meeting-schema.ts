@@ -29,6 +29,23 @@ export interface SourcedText {
   sec: number | null;
 }
 
+/**
+ * #4749: договорились на встрече о следующей — «созвонимся в четверг в 15:00». Агент
+ * ставит её в календарь сам; без дня и времени не ставит (угадывать время нельзя).
+ */
+export interface MeetingPlan {
+  title: string;
+  /** YYYY-MM-DD — день, посчитанный от даты встречи. */
+  date: string;
+  /** HH:MM в поясе организации; не прозвучало — null, тогда встречу не ставим. */
+  time: string | null;
+  /** Кого назвали поимённо — полные имена из списка сотрудников. */
+  participants: string[];
+  durationMinutes: number | null;
+  quote: string | null;
+  sec: number | null;
+}
+
 export interface MeetingAnalysis {
   summary: string;
   decisions: SourcedText[];
@@ -36,6 +53,7 @@ export interface MeetingAnalysis {
   /** Открытые вопросы (ТЗ-22): не решили, нужно уточнить. Отдельно от рисков. */
   questions: SourcedText[];
   tasks: MeetingTaskDraft[];
+  meetings: MeetingPlan[];
 }
 
 const MAX_TASKS = 20;
@@ -84,6 +102,32 @@ function parseDeadline(v: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/** Договорённости о следующих встречах: без дня — не встреча, время — только ЧЧ:ММ. */
+export function meetingPlans(v: unknown, limit = 5): MeetingPlan[] {
+  if (!Array.isArray(v)) return [];
+  const out: MeetingPlan[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== 'object') continue;
+    const rec = x as Record<string, unknown>;
+    const title = str(rec.title, 255);
+    const date = str(rec.date, 10);
+    if (!title || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T00:00:00Z`))) continue;
+    const t = str(rec.time, 5);
+    const tm = t ? /^(\d{1,2}):(\d{2})$/.exec(t) : null;
+    const time = tm && Number(tm[1]) < 24 && Number(tm[2]) < 60 ? `${tm[1].padStart(2, '0')}:${tm[2]}` : null;
+    const dur = Number(rec.duration_minutes ?? rec.durationMinutes);
+    out.push({
+      title, date, time,
+      participants: strList(rec.participants, 120, 20),
+      durationMinutes: Number.isFinite(dur) && dur >= 10 && dur <= 480 ? Math.round(dur) : null,
+      quote: str(rec.quote, 500),
+      sec: parseStamp(rec.at ?? rec.sec),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export function validateMeetingAnalysis(raw: unknown): { value: MeetingAnalysis | null; errors: string[] } {
   const errors: string[] = [];
   if (!raw || typeof raw !== 'object') return { value: null, errors: ['ответ модели не является объектом'] };
@@ -120,7 +164,7 @@ export function validateMeetingAnalysis(raw: unknown): { value: MeetingAnalysis 
   return {
     value: summary ? {
       summary, decisions: sourcedList(o.decisions, 500), risks: strList(o.risks, 500),
-      questions: sourcedList(o.questions, 500), tasks,
+      questions: sourcedList(o.questions, 500), tasks, meetings: meetingPlans(o.meetings),
     } : null,
     errors,
   };
@@ -135,7 +179,14 @@ export const MEETING_PROMPT =
   '"tasks":[{"title":"что сделать","description":"детали","assignee":"имя исполнителя или null",' +
   '"author":"кто поручил или null","project":"проект или null","column":"колонка или null",' +
   '"deadline":"YYYY-MM-DD или null","urgent":false,"confidence":"high|medium|low",' +
-  '"at":"мм:сс","quote":"дословная цитата из стенограммы, породившая задачу"}]}\n' +
+  '"at":"мм:сс","quote":"дословная цитата из стенограммы, породившая задачу"}],' +
+  '"meetings":[{"title":"о чём следующая встреча","date":"YYYY-MM-DD","time":"ЧЧ:ММ или null",' +
+  '"duration_minutes":null,"participants":["полные имена из списка сотрудников"],"at":"мм:сс","quote":"дословная цитата"}]}\n' +
+  // #4749: договорились о следующей встрече — агент ставит её в календарь сам
+  'meetings — только ДОГОВОРЁННОСТЬ о следующей встрече или созвоне («созвонимся в четверг в 15:00», ' +
+  '«встречаемся завтра в 10»), а не «надо бы как-нибудь обсудить». Дату считай от даты встречи. ' +
+  'time — только если время прозвучало, иначе null. participants — кого назвали поимённо; ' +
+  'договорились «все», «командой» — пустой список. Договорённости не было — пустой массив.\n' +
   // Источник у каждого пункта (ТЗ-22): человек проверяет решение, переходя к секунде записи.
   'В "at" пиши метку реплики [мм:сс] из стенограммы, где это прозвучало. Не нашёл — null.\n' +
   'confidence — насколько уверен в исполнителе: high — назван прямо, medium — понятно по контексту, low — догадка. ' +
