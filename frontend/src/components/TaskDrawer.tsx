@@ -591,12 +591,12 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const [descPreview, setDescPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   // приёмка работы: сдаём не полностью — сначала показываем, чего не хватает
   const [gate, setGate] = useState<{ block: GateBlock; columnId: string } | null>(null);
-  const moveToColumn = async (columnId: string, confirmGate = false) => {
+  const moveToColumn = async (columnId: string, confirmGate = false, noAfterReason?: string) => {
     if (columnId === task.column_id || moving) return;
     setErr(''); setMoving(true);
     feedback('tap');
     try {
-      const server = await api.moveTask(task.id, { columnId, position: 0, confirmGate });
+      const server = await api.moveTask(task.id, { columnId, position: 0, confirmGate, noAfterReason });
       feedback(server?.closed_at && !task.closed_at ? 'task.completed' : 'task.moved');
       setGate(null); onRefresh();
     }
@@ -760,7 +760,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             block={gate.block}
             busy={moving}
             onCancel={() => setGate(null)}
-            onForce={() => moveToColumn(gate.columnId, true)}
+            onForce={(reason) => moveToColumn(gate.columnId, true, reason)}
           />
         )}
 

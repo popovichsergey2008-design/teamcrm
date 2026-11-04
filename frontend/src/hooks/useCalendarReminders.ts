@@ -38,9 +38,11 @@ export function useCalendarReminders(enabled: boolean): void {
       const when = new Date(p.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
       const body = `${when}${p.location ? ` · ${p.location}` : ''} · ${inWords(p.minutesBefore)}`;
       const path = p.publicId ? `/meet/${p.publicId}` : undefined;
+      // #4749: висит до начала встречи (или пока не нажмут), следующее напоминание её заменяет
+      const keep = { expireAt: new Date(p.startsAt).getTime(), replaceKey: `cal:${p.eventId}` };
       showToast(path
-        ? { title: `Встреча: ${p.title}`, body: `${body} · нажмите, чтобы войти`, section: 'inbox', inboxPath: path }
-        : { title: `Встреча: ${p.title}`, body });
+        ? { title: `Встреча: ${p.title}`, body: `${body} · нажмите, чтобы войти`, section: 'inbox', inboxPath: path, ...keep }
+        : { title: `Встреча: ${p.title}`, body, ...keep });
       showNotification(`Встреча: ${p.title}`, body, path ? () => openInboxItem(undefined, path) : undefined);
       playMessageChime();
     };

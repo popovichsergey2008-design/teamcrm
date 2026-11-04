@@ -185,6 +185,12 @@ export class MoveTaskDto {
   @IsOptional()
   @IsBoolean()
   confirmGate?: boolean;
+
+  /** #4748: почему нет снимков «после» — без неё задачу со снимками «было» не сдать. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  noAfterReason?: string;
 }
 
 /** Возврат в работу: причина обязательна — «переделай» без объяснения бесполезно. */

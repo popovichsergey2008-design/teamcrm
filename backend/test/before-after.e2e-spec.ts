@@ -215,4 +215,49 @@ describe('Было/стало (e2e)', () => {
     const unchecked = (await http$.put(`/api/tasks/${task.id}/before-after/${o3.current.id}/checked`).set(O).send({ n: 2, checked: false }).expect(200)).body.data;
     expect(unchecked.summary.checked).toEqual({});
   });
+  /**
+   * #4748: снимок «было» есть, «после» нет — сдать можно только с причиной; «сдать всё
+   * равно» её не заменяет. Причина — комментарием исполнителя, отчёт и сообщение в
+   * обсуждении говорят «снимков «стало» нет» с её словами, а не «ошибок не нашли».
+   */
+  it('без снимков «после» — причина обязательна и видна в отчёте и сообщении', async () => {
+    const owner = (await http$.post('/api/auth/register')
+      .send({ acceptPrivacy: true, tenantName: 'Без после', email: `ban_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Постановщик Борис' }).expect(201)).body.data;
+    const O = H(owner.accessToken);
+    const email = `band_${uniq()}@t.test`;
+    const doerUser = (await http$.post('/api/users').set(O).send({ email, fullName: 'Исполнитель Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201)).body.data;
+    const D = H((await http$.post('/api/auth/login').send({ email, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
+    await http$.put('/api/handoff-gate').set(O).send({ checklist: false, comment: false, attachment: false }).expect(200);
+    const project = (await http$.post('/api/projects').set(O).send({ name: 'Меню' }).expect(201)).body.data;
+    const board = (await http$.get(`/api/projects/${project.id}/board`).set(O).expect(200)).body.data;
+    const done = board.columns.find((c: any) => c.name === 'Готово').id;
+    const task = (await http$.post('/api/tasks').set(O).send({
+      projectId: project.id, assigneeId: String(doerUser.id), title: 'Поправить кнопку «Цена» в верхнем меню',
+      description: '<ol><li>Кнопка «Цена» ведёт на отдельную страницу</li></ol>',
+    }).expect(201)).body.data;
+    await http$.post(`/api/tasks/${task.id}/attachments`).set(O)
+      .attach('file', png, { filename: 'было-меню.png', contentType: 'image/png' }).expect(201);
+
+    const noReason = await http$.post(`/api/tasks/${task.id}/move`).set(D).send({ columnId: done, position: 0 }).expect(409);
+    expect(noReason.body.error.details.gate.missing.map((m: any) => m.code)).toContain('after_reason');
+    // «сдать всё равно» причину не заменяет
+    await http$.post(`/api/tasks/${task.id}/move`).set(D).send({ columnId: done, position: 0, confirmGate: true }).expect(409);
+
+    await http$.post(`/api/tasks/${task.id}/move`).set(D)
+      .send({ columnId: done, position: 0, confirmGate: true, noAfterReason: 'страница ещё не выложена на сайт' }).expect(201);
+    const comments = () => http$.get(`/api/tasks/${task.id}/comments`).set(O).expect(200).then((r: any) => r.body.data as any[]);
+    expect((await comments()).some((c: any) => c.body === 'Снимков «после» нет: страница ещё не выложена на сайт')).toBe(true);
+
+    const o = await settle(task.id, O, (x) => x.current?.status === 'ready');
+    expect(o.current.trigger).toBe('auto');
+    expect(o.current.summary.message).toMatch(/Снимков «стало» нет — исполнитель объяснил: «страница ещё не выложена на сайт»/);
+    expect(o.current.summary.message).not.toMatch(/ошибок не нашли/);
+    expect(o.current.summary.notes[0]).toMatch(/Снимков «после» нет/);
+    let ai$: any[] = [];
+    for (let i = 0; i < 20 && !ai$.length; i++) {
+      ai$ = (await comments()).filter((c: any) => c.is_ai && /Снимков «стало» нет/.test(String(c.body)));
+      if (!ai$.length) await new Promise((r) => setTimeout(r, 150));
+    }
+    expect(ai$).toHaveLength(1);
+  });
 });

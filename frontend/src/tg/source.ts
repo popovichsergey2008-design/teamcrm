@@ -136,10 +136,11 @@ export const crmSource: TgSource = {
       await api.moveTask(taskId, { columnId, position: 0, confirmGate: force });
     } catch (e) {
       const g = e instanceof ApiError
-        ? (e.details as { gate?: { column: string; missing: { text: string; blocking?: boolean }[]; blocking?: boolean } } | undefined)?.gate
+        ? (e.details as { gate?: { column: string; missing: { code?: string; text: string; blocking?: boolean }[]; blocking?: boolean } } | undefined)?.gate
         : undefined;
       if (g && Array.isArray(g.missing) && g.missing.length) {
-        throw new GateError({ column: g.column, missing: g.missing.map((m) => m.text), locked: !!g.blocking || g.missing.some((m) => m.blocking) });
+        // #4748: причину без снимков «после» в боте не спросить — сдаётся в приложении
+        throw new GateError({ column: g.column, missing: g.missing.map((m) => m.text), locked: !!g.blocking || g.missing.some((m) => m.blocking || m.code === 'after_reason') });
       }
       throw e;
     }

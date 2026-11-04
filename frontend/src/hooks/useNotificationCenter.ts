@@ -23,6 +23,8 @@ import { isNativeShell } from '../platform';
 const OWN_CHIME = new Set(['task.created', 'task.assignee']);
 /** Пачка событий (утренний обход сроков, комментарий + упоминание) звенит один раз. */
 const CHIME_GAP_MS = 2_000;
+/** Всплывашки, которые висят до прочтения. */
+const STICKY_EVENTS = new Set(['task.auto_confirm', 'calendar.invite']);
 
 export function useNotificationCenter(signedIn: boolean): void {
   useEffect(() => {
@@ -43,8 +45,9 @@ export function useNotificationCenter(signedIn: boolean): void {
       load();
       if (!p?.toast || !p.title || isNativeShell()) return;
       if (document.hidden) showNotification(p.title, p.body ?? '', () => openInboxItem(p.id, p.path), { key: p.path });
-      // #4742: «Задача поставлена от вас — проверьте» ждёт «Ок/Править», поэтому не гаснет сама
-      else showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path, sticky: p.eventKey === 'task.auto_confirm' });
+      // не гаснут сами, пока не прочитают: «Задача поставлена от вас» ждёт «Ок/Править» (#4742),
+      // приглашение на встречу — в том числе поставленную агентом из переписки (#4749)
+      else showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path, sticky: STICKY_EVENTS.has(p.eventKey ?? '') });
       const now = Date.now();
       if (!OWN_CHIME.has(p.eventKey ?? '') && now - lastChime > CHIME_GAP_MS) {
         lastChime = now;

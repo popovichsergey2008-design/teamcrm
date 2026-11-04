@@ -26,7 +26,8 @@ export interface GateFacts {
   attachments: number;
 }
 
-export type GateMissCode = 'checklist' | 'comment' | 'attachment';
+/** after_reason (#4748): снимки «было» есть, «после» нет — сдать можно только с причиной. */
+export type GateMissCode = 'checklist' | 'comment' | 'attachment' | 'after_reason';
 
 export interface GateMiss {
   code: GateMissCode;

@@ -1392,7 +1392,7 @@ export const api = {
     clientId: string | null;
   }>, version?: number | null) =>
     queued<Task>('PATCH', `/tasks/${id}`, b, { label: 'Правка задачи', preview: b.title ?? b.description ?? undefined, ifMatch: version ?? null }),
-  moveTask: (id: string, b: { columnId: string; position: number; confirmGate?: boolean }) =>
+  moveTask: (id: string, b: { columnId: string; position: number; confirmGate?: boolean; noAfterReason?: string }) =>
     request<Task>('POST', `/tasks/${id}/move`, b),
 
   // условия приёмки работы: читают все, меняет владелец

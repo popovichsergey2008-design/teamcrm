@@ -477,7 +477,7 @@ describe('разбор переписки (e2e)', () => {
     await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
   }, 90000);
 
-  it('без времени встреча не ставится, пока его не назовут', async () => {
+  it('без времени встреча не ставится, пока его не назовут; назвали — агент ставит сам (#4749)', async () => {
     const { owner, mate, O } = await team('CA13');
     await http.patch('/api/chat-analysis/settings').set(O).send({ enabled: true }).expect(200);
     // Вопрос бот задаёт в рабочее время; здесь его имитируем, а проверяем приём ответа.
@@ -502,16 +502,25 @@ describe('разбор переписки (e2e)', () => {
     await http.post(`/api/chats/${chat.id}/messages`).set(O).send({ body: 'в 15' }).expect(201);
     await app.get(ChatAnalysisService).tick(new Date(), String(owner.user.tenantId));
 
-    const row = await db.one<any>(`SELECT status, meeting_at FROM chat_extracted_actions WHERE id = $1`, [actionId]);
-    expect(row!.status).toBe('ready');
-    expect(row!.meeting_at).toBeTruthy();
-    const said = await db.one<{ body: string }>(
-      `SELECT body FROM chat_messages WHERE chat_id = $1 AND is_ai ORDER BY id DESC LIMIT 1`, [chat.id],
+    // время назвали — встреча в календаре без кнопки, с напоминаниями за 10 и за 5 минут
+    const row = await db.one<any>(
+      `SELECT status, meeting_at, created_entity_type, created_entity_id::text FROM chat_extracted_actions WHERE id = $1`, [actionId],
     );
-    expect(said!.body).toContain('15:00');
+    expect(row!.status).toBe('auto_created');
+    expect(row!.meeting_at).toBeTruthy();
+    expect(row!.created_entity_type).toBe('calendar_event');
+    const reminders = await db.many<{ minutes_before: number }>(
+      `SELECT minutes_before FROM calendar_reminders WHERE event_id = $1 ORDER BY minutes_before`, [row!.created_entity_id],
+    );
+    expect(reminders.map((r) => Number(r.minutes_before))).toEqual([5, 10]);
+    const said = await db.many<{ body: string }>(
+      `SELECT body FROM chat_messages WHERE chat_id = $1 AND is_ai ORDER BY id DESC LIMIT 2`, [chat.id],
+    );
+    expect(said.map((m) => m.body).join(' ')).toContain('15:00');
+    expect(said[0].body).toMatch(/^Поставил встречу/);
 
-    const res = (await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(201)).body.data;
-    expect(res.eventId).toBeTruthy();
+    // второй раз не поставить
+    await http.post(`/api/chat-analysis/actions/${actionId}/confirm`).set(O).send({}).expect(409);
   }, 90000);
 
   /**

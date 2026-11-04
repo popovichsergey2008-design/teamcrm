@@ -16,10 +16,11 @@ import { renderBeforeAfterHtml } from './before-after.html';
 import { CHECK_FALLBACK, CHECK_PROMPT, SPLIT_FALLBACK, SPLIT_PROMPT } from './before-after.prompt';
 import { BeforeAfterRepository, CheckTaskRow, ReportRow } from './before-after.repository';
 import {
-  ASK_RESULT_TEXT, autoWorthy, CheckItem, CheckKind, descriptionCallsExample, descriptionImageContext, descriptionImageIds,
+  afterReasonNeeded, ASK_RESULT_TEXT, autoWorthy, CheckItem, CheckKind, descriptionCallsExample, descriptionImageContext, descriptionImageIds,
   descriptionText, fingerprint, hasProblems, headline, initialRole, isImage, ItemSource, kindByRules, MANUAL_ROLES,
   ManualRole, matchShots, MaterialFile, ModelItem, needsResult, pageUrls, parseChange, parseCheck, parseSplit, RawItem,
-  remarksText, resultMessage, ruleRole, seesImages, settleVerdict, Shot, sideOf, splitItems, summarize,
+  noAfterComment, noAfterMessage, noAfterReasonOf, remarksText, resultMessage, ruleRole, seesImages, settleVerdict, Shot,
+  sideOf, splitItems, summarize,
 } from './before-after.rules';
 import { PageShooter } from './page-shot';
 
@@ -64,6 +65,8 @@ interface Collected {
   sizes: Map<string, number>;
   afterDocs: { fileId: string; name: string; mime: string; size: number }[];
   afterMessages: { id: string; author: string | null; body: string; at: Date }[];
+  /** #4748: причина, по которой исполнитель сдал без снимков «после» (последняя). */
+  noAfterReason: string | null;
   urls: string[];
   fp: string;
   doers: string[];
@@ -181,6 +184,23 @@ export class BeforeAfterService {
     const ok = await this.repo.setShotRole(tenantId, task.id, fileId, role, String(viewer.userId));
     if (!ok) throw AppException.notFound('Снимок не найден в задаче');
     return { fileId: String(fileId), role };
+  }
+
+  /**
+   * #4748: сдают задачу со снимками «было», а снимков «после» (и документа результата) нет —
+   * причину спросят в окне сдачи. Ошибка сбора материалов сдачу не держит.
+   */
+  async needsAfterReason(tenantId: string, taskId: string): Promise<boolean> {
+    const task = await this.repo.task(tenantId, taskId);
+    if (!task) return false;
+    try { return afterReasonNeeded(await this.collect(tenantId, task)); } catch { return false; }
+  }
+
+  /** Причина без снимков «после» — комментарием исполнителя: её видят в обсуждении, отчёт находит по метке. */
+  async recordNoAfterReason(tenantId: string, taskId: string, actorId: string, reason: string): Promise<void> {
+    const { TaskCardService } = await import('../taskcard/taskcard.service');
+    const cards = this.moduleRef.get(TaskCardService, { strict: false });
+    await cards.addComment(tenantId, taskId, actorId, noAfterComment(reason), false);
   }
 
   /**
@@ -441,11 +461,16 @@ export class BeforeAfterService {
 
     const agentComments = new Set(agent.commentIds);
     const selfTask = !task.created_by || people.doers.has(String(task.created_by)) || !people.doers.size;
-    const afterMessages = comments
+    const doerComments = comments
       .filter((c) => agentComments.has(c.id) || (selfTask
         ? new Date(c.created_at).getTime() >= people.boundary.getTime()
         : !!c.author_id && people.doers.has(String(c.author_id))))
-      .filter((c) => c.body.trim().length > 1)
+      .filter((c) => c.body.trim().length > 1);
+    // #4748: «Снимков «после» нет: …» — причина, а не отчёт о результате
+    let noAfterReason: string | null = null;
+    for (const c of doerComments) noAfterReason = noAfterReasonOf(c.body) ?? noAfterReason;
+    const afterMessages = doerComments
+      .filter((c) => noAfterReasonOf(c.body) === null)
       .map((c) => ({ id: c.id, author: agentComments.has(c.id) ? 'ИИ-агент' : c.author, body: c.body, at: new Date(c.created_at) }));
 
     const descText = descriptionText(task.description);
@@ -455,6 +480,7 @@ export class BeforeAfterService {
       c: checklist.map((c) => [c.text, c.done]),
       b: before.map((s) => s.fileId), a: after.map((s) => s.fileId), ad: afterDocs.map((d) => d.fileId),
       m: afterMessages.map((m) => m.id), u: urls,
+      ...(noAfterReason ? { na: noAfterReason } : {}),
       // роли руками и образцы: поменял человек роль — «Пересобрать отчёт» даст новую версию.
       // Пусто — ключей нет: у старых отчётов отпечаток не меняется от одной выкладки.
       ...(examples.length || others.length || Object.keys(manual).length
@@ -463,7 +489,7 @@ export class BeforeAfterService {
     });
     return {
       checklist, description: task.description, descText, before, after, examples, others, manual,
-      sizes, afterDocs, afterMessages, urls, fp, doers,
+      sizes, afterDocs, afterMessages, urls, fp, doers, noAfterReason,
     };
   }
 
@@ -586,6 +612,7 @@ export class BeforeAfterService {
         });
         it.verdict = v.verdict;
         it.reason = v.reason;
+        if (!it.after.length && c.noAfterReason) it.reason = `${v.reason} Снимков «после» нет — исполнитель: «${c.noAfterReason}».`;
         if (!it.change && m && (m.from || m.to)) it.change = { from: m.from, to: m.to };
       }
       if (!hasModel) {
@@ -601,10 +628,18 @@ export class BeforeAfterService {
 
       const s = summarize(items);
       const mode: 'ai' | 'eyes' = hasModel && modelAnswered ? 'ai' : 'eyes';
+      // #4748: «было» есть, «стало» нет вовсе — так и говорим, а не «ошибок не нашли»
+      const afterGap = afterReasonNeeded(c) && !afterAll.length;
+      if (afterGap) {
+        notes.unshift(c.noAfterReason
+          ? `Снимков «после» нет. Исполнитель объяснил: «${c.noAfterReason}».`
+          : 'Снимков «после» нет, и исполнитель не объяснил почему.');
+      }
+      const message = afterGap ? noAfterMessage(c.noAfterReason, s.notFixed) : resultMessage(s, mode, kind);
       await this.repo.finish(tenantId, reportId, {
         items,
         summary: {
-          ...s, kind, headline: headline(s, kind), message: resultMessage(s, mode, kind), itemsSource: source,
+          ...s, kind, headline: headline(s, kind), message, itemsSource: source,
           loose: { before: looseBefore, after: looseAfter }, examples, others, notes, modelSummary,
           afterMessages: c.afterMessages.length, afterDocs: c.afterDocs.map((d) => d.name),
           // отчёт исполнителя словами — в чек-листе приёмки это и есть «стало»
@@ -615,7 +650,7 @@ export class BeforeAfterService {
         mode, model, inputTokens, outputTokens,
       });
       this.realtime.emitScoped(tenantId, task.project_id, 'task.before_after', { taskId: task.id, reportId, status: 'ready' }, false);
-      if (trigger === 'auto') await this.notify(tenantId, task, actorId, s, mode, kind, items, c.doers);
+      if (trigger === 'auto') await this.notify(tenantId, task, actorId, s, message, items, c.doers);
     } catch (e) {
       this.log.warn(`отчёт «было/стало» по задаче ${task.id}: ${(e as Error).message}`);
       await this.repo.fail(tenantId, reportId, 'Проверка не удалась — попробуйте ещё раз').catch(() => undefined);
@@ -793,10 +828,9 @@ export class BeforeAfterService {
    * невнесённые пункты: нехватку материалов так не называем.
    */
   private async notify(
-    tenantId: string, task: CheckTaskRow, actorId: string | null, s: ReturnType<typeof summarize>, mode: 'ai' | 'eyes',
-    kind: CheckKind, items: CheckItem[], doers: string[],
+    tenantId: string, task: CheckTaskRow, actorId: string | null, s: ReturnType<typeof summarize>, message: string,
+    items: CheckItem[], doers: string[],
   ): Promise<void> {
-    const message = resultMessage(s, mode, kind);
     const remarks = hasProblems(s) || needsResult(s) ? remarksText(items) : '';
     const path = `/projects/${task.project_id}/task/${task.id}/check`;
     const author = actorId ?? task.created_by;

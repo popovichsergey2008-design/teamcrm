@@ -603,9 +603,10 @@ export function settleVerdict(input: {
  * одними макетами и без единого слова исполнителя дала бы отчёт «результат не
  * приложен» (#4657). Задача без единой картинки — по кнопке, а не сама.
  */
-export function autoWorthy(c: { before: unknown[]; after: unknown[]; afterMessages: unknown[]; afterDocs: unknown[] }): boolean {
+export function autoWorthy(c: { before: unknown[]; after: unknown[]; afterMessages: unknown[]; afterDocs: unknown[]; noAfterReason?: string | null }): boolean {
   if (c.after.length) return true;
-  return c.before.length > 0 && (c.afterMessages.length > 0 || c.afterDocs.length > 0);
+  // #4748: сдали без снимков «после», но с причиной — отчёт и сообщение в чате с ней
+  return c.before.length > 0 && (c.afterMessages.length > 0 || c.afterDocs.length > 0 || !!c.noAfterReason);
 }
 
 // ───────────── итог и сообщения ─────────────
@@ -680,6 +681,49 @@ export function needsResult(s: CheckSummary): boolean {
 
 /** Текст «Попросить результат» — комментарий исполнителю в обсуждение задачи. */
 export const ASK_RESULT_TEXT = 'Приложите, пожалуйста, как стало — скрин или ссылку, чтобы проверить по пунктам';
+
+/*
+  Снимков «после» нет (#4748). Заказчик: «в разделе „стало“ написано „Снимков после нет“ без
+  объяснения — не получилось, не стал делать или нецелесообразно? А сообщение в чате
+  „иди посмотри в блоке было/стало“ вводит в заблуждение, когда там пусто».
+
+  Поэтому исполнитель, сдавая задачу со снимками «было» без снимков «после», называет
+  причину — она уходит его комментарием с этой меткой, отчёт находит её по метке и
+  показывает в блоке и в сообщении. Комментарий-причина — не отчёт о результате: в
+  «стало словами» он не идёт, иначе модель приняла бы «не смог сделать скрин» за итог.
+*/
+export const NO_AFTER_PREFIX = 'Снимков «после» нет';
+
+/** Комментарий исполнителя с причиной: «Снимков «после» нет: …». */
+export function noAfterComment(reason: string): string {
+  return `${NO_AFTER_PREFIX}: ${reason.replace(/\s+/g, ' ').trim().slice(0, 500)}`;
+}
+
+/** Причина из комментария; не тот комментарий — null. */
+export function noAfterReasonOf(body: string): string | null {
+  const b = body.trim();
+  if (!b.startsWith(NO_AFTER_PREFIX)) return null;
+  return b.slice(NO_AFTER_PREFIX.length).replace(/^[\s:—-]+/, '').trim() || null;
+}
+
+/** Просить ли причину при сдаче: «было» есть, а результата снимком или документом нет. */
+export function afterReasonNeeded(c: { before: unknown[]; after: unknown[]; afterDocs: unknown[] }): boolean {
+  return c.before.length > 0 && c.after.length === 0 && c.afterDocs.length === 0;
+}
+
+/**
+ * Сообщение, когда снимков «стало» нет вовсе: сравнивать не с чем, и мы так и пишем —
+ * не «ошибок не нашли», а «снимков нет, вот почему, посмотрите сами».
+ */
+export function noAfterMessage(reason: string | null, notFixed = 0): string {
+  const why = reason
+    ? `Снимков «стало» нет — исполнитель объяснил: «${reason}».`
+    : 'Снимков «стало» нет, и исполнитель не объяснил почему.';
+  const tail = notFixed > 0
+    ? ` По материалам не внесено пунктов: ${notFixed} — посмотрите результат сами.`
+    : ' Сравнить «было» и «стало» не с чем — посмотрите результат сами.';
+  return why + tail;
+}
 
 /**
  * Сообщение по итогам — то, ради чего заказчик просил функцию: «Посмотрите, мы

@@ -80,15 +80,15 @@ interface Work { workStart: string; workEnd: string; weekendDays: number[]; holi
 
 const VIEW_LABEL: Record<View, string> = { day: 'День', week: 'Неделя', month: 'Месяц', list: 'Список' };
 /** Напоминания, которые предлагаем галочками. Своё время добавляется полем рядом. */
-const REMINDER_CHOICES = [0, 5, 15, 60, 1440];
+const REMINDER_CHOICES = [0, 5, 10, 15, 60, 1440];
 /**
  * Что отмечено у новой встречи.
  *
- * Три напоминания, а не одно: за час — чтобы успеть подготовиться, за 15 минут —
+ * Три напоминания, а не одно: за час — чтобы успеть подготовиться, за 10 минут —
  * чтобы закончить текущее дело, за 5 — чтобы дойти. Каждое из них человек и так
  * ставил руками, а забытое напоминание стоит пропущенной встречи.
  */
-const DEFAULT_REMINDERS = [5, 15, 60];
+const DEFAULT_REMINDERS = [5, 10, 60];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const HOUR_HEIGHT = 44; // высота часа в сетке, совпадает с .cal-hour в стилях
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });

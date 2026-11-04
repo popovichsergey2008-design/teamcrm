@@ -379,7 +379,7 @@ export class ChatAnalysisService {
    *
    * `startsAt` — время, которое человек поставил сам, если агент его не узнал.
    */
-  private async scheduleMeeting(tenantId: string, a: any, userId: string, startsAt: string | null) {
+  private async scheduleMeeting(tenantId: string, a: any, userId: string, startsAt: string | null, auto = false) {
     if (a.created_entity_id) throw AppException.conflict('Эта встреча уже в календаре');
     if (['rejected', 'cancelled'].includes(a.status)) throw AppException.conflict('Наблюдение уже закрыто');
     const organizer = a.assigner_id ? String(a.assigner_id) : String(userId);
@@ -400,10 +400,12 @@ export class ChatAnalysisService {
       endsAt: end.toISOString(),
       scope: 'personal',
       participantIds: participants.filter((id) => id !== organizer),
+      // #4749: напоминание за 10 минут и ещё раз за 5 — как просил заказчик
+      reminders: [10, 5],
     });
     const eventId = String((event as any).id);
     await this.repo.setEventSource(tenantId, eventId, String(a.chat_id), main?.message_id ?? null);
-    await this.repo.markAction(tenantId, String(a.id), { status: 'confirmed', entityType: 'calendar_event', entityId: eventId });
+    await this.repo.markAction(tenantId, String(a.id), { status: auto ? 'auto_created' : 'confirmed', entityType: 'calendar_event', entityId: eventId });
 
     // Участники договаривались в чате — там и узнают, что встреча в календаре.
     const names = (await Promise.all(participants.map((id) => this.chats.userName(tenantId, id)))).filter(Boolean);
@@ -411,8 +413,25 @@ export class ChatAnalysisService {
       day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: await this.repo.timezoneOf(tenantId),
     });
     await this.say(tenantId, String(a.chat_id),
-      `Поставил встречу «${a.title}» на ${when}. Участники: ${names.join(', ')} — приглашения в календаре.`);
+      `Поставил встречу «${a.title}» на ${when}. Участники: ${names.join(', ')} — приглашения в календаре.`
+      + (auto ? ' Напомню за 10 и за 5 минут. Если я ошибся — удалите встречу в календаре.' : ''));
     return { actionId: String(a.id), eventId };
+  }
+
+  /**
+   * #4749: договорились о встрече с днём и временем — агент сам ставит её в календарь,
+   * без кнопки. Встреча — не поручение: её легко отменить, а пропущенная договорённость
+   * стоит дороже, поэтому и в режиме «только предлагать». Не вышло (нет организатора,
+   * время прошло) — наблюдение остаётся «готовым», поставят руками.
+   */
+  private async autoSchedule(tenantId: string, actionId: string): Promise<void> {
+    try {
+      const a = await this.repo.oneForSystem(tenantId, actionId);
+      if (!a || a.action_type !== 'meeting' || a.status !== 'ready' || a.created_entity_id || !a.assigner_id) return;
+      await this.scheduleMeeting(tenantId, a, String(a.assigner_id), null, true);
+    } catch (e) {
+      this.log.log(`встреча ${actionId}: не поставил сам — ${(e as Error).message}`);
+    }
   }
 
   // ── качество ──
@@ -925,8 +944,9 @@ export class ChatAnalysisService {
     });
     if (status !== 'ready') return false;
     await this.repo.fillMeeting(row.tenant_id, row.id, { meetingAt: at, status });
-    await this.say(row.tenant_id, row.chat_id,
-      `Принял: ${dayLabel(row.meeting_date)}, ${time}. Встреча «${row.title}» готова — осталось поставить её в календарь.`);
+    await this.say(row.tenant_id, row.chat_id, `Принял: ${dayLabel(row.meeting_date)}, ${time}.`);
+    // #4749: время есть — ставим в календарь сами (сообщение «Поставил встречу…» напишет постановка)
+    await this.autoSchedule(row.tenant_id, row.id);
     return true;
   }
 
@@ -1296,6 +1316,7 @@ export class ChatAnalysisService {
         saved.push({ id, action: a, status, cancelled });
       }
       await this.autoCreate(chat, saved);
+      for (const sv of saved) if (sv.action.type === 'meeting' && sv.status === 'ready' && !sv.cancelled) await this.autoSchedule(chat.tenant_id, sv.id);
       await this.autoLog(chat, saved);
       await this.askAbout(chat, saved);
 

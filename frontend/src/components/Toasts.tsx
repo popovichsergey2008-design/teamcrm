@@ -66,13 +66,17 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       // копить бесконечно нельзя: при активной переписке экран заполнится целиком;
       // вытесненная — тоже не прочитана, ей место в «Пропущенных»
       setItems((prev) => {
-        const next = [...prev, item];
+        // та же тема (напоминание о той же встрече) — прежняя карточка уступает место новой
+        const same = item.replaceKey ? prev.filter((x) => x.replaceKey === item.replaceKey) : [];
+        for (const old of same) { clearTimeout(all.get(old.id)); all.delete(old.id); }
+        const next = [...prev.filter((x) => !same.includes(x)), item];
         for (const old of next.slice(0, -MAX_VISIBLE)) { clearTimeout(all.get(old.id)); queueMicrotask(() => expire(old)); }
         return next.slice(-MAX_VISIBLE);
       });
       // «Сохранено» гаснет быстрее: это ответ на действие, а не новость, ради
       // которой стоит держать место на экране.
-      if (!item.sticky) arm(item, item.kind === 'saved' ? SAVED_LIFETIME_MS : LIFETIME_MS);
+      if (item.expireAt) arm(item, Math.max(LIFETIME_MS, item.expireAt - Date.now()));
+      else if (!item.sticky) arm(item, item.kind === 'saved' ? SAVED_LIFETIME_MS : LIFETIME_MS);
     };
     window.addEventListener(TOAST_EVENT, onToast);
     return () => {
@@ -118,7 +122,7 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       onClick={() => open(t)}
       // читают — не гасим; ушли — даём дочитать
       onMouseEnter={live ? () => clearTimeout(timers.current.get(t.id)) : undefined}
-      onMouseLeave={live && !t.sticky ? () => arm(t, t.kind === 'saved' ? SAVED_LIFETIME_MS : AFTER_HOVER_MS) : undefined}
+      onMouseLeave={live && !t.sticky && !t.expireAt ? () => arm(t, t.kind === 'saved' ? SAVED_LIFETIME_MS : AFTER_HOVER_MS) : undefined}
       title={t.kind === 'saved' ? 'Скрыть'
         : t.section === 'feed' ? 'Открыть ленту'
         : t.section === 'focus' ? 'Открыть фокус дня'

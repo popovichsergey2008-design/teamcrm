@@ -324,6 +324,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   /** Поиск внутри открытого чата: лупа в шапке, как в мессенджерах. */
   const [inChatSearch, setInChatSearch] = useState(false);
   const [inChatQuery, setInChatQuery] = useState('');
+  // #4747: запрос относится к тому чату, где его набрали, — в другом чате поиск начинается заново
+  useEffect(() => { setInChatSearch(false); setInChatQuery(''); }, [activeId]);
   /**
    * Что нашлось в этом разговоре.
    *
@@ -637,13 +639,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * Узел может быть ещё не отрисован (окно только что пришло с сервера) — ждём его
    * несколько кадров, а не гадаем с таймером.
    */
-  const scrollToMessage = (id: string, tries = 20): void => {
+  const scrollToMessage = (id: string, tries = 90): void => {
+    // #4747: край ленты глушим СРАЗУ, а не когда узел нашёлся. Пока свежее окно
+    // отрисовывается, лента стоит в самом верху — подгрузка старых успевала сработать,
+    // и поиск заканчивался «в самом верху чата».
+    jumping.current = true;
     const el = feedRef.current?.querySelector(`[data-msg="${id}"]`);
     if (!el) {
       if (tries > 0) requestAnimationFrame(() => scrollToMessage(id, tries - 1));
+      else jumping.current = false;
       return;
     }
-    jumping.current = true;
     el.scrollIntoView({ block: 'center' });
     setHighlight(id);
     window.setTimeout(() => { jumping.current = false; }, 300);

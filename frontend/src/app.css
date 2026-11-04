@@ -3359,10 +3359,13 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 
 /* Поиск в открытом чате: строка занимает шапку целиком, пока ищут. */
 .chat-insearch { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
-.chat-insearch .input { flex: 1; min-width: 0; font-size: var(--fs-sm); padding: 5px 8px; }
+.chat-insearch .input { flex: 1; min-width: 120px; font-size: var(--fs-sm); padding: 5px 8px; }
 .chat-insearch-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* #4747: название чата уже в подсказке поля — пока ищут, оно не налезает на стрелки и крестик
+   (в окне чата 480 точек широкий экран, а места как на телефоне) */
+.chat-head-searching .chat-head-title { display: none; }
 @media (max-width: 720px) {
-  .chat-head-searching .chat-head-title, .chat-insearch-count.is-hint { display: none; }
+  .chat-insearch-count.is-hint { display: none; }
 }
 /* Найденное в этом чате подсвечено рамкой; то, на котором стоим, — рамкой поярче. */
 .chat-match .chat-msg { box-shadow: 0 0 0 2px var(--accent-line); }

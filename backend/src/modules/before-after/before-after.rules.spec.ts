@@ -1,5 +1,5 @@
 import {
-  autoWorthy, descriptionCallsExample, descriptionImageContext, descriptionImageIds, descriptionText, edits,
+  afterReasonNeeded, autoWorthy, noAfterComment, noAfterMessage, noAfterReasonOf, descriptionCallsExample, descriptionImageContext, descriptionImageIds, descriptionText, edits,
   fingerprint, hasProblems, headline, initialRole, kindByRules, looksVisual, matchShots, mentionedNumber,
   needsResult, pageUrls, parseChange, parseCheck, parseSplit, points, remarksText, resultMessage, ruleRole,
   saysExample, seesImages, settleVerdict, Shot, sideOf, splitItems, summarize,
@@ -457,5 +457,34 @@ describe('#4657: три скрина-образца и четыре пункта
     expect(settleVerdict({ model: m, hasModel: true, modelSees: true, hasAfterShots: false, hasAfterOther: true, kind: 'functional' }).verdict).toBe('fixed');
     expect(resultMessage(summarize([{ verdict: 'fixed' }, { verdict: 'fixed' }, { verdict: 'fixed' }, { verdict: 'fixed' }]), 'ai', 'functional'))
       .toBe('Посмотрите, мы проверили: 4 из 4 пунктов подтверждены отчётом исполнителя.');
+  });
+});
+
+describe('#4748: снимков «после» нет', () => {
+  it('причина: комментарий с меткой туда и обратно, чужие комментарии — не причина', () => {
+    const body = noAfterComment('  правка на сервере,\n  на экране не видна ');
+    expect(body).toBe('Снимков «после» нет: правка на сервере, на экране не видна');
+    expect(noAfterReasonOf(body)).toBe('правка на сервере, на экране не видна');
+    expect(noAfterReasonOf('Сделал, скрин ниже')).toBeNull();
+    expect(noAfterReasonOf('Снимков «после» нет:')).toBeNull();
+  });
+
+  it('спрашиваем причину, только когда «было» есть, а результата снимком или документом нет', () => {
+    expect(afterReasonNeeded({ before: [1], after: [], afterDocs: [] })).toBe(true);
+    expect(afterReasonNeeded({ before: [1], after: [1], afterDocs: [] })).toBe(false);
+    expect(afterReasonNeeded({ before: [1], after: [], afterDocs: [1] })).toBe(false);
+    expect(afterReasonNeeded({ before: [], after: [], afterDocs: [] })).toBe(false);
+  });
+
+  it('сообщение не говорит «ошибок не нашли», когда сравнивать не с чем', () => {
+    expect(noAfterMessage('правка на сервере')).toBe('Снимков «стало» нет — исполнитель объяснил: «правка на сервере». Сравнить «было» и «стало» не с чем — посмотрите результат сами.');
+    expect(noAfterMessage(null)).toMatch(/не объяснил почему/);
+    expect(noAfterMessage('x', 2)).toMatch(/не внесено пунктов: 2/);
+    expect(noAfterMessage('x')).not.toMatch(/ошибок не нашли/);
+  });
+
+  it('с причиной автопроверка запускается и без сообщений исполнителя', () => {
+    expect(autoWorthy({ before: [1], after: [], afterMessages: [], afterDocs: [] })).toBe(false);
+    expect(autoWorthy({ before: [1], after: [], afterMessages: [], afterDocs: [], noAfterReason: 'не нужно' })).toBe(true);
   });
 });

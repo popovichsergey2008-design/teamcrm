@@ -1,7 +1,7 @@
 import { stripPasteJunk } from '../../common/text/paste-junk';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { ConfirmSource } from '../nl/auto-task';
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { TagsService } from '../tags/tags.service';
 import { SecurityService } from '../security/security.service';
@@ -49,6 +49,8 @@ export class TasksService {
       await sink({ tenantId, taskId, title }).catch(() => undefined);
     }
   }
+
+  private readonly log = new Logger('Tasks');
 
   constructor(
     private readonly repo: TasksRepository,
@@ -674,10 +676,25 @@ export class TasksService {
         hint: 'отметьте все пункты чек-листа — постановщик не принимает задачу без него',
       });
     }
-    if (missing.length && !dto.confirmGate) {
+    /*
+      #4748: снимки «было» есть, «после» нет — сдать можно, но с причиной. «Сдать всё
+      равно» её не заменяет: постановщику иначе непонятно, не смог исполнитель, не стал
+      или снимок тут не нужен. Только для ручной сдачи исполнителем — машинные переносы
+      (агент, автоматика) этот вопрос не задают.
+    */
+    const afterReason = dto.noAfterReason?.replace(/\s+/g, ' ').trim() ?? '';
+    const afterGap = (!source || source === 'MANUAL') && String(task.column_id) !== String(dto.columnId)
+      ? await this.afterReasonNeeded(tenantId, task, column, actorId)
+      : false;
+    const gateMissing = afterGap && !afterReason
+      ? [...missing, { code: 'after_reason' as const, text: 'Нет снимков «после» — напишите, почему' }]
+      : missing;
+    if (gateMissing.length && (!dto.confirmGate || (afterGap && !afterReason))) {
       throw AppException.conflict('Работа сдаётся не полностью', {
-        gate: { column: column.name, missing },
-        hint: 'передайте confirmGate=true, чтобы сдать всё равно',
+        gate: { column: column.name, missing: gateMissing },
+        hint: afterGap && !afterReason
+          ? 'передайте noAfterReason — почему нет снимков «после»'
+          : 'передайте confirmGate=true, чтобы сдать всё равно',
       });
     }
 
@@ -742,6 +759,11 @@ export class TasksService {
       приносит. Запуск отложен и сам решает, есть ли что сравнивать.
     */
     const stage = column.stage_type ?? (isReviewColumn(column.name) ? 'review' : isDoneColumn(column.name) ? 'done' : 'work');
+    // причина без снимков «после» — до автопроверки: отчёт её покажет и в блоке, и в сообщении
+    if (afterGap && afterReason && actorId) {
+      await this.beforeAfter?.recordNoAfterReason(tenantId, id, actorId, afterReason)
+        .catch((e) => this.log.warn(`причина без снимков «после», задача ${id}: ${(e as Error).message}`));
+    }
     if (String(task.column_id) !== String(dto.columnId) && HANDOFF_STAGES.has(stage)) {
       this.beforeAfter?.scheduleAuto(tenantId, id, actorId);
     }
@@ -1171,6 +1193,14 @@ export class TasksService {
     */
     const strict = task.checklist_required !== false && String(task.created_by ?? '') !== String(actorId);
     return handoffGate(req, facts, strict);
+  }
+
+  /** #4748: тот же круг, что у приёмки (сдаёт исполнитель чужую задачу), и снимки «было» без «после». */
+  private async afterReasonNeeded(tenantId: string, task: TaskRow, column: { name: string; stage_type?: string | null }, actorId: string | null): Promise<boolean> {
+    const stage = column.stage_type ?? (isReviewColumn(column.name) ? 'review' : isDoneColumn(column.name) ? 'done' : 'work');
+    if (stage === 'work' || !actorId || !this.beforeAfter) return false;
+    if (String(task.assignee_id ?? '') !== String(actorId) || String(task.created_by ?? '') === String(actorId)) return false;
+    return this.beforeAfter.needsAfterReason(tenantId, task.id);
   }
 
   /**

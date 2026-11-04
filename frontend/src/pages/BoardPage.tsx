@@ -449,7 +449,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   }, [board, selected]);
 
   const moveTask = useCallback(
-    async (taskId: string, columnId: string, visibleIndex: number, confirmGate = false) => {
+    async (taskId: string, columnId: string, visibleIndex: number, confirmGate = false, noAfterReason?: string) => {
       const current = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
       // Перетаскивание сообщает место среди ВИДИМЫХ карточек. При включённом фильтре
       // это не настоящая позиция: между двумя своими задачами могут стоять чужие,
@@ -462,7 +462,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
       feedback('tap');
       try {
-        const server = await api.moveTask(taskId, { columnId, position, confirmGate });
+        const server = await api.moveTask(taskId, { columnId, position, confirmGate, noAfterReason });
         dispatch({ type: 'UPSERT_TASK', task: server });
         setGate(null);
         // задача закрылась этим переносом — подтверждение, когда сервер согласился (ТЗ-23)
@@ -543,7 +543,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
           <HandoffGateDialog
             block={gate.block}
             onCancel={() => setGate(null)}
-            onForce={() => moveTask(gate.taskId, gate.columnId, gate.position, true)}
+            onForce={(reason) => moveTask(gate.taskId, gate.columnId, gate.position, true, reason)}
           />
         )}
         {/* Пока проект не выбран или доска ещё едет — разные состояния, а не одна надпись:

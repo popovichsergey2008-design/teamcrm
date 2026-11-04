@@ -93,11 +93,11 @@ describe('Календарь (e2e)', () => {
       .send({ acceptPrivacy: true, tenantName: 'Напоминания', email: `own_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'Владелец' })
       .expect(201)).body.data;
 
-    // по умолчанию — три напоминания: за 5 минут, за 15 и за час
+    // по умолчанию — три напоминания: за 5 минут, за 10 и за час (#4749)
     const byDefault = (await http$.post('/api/calendar/events').set(H(owner.accessToken))
       .send({ title: 'Без уточнений', startsAt: iso(12), endsAt: iso(13) }).expect(201)).body.data;
     const listed = (await http$.get(`/api/calendar?${WINDOW()}`).set(H(owner.accessToken)).expect(200)).body.data;
-    expect(listed.events.find((e: any) => String(e.id) === String(byDefault.id)).reminders).toEqual([5, 15, 60]);
+    expect(listed.events.find((e: any) => String(e.id) === String(byDefault.id)).reminders).toEqual([5, 10, 60]);
 
     // своё время принимается наравне со стандартным, дубли схлопываются
     const own = (await http$.post('/api/calendar/events').set(H(owner.accessToken)).send({

@@ -551,7 +551,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
               id="task-create-name"
               autoFocus
               value={title}
-              placeholder="Что нужно сделать — или ИИ назовёт по описанию"
+              placeholder="Введите название или AI-агент сделает это по описанию"
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submit(); }}
             />

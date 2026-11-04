@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Icon } from './Icon';
 import { overlayProps } from '../lib/overlay';
 import { useEscape } from '../hooks/useEscape';
@@ -26,12 +27,27 @@ export function gateFromError(details: unknown): GateBlock | null {
   return gate && Array.isArray(gate.missing) && gate.missing.length ? gate : null;
 }
 
+/*
+  #4748: снимков «после» нет — почему. Заказчик: «непонятно: не получилось, не стал делать
+  или нецелесообразно». Частые случаи — кнопками, остальное — своими словами.
+*/
+const AFTER_REASONS = [
+  'Изменение не видно на экране (логика, сервер, данные)',
+  'Правка ещё не выложена — снимок сделаю после выкладки',
+  'Не получилось сделать снимок',
+];
+
 export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
   block: GateBlock;
   busy?: boolean;
   onCancel: () => void;
-  onForce: () => void;
+  /** noAfterReason — почему нет снимков «после» (если сервер о ней спросил). */
+  onForce: (noAfterReason?: string) => void;
 }) {
+  const askAfter = block.missing.some((m) => m.code === 'after_reason');
+  const [picked, setPicked] = useState('');
+  const [own, setOwn] = useState('');
+  const reason = (picked === 'own' ? own : picked).trim();
   // Escape — то же, что «Вернуться к задаче»: ничего не сдаём
   useEscape(onCancel, !busy);
   /*
@@ -59,11 +75,52 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
             <li key={m.code}><Icon name="close" size={13} /> {m.text}</li>
           ))}
         </ul>
+        {askAfter && !locked && (
+          <div role="radiogroup" aria-label="Почему нет снимков «после»" style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 14px' }}>
+            <div className="dim" style={{ fontSize: 'var(--fs-sm)' }}>
+              Постановщик увидит причину в блоке «Было/стало» и в сообщении о проверке.
+            </div>
+            {[...AFTER_REASONS, 'own'].map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="radio"
+                aria-checked={picked === r}
+                className={`ui-btn ui-btn-sm ${picked === r ? 'ui-btn-secondary' : 'ui-btn-ghost'}`}
+                style={{ justifyContent: 'flex-start', textAlign: 'left', whiteSpace: 'normal' }}
+                onClick={() => setPicked(r)}
+              >
+                {picked === r && <Icon name="check" size={14} />} {r === 'own' ? 'Другая причина — напишу' : r}
+              </button>
+            ))}
+            {picked === 'own' && (
+              <textarea
+                className="input"
+                rows={2}
+                maxLength={500}
+                autoFocus
+                value={own}
+                onChange={(e) => setOwn(e.target.value)}
+                placeholder="Например: снимок не нужен — правка в тексте письма"
+                aria-label="Своя причина"
+              />
+            )}
+          </div>
+        )}
         <div className="gate-actions">
           <button className="ui-btn ui-btn-primary ui-btn-md" onClick={onCancel} disabled={busy}>
             {locked ? 'Вернуться к чек-листу' : 'Вернуться и дополнить'}
           </button>
-          {!locked && <button className="ui-btn ui-btn-outline ui-btn-sm gate-force" onClick={onForce} disabled={busy}>Сдать всё равно</button>}
+          {!locked && (
+            <button
+              className="ui-btn ui-btn-outline ui-btn-sm gate-force"
+              onClick={() => onForce(askAfter ? reason : undefined)}
+              disabled={busy || (askAfter && !reason)}
+              title={askAfter && !reason ? 'Сначала укажите, почему нет снимков «после»' : undefined}
+            >
+              {askAfter ? 'Сдать с этой причиной' : 'Сдать всё равно'}
+            </button>
+          )}
         </div>
       </div>
     </div>
