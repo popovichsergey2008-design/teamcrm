@@ -4,8 +4,10 @@
   здесь только то, чем центр отличается: шапка и фильтры стоят, прокручивается список.
 */
 .nc-drawer { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
-.nc-drawer .drawer-head h3 { display: flex; align-items: center; gap: 8px; }
-.nc-head-actions { display: flex; align-items: center; gap: 6px; }
+.nc-drawer .drawer-head h3 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+/* #4703: крестик всегда на экране — заголовок уступает место, а не выталкивает его */
+.nc-drawer .drawer-head h3 .nc-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nc-head-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 
 .nc-search {
   display: flex; align-items: center; gap: 8px; margin: 4px 0 10px;
@@ -74,4 +76,6 @@
   .nc-filters { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
   .nc-chip { flex: 0 0 auto; }
   .nc-head-actions .ui-btn { padding-inline: 8px; }
+  /* на телефоне «Прочитать все» — значком: подпись есть в подсказке и для экранного чтеца */
+  .nc-read-label { display: none; }
 }

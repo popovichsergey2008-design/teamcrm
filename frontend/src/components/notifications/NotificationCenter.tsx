@@ -5,9 +5,10 @@ import { getSocket } from '../../lib/socket';
 import { navigate, parsePath } from '../../lib/router';
 import { stampLabel } from '../../lib/chat-text';
 import { initialsOf } from '../../lib/initials';
-import { overlayProps } from '../../lib/overlay';
+import { overlayProps, useBackClose } from '../../lib/overlay';
 import { setCenterUnread, useCenterUnread } from '../../lib/notification-center';
 import { useEscape } from '../../hooks/useEscape';
+import { useIsPhone } from '../../hooks/useMediaQuery';
 import { Avatar } from '../Avatar';
 import { Icon, IconName } from '../Icon';
 
@@ -45,6 +46,9 @@ function moment(iso: string): string {
  */
 export function NotificationCenter({ onClose }: { onClose: () => void }) {
   const unread = useCenterUnread();
+  // #4703: на телефоне «Назад» закрывает уведомления, а не уводит с экрана под ними
+  useBackClose(onClose);
+  const phone = useIsPhone();
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [kind, setKind] = useState<NotificationCategory | null>(null);
   const [query, setQuery] = useState('');
@@ -142,10 +146,10 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
     <div className="drawer-overlay" {...overlayProps(onClose)}>
       <aside className="drawer nc-drawer" role="dialog" aria-label="Уведомления" onClick={(e) => e.stopPropagation()}>
         <div className="drawer-head">
-          <h3><Icon name="bell" size={18} /> Уведомления</h3>
+          <h3><Icon name="bell" size={18} /> <span className="nc-title">Уведомления</span></h3>
           <span className="nc-head-actions">
-            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={readAll} disabled={unread === 0} title="Отметить всё прочитанным">
-              <Icon name="check-check" size={15} /> Прочитать все
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={readAll} disabled={unread === 0} title="Отметить всё прочитанным" aria-label="Прочитать все">
+              <Icon name="check-check" size={15} /> <span className="nc-read-label">Прочитать все</span>
             </button>
             <button className="drawer-close" onClick={onClose} aria-label="Закрыть" title="Закрыть"><Icon name="close" size={16} /></button>
           </span>
@@ -157,7 +161,8 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск: задача, человек, текст или #номер"
+            placeholder={phone ? 'Поиск' : 'Поиск: задача, человек, текст или #номер'}
+            title="Поиск: задача, человек, текст или #номер"
             aria-label="Поиск по уведомлениям"
           />
         </label>
