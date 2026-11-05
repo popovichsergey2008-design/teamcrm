@@ -100,6 +100,29 @@ function reducer(state: Board | null, action: Action): Board | null {
   }
 }
 
+/*
+  #4794: при каждом заходе в «Проекты и Задачи» доска рисовала серые заглушки:
+  приложение пересобирает её при смене адреса извне, и она заново ждала сначала
+  список проектов, потом саму доску — два запроса подряд. Последние список и доски
+  живут в памяти вкладки: доска встаёт сразу, свежие данные подменяют её следом.
+*/
+let projectsSeen: Project[] | null = null;
+const boardsSeen = new Map<string, Board>();
+/** Чья это память: выход и вход другим человеком страницу не перезагружают. */
+let seenBy: string | undefined;
+function ownSeen(userId: string | undefined): void {
+  if (seenBy === userId) return;
+  seenBy = userId; projectsSeen = null; boardsSeen.clear();
+}
+
+/** Какой проект открыть по уже известному списку — то же правило, что после загрузки. */
+function pickProject(ps: Project[], initialId: string | undefined, tenantId: string | undefined): string | null {
+  if (initialId && ps.some((p) => p.id === initialId)) return initialId;
+  const savedId = lastProject(tenantId);
+  const restored = savedId ? ps.find((p) => String(p.id) === savedId) : undefined;
+  return (restored ?? ps.find((p) => p.status !== 'archived') ?? null)?.id ?? null;
+}
+
 export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   initial?: { projectId: string; taskId?: string };
   /** Сообщает наверх, что показано сейчас, — чтобы адрес в строке браузера совпадал с экраном. */
@@ -127,10 +150,14 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   const canManageBoard = !isClient;
   const showFinance = !isClient && MONETIZATION_ENABLED;
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [board, dispatch] = useReducer(reducer, null);
+  ownSeen(user?.id);
+  const [projects, setProjects] = useState<Project[]>(() => projectsSeen ?? []);
+  const [projectsLoading, setProjectsLoading] = useState(() => !projectsSeen);
+  const [selected, setSelected] = useState<string | null>(() =>
+    projectsSeen ? pickProject(projectsSeen, initial?.projectId, user?.tenantId) : null);
+  const [board, dispatch] = useReducer(reducer, null, () => (selected ? boardsSeen.get(selected) ?? null : null));
+  useEffect(() => { if (board?.project?.id) boardsSeen.set(String(board.project.id), board); }, [board]);
+  useEffect(() => { if (!projectsLoading) projectsSeen = projects; }, [projects, projectsLoading]);
   useTitleHint(board?.project ? `project:${board.project.id}` : null, board?.project?.name);
   const [pnl, setPnl] = useState<Pnl | null>(null);
   const [cow, setCow] = useState<CostOfWork | null>(null);
@@ -138,7 +165,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   const [activeTimerTask, setActiveTimerTask] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [users, setUsers] = useState<User[]>([]);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(() =>
+    projectsSeen && initial?.projectId && selected === initial.projectId ? initial.taskId ?? null : null);
   // задача сдаётся не полностью: помним, что именно человек пытался сделать,
   // чтобы «Сдать всё равно» повторило ровно тот же перенос
   const [gate, setGate] = useState<{ block: GateBlock; taskId: string; columnId: string; position: number } | null>(null);
@@ -273,6 +301,9 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       return;
     }
     setAlert(null);
+    // доска этого проекта уже была на экране — показываем её, пока едет свежая
+    const seen = boardsSeen.get(String(selected));
+    if (seen && String(board?.project?.id ?? '') !== String(selected)) dispatch({ type: 'SET', board: seen });
     api
       .getBoard(selected)
       .then((b) => dispatch({ type: 'SET', board: b }))

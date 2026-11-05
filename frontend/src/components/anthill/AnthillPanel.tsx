@@ -14,6 +14,9 @@ import { stampLabel } from '../../lib/chat-text';
   Вкладки кроме «Разговора» открывают редко — их код грузится по первому щелчку,
   а не вместе с приложением: так первый экран не платит за настройки бота.
 */
+/** Черновик вопроса боту — в общем хранилище черновиков переписки, как у чата `anthill`. */
+const BOT_DRAFT_KEY = 'chat:anthill';
+
 const AnthillTasks = lazy(() => import('./AnthillTasks').then((m) => ({ default: m.AnthillTasks })));
 const AnthillMemory = lazy(() => import('./AnthillMemory').then((m) => ({ default: m.AnthillMemory })));
 const AnthillSkills = lazy(() => import('./AnthillSkills').then((m) => ({ default: m.AnthillSkills })));
@@ -28,6 +31,7 @@ import { Tabs } from '../ui/tabs';
 import { Toggle } from '../ui/toggle';
 import { useEnterSend } from '../../hooks/useEnterSend';
 import { feedback } from '../../lib/feedback';
+import { readDraft, writeDraft } from '../../lib/chat-drafts';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -87,7 +91,13 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AnthillMessage[]>([]);
   const [live, setLive] = useState<Live | null>(null);
-  const [draft, setDraft] = useState('');
+  /*
+    #4790: написанное или надиктованное, но не отправленное, переживает уход в другой
+    раздел и закрытие окна — черновиком под ключом чата бота (`chat:anthill`): так его
+    видит и раздел «Черновики» в сайдбаре. Отправил — стёрся.
+  */
+  const [draft, setDraft] = useState(() => readDraft(BOT_DRAFT_KEY));
+  useEffect(() => { writeDraft(BOT_DRAFT_KEY, draft); }, [draft]);
   const [useCtx, setUseCtx] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [votes, setVotes] = useState<Record<string, 1 | -1>>({});

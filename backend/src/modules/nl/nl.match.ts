@@ -18,16 +18,81 @@ function stem(word: string): string {
   return w;
 }
 
+/*
+  #4788: в постановке людей зовут как в жизни — «поставь Косте», «на Серёгу», «Боре», —
+  а в базе «Константин», «Сергей» и даже латиницей «Boris Chest». Ни полное имя по
+  основе, ни латиница такие фразы не находили, и задача оставалась без исполнителя.
+*/
+
+/** Латиница → кириллица на слух: «Boris» → «борис», «Sergey» → «сергей». */
+function toCyrillic(word: string): string {
+  const w = word.toLowerCase();
+  if (!/[a-z]/.test(w)) return w;
+  const pairs: Array<[RegExp, string]> = [
+    [/shch/g, 'щ'], [/sch/g, 'щ'], [/sh/g, 'ш'], [/ch/g, 'ч'], [/zh/g, 'ж'], [/kh/g, 'х'], [/ts/g, 'ц'],
+    [/yu/g, 'ю'], [/ya/g, 'я'], [/yo/g, 'ё'], [/ye/g, 'е'],
+    [/([aeiou])y\b/g, '$1й'], [/iy\b/g, 'ий'],
+  ];
+  let r = w;
+  for (const [re, to] of pairs) r = r.replace(re, to);
+  const one: Record<string, string> = {
+    a: 'а', b: 'б', c: 'к', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и', j: 'дж', k: 'к', l: 'л', m: 'м',
+    n: 'н', o: 'о', p: 'п', q: 'к', r: 'р', s: 'с', t: 'т', u: 'у', v: 'в', w: 'в', x: 'кс', y: 'ы', z: 'з',
+  };
+  return r.replace(/[a-z]/g, (ch) => one[ch] ?? '');
+}
+
+/** Как зовут в жизни: полное имя (основа) → уменьшительные в именительном падеже. */
+const NICKNAMES: Record<string, string[]> = {
+  константин: ['костя'], сергей: ['серёжа', 'серёга', 'серега'], борис: ['боря'], александр: ['саша', 'шура'],
+  александра: ['саша'], алексей: ['лёша', 'лёха'], дмитрий: ['дима'], михаил: ['миша'], николай: ['коля'],
+  владимир: ['вова', 'володя'], юрий: ['юра'], андрей: ['андрюша'], павел: ['паша'], иван: ['ваня'],
+  евгений: ['женя'], евгения: ['женя'], анастасия: ['настя'], екатерина: ['катя'], мария: ['маша'],
+  татьяна: ['таня'], наталья: ['наташа'], наталия: ['наташа'], елена: ['лена'], ольга: ['оля'],
+  светлана: ['света'], виктория: ['вика'], анна: ['аня'], григорий: ['гриша'], максим: ['макс'],
+  артём: ['тёма'], роман: ['рома'], антон: ['тоша'], илья: ['илюша'], денис: ['дэн'], ксения: ['ксюша'],
+  дарья: ['даша'], полина: ['поля'], алина: ['аля'], вячеслав: ['слава'], ярослав: ['слава'], станислав: ['стас'],
+  валентин: ['валя'], валентина: ['валя'], людмила: ['люда'], юлия: ['юля'], кирилл: ['киря'], тимофей: ['тима'],
+};
+
 /**
- * Основы значимых частей имени: «Сергей Попович» → ['серг', 'попович'].
+ * Основы падежных форм уменьшительного: «Костя» → косте/костю/костей → «кост».
+ * Короткая основа («бор» от «Боря») совпала бы с обычным словом «бор» — такие
+ * формы сравниваем только целиком: метка «=» перед словом (см. matches).
+ */
+function nicknameStems(nick: string): string[] {
+  const n = normalize(nick);
+  if (!/[ая]$/.test(n)) return [stem(n)];
+  const base = n.slice(0, -1);
+  const soft = n.endsWith('я') || /[жшчщ]$/.test(base);
+  const forms = soft
+    ? [n, `${base}и`, `${base}е`, `${base}ю`, `${base}ей`, `${base}у`]
+    : [n, `${base}ы`, `${base}е`, `${base}у`, `${base}ой`];
+  return [...new Set(forms.map((f) => (stem(f).length > 3 ? stem(f) : `=${f}`)))];
+}
+
+/**
+ * Основы значимых частей имени: «Сергей Попович» → ['серг', 'попович'] + «серёжа», «серёга».
  * Отсекаем по длине ИСХОДНОГО слова, а не основы: иначе «Юрий» отсеивался бы
  * вместе с инициалами, хотя это полноценное имя.
  */
 function nameStems(fullName: string): string[] {
-  return fullName
-    .split(/[\s,]+/)
-    .filter((w) => w.replace(/[^a-zа-я-]/gi, '').length >= 4) // «Про», инициалы и предлоги ловили бы кого попало
-    .map(stem);
+  const out = new Set<string>();
+  for (const raw of fullName.split(/[\s,]+/)) {
+    if (raw.replace(/[^a-zа-яё-]/gi, '').length < 4) continue; // «Про», инициалы и предлоги ловили бы кого попало
+    const variants = new Set([normalize(raw), normalize(toCyrillic(raw))]);
+    for (const v of variants) {
+      out.add(stem(v));
+      for (const nick of NICKNAMES[v] ?? NICKNAMES[v.replace(/е/g, 'ё')] ?? []) nicknameStems(nick).forEach((x) => out.add(x));
+    }
+  }
+  return [...out].filter((x) => x.replace('=', '').length >= 3);
+}
+
+/** Слова текста: основы и сами слова (для точных коротких форм «=боре»). */
+function textWords(text: string): Set<string> {
+  const raw = normalize(text).split(/[^a-zа-я-]+/).filter(Boolean);
+  return new Set([...raw.map(stem), ...raw.map((w) => `=${w}`)]);
 }
 
 export interface NamedUser {
@@ -42,9 +107,8 @@ export interface NamedUser {
  * людьми хуже, чем оставить поле пустым и дать выбрать вручную.
  */
 export function matchUserInText(text: string, users: NamedUser[]): string | null {
-  const words = normalize(text).split(/[^a-zа-я-]+/).filter(Boolean).map(stem);
-  if (!words.length) return null;
-  const wordSet = new Set(words);
+  const wordSet = textWords(text);
+  if (!wordSet.size) return null;
 
   const hits = users.filter((u) => {
     const stems = nameStems(u.name ?? '');
@@ -75,7 +139,7 @@ export function normalizeDeadline(raw: unknown, today: string): string | null {
  * найдём по фамилии.
  */
 export function usersNamedInText(text: string, users: NamedUser[]): string[] {
-  const words = new Set(normalize(text).split(/[^a-zа-я-]+/).filter(Boolean).map(stem));
+  const words = textWords(text);
   if (!words.size) return [];
   const owners = new Map<string, Set<string>>();
   for (const u of users) {

@@ -417,6 +417,12 @@ export class RealAiProvider implements AiProvider {
       }
     }
     this.lastSttModel = 'whisper-1';
+    // #4792: короткой команде — не больше 45 с и на запасной модели: при плохой связи
+    // человек ждал до пяти минут (20 с быстрой + 300 с whisper-1), и окно «крутилось»
+    if (opts?.fast) {
+      const json = await this.whisperRaw(audio, filename || 'audio.webm', 'json', hint, 'whisper-1', 45_000);
+      return json?.text ?? '';
+    }
     return this.whisper(audio, filename || 'audio.webm', hint);
   }
 
@@ -451,7 +457,7 @@ export class RealAiProvider implements AiProvider {
    * как контекст и заметно реже коверкает то, чего не ожидает: «на Юру» вместо
    * «на евро», «стенограмма» вместо «синаграмма».
    */
-  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json', hint?: string, model = 'whisper-1'): Promise<any> {
+  private async whisperRaw(audio: Buffer, filename: string, format: 'json' | 'verbose_json', hint?: string, model = 'whisper-1', timeoutMs?: number): Promise<any> {
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(audio)]), filename);
     form.append('model', model);
@@ -463,7 +469,7 @@ export class RealAiProvider implements AiProvider {
       headers: { Authorization: `Bearer ${this.openaiKey!}` },
       body: form,
       // час записи режется на куски, но каждый кусок — минуты; короткой команде столько не надо
-      signal: AbortSignal.timeout(model === 'whisper-1' ? 300_000 : 20_000),
+      signal: AbortSignal.timeout(timeoutMs ?? (model === 'whisper-1' ? 300_000 : 20_000)),
     });
     if (!res.ok) throw new Error(`Whisper HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
     return res.json();

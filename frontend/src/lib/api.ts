@@ -11,6 +11,7 @@ import type { MobileConfig } from './mobile-config';
 import { enqueue, newChangeId, type QueuedChange } from './offline-queue';
 import { noteFailedRequest, noteRequestId, noteSupportError } from './support-context';
 import { apiUrl } from './origin';
+import { splitMessage } from './split-message';
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -1897,11 +1898,19 @@ export const api = {
     thread?: { rootId?: string; alsoInChannel?: boolean },
     mentionIds?: string[],
     reply?: { toId?: string | null; excerpt?: string | null },
-  ) =>
-    queued<any>('POST', `/chats/${chatId}/messages`, {
-      body, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel, mentionIds,
-      replyToId: reply?.toId ?? undefined, replyExcerpt: reply?.excerpt ?? undefined,
-    }, { label: 'Сообщение в чате', preview: body }),
+  ) => {
+    // #4786: длиннее 8000 знаков — несколькими сообщениями подряд; упоминания и цитата —
+    // у первого, наружу — последнее (его и доматывает лента)
+    const send = (part: string, first: boolean) =>
+      queued<any>('POST', `/chats/${chatId}/messages`, {
+        body: part, threadRootId: thread?.rootId, alsoInChannel: thread?.alsoInChannel,
+        mentionIds: first ? mentionIds : undefined,
+        replyToId: first ? reply?.toId ?? undefined : undefined, replyExcerpt: first ? reply?.excerpt ?? undefined : undefined,
+      }, { label: 'Сообщение в чате', preview: part });
+    const parts = splitMessage(body);
+    if (parts.length === 1) return send(body, true);
+    return parts.reduce<Promise<any>>((prev, part, i) => prev.then(() => send(part, i === 0)), Promise.resolve(null));
+  },
   markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
   markAllChatsRead: () => request<{ read: number }>('POST', '/chats/read-all'),
   chatMembers: (chatId: string) => request<{

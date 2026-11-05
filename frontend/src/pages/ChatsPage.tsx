@@ -63,6 +63,7 @@ import { initialsOf } from '../lib/initials';
 import { useEnterSend } from '../hooks/useEnterSend';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
 import { useTitleHint } from '../lib/page-title';
+import { splitMessage } from '../lib/split-message';
 
 /** Сенсорный экран: подсказки «Tab — вставить» там не работают. */
 
@@ -167,6 +168,22 @@ const laterLabel = (x: { sendAt: string; repeat: 'none' | 'daily' }) => {
  * Мессенджер: слева люди и группы, справа переписка. Звонок — из шапки чата,
  * то есть звонишь конкретному человеку, а не в общую комнату.
  */
+/**
+ * Последние ленты открытых чатов (#4794): вернулся в чат — сразу видишь переписку,
+ * свежий хвост подтянется следом. Только в памяти вкладки и не больше 20 чатов.
+ */
+const feedCache = new Map<string, Message[]>();
+/** Чья это память: выход и вход другим человеком страницу не перезагружают. */
+let feedOwner: string | undefined;
+function ownFeeds(userId: string | undefined): void {
+  if (feedOwner !== userId) { feedOwner = userId; feedCache.clear(); }
+}
+function rememberFeed(chatId: string, list: Message[]): void {
+  feedCache.delete(chatId);
+  feedCache.set(chatId, list.slice(-100));
+  if (feedCache.size > 20) feedCache.delete(feedCache.keys().next().value as string);
+}
+
 export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId, inCall, mode = 'page', onClose, context }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
   /** Уже идёт созвон — второй начинать нельзя, кнопка гасится. */
@@ -271,6 +288,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [users, setUsers] = useState<User[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // #4794: лента открытого чата — в память, чтобы при возврате показать её сразу
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
+  ownFeeds(user?.id);
+  useEffect(() => { if (activeId && messages.length) rememberFeed(activeId, messages); }, [activeId, messages]);
   /** Где в ленте стоит черта: всё чужое от неё и ниже подсвечивается как новое. */
   const unreadIndex = useMemo(
     () => (unreadFrom ? messages.findIndex((m) => String(m.id) === unreadFrom) : -1),
@@ -1058,10 +1080,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   }, []);
 
   const openChat = useCallback(async (id: string) => {
-    setActiveId(id); setErr(''); setMessages([]); setMsgLoading(true); setView('chat');
+    /*
+      #4794: «затуп на доли секунды» при переключении чатов — лента каждый раз
+      очищалась и ждала сервера. Теперь последняя виденная лента этого чата встаёт
+      сразу, а свежая подменяет её, когда придёт; без памяти — как раньше, со скелетом.
+    */
+    const seen = feedCache.get(id);
+    setActiveId(id); setErr(''); setMessages(seen ?? []); setMsgLoading(!seen); setView('chat');
     const unreadBefore = chatsRef.current.find((c) => String(c.id) === String(id))?.unread ?? 0;
     try {
       const list = await api.chatMessages(id); // чтение помечается на сервере этим же запросом
+      // пока шёл ответ, человек ушёл в другой чат — чужая лента ему не нужна
+      if (activeIdRef.current !== id) return;
       setMessages(list);
       setHasOlder(list.length >= 50); // страница полная — значит, выше ещё есть
       setHasNewer(false);             // это хвост переписки: ниже ничего нет
@@ -1077,8 +1107,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       reload();
       loadInbox(); // прочитанное в чате гаснет и во «Входящих» (#1538)
       notifyChatsChanged(); // счётчик в шапке должен упасть сразу
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
-    finally { setMsgLoading(false); }
+    } catch (e) { if (activeIdRef.current === id) setErr(e instanceof ApiError ? e.message : 'Не удалось открыть чат'); }
+    finally { if (activeIdRef.current === id) setMsgLoading(false); }
   }, [reload, loadPinned, loadScheduled, loadInbox, user?.id]);
 
   /*
@@ -1274,9 +1304,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       // Имя могли стереть после вставки — звать человека после этого не за что.
       const calls = stillMentioned(mentioned, text, mentionUsers);
       const reply = replyTo ? { toId: replyTo.id, excerpt: replyTo.excerpt } : undefined;
-      const message = files.length
-        ? await api.sendChatFile(activeId, files, text, undefined, reply)
+      // #4786: длинная подпись к файлу — первая часть с файлом, остальное следом
+      const [caption, ...rest] = files.length ? splitMessage(text) : [text];
+      let message = files.length
+        ? await api.sendChatFile(activeId, files, caption, undefined, reply)
         : await api.sendChatMessage(activeId, text, undefined, calls, reply);
+      if (rest.length) message = await api.sendChatMessage(activeId, rest.join('\n\n'));
       setMentioned([]);
       setReplyTo(null);
       // Своё сообщение всегда доматываем: человек нажал «отправить» и ждёт его увидеть.
