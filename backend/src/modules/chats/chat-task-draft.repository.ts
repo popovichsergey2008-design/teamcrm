@@ -238,7 +238,9 @@ export class ChatTaskDraftRepository {
 
   async setTranscript(tenantId: string, messageId: string, status: string, text: string | null = null): Promise<void> {
     await this.db.query(
-      `UPDATE chat_messages SET transcript_status = $3, transcript = COALESCE($4, transcript),
+      // $3 — дважды: без явного ::text Postgres выводит varchar (колонка) и text (сравнение)
+      // и отказывает «inconsistent types deduced» — голосовое в чате не расшифровывалось вовсе
+      `UPDATE chat_messages SET transcript_status = $3::text, transcript = COALESCE($4, transcript),
               transcribed_at = CASE WHEN $3::text = 'ready' THEN now() ELSE transcribed_at END
         WHERE tenant_id = $1 AND id = $2`,
       [tenantId, messageId, status, text],
