@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 
 /** Сбои установки соединения — запрос до Telegram не дошёл, повтор безопасен. */
 const CONNECT_FAILURES = new Set(['UND_ERR_CONNECT_TIMEOUT', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH']);
+/** Попыток и сколько ждать одну: см. TelegramSender.tg. */
+const TRIES = 6;
+const TRY_MS = 5_000;
 
 /** Отправка сообщений в Telegram. No-op без TELEGRAM_BOT_TOKEN (dev/тесты). */
 @Injectable()
@@ -20,18 +23,24 @@ export class TelegramSender {
 
   /**
    * Запрос к Bot API с повтором (05.11, переезд в РФ): из России соединение с
-   * api.telegram.org примерно через раз не устанавливается — рвётся ещё до отправки.
-   * Повторяем только такие сбои (до трёх попыток): запрос до Telegram не дошёл, дубля
-   * сообщения не будет. Ответ Telegram (даже ошибку) и обрыв посреди ответа не повторяем.
+   * api.telegram.org проходит в 30–50% попыток — остальные зависают на рукопожатии.
+   * Удачный ответ приходит за ~0,3 с, поэтому попытку ждём 5 с, а не 10 по умолчанию,
+   * и пробуем до шести раз: доходит ~95%, худшая задержка ~30 с. Повторяем сбои
+   * соединения и свой таймаут попытки (в нём запрос почти всегда так и не ушёл); ответ
+   * Telegram, даже с ошибкой, не повторяем. Загрузка и скачивание файлов идут со своим, долгим сроком.
    */
   private async tg(url: string, init?: RequestInit): Promise<Response> {
     for (let attempt = 1; ; attempt++) {
+      // свой срок на попытку — только у коротких запросов; загрузка голосового и скачивание
+      // файла приходят со своим сигналом (им нужно дольше) — повторяем лишь сбой соединения
+      const own = init?.signal ? null : AbortSignal.timeout(TRY_MS);
       try {
-        return await fetch(url, init);
+        return await fetch(url, own ? { ...init, signal: own } : init);
       } catch (e) {
         const code = String((e as { cause?: { code?: string } }).cause?.code ?? '');
-        if (attempt >= 3 || !CONNECT_FAILURES.has(code)) throw e;
-        this.logger.warn(`Telegram: соединение не установилось (${code}), попытка ${attempt + 1}`);
+        const ownTimeout = !!own?.aborted;
+        if (attempt >= TRIES || !(CONNECT_FAILURES.has(code) || ownTimeout)) throw e;
+        this.logger.warn(`Telegram: соединение не установилось (${code || 'таймаут попытки'}), попытка ${attempt + 1}`);
       }
     }
   }
@@ -90,7 +99,7 @@ export class TelegramSender {
       form.append('chat_id', String(chatId));
       form.append('voice', new Blob([new Uint8Array(audio)], { type: 'audio/mpeg' }), 'brief.mp3');
       if (caption) form.append('caption', caption.slice(0, 1000));
-      const res = await this.tg(`https://api.telegram.org/bot${this.token}/sendVoice`, { method: 'POST', body: form });
+      const res = await this.tg(`https://api.telegram.org/bot${this.token}/sendVoice`, { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) });
       return res.ok;
     } catch (e) {
       this.logger.warn(`sendVoice failed: ${(e as Error).message}`);
@@ -135,7 +144,6 @@ export class TelegramSender {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(15_000),
       });
       const json: any = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
