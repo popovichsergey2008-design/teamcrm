@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { api, ApiError, QUEUED, Scheduled } from '../lib/api';
+import { loadChats, markChatReadLocal, subscribeChats } from '../lib/chats-feed';
 import { feedback } from '../lib/feedback';
 import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
@@ -700,8 +701,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     setInChatPos(inChatHits.length ? inChatHits.length - 1 : -1);
   }, [inChatHits, inChatPos]);
 
+  /*
+    Список чатов — общий на приложение (lib/chats-feed, нагрузка 05.11): одновременные
+    перечитывания склеиваются в один запрос, а новое сообщение правит список на месте.
+  */
+  useEffect(() => subscribeChats((l) => { setChats(l as unknown as Chat[]); setChatsLoaded(true); }), []);
   const reload = useCallback(
-    () => api.listChats().then(setChats).catch(() => undefined).finally(() => setChatsLoaded(true)),
+    () => loadChats().then(() => undefined).catch(() => undefined).finally(() => setChatsLoaded(true)),
     [],
   );
 
@@ -849,13 +855,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         */
         if (!document.hidden && onScreen()) {
           api.markChatRead(p.chatId)
-            .then(() => { reload(); loadInbox(); notifyChatsChanged(); })
+            .then(() => { markChatReadLocal(String(p.chatId)); loadInbox(); notifyChatsChanged(); })
             .catch(() => reload());
           if (p.message?.thread_root_id || view === 'threads') void loadThreads();
           return;
         }
       }
-      reload();
+      // строку списка (превью, счётчик, порядок) уже поправил общий список — без запроса
       /*
         Ветки пересчитываем ВСЕГДА, а не только на открытом разделе «Треды».
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../lib/api';
+import { loadChats, setChatsViewer, subscribeChats, type FeedChat } from '../lib/chats-feed';
 import { getSocket } from '../lib/socket';
 import { CHATS_CHANGED, setTitleUnread, showNotification, showToast } from '../lib/notifications';
 import { playMessageChime } from '../lib/sound';
@@ -23,16 +23,18 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
   const openChats = useRef(onOpenChats);
   useEffect(() => { openRef.current = openChatId; }, [openChatId]);
   useEffect(() => { meRef.current = meId; }, [meId]);
+  // общий список чатов правит счётчики сам — ему тоже надо знать, кто я и что открыто
+  useEffect(() => { setChatsViewer(meId, openChatId); }, [meId, openChatId]);
   useEffect(() => { openChats.current = onOpenChats; }, [onOpenChats]);
 
-  const refresh = useCallback(async () => {
-    if (!enabled) return;
-    try {
-      const chats = await api.listChats();
-      modes.current = new Map(chats.map((c: any) => [String(c.id), String(c.notify ?? 'all')]));
-      // «none» — тихий чат: непрочитанное у него своё, а панель молчит
-      setUnread(chats.reduce((sum: number, c: any) => sum + (c.notify === 'none' ? 0 : (Number(c.unread) || 0)), 0));
-    } catch { /* сеть моргнула — счётчик обновится следующим событием */ }
+  // счётчик — из общего списка чатов (lib/chats-feed): он сам правится на каждое сообщение
+  const recount = useCallback((chats: FeedChat[]) => {
+    modes.current = new Map(chats.map((c) => [String(c.id), String(c.notify ?? 'all')]));
+    // «none» — тихий чат: непрочитанное у него своё, а панель молчит
+    setUnread(chats.reduce((sum, c) => sum + (c.notify === 'none' ? 0 : (Number(c.unread) || 0)), 0));
+  }, []);
+  const refresh = useCallback(() => {
+    if (enabled) loadChats().catch(() => undefined); // сеть моргнула — счётчик обновится следующим событием
   }, [enabled]);
 
   useEffect(() => {
@@ -41,7 +43,6 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
 
     const socket = getSocket();
     const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null; thread_root_id?: string | null }; mentionIds?: string[] }) => {
-      refresh();
       const m = p.message;
       // Настройка чата: «выключено» — тишина, «только упоминания» — звучит, лишь если позвали меня.
       const mode = modes.current.get(String(p.chatId)) ?? 'all';
@@ -69,24 +70,20 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       playMessageChime();
     };
 
+    // новый/удалённый чат и своё «прочитано» (#1531) общий список перечитывает сам
+    const unsub = subscribeChats(recount);
     socket.on('chat.message', onMessage);
-    socket.on('chat.created', refresh);
-    socket.on('chat.removed', refresh);
-    // прочитано на другом устройстве этого же человека (#1531)
-    socket.on('chat.self-read', refresh);
     window.addEventListener(CHATS_CHANGED, refresh);
     // страховка на случай пропущенного события: раз в минуту сверяемся с сервером
     const timer = setInterval(refresh, 60_000);
 
     return () => {
       socket.off('chat.message', onMessage);
-      socket.off('chat.created', refresh);
-      socket.off('chat.removed', refresh);
-      socket.off('chat.self-read', refresh);
+      unsub();
       window.removeEventListener(CHATS_CHANGED, refresh);
       clearInterval(timer);
     };
-  }, [enabled, refresh]);
+  }, [enabled, refresh, recount]);
 
   useEffect(() => { setTitleUnread(unread); }, [unread]);
   // уходя со страницы, возвращаем обычный заголовок

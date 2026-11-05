@@ -426,17 +426,35 @@ export function App() {
   */
   useEffect(() => {
     if (!crmAlive) return;
-    const poll = () => api.activeCalls().then(setActiveCalls).catch(() => undefined);
+    const inCall = new Map<string, boolean>();
+    const poll = () => api.activeCalls().then((calls) => {
+      setActiveCalls(calls);
+      // кто уже в созвоне — чтобы его выход тоже был «сменой»
+      for (const c of calls) for (const p of c.participants) if (p.userId) inCall.set(String(p.userId), true);
+    }).catch(() => undefined);
     poll();
     const t = setInterval(poll, 15_000);
     let soon: number | undefined;
-    const onPresence = () => { window.clearTimeout(soon); soon = window.setTimeout(poll, 400); };
+    const later = () => { window.clearTimeout(soon); soon = window.setTimeout(poll, 400); };
+    /*
+      Нагрузка 05.11: на КАЖДЫЙ вход человека в сеть вся компания перечитывала созвоны —
+      N входов × N клиентов, на 350 сотрудниках запрос доходил до 15 с. Список созвонов
+      меняется, только когда кто-то входит в созвон или выходит из него: перечитываем
+      лишь при смене «на мите» (источник meeting) у этого человека.
+    */
+    const onPresence = (p?: { userId?: string; source?: string }) => {
+      if (!p?.userId) return;
+      const now = p.source === 'meeting';
+      const was = inCall.get(String(p.userId)) ?? false;
+      inCall.set(String(p.userId), now);
+      if (now !== was) later();
+    };
     const socket = getSocket();
     socket.on('presence.updated', onPresence);
-    socket.on('connect', onPresence);
+    socket.on('connect', later); // сокет переподключился — что-то могли пропустить
     return () => {
       clearInterval(t); window.clearTimeout(soon);
-      socket.off('presence.updated', onPresence); socket.off('connect', onPresence);
+      socket.off('presence.updated', onPresence); socket.off('connect', later);
     };
   }, [crmAlive]);
 

@@ -4,6 +4,7 @@ import { Icon } from '../Icon';
 import { api } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { CHATS_CHANGED } from '../../lib/notifications';
+import { loadChats, subscribeChats } from '../../lib/chats-feed';
 import { presenceKind, presenceLabel } from '../../lib/presence';
 import { stampLabel } from '../../lib/chat-text';
 import type { SearchResults } from '../../types';
@@ -113,8 +114,10 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
     return () => window.clearTimeout(t);
   }, [query]);
 
+  // список — общий на приложение (lib/chats-feed): на сообщение он правится сам, без запроса
+  useEffect(() => subscribeChats((list) => setChats(list as unknown as BarChat[])), []);
   const load = useCallback(() => {
-    api.listChats().then((list) => setChats(list as BarChat[])).catch(() => undefined);
+    loadChats().catch(() => undefined);
     api.presence().then((rows) => setPresence(new Map(rows.map((r) => [String(r.userId), r])))).catch(() => undefined);
   }, []);
 
@@ -126,9 +129,8 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
   // Те же события, что двигают список в разделе. Присутствие приходит своими.
   useEffect(() => {
     const socket = getSocket();
-    let timer: number | null = null;
-    // Сообщения летят пачками — перечитываем один раз на пачку, а не на каждое.
-    const soon = () => { if (timer) return; timer = window.setTimeout(() => { timer = null; load(); }, 400); };
+    // Своё «прочитано», переименование и т. п. из этого окна — перечитать список (один запрос на всех).
+    const soon = () => { loadChats().catch(() => undefined); };
     const onStatus = (p: { userId: string; status: 'busy' | 'away' | null }) => {
       setPresence((prev) => {
         const next = new Map(prev);
@@ -147,20 +149,19 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
     };
     const online = onOnline(true);
     const offline = onOnline(false);
-    for (const ev of ['chat.message', 'chat.read', 'chat.created', 'chat.removed', 'chat.message_deleted']) socket.on(ev, soon);
+    // сообщения, новые и удалённые чаты список ловит сам (chats-feed); «прочитано» другими
+    // людьми (chat.read) нашего списка не меняет — раньше на него перечитывали все
     socket.on('user.status.changed', onStatus);
     socket.on('user.online', online);
     socket.on('user.offline', offline);
     socket.on('connect', load);
     window.addEventListener(CHATS_CHANGED, soon);
     return () => {
-      for (const ev of ['chat.message', 'chat.read', 'chat.created', 'chat.removed', 'chat.message_deleted']) socket.off(ev, soon);
       socket.off('user.status.changed', onStatus);
       socket.off('user.online', online);
       socket.off('user.offline', offline);
       socket.off('connect', load);
       window.removeEventListener(CHATS_CHANGED, soon);
-      if (timer) window.clearTimeout(timer);
     };
   }, [load]);
 
