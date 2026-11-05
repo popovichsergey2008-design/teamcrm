@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { MaintenanceRepository } from './maintenance.repository';
 import { MaintenanceService } from './maintenance.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в шесть часов — и этого много.
  *
@@ -27,6 +28,7 @@ export class MaintenanceScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.first = setTimeout(() => void this.tick(), FIRST_RUN_MS);
     this.first.unref?.();
     this.timer = setInterval(() => void this.tick(), TICK_MS);

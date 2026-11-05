@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { EconomicsProducer } from './economics.producer';
 import { EconomicsRepository } from './economics.repository';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Догоняющий тик (Шаг 2.2): раз в ~минуту ставит в очередь пересчёт задач
  * с открытым таймером — стоимость текущей работы растёт визуально в реальном времени.
@@ -22,6 +23,7 @@ export class EconomicsScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit() {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (this.intervalMs <= 0) return; // отключаемо (тесты)
     this.timer = setInterval(() => this.tick().catch(() => undefined), this.intervalMs);
     if (this.timer.unref) this.timer.unref();

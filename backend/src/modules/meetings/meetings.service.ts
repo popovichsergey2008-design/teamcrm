@@ -27,6 +27,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { zonedToUtc } from '../tasks/recurrence';
 import { MeetingPlan } from './meeting-schema';
 
+import { runsBackground } from '../../common/process-role';
 /** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
 const MAX_RECORDING_BYTES = 600 * 1024 * 1024;
 const SUBTITLE_EXT = /\.(vtt|srt)$/i;
@@ -61,6 +62,7 @@ export class MeetingsService implements OnModuleInit {
    * (а порог в два часа его и так не заденет).
    */
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     const t = setTimeout(() => { void this.resumeStuck(); }, 60_000);
     t.unref?.();

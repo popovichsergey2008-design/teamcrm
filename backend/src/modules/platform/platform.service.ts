@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { AppException } from '../../common/http/app-exception';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Роли техотдела (03_SUPPORT_RBAC_AND_SECURITY).
  *
@@ -93,6 +94,7 @@ export class PlatformService implements OnModuleInit {
   constructor(private readonly db: DbService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     const timer = setTimeout(() => void this.seed(), SEED_DELAY_MS);
     timer.unref?.(); // не держим процесс в тестах и консольных запусках
   }

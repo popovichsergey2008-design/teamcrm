@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { GuestLinksService } from './guest-links.service';
 
+import { runsBackground } from '../../common/process-role';
 const TICK_MS = 60_000;
 
 /**
@@ -19,6 +20,7 @@ export class GuestLinksScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly guests: GuestLinksService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.(); // не держим процесс в тестах и консольных запусках
   }

@@ -3,6 +3,7 @@ import { ChatsRepository } from './chats.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в минуту: напоминание, опоздавшее на десять минут, бесполезно — человек уже
  * либо вспомнил сам, либо забыл окончательно. Запрос дешёвый, под него есть индекс
@@ -33,6 +34,7 @@ export class RemindersScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     // unref: незавершённый таймер не должен держать процесс при остановке
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.();

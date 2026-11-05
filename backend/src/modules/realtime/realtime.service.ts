@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { hostname } from 'os';
+import { RedisService } from '../../cache/redis.service';
 import { Server } from 'socket.io';
 
 /** Доменные события (master → Realtime контракт). */
@@ -63,9 +65,77 @@ function stripFinancial<T>(value: T): T {
   return value;
 }
 
+/** Ключ состояния процесса в Redis: кто подключён к нему, операторы консоли, кто на созвоне. */
+const PROC_KEY = 'qevo:rt:proc:';
+/** Как часто процесс публикует своё и читает чужое. Задержка «в сети» у соседей — до SYNC_MS. */
+const SYNC_MS = 3_000;
+/** Процесс молчит дольше — считаем, что его нет (упал, выкладка): его люди не «в сети». */
+const PROC_TTL_S = 15;
+
 @Injectable()
-export class RealtimeService {
+export class RealtimeService implements OnModuleInit, OnModuleDestroy {
   private server: Server | null = null;
+
+  constructor(@Optional() private readonly redis?: RedisService) {}
+
+  /*
+    Несколько процессов API (05.11, common/process-role). Сокеты держит главный процесс,
+    а «в сети ли человек» и «на созвоне ли» спрашивают все — например, список чатов с
+    точкой «в сети», который отдаёт рабочий процесс. Поэтому каждый процесс раз в
+    SYNC_MS кладёт своё состояние в Redis (с TTL — упавший процесс сам исчезает) и
+    читает чужое. Проверки остаются синхронными, из памяти: своё + соседей.
+  */
+  private readonly procId = `${hostname()}:${process.pid}`;
+  private remoteOnline = new Set<string>();
+  private remoteInCall = new Set<string>();
+  private inCallSource: (() => string[]) | null = null;
+  private syncTimer: NodeJS.Timeout | null = null;
+
+  onModuleInit(): void {
+    if (!this.redis || process.env.NODE_ENV === 'test') return;
+    this.syncTimer = setInterval(() => { void this.sync(); }, SYNC_MS);
+    this.syncTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.syncTimer) clearInterval(this.syncTimer);
+    void this.redis?.client.del(PROC_KEY + this.procId).catch(() => undefined);
+  }
+
+  /** Медиа-модуль (главный процесс): кто сейчас в созвоне — ключи `tenant:user`. */
+  useInCallSource(fn: () => string[]): void {
+    this.inCallSource = fn;
+  }
+
+  /** «На созвоне» по данным другого процесса (созвоны живут в главном). */
+  inCallElsewhere(tenantId: string, userId: string): boolean {
+    return this.remoteInCall.has(this.key(tenantId, userId));
+  }
+
+  private async sync(): Promise<void> {
+    const client = this.redis?.client;
+    if (!client) return;
+    try {
+      const mine = {
+        online: [...this.online.keys(), ...this.liveBeats()],
+        inCall: this.inCallSource ? this.inCallSource() : [],
+      };
+      await client.set(PROC_KEY + this.procId, JSON.stringify(mine), 'EX', PROC_TTL_S);
+      const keys = (await client.keys(`${PROC_KEY}*`)).filter((k) => k !== PROC_KEY + this.procId);
+      const online = new Set<string>();
+      const inCall = new Set<string>();
+      if (keys.length) {
+        for (const raw of await client.mget(...keys)) {
+          if (!raw) continue;
+          const v = JSON.parse(raw) as { online?: string[]; inCall?: string[] };
+          for (const k of v.online ?? []) online.add(k);
+          for (const k of v.inCall ?? []) inCall.add(k);
+        }
+      }
+      this.remoteOnline = online;
+      this.remoteInCall = inCall;
+    } catch { /* Redis моргнул — остаёмся на прошлой картине */ }
+  }
 
   setServer(server: Server) {
     this.server = server;
@@ -188,11 +258,11 @@ export class RealtimeService {
   }
   isOnline(tenantId: string, userId: string): boolean {
     const k = this.key(tenantId, userId);
-    return this.online.has(k) || (this.beats.get(k) ?? 0) > Date.now();
+    return this.online.has(k) || (this.beats.get(k) ?? 0) > Date.now() || this.remoteOnline.has(k);
   }
   onlineUsers(tenantId: string): string[] {
     const prefix = `${tenantId}:`;
-    const keys = new Set([...this.online.keys(), ...this.liveBeats()]);
+    const keys = new Set([...this.online.keys(), ...this.liveBeats(), ...this.remoteOnline]);
     return [...keys].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
   }
 

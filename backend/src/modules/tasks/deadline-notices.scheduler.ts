@@ -5,6 +5,7 @@ import { TaskActivityRepository } from './task-activity.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationCenter } from '../notifications/center.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в пять минут. Срок — не будильник: сказать «почти просрочена» на пять минут
  * позже не страшно, а запрос под индексом по deadline_at стоит копейки.
@@ -44,6 +45,7 @@ export class DeadlineNoticesScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     // unref: незавершённый таймер не должен держать процесс при остановке
     this.timer.unref?.();

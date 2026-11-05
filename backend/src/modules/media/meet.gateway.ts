@@ -17,6 +17,7 @@ import { Ringing } from './ringing';
 import { PushService } from '../notifications/push.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
+import { runsBackground } from '../../common/process-role';
 const PATH = '/ws/meet';
 
 /**
@@ -131,6 +132,7 @@ export class MeetGateway implements OnModuleInit {
   private readonly lateCalls = new Map<string, number>();
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     // зал ожидания пересматриваем по часам сервера, а не по чьему-то открытому браузеру
     const tick = setInterval(() => { void this.lobbyTick(); }, LOBBY_TICK_MS);
     tick.unref?.();

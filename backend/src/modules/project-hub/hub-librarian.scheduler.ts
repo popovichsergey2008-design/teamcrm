@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { HubLibrarianService } from './hub-librarian.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Тик библиотекаря раз в пять минут — по образцу разбора переписки. Чаще незачем:
  * прогон раз в утро, а пять минут опоздания к 08:00 никто не заметит. Утро проекта
@@ -17,6 +18,7 @@ export class HubLibrarianScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly svc: HubLibrarianService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     // unref: незавершённый таймер не должен держать процесс при остановке
     this.timer.unref?.();

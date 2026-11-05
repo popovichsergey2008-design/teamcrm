@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ChatAnalysisService } from './chat-analysis.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в пять минут ищем затихшие разговоры.
  *
@@ -18,6 +19,7 @@ export class ChatAnalysisScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly svc: ChatAnalysisService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     // unref: незавершённый таймер не должен держать процесс при остановке
     this.timer.unref?.();

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ProactiveService } from './proactive.service';
 
+import { runsBackground } from '../../common/process-role';
 /** Каждые 2 минуты: вернуть отложенное, закрыть неактуальное. Навыки ставят свои таймеры сами. */
 const TICK_MS = 2 * 60_000;
 
@@ -19,6 +20,7 @@ export class ProactiveScheduler implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     this.timer.unref?.();

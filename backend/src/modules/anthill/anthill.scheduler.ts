@@ -7,6 +7,7 @@ import { BotDelivery } from './bot-delivery.service';
 import { BriefService } from './brief.service';
 import { nextRun, Schedule } from './schedule-ru';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в минуту: минутной точности расписанию хватает — «в 9:00» и «в 9:01»
  * человек не различает, а более частый опрос ничего не даёт: запрос смотрит в
@@ -43,6 +44,7 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     setTimeout(() => { void this.tick(); }, 15_000); // после перезапуска просроченное уже может ждать
     this.log.log(`регулярные задачи агента: планировщик запущен, проверка каждые ${TICK_MS / 1000} с`);

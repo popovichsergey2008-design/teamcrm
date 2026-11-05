@@ -14,6 +14,7 @@ import { DbService } from '../../database/db.service';
 import { S3Service } from './s3.client';
 import { compressArgs, compressedName, ORIGINAL_KEEP_MS, VIDEO_STORAGE_GB_DEFAULT, videoSpaceProblem } from './video-rules';
 
+import { runsBackground } from '../../common/process-role';
 const run = promisify(execFile);
 const TICK_MS = 15_000;
 /** Часовое видео на двух потоках жмётся минут 20–30; дольше — что-то не так. */
@@ -42,6 +43,7 @@ export class VideoCompressService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test' || process.env.VIDEO_COMPRESS === 'off') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     this.timer.unref?.();

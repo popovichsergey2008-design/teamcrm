@@ -3,6 +3,7 @@ import { AssistantRepository } from './assistant.repository';
 import { AssistantService } from './assistant.service';
 import { EveningService } from './evening.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в 15 минут — не чаще: поводы для напоминания меняются часами, а не секундами,
  * и частый проход только жёг бы базу. Ключ повтора всё равно держит один повод
@@ -30,6 +31,7 @@ export class AssistantScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.(); // не держим процесс в тестах и консольных запусках
   }

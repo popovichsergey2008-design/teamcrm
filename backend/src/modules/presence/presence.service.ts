@@ -34,7 +34,8 @@ export type TeamPresence = Presence & {
 @Injectable()
 export class PresenceService {
   private readonly log = new Logger(PresenceService.name);
-  private callProbe: (tenantId: string, userId: string) => boolean = () => false;
+  // без медиа-модуля в этом процессе (рабочий процесс API) — «на созвоне» узнаём от главного
+  private callProbe: (tenantId: string, userId: string) => boolean = (t, u) => this.realtime.inCallElsewhere(t, u);
 
   constructor(private readonly db: DbService, private readonly realtime: RealtimeService) {}
 

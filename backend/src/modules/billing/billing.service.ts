@@ -6,6 +6,7 @@ import { BillingRepository, PlanRow, TenantSubRow } from './billing.repository';
 import { billingLetter, priceMoveLetter } from './billing-letters';
 import { ProviderPayment, YooKassaClient, YooKassaError } from './yookassa.client';
 
+import { runsBackground } from '../../common/process-role';
 /** Сколько живёт решение «можно ли писать» для компании: на каждый запрос в базу не ходим. */
 const STATE_TTL_MS = 30_000;
 const TICK_MS = 10 * 60_000;
@@ -35,6 +36,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     this.timer.unref?.();

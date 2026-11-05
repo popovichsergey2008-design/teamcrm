@@ -7,6 +7,7 @@ import { YgTaskWrite, YougileClient, YougileError } from './yougile.client';
 import { chatEchoKey, taskStateHash } from './yougile.hash';
 import { buildPriorityMap, EMPTY_PRIORITY_MAP, PriorityMap, stickersForPriority } from './yougile.priority';
 
+import { runsBackground } from '../../../common/process-role';
 const BATCH = 10;
 const MAX_ATTEMPTS = 6;
 
@@ -46,6 +47,7 @@ export class YougileOutboundService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.YOUGILE_PUSH_DISABLED === '1') return;
     void this.repo.outboxRequeueStuck().catch(() => undefined); // упали в прошлый раз на середине
     const ms = Math.max(200, Number(process.env.YOUGILE_PUSH_INTERVAL_MS ?? 2000));

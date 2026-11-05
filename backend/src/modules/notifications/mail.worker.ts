@@ -5,6 +5,7 @@ import { TelegramMirror } from './telegram-mirror.service';
 import { PushService } from './push.service';
 import { isServiceEmail } from '../../common/mail/service-email';
 
+import { runsBackground } from '../../common/process-role';
 const BATCH = 20;
 const MAX_ATTEMPTS = 6;
 
@@ -31,6 +32,7 @@ export class MailWorker implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.MAIL_DISABLED === '1') return;
     void this.repo.requeueStuck().catch(() => undefined);
     const ms = Math.max(500, Number(process.env.MAIL_INTERVAL_MS ?? 5000));

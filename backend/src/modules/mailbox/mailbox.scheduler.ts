@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { MailboxService } from './mailbox.service';
 
+import { runsBackground } from '../../common/process-role';
 /** Раз в минуту смотрим, чьи ящики пора забрать (сам ящик — раз в 5 минут). */
 const TICK_MS = 60_000;
 
@@ -14,6 +15,7 @@ export class MailboxScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly mail: MailboxService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     this.timer.unref?.();

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { FocusSessionService } from './focus-session.service';
 
+import { runsBackground } from '../../common/process-role';
 const TICK_MS = 30_000;
 
 /**
@@ -17,6 +18,7 @@ export class FocusScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly sessions: FocusSessionService) {}
 
   onModuleInit() {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.();

@@ -3,6 +3,7 @@ import { DbService } from '../../database/db.service';
 import { AI_GUARD_DEFAULT, AiGuardConfig, AiGuardDecision, decide, normalizeGuard } from './ai-guard';
 import { estimateCost } from './usage-catalog';
 
+import { runsBackground } from '../../common/process-role';
 const KEY = 'ai_guard';
 const CFG_TTL_MS = 30_000;
 const SPEND_TTL_MS = 60_000;
@@ -30,6 +31,7 @@ export class AiGuardService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly db: DbService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.syncBudget().catch((e) => this.log.warn(`сверка бюджета: ${(e as Error).message}`)); }, SYNC_MS);
     this.timer.unref?.();

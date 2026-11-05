@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ModeratorRepository } from './moderator.repository';
 import { ModeratorService } from './moderator.service';
 
+import { runsBackground } from '../../common/process-role';
 const TICK_MS = 60_000;
 
 /**
@@ -31,6 +32,7 @@ export class ModeratorScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.(); // не держим процесс в тестах и консольных запусках
   }

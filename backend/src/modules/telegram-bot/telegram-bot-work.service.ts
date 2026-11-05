@@ -22,6 +22,7 @@ import * as T from './bot-texts';
 import { TelegramBotRepository } from './telegram-bot.repository';
 import { TelegramBotWorkRepository } from './telegram-bot-work.repository';
 
+import { runsBackground } from '../../common/process-role';
 const TICK_MS = 60_000;
 
 interface Own { tenantId: string; userId: string }
@@ -61,6 +62,7 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     // сдача на проверку: одно сообщение с кнопками вместо копии письма
     this.notify.onApprovalRequested((tenantId, taskId, actorId) => this.approvalRequested(tenantId, taskId, actorId));
     if (process.env.NODE_ENV === 'test') return;

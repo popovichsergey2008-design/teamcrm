@@ -10,6 +10,7 @@ import { OrgService } from '../org/org.service';
 import { directionHasLead, leadOptions } from '../org/org-rules';
 import { isSkill, Skill, SKILL_LABEL } from '../team/skills';
 
+import { runsBackground } from '../../common/process-role';
 /** Как часто смотреть, не подошло ли время сообщения: 3 секунды ± 1 (#4728). */
 const TICK_MS = 1_000;
 /** Разговор с QEVO Bot, куда падают подтверждения постановки (#4665). */
@@ -47,6 +48,7 @@ export class AutoConfirmService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.proactive.register({ skill: 'autotask', execute: (a, p, action) => this.execute(a, p, action) });
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);

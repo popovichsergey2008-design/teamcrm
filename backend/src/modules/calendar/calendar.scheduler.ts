@@ -3,6 +3,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository } from './calendar.repository';
 
+import { runsBackground } from '../../common/process-role';
 const TICK_MS = 60_000;
 
 /**
@@ -29,6 +30,7 @@ export class CalendarScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.(); // не держим процесс в тестах и консольных запусках
   }

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { NewsAgentService } from './news-agent.service';
 
+import { runsBackground } from '../../common/process-role';
 /** Раз в пять минут: хайлайт выходит в своё окно (час из настроек + 3 ч), опросы закрываются вовремя. */
 const TICK_MS = 5 * 60_000;
 
@@ -18,6 +19,7 @@ export class NewsScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly agent: NewsAgentService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     this.timer.unref?.();

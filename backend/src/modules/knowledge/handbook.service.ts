@@ -5,6 +5,7 @@ import { DbService } from '../../database/db.service';
 import { KnowledgeService } from './knowledge.service';
 import { KnowledgeRepository } from './knowledge.repository';
 
+import { runsBackground } from '../../common/process-role';
 /** Приставка к названию регламента: по ней справочник видно среди своих документов. */
 const PREFIX = 'Справочник QEVO · ';
 /** Пауза после старта: выкладка не должна ждать индексации справочника. */
@@ -46,6 +47,7 @@ export class HandbookService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     const first = setTimeout(() => void this.syncAll(), BOOT_DELAY_MS);
     first.unref?.(); // не держим процесс в тестах и консольных запусках
     // Организации заводятся и между выкладками: без повтора у новой компании

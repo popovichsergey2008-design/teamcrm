@@ -11,6 +11,7 @@ import { ConsentMeta, PolicyConsentsService, POLICY_VERSIONS, REMOTE_CONSENT_REQ
 import { SupportDeskRepository } from './support-desk.repository';
 import { SupportDeskService } from './support-desk.service';
 import { SupportConciergeRepository } from './support-concierge.repository';
+import { runsBackground } from '../../common/process-role';
 import {
   ACCESS_MINUTES, engineerStatus, EngineerStatus, MANUAL_STATUSES, ManualStatus, parseResolution, rulesResolution, STATUS_TEXT, waitEstimate,
 } from './support-concierge';
@@ -49,6 +50,7 @@ export class SupportConciergeService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     // итог помощи — после созвона поддержки (п. 25)
     this.desk.onHuddleDone((conversationId, tenantId, summary) => this.buildResolution(tenantId, conversationId, summary));
     if (process.env.NODE_ENV === 'test') return;

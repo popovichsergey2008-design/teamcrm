@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { CHANGE_LOG_RETENTION_DAYS, ChangeLogRepository } from './change-log.repository';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Уборка журнала изменений: записи старше срока хранения — раз в час.
  * Клиент с более старым курсором получит `reset` и перечитает всё.
@@ -13,6 +14,7 @@ export class ChangeLogPruner implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly changes: ChangeLogRepository) {}
 
   onModuleInit() {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => void this.tick(), 3600_000);
     this.timer.unref?.();

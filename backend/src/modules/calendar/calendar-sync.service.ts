@@ -9,6 +9,7 @@ import { CalendarRepository } from './calendar.repository';
 import { buildIcs, icsUid } from './ics';
 import { ExternalEvent, parseIcs } from './ics-parse';
 
+import { runsBackground } from '../../common/process-role';
 /** Окно синхронизации: месяц назад и полгода вперёд. Дальше календарём не пользуются. */
 const BACK_DAYS = 30;
 const FORWARD_DAYS = 180;
@@ -53,6 +54,7 @@ export class CalendarSyncService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.();
   }

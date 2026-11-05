@@ -6,6 +6,7 @@ import { GoogleCalendarService } from './google-calendar.service';
 import { GoogleController } from './google.controller';
 import { GoogleDriveService } from './google-drive.service';
 
+import { runsBackground } from '../../common/process-role';
 /** Раз в минуту смотрим, чей Google пора перечитать (сам календарь — раз в 10 минут). */
 const TICK_MS = 60_000;
 
@@ -18,6 +19,7 @@ class GoogleScheduler implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly calendar: GoogleCalendarService) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     if (process.env.NODE_ENV === 'test') return;
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     this.timer.unref?.();

@@ -6,6 +6,7 @@ import { FollowupCandidate, FollowupsRepository } from './followups.repository';
 import { PushService } from '../notifications/push.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в четверть часа. Окно вопроса — два часа шириной (4–6 часов до срока), так что
  * пятнадцати минут хватает с запасом, а нагрузки нет: запрос идёт по индексу срока.
@@ -41,6 +42,7 @@ export class FollowupsScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     // unref: незавершённый таймер не должен держать процесс при остановке
     this.timer.unref?.();

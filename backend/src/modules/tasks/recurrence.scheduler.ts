@@ -4,6 +4,7 @@ import { TasksService } from './tasks.service';
 import { TaskActivityRepository } from './task-activity.repository';
 import { describeRule, nextRun } from './recurrence';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в пять минут. Повтор — не будильник: задача на день опоздать не может, а
  * запрос под индексом «что уже пора» стоит копейки. Чаще незачем, реже — и задача,
@@ -38,6 +39,7 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     // unref: незавершённый таймер не должен держать процесс при остановке
     this.timer = setInterval(() => void this.tick(), TICK_MS);
     this.timer.unref?.();

@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ChatsService } from './chats.service';
 import { ScheduledRepository } from './scheduled.repository';
 
+import { runsBackground } from '../../common/process-role';
 /**
  * Раз в полминуты.
  *
@@ -34,6 +35,7 @@ export class ScheduledMessagesScheduler implements OnModuleInit, OnModuleDestroy
   ) {}
 
   onModuleInit(): void {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
     // Первый проход сразу: после перезапуска в очереди уже может быть просроченное.
     setTimeout(() => { void this.tick(); }, 5_000);

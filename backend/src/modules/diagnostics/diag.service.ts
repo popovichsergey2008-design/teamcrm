@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
+import { runsBackground } from '../../common/process-role';
 export type DiagScope = 'meet' | 'chat' | 'app';
 export type DiagSide = 'server' | 'client';
 
@@ -33,6 +34,7 @@ export class DiagService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly db: DbService) {}
 
   onModuleInit() {
+    if (!runsBackground()) return; // фоновая работа — только в главном процессе (common/process-role)
     // Журнал растёт быстро и стареет мгновенно: разбирают вчерашний созвон, не прошлогодний.
     const sweep = () => void this.purge().catch(() => undefined);
     this.timer = setInterval(sweep, 6 * 60 * 60 * 1000);

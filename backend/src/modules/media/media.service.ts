@@ -4,6 +4,8 @@ import { createHmac, randomUUID } from 'crypto';
 import { MeetingRoom, MsRouter, MsTransport, MsWorker, Participant } from './media.types';
 import { PresenceService } from '../presence/presence.service';
 
+import { RealtimeService } from '../realtime/realtime.service';
+import { runsBackground } from '../../common/process-role';
 /** Кодеки: Opus для звука, три видеокодека — браузеры договорятся сами. */
 const MEDIA_CODECS = [
   {
@@ -53,7 +55,11 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
   private nextWorker = 0;
   private initError: string | null = null;
 
-  constructor(private readonly config: ConfigService, private readonly presence: PresenceService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly presence: PresenceService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   get available(): boolean {
     return this.workers.length > 0;
@@ -73,7 +79,10 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     // «На созвоне» в общем состоянии человека знает только этот модуль (ТЗ-16).
+    // созвоны живут только в главном процессе (common/process-role); рабочие узнают о них через Redis
+    if (!runsBackground()) { this.initError = 'созвоны обслуживает главный процесс API'; return; }
     this.presence.useCallProbe((tenantId, userId) => this.isBusy(tenantId, userId));
+    this.realtime.useInCallSource(() => this.busyKeys());
     if (this.config.get<string>('MEDIASOUP_DISABLED') === '1') {
       this.initError = 'выключено через MEDIASOUP_DISABLED';
       return;
@@ -318,6 +327,13 @@ export class MediaService implements OnModuleInit, OnModuleDestroy {
    * Звонить занятому бессмысленно: он не увидит вызов за окном разговора,
    * а если увидит и примет — вылетит из текущей комнаты в новую.
    */
+  /** Все, кто сейчас в созвонах, ключами `tenant:user` — рабочим процессам API через Redis. */
+  busyKeys(): string[] {
+    const out: string[] = [];
+    for (const room of this.rooms.values()) for (const uid of room.participants.keys()) out.push(`${room.tenantId}:${uid}`);
+    return out;
+  }
+
   isBusy(tenantId: string, userId: string): boolean {
     for (const room of this.rooms.values()) {
       if (room.tenantId === tenantId && room.participants.has(String(userId))) return true;
