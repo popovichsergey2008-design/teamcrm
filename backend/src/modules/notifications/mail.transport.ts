@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import nodemailer from 'nodemailer';
 
 export interface MailMessage {
   to: string;
@@ -73,12 +74,88 @@ export class LogTransport implements MailTransport {
   }
 }
 
+/**
+ * Свой почтовый сервер (#4793, 05.11): после переезда на российский сервер порт 587
+ * открыт, и письма уходят через mail.qevo.one (/opt/qevo-mail) с подписью DKIM.
+ * Отказ сервера по адресу (5xx) — постоянная ошибка, повторять бессмысленно.
+ */
+export class SmtpTransport implements MailTransport {
+  readonly name = 'smtp';
+  private readonly t: nodemailer.Transporter;
+  constructor(
+    opts: { host: string; port: number; user?: string; pass?: string },
+    private readonly from: { email: string; name: string },
+  ) {
+    this.t = nodemailer.createTransport({
+      host: opts.host, port: opts.port, secure: opts.port === 465,
+      ...(opts.user ? { auth: { user: opts.user, pass: opts.pass ?? '' } } : {}),
+      // внутри сети сервер отвечает по имени контейнера, а сертификат выписан на mail.qevo.one
+      tls: { servername: 'mail.qevo.one' },
+      connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
+    });
+  }
+
+  async send(msg: MailMessage): Promise<void> {
+    try {
+      await this.t.sendMail({
+        from: { address: this.from.email, name: this.from.name },
+        to: msg.to,
+        subject: msg.subject,
+        text: msg.text,
+        ...(msg.html ? { html: msg.html } : {}),
+        ...(msg.attachments?.length
+          ? { attachments: msg.attachments.map((a) => ({ filename: a.name, content: Buffer.from(a.content, 'base64') })) }
+          : {}),
+      });
+    } catch (e) {
+      const code = Number((e as { responseCode?: number }).responseCode);
+      if (code >= 500 && code < 600 && code !== 535 && code !== 530) {
+        throw new MailPermanentError(`SMTP ${code}: ${(e as Error).message.slice(0, 200)}`);
+      }
+      throw e;
+    }
+  }
+}
+
+/**
+ * Свой сервер — первым, Brevo — запасным: сервер недоступен или отказал временно —
+ * то же письмо уходит через Brevo, а не ждёт повтора. Отказ по самому адресу — не повод.
+ */
+export class FallbackTransport implements MailTransport {
+  readonly name: string;
+  private readonly log = new Logger('Mail');
+  constructor(private readonly primary: MailTransport, private readonly backup: MailTransport) {
+    this.name = `${primary.name}+${backup.name}`;
+  }
+
+  async send(msg: MailMessage): Promise<void> {
+    try {
+      await this.primary.send(msg);
+    } catch (e) {
+      if (e instanceof MailPermanentError) throw e;
+      this.log.warn(`${this.primary.name}: ${(e as Error).message} — отправляем через ${this.backup.name}`);
+      await this.backup.send(msg);
+    }
+  }
+}
+
 /** Транспорт по переменным окружения. Без ключа — журнал, а не падение. */
 export function createTransport(env: NodeJS.ProcessEnv): MailTransport {
-  const key = env.BREVO_API_KEY?.trim();
-  if (!key) return new LogTransport();
-  return new BrevoTransport(key, {
-    email: env.MAIL_FROM?.trim() || 'noreply@anthill.team',
+  const from = {
+    email: env.MAIL_FROM?.trim() || 'noreply@qevo.one',
     name: env.MAIL_FROM_NAME?.trim() || 'QEVO',
-  });
+  };
+  const key = env.BREVO_API_KEY?.trim();
+  // Brevo шлёт только от подтверждённого у него домена (teamsmrt.com), а свой сервер —
+  // от qevo.one: у запасного свой отправитель
+  const brevoFrom = env.BREVO_FROM?.trim() ? { ...from, email: env.BREVO_FROM.trim() } : from;
+  const brevo = key ? new BrevoTransport(key, brevoFrom) : null;
+  const host = env.SMTP_HOST?.trim();
+  if (host) {
+    const smtp = new SmtpTransport({
+      host, port: Number(env.SMTP_PORT) || 587, user: env.SMTP_USER?.trim() || undefined, pass: env.SMTP_PASS,
+    }, from);
+    return brevo ? new FallbackTransport(smtp, brevo) : smtp;
+  }
+  return brevo ?? new LogTransport();
 }
