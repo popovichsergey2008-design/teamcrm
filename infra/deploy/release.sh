@@ -85,7 +85,7 @@ say "живой цвет: $OLD → поднимаем: $NEW"
 
 # Рабочие процессы API (05.11, common/process-role): сколько копий crm-api-<цвет>-web.
 # 0 — как раньше, всё в одном процессе (nginx шлёт пул туда же).
-REPLICAS="$(envval API_WEB_REPLICAS)"; REPLICAS="${REPLICAS:-3}"
+REPLICAS="$(envval API_WEB_REPLICAS || true)"; REPLICAS="${REPLICAS:-3}"
 # Файл цвета: главный процесс (созвоны, сокеты, планировщики), пул рабочих и интерфейс.
 write_color() {  # write_color <цвет>
   local c="$1" web="crm-api-$1-web:3000"
