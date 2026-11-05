@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+/** Сбои установки соединения — запрос до Telegram не дошёл, повтор безопасен. */
+const CONNECT_FAILURES = new Set(['UND_ERR_CONNECT_TIMEOUT', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH']);
+
 /** Отправка сообщений в Telegram. No-op без TELEGRAM_BOT_TOKEN (dev/тесты). */
 @Injectable()
 export class TelegramSender {
@@ -16,6 +19,24 @@ export class TelegramSender {
   }
 
   /**
+   * Запрос к Bot API с повтором (05.11, переезд в РФ): из России соединение с
+   * api.telegram.org примерно через раз не устанавливается — рвётся ещё до отправки.
+   * Повторяем только такие сбои (до трёх попыток): запрос до Telegram не дошёл, дубля
+   * сообщения не будет. Ответ Telegram (даже ошибку) и обрыв посреди ответа не повторяем.
+   */
+  private async tg(url: string, init?: RequestInit): Promise<Response> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await fetch(url, init);
+      } catch (e) {
+        const code = String((e as { cause?: { code?: string } }).cause?.code ?? '');
+        if (attempt >= 3 || !CONNECT_FAILURES.has(code)) throw e;
+        this.logger.warn(`Telegram: соединение не установилось (${code}), попытка ${attempt + 1}`);
+      }
+    }
+  }
+
+  /**
    * Имя бота для ссылки «открыть чат». Спрашиваем у самого Telegram, а не держим
    * в настройках: бот один раз меняют — и ссылка ведёт в чужой чат, чего никто
    * не заметит. Ответ не меняется, поэтому запоминаем до перезапуска.
@@ -26,7 +47,7 @@ export class TelegramSender {
     if (!this.token) return null;
     if (this.cachedName !== undefined) return this.cachedName;
     try {
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/getMe`);
+      const res = await this.tg(`https://api.telegram.org/bot${this.token}/getMe`);
       const json: any = await res.json();
       this.cachedName = (json?.result?.username as string | undefined) ?? null;
     } catch (e) {
@@ -48,7 +69,7 @@ export class TelegramSender {
   async fileUrl(fileId: string): Promise<string | null> {
     if (!this.token || !fileId) return null;
     try {
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(fileId)}`);
+      const res = await this.tg(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(fileId)}`);
       const json: any = await res.json();
       const path = json?.result?.file_path;
       return path ? `https://api.telegram.org/file/bot${this.token}/${path}` : null;
@@ -69,7 +90,7 @@ export class TelegramSender {
       form.append('chat_id', String(chatId));
       form.append('voice', new Blob([new Uint8Array(audio)], { type: 'audio/mpeg' }), 'brief.mp3');
       if (caption) form.append('caption', caption.slice(0, 1000));
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendVoice`, { method: 'POST', body: form });
+      const res = await this.tg(`https://api.telegram.org/bot${this.token}/sendVoice`, { method: 'POST', body: form });
       return res.ok;
     } catch (e) {
       this.logger.warn(`sendVoice failed: ${(e as Error).message}`);
@@ -84,7 +105,7 @@ export class TelegramSender {
   async deliver(chatId: string | number, text: string): Promise<'ok' | 'blocked' | 'failed'> {
     if (!this.token) return 'failed';
     try {
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+      const res = await this.tg(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096), disable_web_page_preview: true }),
@@ -110,7 +131,7 @@ export class TelegramSender {
       return null;
     }
     try {
-      const res = await fetch(`https://api.telegram.org/bot${this.token}/${method}`, {
+      const res = await this.tg(`https://api.telegram.org/bot${this.token}/${method}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
@@ -133,7 +154,7 @@ export class TelegramSender {
     const url = await this.fileUrl(fileId);
     if (!url) return null;
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+      const res = await this.tg(url, { signal: AbortSignal.timeout(20_000) });
       if (!res.ok) return null;
       const buf = Buffer.from(await res.arrayBuffer());
       return buf.length > maxBytes ? null : buf;
@@ -149,7 +170,7 @@ export class TelegramSender {
       return;
     }
     try {
-      await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+      await this.tg(`https://api.telegram.org/bot${this.token}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, text, reply_markup: replyMarkup }),
