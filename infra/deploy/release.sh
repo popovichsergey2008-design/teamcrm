@@ -273,7 +273,7 @@ if [ "$ok" != "1" ]; then
     write_color "$OLD"
   fi
   dc exec -T crm-edge nginx -s reload || true
-  dc stop "crm-api-$NEW" "crm-api-$NEW-web" "crm-web-$NEW" || true
+  dc stop -t 30 "crm-api-$NEW" "crm-api-$NEW-web" "crm-web-$NEW" || true
   rel_set prod_result "сбой: новый цвет не ответил через nginx — вернули $OLD"
   rel_finish rolled_back
   exit 1
@@ -290,8 +290,10 @@ if [ "$OLD" = "legacy" ]; then
   docker rm -f teamcrm-crm-api-1 teamcrm-crm-web-1 >/dev/null 2>&1 || true
 else
   dc stop "crm-web-$OLD"
-  # пул прежнего цвета: новых запросов к нему уже нет; начатую фоновую работу он доделает
-  dc stop "crm-api-$OLD-web" || true
+  # пул прежнего цвета: новых запросов к нему уже нет. Ждём не дольше 30 с: процесс
+  # Node на SIGTERM сам не выходит, и с полными 300 с (stop_grace_period) ssh выкладки
+  # обрывался по бездействию — выкладка «падала» уже после переключения (05.11)
+  dc stop -t 30 "crm-api-$OLD-web" || true
   OLD_API="$(active_api)"
   n="$(busy_in "$OLD_API" | tr -dc '0-9')"
   n="${n:-0}"
