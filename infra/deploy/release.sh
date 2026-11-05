@@ -83,6 +83,22 @@ else
 fi
 say "живой цвет: $OLD → поднимаем: $NEW"
 
+# Рабочие процессы API (05.11, common/process-role): сколько копий crm-api-<цвет>-web.
+# 0 — как раньше, всё в одном процессе (nginx шлёт пул туда же).
+REPLICAS="$(envval API_WEB_REPLICAS)"; REPLICAS="${REPLICAS:-3}"
+# Файл цвета: главный процесс (созвоны, сокеты, планировщики), пул рабочих и интерфейс.
+write_color() {  # write_color <цвет>
+  local c="$1" web="crm-api-$1-web:3000"
+  [ "$REPLICAS" = "0" ] && web="crm-api-$1:3000"
+  printf 'set $api_upstream crm-api-%s:3000;\nset $api_web_upstream %s;\nset $web_upstream crm-web-%s:80;\n' "$c" "$web" "$c" > "$COLOR_FILE"
+}
+# Файл цвета от прежней схемы — без пула: nginx ссылается на $api_web_upstream, без него
+# конфигурация не проходит проверку. Дописываем пул = главный процесс того же цвета.
+if [ -f "$COLOR_FILE" ] && ! grep -q 'api_web_upstream' "$COLOR_FILE"; then
+  live_api="$(sed -n 's/.*set \$api_upstream \([^;]*\);.*/\1/p' "$COLOR_FILE")"
+  printf 'set $api_web_upstream %s;\n' "${live_api:-crm-api:3000}" >> "$COLOR_FILE"
+fi
+
 # Контейнер живого API — чтобы спросить его о созвонах. У прежней схемы имя без цвета.
 active_api() {
   docker ps --format '{{.Names}}' | grep -E "^teamcrm-crm-api(-${OLD})?-1$" | head -1 || true
@@ -169,13 +185,13 @@ fi
 # проходит проверку. На первом запуске пишем в него ПРЕЖНИЙ цвет — переключим
 # после того, как новый станет здоров.
 if [ ! -f "$COLOR_FILE" ]; then
-  printf 'set $api_upstream crm-api:3000;\nset $web_upstream crm-web:80;\n' > "$COLOR_FILE"
+  printf 'set $api_upstream crm-api:3000;\nset $api_web_upstream crm-api:3000;\nset $web_upstream crm-web:80;\n' > "$COLOR_FILE"
 fi
 
-say "поднимаем хранилища, nginx и цвет $NEW; ждём здоровья"
+say "поднимаем хранилища, nginx и цвет $NEW (рабочих процессов API: $REPLICAS); ждём здоровья"
 # --wait: команда возвращается только когда контейнеры стали healthy. Без него
 # выкладка «успешна» ровно в тот момент, когда приложение ещё не поднялось.
-docker compose --profile "$NEW" up -d --wait --wait-timeout 240
+docker compose --profile "$NEW" up -d --wait --wait-timeout 240 --scale "crm-api-$NEW-web=$REPLICAS"
 
 # ── прежняя сборка интерфейса — рядом с новой ────────────────────────────────
 # Белый экран (14.10): у человека открыта вкладка прежней версии, он переходит в
@@ -219,7 +235,7 @@ fi
 
 # ── переключение ──────────────────────────────────────────────────────────────
 say "переключаем nginx на $NEW (мягкая перезагрузка, соединения не рвутся)"
-printf 'set $api_upstream crm-api-%s:3000;\nset $web_upstream crm-web-%s:80;\n' "$NEW" "$NEW" > "$COLOR_FILE"
+write_color "$NEW"
 # С битым конфигом reload не делаем вовсе: продолжает работать прежний — это
 # лучше, чем упавший nginx на проде.
 dc exec -T crm-edge nginx -t
@@ -241,7 +257,8 @@ for i in $(seq 1 15); do
   # Второй запрос — из nginx к новому API по имени: ровно тот путь, которым nginx
   # пойдёт за каждым запросом людей (резолвер докера + порт 3000).
   if dc exec -T crm-edge wget -q -O /dev/null http://127.0.0.1/healthz \
-     && dc exec -T crm-edge wget -q -O /dev/null "http://crm-api-$NEW:3000/api/health"; then
+     && dc exec -T crm-edge wget -q -O /dev/null "http://crm-api-$NEW:3000/api/health" \
+     && { [ "$REPLICAS" = "0" ] || dc exec -T crm-edge wget -q -O /dev/null "http://crm-api-$NEW-web:3000/api/health"; }; then
     ok=1; break
   fi
   say "новый цвет ещё не отвечает через nginx (попытка $i из 15)"
@@ -251,12 +268,12 @@ if [ "$ok" != "1" ]; then
   # Откат — одной строкой: возвращаем прежний цвет в файл и перечитываем.
   say "новый цвет не отвечает — возвращаем $OLD и останавливаем $NEW"
   if [ "$OLD" = "legacy" ]; then
-    printf 'set $api_upstream crm-api:3000;\nset $web_upstream crm-web:80;\n' > "$COLOR_FILE"
+    printf 'set $api_upstream crm-api:3000;\nset $api_web_upstream crm-api:3000;\nset $web_upstream crm-web:80;\n' > "$COLOR_FILE"
   else
-    printf 'set $api_upstream crm-api-%s:3000;\nset $web_upstream crm-web-%s:80;\n' "$OLD" "$OLD" > "$COLOR_FILE"
+    write_color "$OLD"
   fi
   dc exec -T crm-edge nginx -s reload || true
-  dc stop "crm-api-$NEW" "crm-web-$NEW" || true
+  dc stop "crm-api-$NEW" "crm-api-$NEW-web" "crm-web-$NEW" || true
   rel_set prod_result "сбой: новый цвет не ответил через nginx — вернули $OLD"
   rel_finish rolled_back
   exit 1
@@ -273,6 +290,8 @@ if [ "$OLD" = "legacy" ]; then
   docker rm -f teamcrm-crm-api-1 teamcrm-crm-web-1 >/dev/null 2>&1 || true
 else
   dc stop "crm-web-$OLD"
+  # пул прежнего цвета: новых запросов к нему уже нет; начатую фоновую работу он доделает
+  dc stop "crm-api-$OLD-web" || true
   OLD_API="$(active_api)"
   n="$(busy_in "$OLD_API" | tr -dc '0-9')"
   n="${n:-0}"
