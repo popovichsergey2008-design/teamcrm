@@ -20,6 +20,8 @@ import { ScreenBoundary } from './components/ScreenBoundary';
 const TgApp = lazy(() => import('./tg/TgApp'));
 // запись по ссылке (#4787): страница для гостя без входа — своим лёгким куском
 const BookingApp = lazy(() => import('./booking/BookingApp'));
+// согласование результата клиентом (#4798 §19): без входа, своим куском
+const ShareApp = lazy(() => import('./share/ShareApp'));
 
 initTheme(); // до первой отрисовки: иначе тёмная тема мигнёт светлым
 initFontScale(); // тоже до отрисовки: увеличенный шрифт не должен моргать обычным
@@ -68,7 +70,8 @@ async function boot(): Promise<void> {
     <React.StrictMode>
       {/* шторка Telegram (#4619): своя лёгкая оболочка без входа CRM, отдельным куском */}
       {location.pathname.startsWith('/tg/') ? <ScreenBoundary full><Suspense fallback={null}><TgApp /></Suspense></ScreenBoundary>
-        : location.pathname.startsWith('/book/') ? <ScreenBoundary full><Suspense fallback={null}><BookingApp /></Suspense></ScreenBoundary> : (
+        : location.pathname.startsWith('/book/') ? <ScreenBoundary full><Suspense fallback={null}><BookingApp /></Suspense></ScreenBoundary>
+        : location.pathname.startsWith('/r/') ? <ScreenBoundary full><Suspense fallback={null}><ShareApp /></Suspense></ScreenBoundary> : (
         <AuthProvider>
           <ScreenBoundary full>
             <App />

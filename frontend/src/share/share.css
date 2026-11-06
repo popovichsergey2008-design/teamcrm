@@ -1,0 +1,16 @@
+/* Согласование результата клиентом (#4798 §19): читается с телефона без увеличения. */
+.sh { min-height: 100vh; background: var(--bg); color: var(--text); display: flex; justify-content: center; padding: 24px 16px; box-sizing: border-box; }
+.sh-card { width: 100%; max-width: 720px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 14px; box-sizing: border-box; height: fit-content; }
+.sh h1 { margin: 0; font-size: calc(22px * var(--fs-scale, 1)); line-height: 1.25; }
+.sh h2 { margin: 0 0 6px; font-size: calc(15px * var(--fs-scale, 1)); color: var(--text-dim); }
+.sh-text { margin: 0; white-space: pre-line; }
+.sh-dim { color: var(--text-dim); font-size: var(--fs-sm); margin: 0; }
+.sh-files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.sh-link { border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; text-align: left; }
+.sh-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+.sh-btns .ui-btn { min-height: 44px; flex: 1 1 180px; justify-content: center; }
+.sh-form { display: flex; flex-direction: column; gap: 12px; }
+.sh-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: var(--fs-sm); }
+.sh-form .ui-input { width: 100%; box-sizing: border-box; font-weight: 400; }
+.sh-done { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 12px; background: var(--accent-soft); font-weight: 600; }
+.sh-err { color: var(--danger); margin: 0; }

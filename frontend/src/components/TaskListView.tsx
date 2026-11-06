@@ -2,6 +2,8 @@ import type { Board, Task, User } from '../types';
 import { Icon } from './Icon';
 import { MONETIZATION_ENABLED } from '../config';
 import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
+import { nextStep } from '../lib/board-card';
+import { useAuth } from '../state/auth';
 
 interface Props {
   board: Board;
@@ -15,6 +17,8 @@ const PAUSED_STAGES = ['testing', 'review', 'approval', 'waiting_external'];
 
 /** Списочный вид доски: задачи сгруппированы по колонкам, компактные строки. */
 export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Props) {
+  // #4799 BOARD01: в списке тот же «чей ход», что на доске
+  const me = String(useAuth().user?.id ?? '');
   const nameOf = (t: Task) => t.assignee_name ?? users.find((u) => u.id === t.assignee_id)?.fullName ?? null;
   /** Постановщик: в списке он нужен ровно затем же, зачем на доске — знать, с кого спросят. */
   const managerOf = (t: Task) => t.manager_name ?? users.find((u) => u.id === t.created_by)?.fullName ?? null;
@@ -56,7 +60,8 @@ export function TaskListView({ board, users, activeTimerTask, onOpenTask }: Prop
                   {t.approval_state === 'pending' && (
                     <span className="ui-badge ui-badge-warn" title="Работа сдана, ждёт решения постановщика">На согласовании</span>
                   )}
-                  {t.is_blocked && <span className="ui-badge ui-badge-neutral badge-blocked">BLOCKED</span>}
+                  {t.is_blocked && <span className="ui-badge ui-badge-neutral badge-blocked" title={t.blocker?.need ?? undefined}>Остановлено</span>}
+                  {(() => { const st = nextStep(t, col.stage_type, me); return st && !t.is_blocked ? <span className="ui-badge ui-badge-neutral" title={st.title}>{st.text}</span> : null; })()}
                   {prio && <span className={prio.cls} title="Приоритет">{prio.text}</span>}
                   {due && <span className={due.cls} title={due.title}>{due.text}</span>}
                   {!!t.commentsCount && <span className="ui-badge ui-badge-neutral" title="комментарии"><Icon name="chat" size={12} /> {t.commentsCount}</span>}

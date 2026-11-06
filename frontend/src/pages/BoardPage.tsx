@@ -952,7 +952,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
           key={openTask.id}
           task={openTask}
           users={users}
-          columns={board?.columns.map((c) => ({ id: c.id, name: c.name })) ?? []}
+          columns={board?.columns.map((c) => ({ id: c.id, name: c.name, stage_type: c.stage_type })) ?? []}
           canDelete={canManageBoard}
           timerActive={activeTimerTask === openTask.id}
           onToggleTimer={toggleTimer}

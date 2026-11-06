@@ -18,9 +18,13 @@ const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: 
  * фокуса сервера. «Сейчас» — запускает её; «Запланировать» — блок фокуса в календаре
  * (статус «В фокусе» сегодня он не включает).
  */
-export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClose: () => void; onSaved: () => void }) {
+export function FocusDialog({ at, onClose, onSaved, preselect }: {
+  at?: Date | null; onClose: () => void; onSaved: () => void;
+  /** #4798 §16: «Начать фокус» из карточки — эта задача уже выбрана. */
+  preselect?: string[];
+}) {
   const [tasks, setTasks] = useState<PlanTask[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>(preselect ?? []);
   const [minutes, setMinutes] = useState(50);
   const [mode, setMode] = useState<'now' | 'plan'>(at ? 'plan' : 'now');
   const [when, setWhen] = useState(() => toLocalInput(at ?? null));

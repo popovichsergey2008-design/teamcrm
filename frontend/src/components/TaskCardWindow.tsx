@@ -69,7 +69,7 @@ export function TaskCardWindow({ projectId, taskId, onClose }: {
       key={String(task.id)}
       task={task}
       users={users}
-      columns={board?.columns.map((c) => ({ id: c.id, name: c.name })) ?? []}
+      columns={board?.columns.map((c) => ({ id: c.id, name: c.name, stage_type: c.stage_type })) ?? []}
       canDelete={user?.role !== 'client'}
       timerActive={timerOn}
       onToggleTimer={() => void toggleTimer()}

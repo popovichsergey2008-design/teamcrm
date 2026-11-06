@@ -46,11 +46,13 @@ import { feedback, feedback as fx } from '../lib/feedback';
 const TaskAudioProof = lazy(() => import('./meetings/TaskAudioProof'));
 // «Было/стало» (#4657) — своим куском и со своим CSS: отчёт смотрят после сдачи, не в каждой карточке
 const BeforeAfterTab = lazy(() => import('./before-after/BeforeAfterTab'));
+// #4798/#4799: чей ход, препятствие, связи, сроки и ожидание, сдача, фокус, ссылка клиенту
+const TaskFlowPanel = lazy(() => import('./task-flow/TaskFlowPanel').then((m) => ({ default: m.TaskFlowPanel })));
 
 interface Props {
   task: Task;
   users: User[];
-  columns?: { id: string; name: string }[];
+  columns?: { id: string; name: string; stage_type?: string }[];
   /**
    * Удаление задачи. Отдельным правом, а не общим «управлением»: раньше одна галка
    * прятала и удаление, и ИИ-агента, и человек не понимал, чего именно ему не хватает.
@@ -473,8 +475,6 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
 
-  // BLOCKED — не правка полей, а метка состояния: её ставят и снимают одним нажатием.
-  const toggleBlocked = async () => { await api.updateTask(task.id, { isBlocked: !task.is_blocked }); onRefresh(); };
 
   /*
     «Копировать задачу» (#4736): новая задача с тем же содержимым — название с пометкой
@@ -779,7 +779,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           {columnName && <><span className="tv2-dot" aria-hidden>·</span><span>{columnName}</span></>}
           {isDone && <Badge tone="ok"><Icon name="check" size={11} /> завершена</Badge>}
           {task.agent_assigned && <Badge tone="info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={11} /> ИИ-агент</Badge>}
-          {task.is_blocked && <Badge tone="danger"><Icon name="alert" size={11} /> BLOCKED</Badge>}
+          {task.is_blocked && <Badge tone="warn" title={task.blocker?.need ?? 'Отмечено «Есть препятствие»'}><Icon name="ban" size={11} /> Остановлено</Badge>}
           {/* #4713: задачу — в избранное, она появится в сайдбаре */}
           <FavoriteStar kind="task" id={String(task.id)} title={task.title} projectId={String(task.project_id)} />
           {/* Закрытие — крупной кнопкой: карточка на пол-экрана, и уходить из неё
@@ -833,7 +833,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         {/*
           Действия над задачей целиком. На виду — главное: завершить и проверить ИИ.
-          Остальное (объединить, шаблон, BLOCKED, удалить) — в меню «⋯»: восемь кнопок
+          Остальное (объединить, шаблон, удалить) — в меню «⋯»: восемь кнопок
           в ряд читались как одна серая полоса, и «Удалить» стояло вплотную к «Завершить».
         */}
         <div className="tv2-actions">
@@ -908,10 +908,6 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               </Button>
             )}
           >
-            {/* BLOCKED — не правка полей, а метка состояния: ставится и снимается одним нажатием. */}
-            <MenuItem onSelect={() => void toggleBlocked()} icon={<Icon name="alert" size={15} />}>
-              {task.is_blocked ? 'Снять BLOCKED' : 'Отметить BLOCKED'}
-            </MenuItem>
             {!task.merged_into_id && (
               <MenuItem onSelect={() => setMerging(true)} icon={<Icon name="refresh" size={15} />} disabled={moving}>
                 Объединить с дублем
@@ -1030,6 +1026,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
 
         {tab === 'overview' && (
           <>
+            {/* #4798/#4799: поток работы — над таймером, его видно сразу при открытии */}
+            <Suspense fallback={null}>
+              <TaskFlowPanel task={task} columns={columns} users={users} onRefresh={onRefresh} onOpenChat={() => setTab('chat')} />
+            </Suspense>
             {/* Обе кнопки на виду: одна кнопка-переключатель не показывала, в каком
                 состоянии таймер сейчас, и «Пауза» читалась как «идёт пауза». */}
             <div className={`tv2-timer${timerActive ? ' is-running' : ''}`}>
