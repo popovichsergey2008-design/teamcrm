@@ -708,8 +708,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 */
 .cal-grid {
   flex: 1; min-height: 0; display: grid; grid-template-columns: 56px repeat(var(--cal-days, 7), minmax(0, 1fr));
-  /* строки: дни · «весь день» · сроки задач (может не быть) · часы */
-  grid-template-rows: auto auto auto 1fr; border: 1px solid var(--border); border-radius: var(--radius);
+  /* строки: дни · «весь день» · часы (#4761: сроки — над сеткой; часы тянутся и прокручиваются) */
+  grid-template-rows: auto auto 1fr; border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; background: var(--bg-elev);
 }
 /* сроки отделены от событий и приглушены: это не встреча, а отметка «сегодня надо сдать» */
