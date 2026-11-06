@@ -78,6 +78,11 @@ type Live = { status: string; text: string; sources: AnthillSource[] };
  */
 /** Ответ дольше этого — сигнал «готово» (человек успел переключиться). */
 
+/** Последний открытый разговор с QEVO Bot — на этом устройстве (вернулись — он и открыт). */
+const LAST_SESSION_KEY = 'qevo.bot.session';
+function rememberSession(id: string) { try { localStorage.setItem(LAST_SESSION_KEY, id); } catch { /* без хранилища — откроем самый свежий */ } }
+function lastSession(): string | null { try { return localStorage.getItem(LAST_SESSION_KEY); } catch { return null; } }
+
 export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, session }: {
   /** Открыть этот разговор: `/chat/anthill/thread/:id` из уведомления (#4665). */
   session?: string | null;
@@ -175,15 +180,32 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
 
   const openSession = async (id: string) => {
     setSessionId(id); setHistoryOpen(false); setErr('');
+    rememberSession(id);
     try { setMessages(await api.anthillMessages(id)); } catch { setMessages([]); }
   };
 
+  /*
+    Переписка не пропадает (заказчик: «стоит выйти — и всё пропадает»): разговоры и так
+    хранились на сервере, но окно каждый раз открывалось пустым. Теперь — последний
+    открытый разговор (или самый свежий), а «Новый разговор» начинает чистый.
+  */
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (session) void openSession(session); }, [session]);
+  useEffect(() => {
+    if (session) { void openSession(session); return; }
+    let alive = true;
+    api.anthillSessions().then((list) => {
+      if (!alive || !list.length) return;
+      const last = lastSession();
+      const pick = list.find((x) => String(x.id) === last) ?? list[0];
+      void openSession(String(pick.id));
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [session]);
 
   const fresh = useCallback(async () => {
     const s = await api.anthillStart(ctxArg);
     setSessionId(String(s.id)); setMessages([]); setHistoryOpen(false); setErr('');
+    rememberSession(String(s.id));
     loadSessions();
     return String(s.id);
   }, [ctxArg, loadSessions]);

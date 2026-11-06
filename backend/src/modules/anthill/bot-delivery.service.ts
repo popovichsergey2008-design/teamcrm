@@ -20,7 +20,7 @@ export class BotDelivery {
     tenantId: string, userId: string,
     m: { eventKey: string; title: string; body: string; path?: string; channels?: { push?: boolean; telegram?: boolean } },
   ): Promise<void> {
-    const path = m.path ?? '/chat/anthill';
+    const path = m.path ?? '/chat/qevobot';
     // в ящик — всегда; push и Telegram — если человек не выключил их для сводок
     await this.push.personal({
       tenantId, userId, eventKey: m.eventKey, title: m.title, body: m.body.slice(0, 1000), path,

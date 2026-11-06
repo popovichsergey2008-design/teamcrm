@@ -112,6 +112,10 @@ export function consoleHref(): string {
 const NAV_EVENT = 'teamcrm:navigate';
 const enc = encodeURIComponent;
 
+/** Чат QEVO Bot: внутренний ключ 'anthill', в адресной строке — 'qevobot'. */
+const botChat = (seg: string) => (seg === 'qevobot' ? 'anthill' : seg);
+const botPath = (chatId: string) => (chatId === 'anthill' ? 'qevobot' : chatId);
+
 export function parsePath(pathname: string): Route {
   const seg = pathname.split('/').filter(Boolean).map((s) => {
     try { return decodeURIComponent(s); } catch { return s; }
@@ -153,8 +157,9 @@ export function parsePath(pathname: string): Route {
       // Лента переехала из чатов в свой раздел «Новости»: она не переписка, а издание.
       // Старый адрес разослан в письмах и лежит в закладках — ведём его на новый.
       if (seg[1] === 'feed') return { section: 'news' };
-      if (seg[1] && seg[2] === 'thread' && seg[3]) return { section, chatId: seg[1], threadId: seg[3] };
-      return seg[1] ? { section, chatId: seg[1] } : { section };
+      // QEVO Bot: адрес /chat/qevobot (прежний /chat/anthill из писем и закладок тоже ведёт к нему)
+      if (seg[1] && seg[2] === 'thread' && seg[3]) return { section, chatId: botChat(seg[1]), threadId: seg[3] };
+      return seg[1] ? { section, chatId: botChat(seg[1]) } : { section };
     case 'settings':
     case 'console':
       return seg[1] ? { section, tab: seg[1] } : { section };
@@ -190,8 +195,8 @@ export function buildPath(r: Route): string {
         return '/chat/meetings';
       }
       if (r.view === 'feed') return '/news';
-      if (r.chatId && r.threadId) return `/chat/${enc(r.chatId)}/thread/${enc(r.threadId)}`;
-      return r.chatId ? `/chat/${enc(r.chatId)}` : '/chat';
+      if (r.chatId && r.threadId) return `/chat/${enc(botPath(r.chatId))}/thread/${enc(r.threadId)}`;
+      return r.chatId ? `/chat/${enc(botPath(r.chatId))}` : '/chat';
     case 'settings':
       return r.tab ? `/settings/${enc(r.tab)}` : '/settings';
     case 'console':
