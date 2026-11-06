@@ -76,7 +76,7 @@ export default function ContinueWork({ onGo }: { onGo: () => void }) {
       <ul className="sbl-list">
         {items.map((it) => (
           <li key={it.key}>
-            <button type="button" className="sbl-item" title={it.hint} onClick={() => { onGo(); it.go(); }}>
+            <button type="button" className="sbl-item" title={`${it.hint}: ${it.text}`} onClick={() => { onGo(); it.go(); }}>
               <Icon name={it.icon} size={15} />
               <span className="sbl-text">{it.text}</span>
             </button>

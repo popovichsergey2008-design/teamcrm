@@ -36,5 +36,9 @@
 .sbl-num { flex: none; font-size: var(--fs-xs); color: var(--text-mut); font-variant-numeric: tabular-nums; }
 
 /* #4764: «Продолжить работу» — над меню, только при незавершённом */
-.sbl-continue { margin: 0 0 6px; padding: 6px 8px; border-radius: 10px; background: var(--accent-soft); }
+.sbl-continue { margin: 0 0 6px; padding: 6px 8px; border-radius: 10px; background: var(--accent-soft); min-width: 0; overflow: hidden; }
+/* длинное название задачи — многоточием, а не шире меню */
+.sbl-continue li { display: flex; min-width: 0; }
+.sbl-continue .sbl-item { padding: 5px 4px; }
+.sbl-continue .sbl-item:hover { color: var(--text); }
 .sbl-continue-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text); padding: 2px 4px 4px; }
