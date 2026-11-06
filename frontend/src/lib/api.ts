@@ -2667,6 +2667,14 @@ export const api = {
   calendarBlockMove: (id: string, startsAt: string, endsAt: string) =>
     request<{ block: CalBlock; conflicts: BlockConflict[] }>('PATCH', `/calendar/blocks/${id}`, { startsAt, endsAt }),
   calendarBlockDelete: (id: string) => request<{ ok: true }>('DELETE', `/calendar/blocks/${id}`),
+  /** #4787, п. 6–8: запись по ссылке — виды встреч, правила, ближайшие записи. */
+  bookingTypes: () => request<BookingType[]>('GET', '/calendar/booking/types'),
+  bookingTypeCreate: (t: BookingTypeInput) => request<BookingType>('POST', '/calendar/booking/types', t),
+  bookingTypeUpdate: (id: string, t: BookingTypeInput) => request<BookingType>('PATCH', `/calendar/booking/types/${id}`, t),
+  bookingTypeDelete: (id: string) => request<{ ok: true }>('DELETE', `/calendar/booking/types/${id}`),
+  bookingRules: () => request<BookingRules>('GET', '/calendar/booking/rules'),
+  bookingRulesSave: (r: Omit<BookingRules, 'saved'>) => request<BookingRules>('PUT', '/calendar/booking/rules', r),
+  bookingUpcoming: () => request<{ id: string; typeTitle: string; guestName: string; guestEmail: string; startsAt: string; endsAt: string; eventId: string | null }[]>('GET', '/calendar/booking/upcoming'),
   calendarTaskBlocks: (taskId: string) => request<CalBlock[]>('GET', `/calendar/blocks/task/${taskId}`),
   calendarPlanTasks: () => request<PlanTask[]>('GET', '/calendar/plan-tasks'),
   calendarFindTime: (q: { taskId?: string; minutes?: number; before?: string; exceptBlockId?: string }) => {
@@ -3575,4 +3583,19 @@ export interface FindTimeResult {
   minutes: number; deadlineAt: string | null; timeZone: string;
   options: { startsAt: string; endsAt: string; note: string }[];
   message: string | null;
+}
+
+/** #4787: вид встречи для записи по ссылке. weekly — свои дни и часы: {"2":[["11:00","16:00"]]}. */
+export type WeeklyHours = Record<string, [string, string][]>;
+export interface BookingTypeInput {
+  title: string; description?: string | null; durationMin: number; weekly?: WeeklyHours | null;
+  locationKind?: 'call' | 'place' | 'phone'; location?: string | null; bufferBefore?: number; bufferAfter?: number;
+  questions?: { text: string; required?: boolean }[]; reminders?: number[];
+}
+export interface BookingType extends Required<Omit<BookingTypeInput, 'description' | 'weekly' | 'location'>> {
+  id: string; slug: string; url: string; description: string | null; weekly: WeeklyHours | null; location: string | null;
+}
+export interface BookingRules {
+  weekly: WeeklyHours; blockedDates: string[]; vacations: { from: string; to: string }[];
+  maxPerDay: number | null; minNoticeMin: number; horizonDays: number; timezone: string | null; saved?: boolean;
 }

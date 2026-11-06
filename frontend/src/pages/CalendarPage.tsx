@@ -38,6 +38,7 @@ import { FocusDialog } from './calendar/FocusDialog';
 import { BlockDialog } from './calendar/BlockDialog';
 import { DRAG_TASK, PlanPanel } from './calendar/PlanPanel';
 import { SyncStatus } from './calendar/SyncStatus';
+import { ShareTimeDialog } from './calendar/ShareTimeDialog';
 import './calendar/calendar.css';
 
 type View = 'day' | 'week' | 'month' | 'list';
@@ -238,6 +239,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [openBlock, setOpenBlock] = useState<CalBlock | null>(null);
   const [planOpen, setPlanOpen] = useState(() => !isPhone() && localStorage.getItem('teamcrm.calendarPlan') !== '0');
   const [planKey, setPlanKey] = useState(0);
+  /** «Поделиться временем» — запись по ссылке (#4787, п. 6–8). */
+  const [shareOpen, setShareOpen] = useState(false);
   const [work, setWork] = useState<Work>({ workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] });
   // было в браузере — теперь у человека: тот же выбор на телефоне и на другом компьютере
   const [showTasks, setShowTasks] = useStickyCheck('calendar.showTasks', localStorage.getItem('teamcrm.calendarTasks') !== '0');
@@ -422,6 +425,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               <Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} />
             </button>
           </div>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setShareOpen(true)} title="Ссылка, по которой клиент или коллега сам выберет время">
+            <Icon name="link" size={15} /><span className="cal-hide-phone"> Поделиться временем</span>
+          </button>
           <DropdownMenu
             align="end"
             trigger={<button className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Настройки календаря" title="Настройки календаря"><Icon name="settings" size={15} /><span className="cal-hide-phone"> Настройки</span></button>}
@@ -517,6 +523,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onSaved={() => { setTaskTime(null); void reload(); }}
         />
       )}
+      {shareOpen && <ShareTimeDialog onClose={() => { setShareOpen(false); void reload(); }} />}
       {focusDlg && <FocusDialog at={focusDlg.at} onClose={() => setFocusDlg(null)} onSaved={() => { setFocusDlg(null); void reload(); }} />}
       {openBlock && (
         <BlockDialog

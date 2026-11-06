@@ -89,6 +89,7 @@ import { SecretaryModule } from './modules/secretary/secretary.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { BookingModule } from './modules/booking/booking.module';
 import { FeedModule } from './modules/feed/feed.module';
 import { ProactiveModule } from './modules/proactive/proactive.module';
 import { CommitmentsModule } from './modules/commitments/commitments.module';
@@ -178,6 +179,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     MeetingsModule,
     MediaModule,
     CalendarModule,
+    BookingModule,
     FeedModule,
     ProactiveModule,
     CommitmentsModule,

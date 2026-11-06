@@ -280,7 +280,8 @@ export class GuestLinksService {
    * страница встречает его по имени. Тот же адрес уже приглашён — старая ссылка
    * отзывается, уходит новая: «отправить ещё раз» без двух живых ссылок на одного человека.
    */
-  async inviteGuest(user: { userId: string; tenantId: string }, eventId: string, emailRaw: string, nameRaw?: string | null) {
+  /** `silent` — без письма: запись по ссылке (#4787) шлёт гостю одно своё подтверждение со ссылкой. */
+  async inviteGuest(user: { userId: string; tenantId: string }, eventId: string, emailRaw: string, nameRaw?: string | null, opts?: { silent?: boolean }) {
     const ev = await this.manageable(user, eventId);
     const email = String(emailRaw || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) throw AppException.validation('Проверьте адрес почты гостя');
@@ -295,7 +296,7 @@ export class GuestLinksService {
       startsAt: new Date(ev.starts_at), endsAt: new Date(ev.ends_at), earlyJoinMin: ev.early_join_min ?? OPEN_BEFORE_MIN,
     });
     if (!row) throw AppException.conflict('Не удалось создать приглашение');
-    await this.mail.sendGuest('invite', ev, { inviteId: String(row.id), email, name, url: `${this.baseUrl()}/meet/${token}` }, ev.owner_name);
+    if (!opts?.silent) await this.mail.sendGuest('invite', ev, { inviteId: String(row.id), email, name, url: `${this.baseUrl()}/meet/${token}` }, ev.owner_name);
     this.log.log(`гость ${email} приглашён на встречу ${eventId}`);
     return { ...this.inviteView(row), url: `${this.baseUrl()}/meet/${token}` };
   }

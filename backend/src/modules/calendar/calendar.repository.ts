@@ -197,12 +197,17 @@ export class CalendarRepository {
     );
     // личные ссылки гостей встречи — с тем же ранним входом и концом встречи
     await c.query(
+      // #4787, п. 9: перенос встречи двигает и личные ссылки гостей — начало, срок жизни и
+      // напоминание «за 15 минут» (иначе оно пришло бы по старому времени)
       `UPDATE meet_guest_links g
-          SET early_join_min = m.early_join_min, ends_at = $3, label = COALESCE(g.invite_name, g.invite_email, g.label)
+          SET early_join_min = m.early_join_min, ends_at = $3, label = COALESCE(g.invite_name, g.invite_email, g.label),
+              guest_reminded_at = CASE WHEN g.starts_at IS DISTINCT FROM $4::timestamptz THEN NULL ELSE g.guest_reminded_at END,
+              starts_at = $4::timestamptz,
+              expires_at = GREATEST(g.expires_at, $3::timestamptz + interval '4 hours')
          FROM meet_guest_links m
         WHERE m.tenant_id = $1 AND m.event_id = $2 AND m.kind = 'meeting'
           AND g.event_id = $2 AND g.kind = 'guest' AND g.revoked_at IS NULL`,
-      [tenantId, eventId, ev.ends_at],
+      [tenantId, eventId, ev.ends_at, ev.starts_at],
     );
   }
 

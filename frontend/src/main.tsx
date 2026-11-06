@@ -18,6 +18,8 @@ import { installChunkRecovery } from './lib/chunk-recovery';
 import { ScreenBoundary } from './components/ScreenBoundary';
 
 const TgApp = lazy(() => import('./tg/TgApp'));
+// запись по ссылке (#4787): страница для гостя без входа — своим лёгким куском
+const BookingApp = lazy(() => import('./booking/BookingApp'));
 
 initTheme(); // до первой отрисовки: иначе тёмная тема мигнёт светлым
 initFontScale(); // тоже до отрисовки: увеличенный шрифт не должен моргать обычным
@@ -65,7 +67,8 @@ async function boot(): Promise<void> {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       {/* шторка Telegram (#4619): своя лёгкая оболочка без входа CRM, отдельным куском */}
-      {location.pathname.startsWith('/tg/') ? <ScreenBoundary full><Suspense fallback={null}><TgApp /></Suspense></ScreenBoundary> : (
+      {location.pathname.startsWith('/tg/') ? <ScreenBoundary full><Suspense fallback={null}><TgApp /></Suspense></ScreenBoundary>
+        : location.pathname.startsWith('/book/') ? <ScreenBoundary full><Suspense fallback={null}><BookingApp /></Suspense></ScreenBoundary> : (
         <AuthProvider>
           <ScreenBoundary full>
             <App />
