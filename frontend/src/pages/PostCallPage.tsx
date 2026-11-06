@@ -512,6 +512,16 @@ function PostCall({ meetingId }: { meetingId: string }) {
                           <Icon name="target" size={13} /> В мой Фокус
                         </Button>
                       )}
+                      {/* #4787, п. 11, шаг 5: своё — сразу время в календаре; чужое исполнитель
+                          планирует сам (задача уже у него в «Задачах для планирования») */}
+                      {focusable(t) && (
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          try { sessionStorage.setItem('calendar.planTask', String(t.task_id)); } catch { /* без хранилища — просто календарь */ }
+                          navigate({ section: 'calendar' });
+                        }}>
+                          <Icon name="calendar" size={13} /> Найти время для выполнения
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>

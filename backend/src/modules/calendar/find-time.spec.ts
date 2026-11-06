@@ -1,4 +1,4 @@
-import { findTime, freeSlots, workWindows, zonedToUtc } from './find-time';
+import { findTime, freeSlots, planDay, workWindows, zonedToUtc } from './find-time';
 
 const TZ = 'Europe/Moscow';
 const WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[] };
@@ -58,5 +58,31 @@ describe('#4787 — найти время для задачи', () => {
     });
     expect(r.options[0].startsAt).toBe(iso(at(4, 9)));
     expect(r.options[0].note).toBe('Подходит по рабочим часам.');
+  });
+});
+
+describe('#4787 — помоги спланировать день', () => {
+  it('ставит задачи в окна между встречами с перерывами', () => {
+    const r = planDay({
+      now: at(2, 9, 20), date: '2026-11-02', timeZone: TZ, work: WORK, breakMin: 10,
+      busy: [{ start: at(2, 10, 30), end: at(2, 11) }, { start: at(2, 12), end: at(2, 14) }],
+      items: [{ id: 'a', minutes: 50 }, { id: 'b', minutes: 45 }, { id: 'c', minutes: 50 }],
+    });
+    expect(r.plan).toEqual([
+      { id: 'a', startsAt: iso(at(2, 9, 25)), endsAt: iso(at(2, 10, 15)) },
+      { id: 'b', startsAt: iso(at(2, 11)), endsAt: iso(at(2, 11, 45)) },
+      { id: 'c', startsAt: iso(at(2, 14)), endsAt: iso(at(2, 14, 50)) },
+    ]);
+    expect(r.unplaced).toEqual([]);
+  });
+
+  it('не обещает больше, чем вмещает день', () => {
+    const r = planDay({
+      now: at(2, 15), date: '2026-11-02', timeZone: TZ, work: WORK,
+      busy: [], items: [{ id: 'a', minutes: 120 }, { id: 'b', minutes: 120 }, { id: 'c', minutes: 60 }],
+    });
+    expect(r.plan.map((p) => p.id)).toEqual(['a']);
+    expect(r.unplaced).toEqual(['b', 'c']);
+    expect(r.message).toBe('На задачи нужно 5 ч, свободно 2 ч 55 мин. Выберите, что оставить на сегодня.');
   });
 });

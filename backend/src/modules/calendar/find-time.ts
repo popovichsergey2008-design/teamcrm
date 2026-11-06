@@ -152,3 +152,60 @@ export function findTime(input: FindTimeInput): FindTimeResult {
       : `В ближайшие ${horizon} дней нет свободного окна на ${fmtMin(minutes)}. Можно разделить работу на два подхода.`,
   };
 }
+
+export interface PlanDayInput {
+  now: number;
+  /** День плана — 'YYYY-MM-DD' в поясе человека. */
+  date: string;
+  items: { id: string; minutes: number }[];
+  busy: Interval[];
+  work: WorkHours;
+  timeZone: string;
+  /** Перерыв между подходами, минут. */
+  breakMin?: number;
+}
+
+export interface PlanDayResult {
+  plan: { id: string; startsAt: string; endsAt: string }[];
+  unplaced: string[];
+  needMin: number;
+  freeMin: number;
+  message: string | null;
+}
+
+/**
+ * «Помоги спланировать день» (#4787, п. 14): задачи — в свободные окна дня по порядку,
+ * с перерывами, не поверх встреч и не вне рабочих часов. Не обещает больше, чем
+ * вмещает день: что не влезло — честно в `unplaced` с подсчётом часов.
+ */
+export function planDay(input: PlanDayInput): PlanDayResult {
+  const brk = (input.breakMin ?? 10) * MIN;
+  const [y, m, d] = input.date.split('-').map(Number);
+  const s = input.work.workStart.split(':').map(Number);
+  const e = input.work.workEnd.split(':').map(Number);
+  const dayStart = zonedToUtc(y, m, d, s[0] || 0, s[1] || 0, input.timeZone);
+  const dayEnd = zonedToUtc(y, m, d, e[0] || 0, e[1] || 0, input.timeZone);
+  const step = 5 * MIN;
+  const from = Math.max(dayStart, Math.ceil((input.now + MIN) / step) * step);
+  const windows = dayEnd > from ? [{ start: from, end: dayEnd }] : [];
+  let free = freeSlots(windows, input.busy).map((f) => ({ ...f }));
+  const freeMin = Math.round(free.reduce((n, f) => n + (f.end - f.start), 0) / MIN);
+  const needMin = input.items.reduce((n, i) => n + Math.max(5, Math.round(i.minutes)), 0);
+  const plan: PlanDayResult['plan'] = [];
+  const unplaced: string[] = [];
+  for (const it of input.items) {
+    const len = Math.max(5, Math.round(it.minutes)) * MIN;
+    const slot = free.find((f) => f.end - f.start >= len);
+    if (!slot) { unplaced.push(it.id); continue; }
+    const start = slot.start;
+    plan.push({ id: it.id, startsAt: new Date(start).toISOString(), endsAt: new Date(start + len).toISOString() });
+    // остаток окна — после перерыва; окна короче пяти минут не держим
+    slot.start = Math.ceil((start + len + brk) / step) * step;
+    free = free.filter((f) => f.end - f.start >= 5 * MIN);
+  }
+  const h = (n: number) => (n % 60 ? `${Math.floor(n / 60)} ч ${n % 60} мин` : `${n / 60} ч`).replace(/^0 ч /, '');
+  return {
+    plan, unplaced, needMin, freeMin,
+    message: unplaced.length ? `На задачи нужно ${h(needMin)}, свободно ${h(freeMin)}. Выберите, что оставить на сегодня.` : null,
+  };
+}

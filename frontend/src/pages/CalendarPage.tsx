@@ -39,6 +39,8 @@ import { BlockDialog } from './calendar/BlockDialog';
 import { DRAG_TASK, PlanPanel } from './calendar/PlanPanel';
 import { SyncStatus } from './calendar/SyncStatus';
 import { ShareTimeDialog } from './calendar/ShareTimeDialog';
+import { PlanDayDialog } from './calendar/PlanDayDialog';
+import { EventCardPanel } from './calendar/EventCardPanel';
 import './calendar/calendar.css';
 
 type View = 'day' | 'week' | 'month' | 'list';
@@ -241,6 +243,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [planKey, setPlanKey] = useState(0);
   /** «Поделиться временем» — запись по ссылке (#4787, п. 6–8). */
   const [shareOpen, setShareOpen] = useState(false);
+  /** «Помоги спланировать день» (#4787, п. 14). */
+  const [planDayOpen, setPlanDayOpen] = useState(false);
   const [work, setWork] = useState<Work>({ workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] });
   // было в браузере — теперь у человека: тот же выбор на телефоне и на другом компьютере
   const [showTasks, setShowTasks] = useStickyCheck('calendar.showTasks', localStorage.getItem('teamcrm.calendarTasks') !== '0');
@@ -421,6 +425,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               <MenuItem icon={<Icon name="video" size={15} />} onSelect={() => createNow()}>Встречу</MenuItem>
               <MenuItem icon={<Icon name="check-circle" size={15} />} onSelect={() => setTaskTime({})}>Время на выполнение задачи</MenuItem>
               <MenuItem icon={<Icon name="target" size={15} />} onSelect={() => setFocusDlg({})}>Глубокий фокус</MenuItem>
+              <MenuSeparator />
+              <MenuItem icon={<Icon name="sparkles" size={15} />} onSelect={() => setPlanDayOpen(true)}>Помоги спланировать день</MenuItem>
             </DropdownMenu>
             <button
               className={`ui-btn ui-btn-primary ui-btn-sm cal-new-mic${voice.recording ? ' cal-mic-on' : ''}`}
@@ -461,6 +467,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           <span>Сегодня: {meetingsToday} {plural(meetingsToday, 'встреча', 'встречи', 'встреч')}</span>
           <span>· {taskMinToday ? fmtMinutes(taskMinToday) : 'нет времени'} на задачи</span>
           <span>· {focusMinToday ? `${fmtMinutes(focusMinToday)} фокуса` : 'фокус не запланирован'}</span>
+          <button className="cal-due-link" onClick={() => setPlanDayOpen(true)}>Помоги спланировать день</button>
           {nextCall && (
             <button className="ui-btn ui-btn-primary ui-btn-sm cal-join" onClick={() => onStartCall(nextCall.meetRoomId!)}>
               <Icon name="video" size={14} /> Войти в созвон: {nextCall.title}
@@ -530,6 +537,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onSaved={() => { setTaskTime(null); void reload(); }}
         />
       )}
+      {planDayOpen && <PlanDayDialog onClose={() => setPlanDayOpen(false)} onSaved={() => { setPlanDayOpen(false); void reload(); }} />}
       {shareOpen && <ShareTimeDialog onClose={() => { setShareOpen(false); void reload(); }} />}
       {focusDlg && <FocusDialog at={focusDlg.at} onClose={() => setFocusDlg(null)} onSaved={() => { setFocusDlg(null); void reload(); }} />}
       {openBlock && (
@@ -1291,6 +1299,10 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
 
         {/* материалы встречи с Google Диска и протокол Google-документом (#1565) */}
         {!isNew && value.id && <GoogleFilesBlock entityType="event" entityId={String(value.id)} compact />}
+        {/* #4787, п. 10–11: цель, связанные задачи, а после созвона — решения и кто что делает */}
+        {!isNew && value.id && value.scope !== 'external' && (
+          <EventCardPanel eventId={String(value.id)} canEdit={canEdit} past={!!value.endsAt && Date.parse(value.endsAt) < Date.now()} />
+        )}
 
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 

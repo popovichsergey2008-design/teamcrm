@@ -3,6 +3,7 @@ import { CalendarController } from './calendar.controller';
 import { CalendarBlocksController } from './calendar-blocks.controller';
 import { CalendarBlocksRepository } from './calendar-blocks.repository';
 import { CalendarBlocksService } from './calendar-blocks.service';
+import { CalendarCardService } from './calendar-card.service';
 import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository } from './calendar.repository';
 import { CalendarScheduler } from './calendar.scheduler';
@@ -20,9 +21,9 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
     CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler,
     CalendarSyncService, IntegrationCryptoService,
     // #4787: время на задачи и запланированный фокус
-    CalendarBlocksService, CalendarBlocksRepository,
+    CalendarBlocksService, CalendarBlocksRepository, CalendarCardService,
   ],
   // репозиторий нужен счётчикам панели; почта — приглашениям гостей встреч (ТЗ-14)
-  exports: [CalendarService, CalendarRepository, CalendarMailService, CalendarBlocksService],
+  exports: [CalendarService, CalendarRepository, CalendarMailService, CalendarBlocksService, CalendarCardService],
 })
 export class CalendarModule {}

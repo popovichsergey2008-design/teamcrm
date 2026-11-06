@@ -115,3 +115,23 @@
 }
 
 .cal-small { font-size: var(--fs-sm); }
+
+/* карточка встречи до и после (#4787, п. 10–11) */
+.cal-card { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px; }
+.cal-card-sec { display: flex; flex-direction: column; gap: 6px; }
+.cal-card-h { font-weight: 600; font-size: var(--fs-sm); display: flex; align-items: center; gap: 6px; color: var(--text); }
+.cal-card-sub { font-weight: 600; font-size: var(--fs-sm); color: var(--text-dim); margin-top: 4px; }
+.cal-card-row { display: flex; gap: 8px; align-items: center; }
+.cal-card-row .ui-input { flex: 1 1 auto; min-width: 0; }
+.cal-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cal-card-list li { display: flex; align-items: center; gap: 6px; }
+.cal-card-bul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.cal-card-text { margin: 0; white-space: pre-line; }
+.cal-card-after { background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 10px; }
+/* план дня (п. 14) */
+.cal-day-plan { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.cal-day-plan li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-elev); }
+.cal-day-plan li.task { border-left: 4px solid var(--ok); }
+.cal-day-plan li.meeting { border-left: 4px solid var(--accent); }
+.cal-day-time { font-variant-numeric: tabular-nums; color: var(--text-dim); min-width: 96px; }
+.cal-plan-min { width: 72px; margin-left: auto; }

@@ -24,6 +24,7 @@ import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { parseSubtitles, repliesToText, Reply, shiftSegments } from './transcript.util';
 import { trackBackground } from '../../common/background-work';
 import { CalendarService } from '../calendar/calendar.service';
+import { CalendarCardService } from '../calendar/calendar-card.service';
 import { zonedToUtc } from '../tasks/recurrence';
 import { MeetingPlan } from './meeting-schema';
 
@@ -112,6 +113,8 @@ export class MeetingsService implements OnModuleInit {
     @Optional() private readonly org?: OrgService,
     /** #4749: договорились о следующей встрече — ставим её в календарь. */
     @Optional() private readonly calendar?: CalendarService,
+    /** #4787, п. 11: задачи из итогов — к карточке встречи. */
+    @Optional() private readonly calendarCard?: CalendarCardService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -1092,6 +1095,8 @@ export class MeetingsService implements OnModuleInit {
     }
     // фрагменты всех задач пакета — одним скачиванием записи, фоном (§49)
     if (created.length) void this.proofs.cutPending(tenantId, meetingId);
+    // #4787, п. 11: задачи связаны со встречей — видны в её карточке «после»
+    if (created.length) void this.calendarCard?.linkFromMeeting(tenantId, meetingId, created.map((c) => c.taskId), actorId).catch(() => undefined);
     if (confirmAll) await this.postcall.markConfirmAll(tenantId, meetingId).catch(() => undefined);
     return { created, failed, skipped };
   }

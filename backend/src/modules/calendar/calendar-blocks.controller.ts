@@ -1,6 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CalendarCardService } from './calendar-card.service';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { CalendarBlocksService } from './calendar-blocks.service';
@@ -14,6 +16,29 @@ class BlockDto {
   @IsDateString() endsAt!: string;
 }
 
+class PlanItemDto {
+  @IsString() taskId!: string;
+  @IsOptional() @IsInt() @Min(5) @Max(480) minutes?: number;
+}
+class PlanDayDto {
+  @IsOptional() @IsString() date?: string;
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => PlanItemDto) items!: PlanItemDto[];
+}
+class ApplyItemDto {
+  @IsString() taskId!: string;
+  @IsDateString() startsAt!: string;
+  @IsDateString() endsAt!: string;
+}
+class ApplyPlanDto {
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => ApplyItemDto) plan!: ApplyItemDto[];
+}
+class GoalDto {
+  @IsOptional() @IsString() @MaxLength(500) goal?: string | null;
+}
+class LinkDto {
+  @IsString() taskId!: string;
+}
+
 class BlockMoveDto {
   @IsDateString() startsAt!: string;
   @IsDateString() endsAt!: string;
@@ -25,7 +50,7 @@ class BlockMoveDto {
 @Controller('calendar')
 @Roles('owner', 'manager', 'member')
 export class CalendarBlocksController {
-  constructor(private readonly blocks: CalendarBlocksService) {}
+  constructor(private readonly blocks: CalendarBlocksService, private readonly card: CalendarCardService) {}
 
   @Post('blocks')
   create(@CurrentUser() u: AuthUser, @Body() dto: BlockDto) {
@@ -46,6 +71,38 @@ export class CalendarBlocksController {
   @Get('blocks/task/:taskId')
   ofTask(@CurrentUser() u: AuthUser, @Param('taskId') taskId: string) {
     return this.blocks.ofTask(u.tenantId, u.userId, taskId);
+  }
+
+  /** «Помоги спланировать день» (п. 14): предложение, ничего не создаёт. */
+  @Post('plan-day')
+  planDay(@CurrentUser() u: AuthUser, @Body() dto: PlanDayDto) {
+    return this.blocks.planDay(u.tenantId, u.userId, dto);
+  }
+
+  @Post('plan-day/apply')
+  applyPlan(@CurrentUser() u: AuthUser, @Body() dto: ApplyPlanDto) {
+    return this.blocks.applyPlan(u.tenantId, u.userId, dto.plan);
+  }
+
+  /** Карточка встречи до и после (п. 10–11). */
+  @Get('events/:id/card')
+  eventCard(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.card.card(u.tenantId, u, id);
+  }
+
+  @Patch('events/:id/goal')
+  eventGoal(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: GoalDto) {
+    return this.card.setGoal(u.tenantId, u, id, dto.goal ?? null);
+  }
+
+  @Post('events/:id/tasks')
+  linkTask(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: LinkDto) {
+    return this.card.link(u.tenantId, u, id, dto.taskId);
+  }
+
+  @Delete('events/:id/tasks/:taskId')
+  unlinkTask(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('taskId') taskId: string) {
+    return this.card.unlink(u.tenantId, u, id, taskId);
   }
 
   /** Панель «Задачи для планирования». */

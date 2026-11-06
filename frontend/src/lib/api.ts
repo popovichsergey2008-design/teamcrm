@@ -2690,6 +2690,14 @@ export const api = {
   bookingUpcoming: () => request<{ id: string; typeTitle: string; guestName: string; guestEmail: string; startsAt: string; endsAt: string; eventId: string | null }[]>('GET', '/calendar/booking/upcoming'),
   calendarTaskBlocks: (taskId: string) => request<CalBlock[]>('GET', `/calendar/blocks/task/${taskId}`),
   calendarPlanTasks: () => request<PlanTask[]>('GET', '/calendar/plan-tasks'),
+  /** #4787, п. 10–11: карточка встречи до и после созвона. */
+  calendarEventCard: (id: string) => request<EventCard>('GET', `/calendar/events/${id}/card`),
+  calendarEventGoal: (id: string, goal: string | null) => request<EventCard>('PATCH', `/calendar/events/${id}/goal`, { goal }),
+  calendarEventLinkTask: (id: string, taskId: string) => request<EventCard>('POST', `/calendar/events/${id}/tasks`, { taskId }),
+  calendarEventUnlinkTask: (id: string, taskId: string) => request<EventCard>('DELETE', `/calendar/events/${id}/tasks/${taskId}`),
+  /** #4787, п. 14: «Помоги спланировать день» — предложение и «Применить план». */
+  calendarPlanDay: (b: { date?: string; items: { taskId: string; minutes?: number }[] }) => request<DayPlan>('POST', '/calendar/plan-day', b),
+  calendarApplyPlan: (plan: { taskId: string; startsAt: string; endsAt: string }[]) => request<{ created: CalBlock[] }>('POST', '/calendar/plan-day/apply', { plan }),
   calendarFindTime: (q: { taskId?: string; minutes?: number; before?: string; exceptBlockId?: string }) => {
     const p = new URLSearchParams();
     if (q.taskId) p.set('taskId', q.taskId);
@@ -3617,4 +3625,19 @@ export interface BookingType extends Required<Omit<BookingTypeInput, 'descriptio
 export interface BookingRules {
   weekly: WeeklyHours; blockedDates: string[]; vacations: { from: string; to: string }[];
   maxPerDay: number | null; minNoticeMin: number; horizonDays: number; timezone: string | null; saved?: boolean;
+}
+
+export interface EventCard {
+  goal: string | null;
+  tasks: { id: string; title: string; projectId: string; assignee: string | null; deadlineAt: string | null; done: boolean; source: 'linked' | 'meeting' }[];
+  after: {
+    meetingId: string; status: string; summary: string | null; decisions: string[];
+    assignments: { title: string; assignee: string | null; deadlineAt: string | null; status: string; taskId: string | null; projectId: string | null }[];
+  } | null;
+}
+export interface DayPlan {
+  date: string; timeZone: string; needMin: number; freeMin: number; message: string | null;
+  meetings: { title: string; startsAt: string; endsAt: string }[];
+  plan: { taskId: string; title: string; startsAt: string; endsAt: string }[];
+  unplaced: { taskId: string; title: string }[];
 }

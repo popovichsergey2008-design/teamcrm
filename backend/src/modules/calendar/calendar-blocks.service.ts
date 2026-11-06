@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { CalendarBlocksRepository, BlockRow } from './calendar-blocks.repository';
 import { CalendarService } from './calendar.service';
-import { findTime } from './find-time';
+import { findTime, planDay, zonedParts } from './find-time';
 import { blockView } from './calendar-blocks.view';
 
 /**
@@ -131,5 +131,47 @@ export class CalendarBlocksService {
       work: { workStart: work.workStart, workEnd: work.workEnd, weekendDays: work.weekendDays, holidays: work.holidays },
     });
     return { minutes, deadlineAt: deadline ? new Date(deadline).toISOString() : null, timeZone, ...res };
+  }
+
+  /**
+   * «Помоги спланировать день» (п. 14): выбранные задачи — в свободные окна дня.
+   * Только предложение: в календарь оно попадает по «Применить план».
+   */
+  async planDay(tenantId: string, userId: string, dto: { date?: string; items: { taskId: string; minutes?: number }[] }) {
+    const [work, timeZone] = await Promise.all([this.calendar.work(tenantId), this.repo.timezoneOf(tenantId, userId)]);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dto.date ?? '') ? dto.date! : zonedParts(Date.now(), timeZone).date;
+    const items: { id: string; minutes: number; title: string }[] = [];
+    for (const it of (dto.items ?? []).slice(0, 20)) {
+      const t = await this.repo.ownTask(tenantId, userId, String(it.taskId));
+      if (!t) throw AppException.forbidden('Планировать можно только свои задачи');
+      const est = t.estimate_hours ? Math.round(Number(t.estimate_hours) * 60) : 0;
+      items.push({ id: String(t.id), title: t.title, minutes: Math.max(5, Math.min(480, Math.round(Number(it.minutes) || est || 60))) });
+    }
+    const dayFrom = new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString();
+    const dayTo = new Date(Date.parse(`${date}T00:00:00Z`) + 2 * 86_400_000).toISOString();
+    const busyRows = await this.repo.busyOfMe(tenantId, userId, dayFrom, dayTo);
+    const res = planDay({
+      now: Date.now(), date, timeZone, items,
+      busy: busyRows.map((r) => ({ start: r.starts_at.getTime(), end: r.ends_at.getTime() })),
+      work: { workStart: work.workStart, workEnd: work.workEnd, weekendDays: work.weekendDays, holidays: work.holidays },
+    });
+    const title = new Map(items.map((i) => [i.id, i.title]));
+    const meetings = (await this.repo.meetingsOverlapping(tenantId, userId, dayFrom, dayTo))
+      .filter((m) => zonedParts(m.starts_at.getTime(), timeZone).date === date)
+      .map((m) => ({ title: m.title, startsAt: m.starts_at.toISOString(), endsAt: m.ends_at.toISOString() }));
+    return {
+      date, timeZone, needMin: res.needMin, freeMin: res.freeMin, message: res.message, meetings,
+      plan: res.plan.map((p) => ({ taskId: p.id, title: title.get(p.id) ?? '', startsAt: p.startsAt, endsAt: p.endsAt })),
+      unplaced: res.unplaced.map((id) => ({ taskId: id, title: title.get(id) ?? '' })),
+    };
+  }
+
+  /** «Применить план»: блоки по предложению, тем же правилом, что и вручную. */
+  async applyPlan(tenantId: string, userId: string, plan: { taskId: string; startsAt: string; endsAt: string }[]) {
+    const created = [];
+    for (const p of (plan ?? []).slice(0, 20)) {
+      created.push((await this.create(tenantId, userId, { kind: 'task', taskId: p.taskId, startsAt: p.startsAt, endsAt: p.endsAt })).block);
+    }
+    return { created };
   }
 }
