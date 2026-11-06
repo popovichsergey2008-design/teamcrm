@@ -2730,8 +2730,11 @@ export const api = {
       'GET', `/calendar/busy?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&userIds=${userIds.join(',')}`
         + (exceptEventId ? `&exceptEventId=${exceptEventId}` : '')),
   calendarCreate: (b: Record<string, unknown>) => request<any>('POST', '/calendar/events', b),
-  calendarUpdate: (id: string, b: Record<string, unknown>) => request<any>('PATCH', `/calendar/events/${id}`, b),
-  calendarDelete: (id: string) => request<any>('DELETE', `/calendar/events/${id}`),
+  /** scope (#4787, п. 17): встреча из серии — только эта, эта и последующие или вся серия. */
+  calendarUpdate: (id: string, b: Record<string, unknown>, scope?: 'one' | 'following' | 'all') =>
+    request<any>('PATCH', `/calendar/events/${id}${scope && scope !== 'one' ? `?scope=${scope}` : ''}`, b),
+  calendarDelete: (id: string, scope?: 'one' | 'following' | 'all') =>
+    request<any>('DELETE', `/calendar/events/${id}${scope && scope !== 'one' ? `?scope=${scope}` : ''}`),
   calendarRespond: (id: string, status: 'accepted' | 'declined') =>
     request<any>('POST', `/calendar/events/${id}/respond`, { status }),
   calendarWork: () => request<any>('GET', '/calendar/work'),

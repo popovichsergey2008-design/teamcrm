@@ -421,6 +421,9 @@ export class CalendarService {
     const hidden = row.is_private && !mine;
     return {
       id: row.id,
+      // #4787, п. 17: встреча из серии — при правке спросим «только эту / эту и последующие / всю серию»
+      seriesId: (row as EventRow & { series_id?: string | null }).series_id ?? null,
+      seriesRule: (row as EventRow & { series_rule?: string | null }).series_rule ?? null,
       scope: row.scope,
       title: hidden ? 'Занято' : row.title,
       description: hidden ? null : row.description,

@@ -8,6 +8,7 @@ import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { CalendarService } from './calendar.service';
 import { CalendarSyncService } from './calendar-sync.service';
+import { CalendarSeriesService, SeriesScope } from './calendar-series.service';
 
 class ExportLinkDto {
   /** Заменить ссылку: старая перестаёт работать — так её и отзывают. */
@@ -43,6 +44,8 @@ class EventDto {
   @IsOptional() @IsArray() @ArrayMaxSize(100) coOrganizerIds?: string[];
   /** Встреча с клиентом (ТЗ-17): попадает в его карточку и ленту. */
   @IsOptional() @IsString() clientId?: string;
+  /** #4787, п. 17: повтор — «каждую неделю» до даты или N раз. */
+  @IsOptional() repeat?: { freq: 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly'; until?: string | null; count?: number | null } | null;
 }
 
 class EventPatchDto {
@@ -89,6 +92,7 @@ export class CalendarController {
   constructor(
     private readonly calendar: CalendarService,
     private readonly sync: CalendarSyncService,
+    private readonly series: CalendarSeriesService,
   ) {}
 
   /**
@@ -199,17 +203,17 @@ export class CalendarController {
 
   @Post('events')
   create(@CurrentUser() user: AuthUser, @Body() dto: EventDto) {
-    return this.calendar.create(user.tenantId, user, dto);
+    return this.series.create(user.tenantId, user, dto);
   }
 
   @Patch('events/:id')
-  update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: EventPatchDto) {
-    return this.calendar.update(user.tenantId, user, id, dto);
+  update(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: EventPatchDto, @Query('scope') scope?: SeriesScope) {
+    return this.series.update(user.tenantId, user, id, dto, scope === 'following' || scope === 'all' ? scope : 'one');
   }
 
   @Delete('events/:id')
-  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.calendar.remove(user.tenantId, user, id);
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query('scope') scope?: SeriesScope) {
+    return this.series.remove(user.tenantId, user, id, scope === 'following' || scope === 'all' ? scope : 'one');
   }
 
   /** Принять или отклонить приглашение — только за себя. */

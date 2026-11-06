@@ -42,6 +42,7 @@ import { ShareTimeDialog } from './calendar/ShareTimeDialog';
 import { PlanDayDialog } from './calendar/PlanDayDialog';
 import { EventCardPanel } from './calendar/EventCardPanel';
 import { CommonTimeDialog, PollDialog } from './calendar/MeetingTimeDialogs';
+import { askScope } from './calendar/askScope';
 import './calendar/calendar.css';
 
 type View = 'day' | 'week' | 'month' | 'list';
@@ -79,6 +80,9 @@ export interface CalEvent {
   /** Созвон у встречи (ТЗ-14) и его постоянная ссылка. */
   isCall?: boolean;
   meeting?: { publicId: string; url: string | null; accessPolicy: AccessPolicy; earlyJoinMin: number; guestsAllowed: boolean } | null;
+  /** #4787, п. 17: встреча из повторяющейся серии */
+  seriesId?: string | null;
+  seriesRule?: string | null;
 }
 
 type AccessPolicy = 'trusted' | 'waiting_room' | 'host_required';
@@ -242,6 +246,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [openBlock, setOpenBlock] = useState<CalBlock | null>(null);
   const [planOpen, setPlanOpen] = useState(() => !isPhone() && localStorage.getItem('teamcrm.calendarPlan') !== '0');
   const [planKey, setPlanKey] = useState(0);
+  /** «Отменить изменение» (#4787, п. 19): плашка на 10 секунд после правки. */
+  const [undo, setUndo] = useState<{ text: string; run: () => Promise<unknown> } | null>(null);
+  useEffect(() => { if (!undo) return; const t = window.setTimeout(() => setUndo(null), 10_000); return () => window.clearTimeout(t); }, [undo]);
   /** «Поделиться временем» — запись по ссылке (#4787, п. 6–8). */
   const [shareOpen, setShareOpen] = useState(false);
   /** «Помоги спланировать день» (#4787, п. 14). */
@@ -556,6 +563,12 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       )}
       {pollOpen && <PollDialog onClose={() => setPollOpen(false)} onDecided={() => { setPollOpen(false); void reload(); }} />}
       {planDayOpen && <PlanDayDialog onClose={() => setPlanDayOpen(false)} onSaved={() => { setPlanDayOpen(false); void reload(); }} />}
+      {undo && (
+        <div className="cal-undo" role="status">
+          <span>{undo.text}</span>
+          <button className="cal-due-link" onClick={() => { const u = undo; setUndo(null); void u.run().then(() => { toastSaved('Изменение отменено'); return reload(); }).catch(() => undefined); }}>Отменить изменение</button>
+        </div>
+      )}
       {shareOpen && <ShareTimeDialog onClose={() => { setShareOpen(false); void reload(); }} />}
       {focusDlg && <FocusDialog at={focusDlg.at} onClose={() => setFocusDlg(null)} onSaved={() => { setFocusDlg(null); void reload(); }} />}
       {openBlock && (
@@ -564,6 +577,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onClose={() => setOpenBlock(null)}
           onChanged={() => { setOpenBlock(null); void reload(); }}
           onReschedule={(b) => { setOpenBlock(null); setTaskTime({ block: b }); }}
+          onUndo={setUndo}
         />
       )}
 
@@ -577,6 +591,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onSaved={async () => { setEditing(null); await reload(); }}
           onStartCall={onStartCall}
           onRespond={respond}
+          onUndo={setUndo}
         />
       )}
     </div>
@@ -871,14 +886,20 @@ function shiftEnd(nextStart: string, prevStart: string, prevEnd: string): string
 }
 
 /** Создание и правка события. Одна форма на оба случая: разница только в кнопках снизу. */
-function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }: {
+function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, onUndo }: {
   value: Partial<CalEvent>;
   people: User[];
   onClose: () => void;
   onSaved: () => void;
   onStartCall: (roomId: string) => void;
   onRespond: (id: string, s: 'accepted' | 'declined') => void;
+  /** «Отменить изменение» (#4787, п. 19) */
+  onUndo?: (u: { text: string; run: () => Promise<unknown> }) => void;
 }) {
+  const { user: me } = useAuth();
+  const meId = me?.id ? String(me.id) : undefined;
+  /** Повтор новой встречи (#4787, п. 17) */
+  const [repeat, setRepeat] = useState<{ freq: string; until: string }>({ freq: '', until: '' });
   const [privateHabit, rememberPrivate] = useStickyCheck('calendar.event.private', false);
   const [form, setForm] = useState({
     title: value.title ?? '',
@@ -989,7 +1010,21 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
           coOrganizerIds: form.coOrganizerIds.filter((id) => form.participantIds.includes(id)),
         } : {}),
       };
-      const saved = isNew ? await api.calendarCreate(body) : await api.calendarUpdate(String(value.id), body);
+      let scope: 'one' | 'following' | 'all' = 'one';
+      if (!isNew && value.seriesId) {
+        const s = await askScope('save');
+        if (!s) return;
+        scope = s;
+      }
+      const saved = isNew
+        ? await api.calendarCreate(repeat.freq ? { ...body, repeat: { freq: repeat.freq, until: repeat.until || null } } : body)
+        : await api.calendarUpdate(String(value.id), body, scope);
+      // «Отменить изменение» (#4787, п. 19): прежние время и название — одним нажатием обратно
+      if (!isNew && value.id && value.startsAt && value.endsAt) {
+        const prev = { title: value.title, startsAt: value.startsAt, endsAt: value.endsAt };
+        const id = String(value.id);
+        onUndo?.({ text: scope === 'one' ? 'Встреча изменена' : 'Серия изменена', run: () => api.calendarUpdate(id, prev, scope) });
+      }
       // встреча с созвоном создана — ссылка уже рабочая: показать её сразу, с «скопировать» и «поделиться»
       if (isNew && saved?.meeting?.publicId) {
         setCreated({ publicId: saved.meeting.publicId, title: form.title.trim(), when: form.startsAt });
@@ -1011,8 +1046,14 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
       description: 'Участникам придёт письмо об отмене, а у гостей перестанет работать ссылка.',
       danger: true,
     }))) return;
+    let scope: 'one' | 'following' | 'all' = 'one';
+    if (value.seriesId) {
+      const s = await askScope('delete');
+      if (!s) return;
+      scope = s;
+    }
     try {
-      await api.calendarDelete(String(value.id));
+      await api.calendarDelete(String(value.id), scope);
       onSaved();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось удалить');
@@ -1316,6 +1357,30 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond }
         )}
 
         {/* материалы встречи с Google Диска и протокол Google-документом (#1565) */}
+        {/* #4787, п. 19: новое время пересекается с вашей же встречей — видно до сохранения */}
+        {canEdit && meId && busyPeople[meId]?.blocking && (
+          <div className="tv2-callout tv2-callout-danger" role="status"><Icon name="alert" size={15} /> Конфликт: у вас в это время уже есть встреча</div>
+        )}
+        {/* #4787, п. 17: повтор новой встречи */}
+        {isNew && (
+          <div className="cal-field">
+            <span>Повторять</span>
+            <div className="cal-q-row">
+              <select className="ui-input" value={repeat.freq} onChange={(e) => setRepeat((r) => ({ ...r, freq: e.target.value }))} aria-label="Повторять">
+                <option value="">Не повторять</option>
+                <option value="daily">Каждый день</option>
+                <option value="weekdays">По будням</option>
+                <option value="weekly">Каждую неделю</option>
+                <option value="biweekly">Каждые две недели</option>
+                <option value="monthly">Каждый месяц</option>
+              </select>
+              {repeat.freq && (
+                <label className="cal-check">до <input className="ui-input" type="date" value={repeat.until} onChange={(e) => setRepeat((r) => ({ ...r, until: e.target.value }))} aria-label="Повторять до" /></label>
+              )}
+            </div>
+          </div>
+        )}
+        {!isNew && value.seriesId && <div className="dim cal-small"><Icon name="refresh" size={12} /> Повторяющаяся встреча — при изменении спросим, менять только эту или всю серию</div>}
         {!isNew && value.id && <GoogleFilesBlock entityType="event" entityId={String(value.id)} compact />}
         {/* #4787, п. 10–11: цель, связанные задачи, а после созвона — решения и кто что делает */}
         {!isNew && value.id && value.scope !== 'external' && (

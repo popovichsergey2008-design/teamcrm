@@ -13,11 +13,13 @@ const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: 
  * Нажатие на рабочий блок (#4787, п. 4): исходная задача открывается отсюда — копии нет.
  * Перенос — тем же подбором окон; срок задачи при этом не меняется (п. 3).
  */
-export function BlockDialog({ block, onClose, onChanged, onReschedule }: {
+export function BlockDialog({ block, onClose, onChanged, onReschedule, onUndo }: {
   block: CalBlock;
   onClose: () => void;
   onChanged: () => void;
   onReschedule: (b: CalBlock) => void;
+  /** «Отменить изменение» (#4787, п. 19) */
+  onUndo?: (u: { text: string; run: () => Promise<unknown> }) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -27,7 +29,12 @@ export function BlockDialog({ block, onClose, onChanged, onReschedule }: {
   const remove = async () => {
     if (!(await confirmAction({ title: focus ? 'Убрать фокус из календаря?' : 'Убрать время работы из календаря?', description: 'Сама задача и её срок останутся.', confirmLabel: 'Убрать', danger: true }))) return;
     setBusy(true);
-    try { await api.calendarBlockDelete(block.id); toastSaved('Убрано из календаря'); onChanged(); }
+    try {
+      await api.calendarBlockDelete(block.id);
+      const b = block;
+      onUndo?.({ text: 'Убрано из календаря', run: () => api.calendarBlockCreate({ kind: b.kind, taskId: b.taskId ?? undefined, taskIds: b.taskIds, startsAt: b.startsAt, endsAt: b.endsAt }) });
+      onChanged();
+    }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось убрать'); setBusy(false); }
   };
 
