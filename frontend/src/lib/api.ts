@@ -889,7 +889,7 @@ export const api = {
   mobileSync: (cursor: string | null, limit = 200) =>
     request<SyncPage>('GET', `/mobile/sync?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   // auth
-  register: (b: { tenantName: string; email: string; password: string; fullName: string; dataRegion?: string; acceptPrivacy: boolean; website?: string }) =>
+  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; dataRegion?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string> }) =>
     rawRequest<AuthResult>('POST', '/auth/register', b, false),
   /** Пароль верный — сессия, а при включённом втором факторе — просьба ввести код. */
   login: (b: { email: string; password: string }) =>
@@ -1197,7 +1197,9 @@ export const api = {
 
   /** Личное меню: порядок и скрытые разделы. Настройка человека, а не браузера. */
   /** Настройки интерфейса сливаются на сервере: присылайте только свой кусок. */
-  saveUiPrefs: (prefs: { order?: string[]; hidden?: string[]; home?: string; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean }; checks?: Record<string, boolean>; effects?: EffectsPrefs; tour?: { auto?: boolean; done?: string[] }; welcome?: { done?: boolean; bot?: unknown }; favorites?: { kind: 'project' | 'task' | 'view' | 'file'; id: string; title: string; projectId?: string; url?: string | null; fileId?: string | null; fileName?: string | null }[] }) =>
+  /** #4779: задача из демо на сайте — в новый проект после регистрации. */
+  starterDemoTask: (title: string) => request<{ projectId: string | null; taskId: string | null }>('POST', '/onboarding/starter/demo-task', { title }),
+  saveUiPrefs: (prefs: { setupNames?: boolean; order?: string[]; hidden?: string[]; home?: string; chatBar?: { expanded?: boolean; width?: number }; chatSections?: { order?: string[]; collapsed?: string[] }; anthill?: { memoryAuto?: boolean }; checks?: Record<string, boolean>; effects?: EffectsPrefs; tour?: { auto?: boolean; done?: string[] }; welcome?: { done?: boolean; bot?: unknown }; favorites?: { kind: 'project' | 'task' | 'view' | 'file'; id: string; title: string; projectId?: string; url?: string | null; fileId?: string | null; fileName?: string | null }[] }) =>
     request<{ uiPrefs: any }>('PUT', '/me/ui-prefs', { prefs }),
   /** Присутствие людей компании — для Chat Bar: в сети, когда видели, что о себе поставили. */
   presence: () => request<{ userId: string; online: boolean; lastSeenAt: string | null; status: 'busy' | 'away' | null }[]>('GET', '/presence'),

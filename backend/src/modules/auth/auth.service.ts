@@ -49,6 +49,21 @@ export interface OrgRef {
   logoFileId: string | null;
 }
 
+/**
+ * UTM-метки с кнопки сайта (#4779): только utm_*, строки до 200 знаков, не больше 10.
+ * Пусто — null: строку пространства не трогаем.
+ */
+export function cleanUtm(raw: unknown): Record<string, string> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^utm_[a-z_]{1,20}$/.test(k) || typeof v !== 'string' || !v.trim()) continue;
+    out[k] = v.trim().slice(0, 200);
+    if (Object.keys(out).length >= 10) break;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -95,15 +110,21 @@ export class AuthService {
     }
     const passwordHash = await argon2.hash(dto.password);
     const region = dto.dataRegion ?? 'eu';
+    // #4779: имя и пространство — после входа; до тех пор понятные заглушки
+    const fullName = dto.fullName?.trim() || dto.email.split('@')[0];
+    const tenantName = dto.tenantName?.trim() || 'Моё пространство';
+    const prefs = dto.fullName?.trim() && dto.tenantName?.trim() ? {} : { setupNames: true };
 
     const user = await this.db.withTransaction(async (client) => {
-      const account = await this.accounts.create(dto.email, passwordHash, dto.fullName, client);
-      const tenant = await this.tenants.create(dto.tenantName, region, client);
+      const account = await this.accounts.create(dto.email, passwordHash, fullName, client);
+      const tenant = await this.tenants.create(tenantName, region, client);
+      const utm = cleanUtm(dto.utm);
+      if (utm) await client.query(`UPDATE tenants SET signup_utm=$2 WHERE id=$1`, [tenant.id, JSON.stringify(utm)]);
       const res = await client.query<UserRow>(
-        `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id)
-         SELECT $1, $2, $3, $4, r.id, $5 FROM roles r WHERE r.code = 'owner'
+        `INSERT INTO users (tenant_id, email, password_hash, full_name, role_id, account_id, ui_prefs)
+         SELECT $1, $2, $3, $4, r.id, $5, $6::jsonb FROM roles r WHERE r.code = 'owner'
          RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
-        [tenant.id, dto.email, passwordHash, dto.fullName, account.id],
+        [tenant.id, dto.email, passwordHash, fullName, account.id, JSON.stringify(prefs)],
       );
       // согласие — в той же транзакции: аккаунта без записи о нём быть не должно
       await this.consents.record(

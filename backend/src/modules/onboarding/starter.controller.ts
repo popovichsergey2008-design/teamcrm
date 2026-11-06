@@ -11,6 +11,10 @@ class AnswerDto {
   @IsString() @MaxLength(500) text!: string;
 }
 
+class DemoTaskDto {
+  @IsString() @MaxLength(500) title!: string;
+}
+
 class StarterDto {
   @IsIn(STARTER_SPHERES) sphere!: StarterSphere;
   /** Что человек сказал или написал вместо кнопки — в описание проекта. */
@@ -38,6 +42,12 @@ export class StarterController {
   @Post('answer')
   answer(@Body() dto: AnswerDto) {
     return this.starter.understand(dto.step, dto.text);
+  }
+
+  /** #4779: задача из демо на сайте — после регистрации в новом проекте. */
+  @Post('demo-task')
+  demoTask(@CurrentUser() u: AuthUser, @Body() dto: DemoTaskDto) {
+    return this.starter.demoTask({ tenantId: u.tenantId, userId: u.userId }, dto.title);
   }
 
   @Post()

@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { validationRu } from './validation-ru';
 import { Request, Response } from 'express';
 import { ApiError, ErrorCode } from './api-response';
 import { requestIdOf } from './request-id.middleware';
@@ -42,9 +43,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
         const b = body as any;
         message = (typeof b === 'string' ? b : b?.message) ?? exception.message;
         if (Array.isArray(message)) {
-          // class-validator возвращает массив сообщений — показываем их пользователю
-          details = { messages: message };
-          message = message.join('; ') || 'Проверьте правильность заполнения полей';
+          // class-validator возвращает массив сообщений — показываем их пользователю, по-русски (#4779)
+          const ru = [...new Set((message as string[]).map(validationRu))];
+          details = { messages: ru };
+          message = ru.join('; ') || 'Проверьте правильность заполнения полей';
           code = 'VALIDATION_FAILED';
         }
       }

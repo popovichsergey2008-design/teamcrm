@@ -2,23 +2,30 @@ import {
   IsBoolean,
   IsEmail,
   IsIn,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { EMAIL_HINT } from '../../common/http/validation-ru';
 
 export class RegisterDto {
-  @IsString({ message: 'Укажите название организации' })
-  @MinLength(2, { message: 'Название организации слишком короткое' })
-  @MaxLength(160, { message: 'Название организации слишком длинное (максимум 160 символов)' })
-  tenantName!: string;
+  /**
+   * #4779: на первом шаге — только почта, пароль и согласия; имя и название
+   * пространства спрашиваем после входа. Старые клиенты (приложение) шлют их сразу.
+   */
+  @IsOptional()
+  @IsString({ message: 'Укажите название пространства' })
+  @MinLength(2, { message: 'Название пространства слишком короткое' })
+  @MaxLength(160, { message: 'Название пространства слишком длинное (максимум 160 символов)' })
+  tenantName?: string;
 
   @IsOptional()
   @IsIn(['ru', 'eu'], { message: 'Регион данных должен быть ru или eu' })
   dataRegion?: 'ru' | 'eu';
 
-  @IsEmail({}, { message: 'Введите корректный email' })
+  @IsEmail({}, { message: EMAIL_HINT })
   @MaxLength(255, { message: 'Email слишком длинный' })
   email!: string;
 
@@ -27,10 +34,16 @@ export class RegisterDto {
   @MaxLength(128, { message: 'Пароль слишком длинный (максимум 128 символов)' })
   password!: string;
 
+  @IsOptional()
   @IsString({ message: 'Укажите ваше имя' })
   @MinLength(1, { message: 'Укажите ваше имя' })
   @MaxLength(160, { message: 'Имя слишком длинное (максимум 160 символов)' })
-  fullName!: string;
+  fullName?: string;
+
+  /** #4779: UTM-метки с кнопки сайта — откуда пришло пространство. Чистит сервис. */
+  @IsOptional()
+  @IsObject({ message: 'Метки перехода — объект' })
+  utm?: Record<string, unknown>;
 
   /**
    * #4675: галочка «Я принимаю Политику конфиденциальности». Необязательна для
@@ -53,7 +66,7 @@ export class MfaLoginDto {
 }
 
 export class ForgotPasswordDto {
-  @IsEmail({}, { message: 'Введите корректный email' })
+  @IsEmail({}, { message: EMAIL_HINT })
   @MaxLength(255)
   email!: string;
 }
@@ -76,7 +89,7 @@ export class MfaDisableDto {
 }
 
 export class LoginDto {
-  @IsEmail({}, { message: 'Введите корректный email' })
+  @IsEmail({}, { message: EMAIL_HINT })
   email!: string;
 
   @IsString({ message: 'Укажите пароль' })

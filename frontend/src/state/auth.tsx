@@ -9,7 +9,9 @@ interface AuthState {
   organizations: OrgRef[];
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean; website?: string }) => Promise<void>;
+  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string> }) => Promise<void>;
+  /** Перечитать себя с сервера — после знакомства (#4779) имя и настройки новые. */
+  reloadUser: () => Promise<void>;
   /** Принять ответ входа: так заходят через Google и Telegram — пароля там нет. */
   applySession: (r: LoginResponse) => void;
   /** Пароль принят, ждём код второго фактора — экран входа показывает поле для кода. */
@@ -109,11 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await take(await api.loginMfa(mfaToken, code));
   };
 
-  const register = async (b: { tenantName: string; email: string; password: string; fullName: string; acceptPrivacy: boolean; website?: string }) => {
+  const register = async (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string> }) => {
     const r = await api.register(b);
     tokens.set(r.accessToken, r.refreshToken);
     reconnectSocket();
-    setUser(r.user);
+    // настройки (знакомство #4779, первый запуск) есть только в /me
+    setUser((await api.me().catch(() => null)) ?? r.user);
     setOrganizations(r.organizations ?? []);
   };
 
@@ -155,7 +158,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={{
-      user, organizations, loading, login, register, applySession, logout, switchOrg, createOrg, renameOrg,
+      user, organizations, loading, login, register, applySession,
+      reloadUser: async () => { const me = await api.me().catch(() => null); if (me) setUser(me); }, logout, switchOrg, createOrg, renameOrg,
       mfaPending: !!mfaToken, completeMfa, cancelMfa: () => setMfaToken(null),
     }}>
       {children}

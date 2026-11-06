@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { PasswordInput } from '../components/auth/PasswordInput';
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { api, ApiError } from '../lib/api';
@@ -77,7 +78,7 @@ export function JoinOrgPage({ token }: { token: string }) {
             </div>
             <div className="field">
               <label>Пароль</label>
-              <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+              <PasswordInput className="input" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
             </div>
             <PolicyCheck checked={agreed} onChange={setAgreed} />
             <div className="error-text">{error}</div>

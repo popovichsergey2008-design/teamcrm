@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
+import { PasswordInput } from '../components/auth/PasswordInput';
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
 import { api, ApiError } from '../lib/api';
@@ -59,11 +60,11 @@ export function ResetPasswordPage({ token }: { token: string }) {
           <>
             <div className="field">
               <label>Новый пароль</label>
-              <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoFocus />
+              <PasswordInput className="input" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoFocus />
             </div>
             <div className="field">
               <label>Повторите пароль</label>
-              <input className="input" type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} required minLength={8} />
+              <PasswordInput className="input" value={repeat} onChange={(e) => setRepeat(e.target.value)} required minLength={8} />
             </div>
             <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>
               Не короче 8 символов. После смены все ваши сеансы на других устройствах будут завершены.

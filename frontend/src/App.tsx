@@ -5,6 +5,7 @@ import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { getSocket } from './lib/socket';
 import { LoginPage } from './pages/LoginPage';
+import { isAuthPath } from './lib/signup-intent';
 import { legalKindOf } from './legal';
 import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -110,6 +111,8 @@ const CallPanel = lazy(() => import('./components/CallPanel').then((m) => ({ def
 const TourHost = lazy(() => import('./components/tour/TourHost'));
 // первый запуск (#4620): слайды, выбор и Qevo-бот — один раз, своим куском
 const WelcomeHost = lazy(() => import('./components/welcome/WelcomeHost'));
+// #4779: имя и название пространства после регистрации — один раз, отдельным куском
+const SetupNames = lazy(() => import('./components/auth/SetupNames'));
 // итоги клиенту (#1525): окно поверх любого экрана, когда итог встречи готов
 const FollowupPopup = lazy(() => import('./components/followup/FollowupPopup'));
 
@@ -599,6 +602,11 @@ export function App() {
   // #4632: бот начат и не закрыт — продолжаем его и после перезагрузки
   // настроек ещё нет (#4696) — первый запуск не показываем: неизвестно, пройден ли он
   const welcome = useWelcome(!user?.uiPrefs || (user.uiPrefs.welcome?.done && !user.uiPrefs.welcome.bot));
+  // #4779: сначала знакомство (имя, пространство), потом первый запуск
+  const [namesLater, setNamesLater] = useState(false);
+  const needNames = !!user?.uiPrefs?.setupNames && !namesLater;
+  // вошли по кнопке сайта /login или /register — дальше «Фокус дня»
+  useEffect(() => { if (user && isAuthPath()) navigate('/focus', { replace: true }); }, [user]);
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе
@@ -1000,7 +1008,8 @@ export function App() {
       */}
       {tourWanted && <Suspense fallback={null}><TourHost route={route} /></Suspense>}
       {/* пока кусок первого запуска грузится, обучение ждёт (data-tour-hold) */}
-      {welcome > 0 && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} resume={welcome < 2} /></Suspense>}
+      {needNames && <Suspense fallback={null}><SetupNames onDone={() => setNamesLater(true)} /></Suspense>}
+      {welcome > 0 && !needNames && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} resume={welcome < 2} /></Suspense>}
       {followupId && <Suspense fallback={null}><FollowupPopup key={followupId} id={followupId} onClose={() => setFollowupId('')} /></Suspense>}
 
       <BottomNav

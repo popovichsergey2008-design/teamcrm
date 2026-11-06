@@ -24,6 +24,25 @@ export class StarterService {
     return step === 'sphere' ? { sphere: sphereFromText(text) } : { team: teamFromText(text) };
   }
 
+  /**
+   * Задача, которую человек написал в демо на сайте (#4779): после регистрации она
+   * ждёт его в новом проекте — на нём самом, в первой колонке.
+   */
+  async demoTask(a: { tenantId: string; userId: string }, title: string) {
+    const text = title.replace(/\s+/g, ' ').trim();
+    if (!text) return { projectId: null, taskId: null };
+    const project = await this.projects.create(a.tenantId, {
+      name: 'Первый проект', description: 'Проект с задачей из демо на сайте QEVO.', aliases: [],
+    }) as { id: string | number };
+    const projectId = String(project.id);
+    const columns = await this.columns(a.tenantId, projectId);
+    const task = await this.tasks.create(a.tenantId, {
+      projectId, columnId: columns[0]?.id, title: text.slice(0, 250), assigneeId: a.userId, managerId: a.userId,
+      description: text.length > 250 ? text : 'Задача из демо на сайте QEVO.',
+    } as never, a.userId);
+    return { projectId, taskId: String(task.id) };
+  }
+
   async create(a: { tenantId: string; userId: string; role?: string }, input: {
     sphere: StarterSphere; sphereText?: string | null; name: string; team: boolean; projectId?: string | null;
   }) {

@@ -4,6 +4,8 @@ import { Logo } from '../components/Logo';
 import { ApiError } from '../lib/api';
 import { SocialButtons } from '../components/SocialButtons';
 import { lazyComponent } from '../lib/lazy';
+import { PasswordInput } from '../components/auth/PasswordInput';
+import { signupMode, signupUtm } from '../lib/signup-intent';
 // галочки согласий нужны только при регистрации — первый экран входа без них легче (#4680)
 const PolicyCheck = lazyComponent(() => import('../components/legal/PolicyCheck').then((m) => m.PolicyCheck));
 // «Забыли пароль?» и код второго фактора нужны редко — тоже лениво
@@ -12,11 +14,10 @@ const MfaStep = lazyComponent(() => import('../components/auth/AuthSteps').then(
 
 export function LoginPage() {
   const { login, register, mfaPending } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
+  // #4779: кнопка «Регистрация» на сайте ведёт сразу в регистрацию, «Войти» — во вход
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(signupMode ?? 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [tenantName, setTenantName] = useState('');
-  const [fullName, setFullName] = useState('');
   /** Поле-ловушка для ботов: скрыто от людей, бот заполняет его вместе со всеми. */
   const [website, setWebsite] = useState('');
   /** #4675: согласие с Политикой конфиденциальности — только для регистрации. */
@@ -30,7 +31,8 @@ export function LoginPage() {
     setBusy(true);
     try {
       if (mode === 'login') await login(email, password);
-      else await register({ tenantName, email, password, fullName, acceptPrivacy: agreed, website });
+      // #4779: имя и название пространства — после входа, здесь только почта и согласия
+      else await register({ email, password, acceptPrivacy: agreed, website, utm: signupUtm() });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Что-то пошло не так');
     } finally {
@@ -65,23 +67,13 @@ export function LoginPage() {
   return (
     <div className="center-screen">
       <form className="card auth-card" onSubmit={submit}>
-        {head(mode === 'login' ? 'Вход в систему' : 'Регистрация организации')}
+        {head(mode === 'login' ? 'Вход в систему' : 'Регистрация и создание пространства')}
 
         {mode === 'register' && (
-          <>
-            <div className="field">
-              <label>Организация</label>
-              <input className="input" value={tenantName} onChange={(e) => setTenantName(e.target.value)} required />
-            </div>
-            <div className="field">
-              <label>Ваше имя</label>
-              <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
-            </div>
-            <input
-              className="auth-trap" tabIndex={-1} autoComplete="off" aria-hidden="true"
-              name="website" value={website} onChange={(e) => setWebsite(e.target.value)}
-            />
-          </>
+          <input
+            className="auth-trap" tabIndex={-1} autoComplete="off" aria-hidden="true"
+            name="website" value={website} onChange={(e) => setWebsite(e.target.value)}
+          />
         )}
 
         <div className="field">
@@ -90,9 +82,8 @@ export function LoginPage() {
         </div>
         <div className="field">
           <label>Пароль</label>
-          <input
+          <PasswordInput
             className="input"
-            type="password"
             autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -107,6 +98,9 @@ export function LoginPage() {
         {mode === 'register' && <PolicyCheck checked={agreed} onChange={setAgreed} />}
 
         <div className="error-text">{error}</div>
+
+        {/* #4779: на сайте — «14 дней», условие 7 + 7 объясняем здесь */}
+        {mode === 'register' && <p className="dim" style={{ fontSize: 13, margin: '0 0 8px' }}>14 дней бесплатно: 7 дней сразу и ещё 7 за регистрацию в Telegram-боте</p>}
 
         <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || (mode === 'register' && !agreed)} type="submit">
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}
@@ -129,7 +123,7 @@ export function LoginPage() {
             setError('');
           }}
         >
-          {mode === 'login' ? 'Создать новую организацию' : 'У меня уже есть аккаунт'}
+          {mode === 'login' ? 'Создать новое пространство' : 'У меня уже есть аккаунт'}
         </button>
       </form>
     </div>
