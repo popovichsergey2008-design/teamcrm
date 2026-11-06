@@ -16,7 +16,7 @@ interface ReminderPayload {
 
 /** «за 15 минут», «за час», «за день» — человек читает словами, а не числом минут. */
 function inWords(minutes: number): string {
-  if (minutes <= 0) return 'начинается';
+  if (minutes <= 0) return 'начинается сейчас'; // #4766: напоминание в момент начала
   if (minutes >= 1440) return `через ${Math.round(minutes / 1440)} дн.`;
   if (minutes >= 60) return `через ${Math.round(minutes / 60)} ч`;
   return `через ${minutes} мин`;

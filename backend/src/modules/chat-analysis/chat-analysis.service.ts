@@ -401,7 +401,7 @@ export class ChatAnalysisService {
       scope: 'personal',
       participantIds: participants.filter((id) => id !== organizer),
       // #4749: напоминание за 10 минут и ещё раз за 5 — как просил заказчик
-      reminders: [10, 5],
+      reminders: [10, 5, 0], // #4766: за 10, за 5 минут и в момент начала
     });
     const eventId = String((event as any).id);
     await this.repo.setEventSource(tenantId, eventId, String(a.chat_id), main?.message_id ?? null);

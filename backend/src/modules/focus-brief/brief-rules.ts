@@ -124,7 +124,14 @@ export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): Com
   const active = f.top.filter((i) => !i.done);
   const hot = active.filter((i) => i.deadlineDate && i.deadlineDate <= f.today);
 
-  if (f.dayOff) {
+  /*
+    #4762: по календарю компании день нерабочий (выходной или праздник из «Рабочих часов»,
+    например 4 ноября), но у человека есть встречи сегодня или задачи в тройке дня — значит,
+    он работает. Короткое «у вас выходной» такому только мешает: даём обычный брифинг,
+    а нерабочий день — одной строкой первым пунктом (ниже, в сборке).
+  */
+  const workingOnDayOff = f.dayOff && (f.meetingsToday > 0 || active.length > 0);
+  if (f.dayOff && !workingOnDayOff) {
     // выходной: без делового стресса (п. 74) — только то, что действительно горит
     const s: BriefSentence[] = [{ text: 'Сегодня у вас выходной.', refs: [] }];
     if (hot.length) {
@@ -291,6 +298,8 @@ export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): Com
   const picked = [...cand].sort((a, b) => b.weight - a.weight).slice(0, room)
     .sort((a, b) => ORDER.indexOf(a.section) - ORDER.indexOf(b.section));
   const sentences = picked.map((c) => c.s);
+  // #4762: нерабочий по календарю компании день, но человек работает — честно одной строкой
+  if (workingOnDayOff) sentences.unshift({ text: 'По календарю компании сегодня нерабочий день, но у вас есть дела — вот главное.', refs: [] });
   for (const c of picked) if (c.action && !actions.some((a) => a.kind === c.action!.kind)) actions.push(c.action);
 
   // итог — про тройку: «ниже», «не стал заполнять искусственно» (п. 72–73)

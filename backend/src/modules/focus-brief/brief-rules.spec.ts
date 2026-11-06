@@ -35,6 +35,13 @@ describe('composeBrief', () => {
       .toBe('Сегодня у вас выходной. Критичных событий нет.');
   });
 
+  it('#4762: праздник по календарю компании, но человек работает — обычный брифинг', () => {
+    const t = briefText(composeBrief(base({ dayOff: true, top: [item(1, 'Релиз')] })));
+    expect(t).not.toContain('Сегодня у вас выходной');
+    expect(t.startsWith('По календарю компании сегодня нерабочий день, но у вас есть дела — вот главное.')).toBe(true);
+    expect(t).toContain('Одно главное действие — ниже.');
+  });
+
   it('горящее вне тройки называется внешним, а не молчит (п. 18)', () => {
     const t = briefText(composeBrief(base({ top: [item(1, 'Релиз')], dueOutside: [{ taskId: '99', projectId: '7', title: 'Договор', overdue: true }] })));
     expect(t).toContain('в план не вошло');

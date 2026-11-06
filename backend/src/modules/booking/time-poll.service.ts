@@ -84,7 +84,7 @@ export class TimePollService {
     if (mine.some((b) => b.kind !== 'all_day')) throw AppException.conflict('Это время у вас уже занято — выберите другой вариант');
     const participantIds = ((p.participant_ids ?? []) as unknown[]).map(String).filter((x) => x !== String(user.userId));
     const ev = await this.calendar.create(tenantId, user, {
-      title: p.title, startsAt, endsAt, scope: 'personal', participantIds, isCall: true, reminders: [10, 5],
+      title: p.title, startsAt, endsAt, scope: 'personal', participantIds, isCall: true, reminders: [10, 5, 0], // #4766: за 10, за 5 минут и в момент начала
     } as Parameters<CalendarService['create']>[2]);
     const votes = await this.db.many<{ voter_name: string; voter_email: string | null; answers: Record<string, Answer> }>(
       `SELECT voter_name, voter_email, answers FROM time_poll_votes WHERE poll_id = $1`, [p.id]);

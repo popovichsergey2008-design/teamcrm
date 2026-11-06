@@ -867,7 +867,7 @@ export class MeetingsService implements OnModuleInit {
           endsAt: end.toISOString(),
           scope: 'personal',
           participantIds: people.filter((id) => id !== organizer),
-          reminders: [10, 5],
+          reminders: [10, 5, 0], // #4766: за 10, за 5 минут и в момент начала
         });
         void this.secretary.record({
           tenantId, userId: organizer, kind: 'meeting_summary',

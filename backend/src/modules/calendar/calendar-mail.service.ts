@@ -202,16 +202,16 @@ export class CalendarMailService {
     public_id?: string | null;
   }): Promise<void> {
     const meetUrl = this.meetUrl(r.public_id);
-    const inWords = r.minutes_before >= 1440 ? `за ${Math.round(r.minutes_before / 1440)} дн.`
+    const inWords = r.minutes_before <= 0 ? 'в момент начала' : r.minutes_before >= 1440 ? `за ${Math.round(r.minutes_before / 1440)} дн.`
       : r.minutes_before >= 60 ? `за ${Math.round(r.minutes_before / 60)} ч`
         : `за ${r.minutes_before} мин`;
     await this.enqueue({
       tenantId: r.tenant_id,
       userId: r.user_id,
       toEmail: r.email,
-      subject: `Скоро встреча: ${r.title}`,
+      subject: r.minutes_before <= 0 ? `Встреча начинается: ${r.title}` : `Скоро встреча: ${r.title}`,
       text: [
-        `Напоминание ${inWords} до начала.`,
+        r.minutes_before <= 0 ? 'Встреча начинается сейчас.' : `Напоминание ${inWords} до начала.`,
         '',
         r.title,
         this.when({ starts_at: r.starts_at, ends_at: r.ends_at, all_day: r.all_day }, await this.tzOf(String(r.tenant_id))),

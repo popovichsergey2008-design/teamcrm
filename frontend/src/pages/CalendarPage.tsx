@@ -111,7 +111,7 @@ const REMINDER_CHOICES = [0, 5, 10, 15, 60, 1440];
  * чтобы закончить текущее дело, за 5 — чтобы дойти. Каждое из них человек и так
  * ставил руками, а забытое напоминание стоит пропущенной встречи.
  */
-const DEFAULT_REMINDERS = [5, 10, 60];
+const DEFAULT_REMINDERS = [0, 5, 10, 60]; // #4766: и в момент начала
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const HOUR_HEIGHT = 44; // высота часа в сетке, совпадает с .cal-hour в стилях
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
