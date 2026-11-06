@@ -297,8 +297,6 @@ export class FocusSessionService {
   async knock(me: Me, toUserId: string, reason?: string | null) {
     await this.security.require(me.tenantId, me.userId, 'focus.knock', 'Стучать в глубокий фокус вам не разрешено');
     if (String(toUserId) === String(me.userId)) throw AppException.validation('Себе стучать незачем');
-    // #4787, п. 12: при срочном обращении отправитель указывает причину
-    if (!reason?.trim()) throw AppException.validation('Напишите, что случилось: без причины срочное обращение не отправляется');
     const target = await this.db.one<any>(
       `SELECT s.id, s.planned_end_at, s.urgent_mode, s.urgent_user_ids FROM focus_sessions s
         WHERE s.tenant_id = $1 AND s.user_id = $2 AND s.status = 'running' AND s.planned_end_at > now()`,
@@ -312,6 +310,12 @@ export class FocusSessionService {
     if (target.urgent_mode === 'selected' && !((target.urgent_user_ids ?? []) as unknown[]).map(String).includes(String(me.userId))) {
       throw AppException.forbidden('Срочно обратиться к нему сейчас могут только выбранные им люди — напишите сообщение');
     }
+    const already = await this.db.one<{ id: string }>(
+      `SELECT id FROM focus_knocks WHERE session_id = $1 AND from_user_id = $2`, [target.id, me.userId],
+    );
+    if (already) throw AppException.conflict('Вы уже стучали в этот фокус — дождитесь, пока он закончится');
+    // #4787, п. 12: при срочном обращении отправитель указывает причину
+    if (!reason?.trim()) throw AppException.validation('Напишите, что случилось: без причины срочное обращение не отправляется');
     const ins = await this.db.one<{ id: string }>(
       `INSERT INTO focus_knocks (tenant_id, session_id, from_user_id, to_user_id, reason)
        VALUES ($1, $2, $3, $4, $5)
