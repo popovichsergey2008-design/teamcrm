@@ -512,7 +512,7 @@ describe('разбор переписки (e2e)', () => {
     const reminders = await db.many<{ minutes_before: number }>(
       `SELECT minutes_before FROM calendar_reminders WHERE event_id = $1 ORDER BY minutes_before`, [row!.created_entity_id],
     );
-    expect(reminders.map((r) => Number(r.minutes_before))).toEqual([5, 10]);
+    expect(reminders.map((r) => Number(r.minutes_before))).toEqual([0, 5, 10]); // #4766: и в момент начала
     const said = await db.many<{ body: string }>(
       `SELECT body FROM chat_messages WHERE chat_id = $1 AND is_ai ORDER BY id DESC LIMIT 2`, [chat.id],
     );
