@@ -8,6 +8,8 @@ export const authApi = {
   /** «Забыли пароль?» — ответ одинаковый, есть такой адрес или нет. */
   forgotPassword: (email: string) => rawRequest<{ sent: true }>('POST', '/auth/password/forgot', { email }, false),
   verifyEmail: (token: string) => rawRequest<{ verified: true; email: string }>('POST', '/auth/email/verify', { token }, false),
+  /** #4779, п. 8: своя почта вместо служебной tg…@users.qevo.one. */
+  setEmail: (email: string) => request<{ email: string; sent: boolean }>('POST', '/auth/email/set', { email }),
   resendVerification: () => request<{ sent: boolean; verified: boolean }>('POST', '/auth/email/resend'),
   mfaStatus: () => request<{ enabled: boolean; enabledAt: string | null; recoveryLeft: number; emailVerified: boolean }>('GET', '/auth/mfa'),
   mfaSetup: (password: string) => request<{ secret: string; otpauthUri: string; expiresInSec: number }>('POST', '/auth/mfa/setup', { password }),

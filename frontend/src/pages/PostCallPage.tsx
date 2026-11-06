@@ -11,6 +11,7 @@ import { getSocket } from '../lib/socket';
 import { toastSaved } from '../lib/notifications';
 import type { Project, User } from '../types';
 import { DraftRow, type DraftChoice } from '../components/meetings/DraftRow';
+import { NextEvents } from '../components/meetings/NextEvents';
 import { feedback } from '../lib/feedback';
 // клиентский протокол для гостей встречи (ТЗ-28) — своим куском, только где есть гости
 const GuestSummaryPanel = lazy(() => import('../components/meetings/GuestSummaryPanel'));
@@ -441,6 +442,11 @@ function PostCall({ meetingId }: { meetingId: string }) {
                   ))}
                 </ul>
               </Block>
+            )}
+
+            {/* #4779, п. 5: договорились о следующей встрече — предложение в календарь */}
+            {(data.nextEvents?.length ?? 0) > 0 && (
+              <NextEvents meetingId={meetingId} items={data.nextEvents ?? []} onChange={(v) => setData({ ...data, nextEvents: v })} />
             )}
 
             {blockState('tasks') === 'ready' && (pending.length > 0 || launched !== null) && (

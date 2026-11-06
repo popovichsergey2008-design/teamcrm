@@ -7,8 +7,7 @@ import { AuthService, SessionMeta } from './auth.service';
 import { PasswordResetService } from './password-reset.service';
 import {
   ForgotPasswordDto, LoginDto, LogoutDto, MfaCodeDto, MfaDisableDto, MfaLoginDto, MfaPasswordDto,
-  RefreshDto, RegisterDto, TokenDto,
-} from './auth.dto';
+  RefreshDto, RegisterDto, TokenDto, SetEmailDto } from './auth.dto';
 import { AccountSecurityService } from './account-security.service';
 import { UsersRepository } from '../users/users.repository';
 import { SocialService } from './social.service';
@@ -163,6 +162,14 @@ export class AuthController {
   @HttpCode(200)
   verifyEmail(@Body() dto: TokenDto, @Headers('user-agent') ua: string, @Ip() ip: string) {
     return this.security.verifyEmail(dto.token, this.meta(ua, ip));
+  }
+
+  /** #4779, п. 8: зарегистрировался через Telegram — указать свою почту. */
+  @ApiBearerAuth()
+  @Post('auth/email/set')
+  @HttpCode(200)
+  async setEmail(@CurrentUser() user: AuthUser, @Body() dto: SetEmailDto) {
+    return this.security.setRealEmail(await this.accountOf(user), dto.email);
   }
 
   @ApiBearerAuth()

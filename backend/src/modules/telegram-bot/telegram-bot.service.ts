@@ -133,6 +133,8 @@ export class TelegramBotService {
         case 'login': return await this.openLink(who);
         case 'example': return await this.example(who, startedAt);
         case 'demo_text': {
+          // #4779, п. 13: после «Начать бесплатно» ответ — название рабочей зоны, а не поручение
+          if (await this.repo.awaitsSignupName(who.tgId)) return await this.signupName(who, route.text);
           // клиент, которому прислали итоги встречи (#1525), пишет в свой чат — это не демо
           const name = [who.firstName, who.lastName].filter(Boolean).join(' ') || who.username;
           if (await this.telegram.handleExternal(who.chatId, route.text, { staff: false, name })) return;
@@ -262,6 +264,27 @@ export class TelegramBotService {
     return { tenantId: String(member.tenant_id), userId: String(member.id) };
   }
 
+  /**
+   * «Начать бесплатно» в демо-доске (#4779, п. 13.3): Mini App закрывается, а в чате
+   * бота начинается регистрация — первым вопросом название рабочей зоны.
+   */
+  async startSignupFromMiniApp(tgId: string): Promise<{ ok: boolean; already?: boolean }> {
+    if (await this.ownSpace(tgId)) {
+      await this.say(tgId, T.alreadyHas());
+      return { ok: true, already: true };
+    }
+    await this.repo.askSignupName(tgId);
+    await this.say(tgId, { text: T.ASK_SPACE_NAME });
+    return { ok: true };
+  }
+
+  private async signupName(who: Who, text: string): Promise<void> {
+    const name = text.replace(/\s+/g, ' ').trim().slice(0, 160);
+    if (name.length < 2) return this.say(who.chatId, { text: T.SPACE_NAME_SHORT });
+    await this.repo.setSignupName(who.tgId, name);
+    return this.say(who.chatId, T.consent(this.base, '0'));
+  }
+
   private async take(who: Who, demoId: string): Promise<void> {
     if (await this.ownSpace(who.tgId)) return this.say(who.chatId, T.alreadyHas());
     return this.say(who.chatId, T.consent(this.base, /^\d+$/.test(demoId) ? demoId : '0'));
@@ -282,7 +305,8 @@ export class TelegramBotService {
     let user;
     try {
       user = await this.auth.createOwnerUser(
-        telegramServiceEmail(who.tgId), fullName, `${first} — команда`.slice(0, 160),
+        // #4779, п. 13: название, которое человек назвал в ответ на вопрос бота
+        telegramServiceEmail(who.tgId), fullName, ((await this.repo.signupName(who.tgId)) || `${first} — команда`).slice(0, 160),
         // вход через Telegram потом найдёт этот аккаунт (account_socials), как у входа виджетом
         async (accountId: string, client: PoolClient) => {
           await client.query(

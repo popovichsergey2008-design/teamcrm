@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SIGNED_OUT_EVENT, tokens } from '../lib/api';
 import { apiUrl } from '../lib/origin';
 import { Icon } from '../components/Icon';
-import { applyTelegramTheme, closeApp, loadTelegram, type TgWebApp } from './telegram';
+import { applyTelegramTheme, closeApp, loadTelegram, type TgWebApp, startFree } from './telegram';
 import { crmSource, type TgSource } from './source';
 import { DEMO_TASK_ID, demoSource } from './demo';
 import { TgBoardView, TgTaskView } from './TgViews';
@@ -188,9 +188,10 @@ export default function TgApp() {
 
   const demoBanner = session.state === 'demo' ? (
     <div className="tg-demo" role="note">
-      <p><b>Это пример.</b> Создайте своё пространство в боте — +7 дней бесплатно.</p>
-      <button type="button" className="ui-btn ui-btn-primary ui-btn-md" onClick={() => closeApp(wa)}>
-        Создать в боте
+      {/* #4779, п. 13.1–13.4 */}
+      <p><b>Это пример.</b> Создайте рабочую зону команды и получите +7 дней бесплатно.</p>
+      <button type="button" className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void startFree(wa)}>
+        Начать бесплатно
       </button>
     </div>
   ) : null;

@@ -127,6 +127,22 @@ export function openOutside(wa: TgWebApp | null, url: string): void {
 }
 
 /** Закрыть шторку. Вне Telegram закрывать нечего — уводим в бота (имя бота знает сервер). */
+/**
+ * «Начать бесплатно» в демо-доске (#4779, п. 13.3): просим бота начать регистрацию в
+ * чате (он спросит название рабочей зоны) и закрываем Mini App. Сбой сети — всё равно
+ * закрываем: в чате есть кнопка «Зарегистрироваться: +7 дней».
+ */
+export async function startFree(wa: TgWebApp | null): Promise<void> {
+  if (wa?.initData) {
+    try {
+      await fetch('/api/telegram/miniapp/start', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ initData: wa.initData }),
+      });
+    } catch { /* закроем и так */ }
+  }
+  closeApp(wa);
+}
+
 export function closeApp(wa: TgWebApp | null): void {
   if (wa?.initData) { try { wa.close(); return; } catch { /* ниже */ } }
   void fetch(apiUrl('/api/auth/providers'))

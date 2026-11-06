@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EMAIL_HINT } from '../../common/http/validation-ru';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -112,6 +113,27 @@ export class AccountSecurityService {
     if (isServiceEmail(acc.email)) throw AppException.validation('Сначала укажите настоящую почту в профиле');
     await this.throttle.hit(RULES.verifyResend, accountId);
     return { ...(await this.sendVerification(accountId)), verified: false };
+  }
+
+  /**
+   * #4779, п. 8: зарегистрировался через Telegram — у аккаунта служебный адрес
+   * tg…@users.qevo.one, ящика за ним нет. Человек указывает свою почту прямо в полосе
+   * сверху; дальше обычное подтверждение письмом. Только для служебных адресов: сменить
+   * настоящую почту так нельзя.
+   */
+  async setRealEmail(accountId: string, raw: string): Promise<{ email: string; sent: boolean }> {
+    const acc = await this.repo.account(accountId);
+    if (!acc) throw AppException.notFound('Аккаунт не найден');
+    if (!isServiceEmail(acc.email)) throw AppException.validation('Почта уже указана — сменить её можно через поддержку');
+    const email = String(raw ?? '').trim().toLowerCase();
+    if (isServiceEmail(email)) throw AppException.validation(EMAIL_HINT);
+    await this.throttle.hit(RULES.verifyResend, accountId);
+    const taken = await this.accounts.findByEmail(email);
+    if (taken && String(taken.id) !== String(accountId)) {
+      throw AppException.conflict('Эта почта уже занята другим аккаунтом QEVO — укажите другую или войдите в тот аккаунт');
+    }
+    await this.repo.setEmail(accountId, email);
+    return { email, ...(await this.sendVerification(accountId)) };
   }
 
   async verifyEmail(token: string, meta?: Meta): Promise<{ verified: true; email: string }> {

@@ -71,6 +71,13 @@ export class ForgotPasswordDto {
   email!: string;
 }
 
+/** #4779, п. 8: своя почта вместо служебной tg…@users.qevo.one. */
+export class SetEmailDto {
+  @IsEmail({}, { message: EMAIL_HINT })
+  @MaxLength(255, { message: 'Email слишком длинный' })
+  email!: string;
+}
+
 export class TokenDto {
   @IsString() @MaxLength(128) token!: string;
 }

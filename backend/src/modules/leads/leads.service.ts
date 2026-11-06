@@ -73,6 +73,9 @@ export function leadText(l: Pick<NewLead, 'source' | 'from' | 'team' | 'want' | 
   return [...todo, `Откуда: ${from}`, `Команда: ${l.team ?? 'не указано'}`, contactLine].join('\n');
 }
 
+/** #4779, п. 14: канал инженеров, куда сразу падает каждая заявка с сайта и из бота. */
+export const LEADS_CHANNEL = 'Заявки с сайта и бота';
+
 @Injectable()
 export class LeadsService {
   private readonly logger = new Logger('Leads');
@@ -121,8 +124,11 @@ export class LeadsService {
    * лечь в базу, где его никто не увидит.
    */
   private async notify(text: string): Promise<void> {
-    if (this.chatId) { await this.tg.sendMessage(this.chatId, text); return; }
     const vendor = await this.platform.tenantId();
+    // #4779, п. 14: каждая заявка — сразу в чат инженеров в QEVO площадки (канал «Заявки»),
+    // а не только в личный Telegram дежурного: так её видят все инженеры и никто не пропустит
+    if (vendor) await this.toEngineersChat(vendor, text).catch((e) => this.logger.warn(`чат инженеров: ${(e as Error).message}`));
+    if (this.chatId) { await this.tg.sendMessage(this.chatId, text); return; }
     if (!vendor) return;
     let sent = 0;
     for (const s of await this.platform.onDuty()) {
@@ -132,5 +138,33 @@ export class LeadsService {
       sent++;
     }
     if (!sent) this.logger.warn('заявку с сайта некому показать: нет LEADS_TELEGRAM_CHAT_ID и у дежурных не привязан Telegram');
+  }
+
+  /**
+   * Канал «Заявки» в пространстве площадки: создаётся при первой заявке, в нём все
+   * инженеры техотдела (platform_staff). Сообщение — от QEVO Bot, со счётчиком
+   * непрочитанного у каждого; новые инженеры добавляются при следующей заявке.
+   */
+  private async toEngineersChat(vendor: string, text: string): Promise<void> {
+    const staff = (await this.platform.onDuty()).map((s) => String(s.user_id));
+    if (!staff.length) return;
+    let chat = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM chats WHERE tenant_id=$1 AND kind='channel' AND title=$2 ORDER BY id LIMIT 1`, [vendor, LEADS_CHANNEL],
+    );
+    if (!chat) {
+      chat = await this.db.one<{ id: string }>(
+        `INSERT INTO chats (tenant_id, kind, title, created_by) VALUES ($1, 'channel', $2, $3) RETURNING id::text`,
+        [vendor, LEADS_CHANNEL, staff[0]],
+      );
+    }
+    if (!chat) return;
+    await this.db.query(
+      `INSERT INTO chat_members (chat_id, user_id, tenant_id) SELECT $1::bigint, u, $2::bigint FROM unnest($3::bigint[]) AS u ON CONFLICT DO NOTHING`,
+      [chat.id, vendor, staff],
+    );
+    await this.db.query(
+      `INSERT INTO chat_messages (tenant_id, chat_id, author_id, body, is_ai) VALUES ($1, $2, NULL, $3, TRUE)`, [vendor, chat.id, text],
+    );
+    await this.db.query(`UPDATE chats SET last_message_at = now() WHERE id = $1`, [chat.id]);
   }
 }

@@ -89,6 +89,14 @@ export class AuthSecurityRepository {
     });
   }
 
+  /** Настоящая почта вместо служебной (#4779, п. 8): аккаунт и все его членства. */
+  async setEmail(accountId: string, email: string): Promise<void> {
+    await this.db.withTransaction(async (client) => {
+      await client.query(`UPDATE accounts SET email = $2, email_verified_at = NULL WHERE id = $1`, [accountId, email]);
+      await client.query(`UPDATE users SET email = $2 WHERE account_id = $1`, [accountId, email]);
+    });
+  }
+
   async markVerified(accountId: string): Promise<void> {
     await this.db.query(`UPDATE accounts SET email_verified_at = COALESCE(email_verified_at, now()) WHERE id=$1`, [accountId]);
   }

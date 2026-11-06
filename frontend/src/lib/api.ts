@@ -518,6 +518,8 @@ export interface PostcallSourced { text: string; sec: number | null; speaker?: s
 export interface PostcallDecision { id: string; text: string; source_sec: string | null; speaker: string | null; superseded_by: string | null }
 export interface PostcallView {
   meeting: any; segments: any[]; drafts: any[]; tasks: any[];
+  /** #4779, п. 5: следующая встреча — предложение ИИ, в календарь после подтверждения */
+  nextEvents?: { id: string; title: string; startsAt: string; endsAt: string; status: 'pending' | 'accepted' | 'dismissed'; eventId: string | null; quote: string | null; people: string[] }[];
   summary: { summary: string; decisions: string[]; risks: string[]; questions?: PostcallSourced[] } | null;
   /** решения из журнала — с секундой записи и говорящим */
   decisions: PostcallDecision[];

@@ -98,6 +98,19 @@ export class MeetingsController {
     return this.meetings.createBatch(u.tenantId, u.userId, id, dto.items, dto.confirmAll === true);
   }
 
+  /** #4779, п. 5: «Добавить в календарь» — предложенная ИИ следующая встреча. */
+  @Post(':id/postcall/next-events/:pid/accept')
+  async acceptNextEvent(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('pid') pid: string) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.meetings.acceptNextEvent(u.tenantId, id, pid, u.userId);
+  }
+
+  @Post(':id/postcall/next-events/:pid/dismiss')
+  async dismissNextEvent(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('pid') pid: string) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.meetings.dismissNextEvent(u.tenantId, id, pid, u.userId);
+  }
+
   /** «Подготовить пост в Новости»: кандидат по вехе встречи, публикует руководитель. */
   @Post(':id/postcall/news')
   postcallNews(@CurrentUser() u: AuthUser, @Param('id') id: string) {

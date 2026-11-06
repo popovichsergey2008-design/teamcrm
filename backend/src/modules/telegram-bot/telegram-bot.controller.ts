@@ -6,10 +6,14 @@ import { CurrentUser, Public } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { AppException } from '../../common/http/app-exception';
 import { PlatformService } from '../platform/platform.service';
+import { verifyWebAppInitData } from '../auth/telegram-webapp-verify';
 import { TelegramBotService } from './telegram-bot.service';
 
 class TgLoginDto {
   @IsString() @MaxLength(100) code!: string;
+}
+class MiniAppDto {
+  @IsString() @MaxLength(8192) initData!: string;
 }
 
 @ApiTags('telegram')
@@ -21,7 +25,7 @@ export class TelegramBotController {
   constructor(
     private readonly bot: TelegramBotService,
     private readonly platform: PlatformService,
-    config: ConfigService,
+    private readonly config: ConfigService,
   ) {
     this.secret = config.get<string>('TELEGRAM_WEBHOOK_SECRET') || undefined;
     // без секрета вебхук примет обновление от кого угодно — не ломаем прод, но кричим
@@ -45,6 +49,21 @@ export class TelegramBotController {
   @HttpCode(201)
   login(@Body() dto: TgLoginDto, @Ip() ip: string, @Headers('user-agent') ua?: string) {
     return this.bot.exchangeLogin(dto.code, { ip, userAgent: ua });
+  }
+
+  /**
+   * «Начать бесплатно» в демо-доске Mini App (#4779, п. 13.3): по подписанной initData
+   * бот пишет человеку в чат первый вопрос регистрации, Mini App после этого закрывается.
+   */
+  @Public()
+  @Post('telegram/miniapp/start')
+  @HttpCode(200)
+  async miniAppStart(@Body() dto: MiniAppDto) {
+    const token = String(this.config.get('TELEGRAM_BOT_TOKEN') ?? '').trim();
+    if (!token) throw AppException.validation('Telegram-бот не настроен');
+    let tgId: string;
+    try { tgId = verifyWebAppInitData(dto.initData, token).telegramUserId; } catch (e) { throw AppException.unauthorized((e as Error).message); }
+    return this.bot.startSignupFromMiniApp(tgId);
   }
 
   /**

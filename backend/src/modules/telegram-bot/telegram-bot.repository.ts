@@ -45,6 +45,33 @@ export class TelegramBotRepository {
     );
   }
 
+  /** #4779, п. 13: бот спросил название рабочей зоны — ждём ответ полчаса. */
+  async askSignupName(tgId: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO telegram_bot_users (telegram_user_id, signup_asked_at) VALUES ($1, now())
+       ON CONFLICT (telegram_user_id) DO UPDATE SET signup_asked_at = now(), updated_at = now()`, [tgId],
+    );
+  }
+
+  /** Ждём ли от человека название (спросили не позже 30 минут назад и ответа ещё не было). */
+  async awaitsSignupName(tgId: string): Promise<boolean> {
+    const r = await this.db.one<{ ok: boolean }>(
+      `SELECT (signup_asked_at > now() - interval '30 minutes') AS ok FROM telegram_bot_users WHERE telegram_user_id = $1`, [tgId],
+    );
+    return !!r?.ok;
+  }
+
+  async setSignupName(tgId: string, name: string): Promise<void> {
+    await this.db.query(
+      `UPDATE telegram_bot_users SET signup_name = $2, signup_asked_at = NULL, updated_at = now() WHERE telegram_user_id = $1`,
+      [tgId, name.slice(0, 160)],
+    );
+  }
+
+  async signupName(tgId: string): Promise<string | null> {
+    return (await this.db.one<{ n: string | null }>(`SELECT signup_name AS n FROM telegram_bot_users WHERE telegram_user_id = $1`, [tgId]))?.n ?? null;
+  }
+
   async setSpace(tgId: string, tenantId: string, userId: string): Promise<void> {
     await this.db.query(
       `UPDATE telegram_bot_users SET tenant_id = $2, user_id = $3, updated_at = now() WHERE telegram_user_id = $1`,

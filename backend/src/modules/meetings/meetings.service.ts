@@ -1,4 +1,5 @@
 import { ProjectResolverService } from '../nl/project-resolver.service';
+import { DbService } from '../../database/db.service';
 import { TagsService } from '../tags/tags.service';
 import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
@@ -109,6 +110,8 @@ export class MeetingsService implements OnModuleInit {
     /** ТЗ-31: проект черновика, если у встречи его нет. */
     private readonly projectResolver: ProjectResolverService,
     private readonly tags: TagsService,
+    /** #4779, п. 5: предложенные следующие встречи (meeting_next_events). */
+    private readonly db: DbService,
     /** #4615, 23.10: структура компании — модели в разбор и подбор «руководителю дизайна». */
     @Optional() private readonly org?: OrgService,
     /** #4749: договорились о следующей встрече — ставим её в календарь. */
@@ -175,6 +178,8 @@ export class MeetingsService implements OnModuleInit {
       ...details,
       decisions,
       followup,
+      // #4779, п. 5: следующая встреча — предложение ИИ, в календарь после подтверждения
+      nextEvents: await this.nextEvents(tenantId, id).catch(() => []),
       proofs,
       recording,
       duplicates: Object.fromEntries(duplicates.map((x) => [x.draft_id, { taskId: x.task_id, projectId: x.project_id, title: x.title }])),
@@ -193,6 +198,69 @@ export class MeetingsService implements OnModuleInit {
         completedAt: review.completed_at,
       } : null,
     };
+  }
+
+  /** Предложенные ИИ следующие встречи (#4779, п. 5) — для экрана итогов. */
+  async nextEvents(tenantId: string, meetingId: string) {
+    const rows = await this.db.many<{
+      id: string; title: string; starts_at: Date; ends_at: Date; organizer_id: string | null; participant_ids: string[];
+      quote: string | null; status: string; event_id: string | null; names: string[] | null;
+    }>(
+      `SELECT n.id::text, n.title, n.starts_at, n.ends_at, n.organizer_id::text, n.participant_ids::text[] AS participant_ids,
+              n.quote, n.status, n.event_id::text,
+              (SELECT array_agg(u.full_name ORDER BY u.full_name) FROM users u
+                WHERE u.tenant_id = n.tenant_id AND (u.id = ANY(n.participant_ids) OR u.id = n.organizer_id)) AS names
+         FROM meeting_next_events n WHERE n.tenant_id=$1 AND n.meeting_id=$2 ORDER BY n.starts_at`, [tenantId, meetingId],
+    );
+    return rows.map((r: (typeof rows)[number]) => ({
+      id: r.id, title: r.title, startsAt: r.starts_at, endsAt: r.ends_at, status: r.status, eventId: r.event_id,
+      quote: r.quote, people: r.names ?? [],
+    }));
+  }
+
+  /**
+   * «Добавить в календарь» (#4779, п. 5): событие встаёт в календарь QEVO у участников и
+   * уходит в их Google Календарь (хуки календаря); напоминание участникам за 10 минут.
+   * Организатор — подтвердивший; остальные — участники предложения.
+   */
+  async acceptNextEvent(tenantId: string, meetingId: string, proposalId: string, userId: string) {
+    if (!this.calendar) throw AppException.validation('Календарь недоступен');
+    const p = await this.db.one<{ id: string; title: string; starts_at: Date; ends_at: Date; organizer_id: string | null; participant_ids: string[]; quote: string | null; status: string }>(
+      `SELECT id::text, title, starts_at, ends_at, organizer_id::text, participant_ids::text[] AS participant_ids, quote, status
+         FROM meeting_next_events WHERE tenant_id=$1 AND meeting_id=$2 AND id=$3`, [tenantId, meetingId, proposalId],
+    );
+    if (!p) throw AppException.notFound('Предложение не найдено');
+    if (p.status !== 'pending') return this.nextEvents(tenantId, meetingId);
+    if (new Date(p.starts_at).getTime() <= Date.now()) throw AppException.validation('Время встречи уже прошло — поставьте её в календаре вручную');
+    const meeting = await this.db.one<{ title: string | null }>(`SELECT title FROM meetings WHERE tenant_id=$1 AND id=$2`, [tenantId, meetingId]);
+    const people = [...new Set([...(p.organizer_id ? [p.organizer_id] : []), ...p.participant_ids].map(String))].filter((id) => id !== String(userId));
+    const from = meeting?.title ? `Договорились на встрече «${meeting.title}».` : 'Договорились на встрече.';
+    const ev = await this.calendar.create(tenantId, { userId, role: 'member' }, {
+      title: p.title.slice(0, 255),
+      description: [from, p.quote ? `«${p.quote}»` : ''].filter(Boolean).join('\n'),
+      startsAt: new Date(p.starts_at).toISOString(),
+      endsAt: new Date(p.ends_at).toISOString(),
+      scope: 'personal',
+      participantIds: people,
+      reminders: [10, 5, 0], // #4779: за 10 минут участникам (и за 5, и в момент начала — #4766)
+    }) as { id?: string | number } | null;
+    await this.db.query(
+      `UPDATE meeting_next_events SET status='accepted', event_id=$4, decided_by=$5, decided_at=now() WHERE tenant_id=$1 AND meeting_id=$2 AND id=$3`,
+      [tenantId, meetingId, proposalId, ev?.id ?? null, userId],
+    );
+    void this.secretary.record({
+      tenantId, userId, kind: 'meeting_summary',
+      summary: `Встреча со встречи поставлена в календарь: «${p.title}»`, subjectType: 'meeting', subjectId: meetingId,
+    });
+    return this.nextEvents(tenantId, meetingId);
+  }
+
+  async dismissNextEvent(tenantId: string, meetingId: string, proposalId: string, userId: string) {
+    await this.db.query(
+      `UPDATE meeting_next_events SET status='dismissed', decided_by=$4, decided_at=now()
+        WHERE tenant_id=$1 AND meeting_id=$2 AND id=$3 AND status='pending'`, [tenantId, meetingId, proposalId, userId],
+    );
+    return this.nextEvents(tenantId, meetingId);
   }
 
   /** «Подготовить пост в Новости» по вехе встречи. */
@@ -832,11 +900,12 @@ export class MeetingsService implements OnModuleInit {
   }
 
   /**
-   * #4749: на встрече договорились о следующей — агент ставит её в календарь сам, как и
-   * встречу из переписки. Без дня и времени не ставим: угадывать время нельзя. Кого назвали
-   * поимённо — их, иначе всех, кто был на встрече. Организатор — кто предложил, иначе тот,
-   * кто загрузил запись. Напоминания за 10 и за 5 минут. Не вышло (время прошло, у
-   * участников занято) — встреча просто не ставится: она есть в итогах словами.
+   * #4749 → #4779, п. 5: на встрече договорились о следующей — ИИ ПРЕДЛАГАЕТ событие с
+   * датой и участниками на экране итогов; в календарь QEVO и Google оно попадает после
+   * подтверждения (acceptNextEvent). Без дня и времени не предлагаем: угадывать время
+   * нельзя. Кого назвали поимённо — их, иначе всех, кто был на встрече. Организатор — кто
+   * предложил, иначе тот, кто загрузил запись. Время прошло или у организатора занято —
+   * не предлагаем: встреча есть в итогах словами.
    */
   private async scheduleAgreed(
     tenantId: string, meetingId: string, plans: MeetingPlan[], team: { id: string; full_name: string }[],
@@ -859,20 +928,12 @@ export class MeetingsService implements OnModuleInit {
         if (!organizer || new Set([organizer, ...people]).size < 2) continue;
         if (await this.repo.hasEventAt(tenantId, organizer, start)) continue;
         const end = new Date(start.getTime() + (p.durationMinutes ?? 30) * 60_000);
-        const from = meeting?.title ? `Договорились на встрече «${meeting.title}».` : 'Договорились на встрече.';
-        await this.calendar.create(tenantId, { userId: organizer, role: 'member' }, {
-          title: p.title.slice(0, 255),
-          description: [from, p.quote ? `«${p.quote}»` : ''].filter(Boolean).join('\n'),
-          startsAt: start.toISOString(),
-          endsAt: end.toISOString(),
-          scope: 'personal',
-          participantIds: people.filter((id) => id !== organizer),
-          reminders: [10, 5, 0], // #4766: за 10, за 5 минут и в момент начала
-        });
-        void this.secretary.record({
-          tenantId, userId: organizer, kind: 'meeting_summary',
-          summary: `Встреча со встречи поставлена в календарь: «${p.title}»`, subjectType: 'meeting', subjectId: meetingId,
-        });
+        await this.db.query(
+          `INSERT INTO meeting_next_events (tenant_id, meeting_id, title, starts_at, ends_at, organizer_id, participant_ids, quote)
+           SELECT $1::bigint, $2::bigint, $3::varchar, $4::timestamptz, $5::timestamptz, $6::bigint, $7::bigint[], $8::text
+            WHERE NOT EXISTS (SELECT 1 FROM meeting_next_events WHERE tenant_id=$1::bigint AND meeting_id=$2::bigint AND starts_at=$4::timestamptz)`,
+          [tenantId, meetingId, p.title.slice(0, 255), start, end, organizer, people.filter((id) => id !== organizer), p.quote ?? null],
+        );
       } catch (e) {
         this.log.log(`встреча ${meetingId}: «${p.title}» не поставил — ${(e as Error).message}`);
       }

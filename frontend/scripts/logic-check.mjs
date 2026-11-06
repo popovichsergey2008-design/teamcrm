@@ -1561,17 +1561,17 @@ test('Qevo-бот #4632: «Назад»/«Вперёд» по шагам, про
 });
 
 // ── ТЗ-34 (#4620): Отдел заботы ────────────────────────────────────────────────
-test('забота: время ответа живое, без данных — норма документа 25 сек', async () => {
+test('забота: время ответа живое, без данных — норма 30 сек (#4779, п. 7)', async () => {
   const { careShort, careLong, careTooltip, careHeadline } = await load('lib/care-rules.ts');
   const now = { kind: 'now', minutes: null };
-  assert.equal(careShort(now, null), '25 сек', 'медианы нет — норма из документа');
+  assert.equal(careShort(now, null), '30 сек', 'медианы нет — норма');
   assert.equal(careShort(now, 24), '24 сек');
   assert.equal(careShort(now, 200), '3 мин');
   assert.equal(careShort({ kind: 'queue', minutes: [4, 6] }, 30), '4–6 мин', 'очередь — честные минуты');
   assert.equal(careShort({ kind: 'offline', minutes: null }, 30), '', 'никого нет — времени не обещаем');
   assert.equal(careLong(21), '21 секунду');
-  assert.equal(careLong(null), '25 секунд');
-  assert.equal(careTooltip(null), 'Qevo: Помощь быстрее мысли. Живой инженер ответит за 25 секунд и решит любой вопрос по задачам, проектам и команде');
+  assert.equal(careLong(null), '30 секунд');
+  assert.equal(careTooltip(null), 'Qevo: Помощь быстрее мысли. Живой инженер ответит за 30 секунд и решит любой вопрос по задачам, проектам и команде');
   assert.equal(careHeadline(now, 24), 'Отдел заботы Qevo на связи 24/7 • Среднее время ответа сейчас: 24 сек');
 });
 

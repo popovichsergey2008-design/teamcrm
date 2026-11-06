@@ -122,6 +122,10 @@ export function consent(base: string, demoId: string): { text: string; markup: K
     markup: { inline_keyboard: [[cb('Принимаю', `b:ok:${demoId}`), cb('Отмена', 'b:no')]] },
   };
 }
+/** #4779, п. 13.3: первое сообщение после «Начать бесплатно» в демо-доске. */
+export const ASK_SPACE_NAME = 'Как назовём рабочую зону команды? Обычно это название компании.';
+export const SPACE_NAME_SHORT = 'Название слишком короткое — напишите хотя бы два символа, например название компании.';
+
 export const CONSENT_CANCELLED = 'Хорошо, ничего не создаю. Можно продолжить демо — пришлите ещё одно поручение.';
 
 export function alreadyHas(): { text: string; markup: Keyboard } {

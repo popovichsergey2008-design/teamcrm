@@ -202,8 +202,8 @@ export class ProjectsService {
       name: dto.name,
       clientId: dto.clientId ?? null,
       budget: dto.budget ?? null,
-      // #1580: описание и ключевые слова — сразу при создании (форма их требует;
-      // импорт и прочие пути создают проект и без них)
+      // #1580: описание и ключевые слова — сразу при создании; с #4779 (п. 11)
+      // необязательны и в форме, обязательно только название
       description: dto.description?.trim() ?? '',
       aliases: cleanAliases(dto.aliases ?? [], dto.name),
       columns: opts.columns,

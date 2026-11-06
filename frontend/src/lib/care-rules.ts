@@ -3,11 +3,11 @@
  * строка прогресса, детектор заминок и встряхивания. Проверяются в scripts/logic-check.
  *
  * Цифры не выдумываем: время ответа — живая медиана; нет данных — норма из документа
- * (25 секунд) как цель, а не обещание с потолка.
+ * (30 секунд) как цель, а не обещание с потолка.
  */
 
-/** Норма из документа: «Живой инженер ответит за 25 секунд». */
-export const CARE_NORM_SEC = 25;
+/** Норма: «Живой инженер ответит за 30 секунд» (#4779, п. 7: везде 30 секунд; было 25). */
+export const CARE_NORM_SEC = 30;
 
 export interface CareEstimate {
   kind: 'now' | 'queue' | 'offline';
@@ -19,7 +19,7 @@ export function careSeconds(medianSec: number | null | undefined): number {
   return medianSec && medianSec > 0 ? Math.round(medianSec) : CARE_NORM_SEC;
 }
 
-/** Коротко — для островка: «25 сек», «3 мин», в очереди «4–6 мин»; никого нет — пусто. */
+/** Коротко — для островка: «30 сек», «3 мин», в очереди «4–6 мин»; никого нет — пусто. */
 export function careShort(estimate: CareEstimate | null, medianSec: number | null | undefined): string {
   if (!estimate || estimate.kind === 'offline') return '';
   if (estimate.kind === 'queue' && estimate.minutes) return `${estimate.minutes[0]}–${estimate.minutes[1]} мин`;
@@ -32,7 +32,7 @@ function plural(n: number, one: string, few: string, many: string): string {
   return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
 }
 
-/** Полностью — для подсказки: «25 секунд», «21 секунду», «2 минуты». */
+/** Полностью — для подсказки: «30 секунд», «21 секунду», «2 минуты». */
 export function careLong(medianSec: number | null | undefined): string {
   const s = careSeconds(medianSec);
   if (s < 90) return `${s} ${plural(s, 'секунду', 'секунды', 'секунд')}`;
@@ -40,7 +40,7 @@ export function careLong(medianSec: number | null | undefined): string {
   return `${m} ${plural(m, 'минуту', 'минуты', 'минут')}`;
 }
 
-/** Подсказка островка — дословно по документу (п. 4.1), с живым временем вместо «25». */
+/** Подсказка островка — дословно по документу (п. 4.1), с живым временем вместо «30». */
 export function careTooltip(medianSec: number | null | undefined): string {
   return `Qevo: Помощь быстрее мысли. Живой инженер ответит за ${careLong(medianSec)} и решит любой вопрос по задачам, проектам и команде`;
 }

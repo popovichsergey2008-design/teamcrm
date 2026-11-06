@@ -422,7 +422,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     add({
       key: 'support:open',
       group: 'Закреплено',
-      title: 'Отдел заботы Qevo: Сказать вопрос голосом (5 сек), решить в чате (30 сек) или включить Huddle-созвон (20 сек)',
+      title: 'Отдел заботы Qevo: Сказать вопрос голосом (5 сек), решить в чате (30 сек) или включить созвон (30 сек)',
       icon: 'zap',
       run: () => { openSupport(); onClose(); },
     });

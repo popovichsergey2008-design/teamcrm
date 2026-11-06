@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError } from '../lib/api';
 import { Icon } from '../components/Icon';
-import { backButton, haptic, mainButton, openOutside, closeApp, type TgWebApp } from './telegram';
+import { backButton, haptic, mainButton, openOutside, startFree, type TgWebApp } from './telegram';
 import { GateError, type TgBoard, type TgCard, type TgCheck, type TgGate, type TgSource, type TgTaskView as TaskData } from './source';
 
 /** Описание в CRM — текст с разметкой картинок; в шторке картинки не показываем, только отмечаем. */
@@ -13,7 +13,8 @@ const errText = (e: unknown, fallback: string) =>
 /** Главная кнопка Telegram: в CRM — «Открыть в QEVO полностью», в примере — «Создать пространство». */
 function useMainButton(wa: TgWebApp | null, demo: boolean, fullPath: string | null) {
   useEffect(() => {
-    if (demo) return mainButton(wa, 'Создать своё пространство', () => closeApp(wa));
+    // #4779, п. 13: «Начать бесплатно» — регистрация в чате бота, Mini App закрывается
+    if (demo) return mainButton(wa, 'Начать бесплатно', () => void startFree(wa));
     if (!fullPath) return undefined;
     return mainButton(wa, 'Открыть в QEVO полностью', () => openOutside(wa, `${window.location.origin}${fullPath}`));
   }, [wa, demo, fullPath]);
@@ -96,6 +97,8 @@ export function TgBoardView({ wa, source, projectId, banner, onOpen, onProject }
           ))}
         </div>
       )}
+      {/* #4779, п. 13.2: над нижней кнопкой «Начать бесплатно» */}
+      {source.demo && <p className="tg-dim tg-pad">Создадим общую рабочую зону для вашей команды: чаты, задачи и доски.</p>}
     </>
   );
 }

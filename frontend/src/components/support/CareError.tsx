@@ -37,11 +37,11 @@ export default function CareError({ error, offline = false }: { error?: string; 
     <div className="screen-crash-card">
       <h2>Мы уже видим эту заминку в телеметрии и чиним ее!</h2>
       <p className="dim">
-        В Qevo вам никогда не придется делать скриншоты, чистить кэш или ждать ответа по 3 дня. Дежурный разработчик уже получил лог и правит код. Нажмите кнопку ниже, чтобы инженер подключился в этот экран за 15 секунд с готовым решением.
+        В Qevo вам никогда не придется делать скриншоты, чистить кэш или ждать ответа по 3 дня. Дежурный разработчик уже получил лог и правит код. Нажмите кнопку ниже, чтобы инженер подключился в этот экран за 30 секунд с готовым решением.
       </p>
       <div className="screen-crash-actions">
         <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={ask} disabled={waiting}>
-          Подключить инженера за 15 секунд
+          Подключить инженера за 30 секунд
         </button>
         {!offline && (
           <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => window.location.reload()}>Обновить</button>

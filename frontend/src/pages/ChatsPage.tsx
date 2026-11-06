@@ -1937,6 +1937,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   }, [users, chats, user, unreadOnly]);
 
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
+  // #4779, п. 10: вся команда — для блока «Команда» в «Личных»
+  const dmByPeer = new Map(chats.filter((c) => c.kind === 'dm').map((c) => [String(c.peerId), c] as const));
+  const team = unreadOnly ? [] : users.filter((u) => String(u.id) !== String(user?.id) && (u as { isActive?: boolean }).isActive !== false && match(u.fullName));
   const threadsUnread = threads.reduce((sum, t) => sum + (Number(t.unread) || 0), 0);
   /*
     Помощник стоит в том же списке, что и люди: его зовут через «@», как коллегу.
@@ -2022,7 +2025,35 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     favorites: { label: 'Избранное', count: favorites.filter((c) => match(c.title)).length, unread: unreadOf(favorites), rows: favorites.filter((c) => match(c.title)).map((c) => rowOf(c, true)) },
     channels: { label: 'Каналы', count: channels.filter((c) => match(c.title)).length, unread: unreadOf(channels), rows: channels.filter((c) => match(c.title)).map((c) => rowOf(c)) },
     external: { label: 'Внешние', count: external.filter((c) => match(c.title)).length, unread: unreadOf(external), rows: external.filter((c) => match(c.title)).map((c) => rowOf(c)) },
-    dms: { label: 'Личные', count: dms.filter((c) => match(c.title)).length, unread: unreadOf(dms), rows: dms.filter((c) => match(c.title)).map((c) => rowOf(c, true)) },
+    /*
+      #4779, п. 10: в «Личных» — блок «Команда» со всеми сотрудниками, даже если переписки
+      ещё нет. Раньше создатель пространства видел здесь одного человека, а третий
+      сотрудник — двоих: список строился только из уже начатых диалогов.
+    */
+    dms: {
+      label: 'Личные', count: dms.filter((c) => match(c.title)).length + team.length, unread: unreadOf(dms),
+      rows: (
+        <>
+          {dms.filter((c) => match(c.title)).map((c) => rowOf(c, true))}
+          {team.length > 0 && <div className="chat-group-head">Команда</div>}
+          {team.map((u) => {
+            const dm = dmByPeer.get(String(u.id));
+            return (
+              <button key={`team${u.id}`} className={`chat-row${dm && String(dm.id) === String(activeId) ? ' active' : ''}`}
+                onClick={() => (dm ? openChat(dm.id) : void writeTo(String(u.id)))} title={dm ? 'Открыть переписку' : 'Написать впервые'}>
+                <Avatar path={u.avatarUrl ?? null} fallback={initialsOf(u.fullName)} className="avatar-sm" />
+                <span className="chat-row-main">
+                  <span className="chat-row-title">
+                    {u.fullName}
+                    {groupFor(u.id) && <span className="chat-row-group">{groupFor(u.id)}</span>}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </>
+      ),
+    },
     groups: { label: 'Группы и проекты', count: groups.filter((c) => match(c.title)).length, unread: unreadOf(groups), rows: groups.filter((c) => match(c.title)).map((c) => rowOf(c)) },
     others: {
       label: 'Написать впервые', count: others.filter((u) => match(u.fullName)).length, unread: 0,
@@ -2039,8 +2070,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       )),
     },
   };
+  // «Написать впервые» вошло в «Команду» внутри «Личных» (#4779, п. 10)
   const orderedSections = applyOrder(
-    ['favorites', 'channels', 'external', 'dms', 'groups', 'others'].map((section) => ({ section })),
+    ['favorites', 'channels', 'external', 'dms', 'groups'].map((section) => ({ section })),
     { order: sectionPrefs.order },
   ).map((x) => x.section);
   // Заметки — чат с собой: ссылки и мысли на потом складывают именно туда,
