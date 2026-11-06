@@ -140,6 +140,9 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # сеть до российского сервера рвёт молчащие соединения: выкладка ждёт здоровья
+          # минутами без вывода — ssh шлёт пульс сам (05.11)
+          printf 'Host *\n  ServerAliveInterval 20\n  ServerAliveCountMax 15\n' >> ~/.ssh/config
       - name: APK и latest.json → каталог раздачи на сервере
         # Сначала APK, потом latest.json: страница и приложение узнают о версии только
         # тогда, когда файл уже лежит и скачивается. Прежние версии не удаляем — откат

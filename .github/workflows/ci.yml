@@ -146,6 +146,9 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # сеть до российского сервера рвёт молчащие соединения: выкладка ждёт здоровья
+          # минутами без вывода — ssh шлёт пульс сам (05.11)
+          printf 'Host *\n  ServerAliveInterval 20\n  ServerAliveCountMax 15\n' >> ~/.ssh/config
       - name: Build info
         # Версия сборки для консоли разработчика: commit, время коммита и номер прогона.
         run: |
@@ -254,6 +257,9 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # сеть до российского сервера рвёт молчащие соединения: выкладка ждёт здоровья
+          # минутами без вывода — ssh шлёт пульс сам (05.11)
+          printf 'Host *\n  ServerAliveInterval 20\n  ServerAliveCountMax 15\n' >> ~/.ssh/config
       - name: zip и latest.json → nginx/html/app/bundle
         # Сначала zip, потом манифест (через временный файл и mv — атомарно): оболочка
         # узнаёт о версии, когда архив уже скачивается. Храним пять последних архивов —
@@ -305,6 +311,9 @@ jobs:
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # сеть до российского сервера рвёт молчащие соединения: выкладка ждёт здоровья
+          # минутами без вывода — ssh шлёт пульс сам (05.11)
+          printf 'Host *\n  ServerAliveInterval 20\n  ServerAliveCountMax 15\n' >> ~/.ssh/config
       - name: Upload
         run: |
           D=/opt/teamcrm/nginx/html
