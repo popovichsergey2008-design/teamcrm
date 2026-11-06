@@ -87,6 +87,41 @@ export class NotificationCenter {
   }
 
   /**
+   * Адресное событие по задаче (#4799): «помощь нужна от вас», «можно приступать»,
+   * «уточните состояние», срабатывание правила доски. Кому — решает вызывающий; автор
+   * действия себе не пишет. Повтор того же ключа записи не даёт.
+   */
+  async direct(e: {
+    tenantId: string; taskId: string; userIds: string[]; actorId: string | null;
+    title: string; body: string; suffix: string; eventKey?: string;
+  }): Promise<string[]> {
+    const done: string[] = [];
+    try {
+      const card = await this.repo.taskWithPeople(e.tenantId, e.taskId);
+      if (!card) return [];
+      const eventKey = e.eventKey ?? 'task.status';
+      const path = `/projects/${card.project_id}/task/${card.id}`;
+      const to = [...new Set(e.userIds.map(String))].filter((u) => u && u !== String(e.actorId ?? ''));
+      for (const userId of to) {
+        const row = await this.repo.insert({
+          tenantId: e.tenantId, userId, eventKey, title: e.title, body: e.body, path,
+          actorId: e.actorId, taskId: String(card.id),
+          details: { phrase: e.body, assignee: card.assignee_name },
+          dedupKey: centerKey(eventKey, String(card.id), userId, e.suffix),
+        });
+        if (!row) continue;
+        done.push(userId);
+        this.realtime.emitToUsers(e.tenantId, [userId], 'inbox.item', {
+          id: row.id, eventKey, title: e.title, body: e.body, path, toast: true,
+        });
+      }
+    } catch (err) {
+      this.log.warn(`адресное событие по задаче ${e.taskId}: ${(err as Error).message}`);
+    }
+    return done;
+  }
+
+  /**
    * Комментарий в задаче: упомянутым — «упомянул вас», остальным участникам —
    * «оставил комментарий». Упомянуть можно и не участника: увидит он запись, только
    * если задача ему открыта (центр проверяет это при показе).

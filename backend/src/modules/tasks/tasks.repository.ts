@@ -44,6 +44,11 @@ export interface TaskRow {
   directions?: string[];
   /** none | pending — работа сдана и ждёт ответа постановщика. */
   approval_state: string;
+  /** #4799: кто проверяет результат; пусто — постановщик (0243). */
+  reviewer_id?: string | null;
+  /** ТЗ-30: когда сдал на проверку и когда вернули (ставит триггер). */
+  submitted_at?: Date | null;
+  returned_at?: Date | null;
   approval_requested_at: Date | null;
   approval_requested_by: string | null;
   /** Задачу объединили с этой: она остаётся в списках, но помечена и закрыта. */

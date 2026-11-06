@@ -89,7 +89,12 @@ export const REVIEW_SYSTEM = [
   '  "summary": "одно-два предложения: что проверял и к чему пришёл",',
   '  "checked": [{"what": "требование своими словами",',
   '               "status": "ok" | "no_proof" | "no" | "unclear",',
-  '               "evidence": "откуда это видно"}],',
+  '               "evidence": "откуда это видно",',
+  '               "how": "seen" | "reported"}],',
+  '',
+  'Про how (#4798): seen — ты САМ увидел подтверждение на снимке или в файле;',
+  'reported — знаешь об этом только со слов исполнителя (сообщение, отчёт, отметка).',
+  '«Исполнитель написал, что сделал» — это reported, а не seen.',
   '',
   'Про status. ok — есть доказательство, что сделано: видно на снимке, сказано в',
   'переписке, лежит файлом, записано в истории. Если на снимке видно требуемое —',
@@ -190,7 +195,8 @@ export type CheckStatus = 'ok' | 'no_proof' | 'no' | 'unclear';
 export interface ReviewResult {
   verdict: 'done' | 'partial' | 'not_done' | 'cannot_check';
   summary: string;
-  checked: { what: string; status: CheckStatus; evidence: string }[];
+  /** how: seen — проверил сам (снимок, файл); reported — со слов исполнителя (#4798 §7). */
+  checked: { what: string; status: CheckStatus; evidence: string; how?: 'seen' | 'reported' }[];
   missing: string[];
   askHuman: string[];
   confidence: number;
@@ -306,35 +312,62 @@ function sourcesLine(s: ReviewSources): string {
  * Проценты уверенности не показываем: цифра без объяснения создаёт ложное доверие.
  */
 
+/** «1 пункт требует внимания», «3 пункта требуют внимания». */
+function attention(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  const word = m10 === 1 && m100 !== 11 ? 'пункт' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'пункта' : 'пунктов';
+  return `${n} ${word} ${n === 1 || (m10 === 1 && m100 !== 11) ? 'требует' : 'требуют'} внимания`;
+}
+
+/**
+ * Итог одной строкой (#4798 §7): можно ли переходить к ручной проверке и сколько
+ * пунктов требуют внимания. Принимает работу всё равно человек.
+ */
+export function reviewConclusion(r: ReviewResult): string {
+  const open = r.checked.filter((c) => c.status !== 'ok').length;
+  if (r.verdict === 'not_done') return 'Подтверждений выполнения нет — уточните у исполнителя, прежде чем проверять.';
+  if (r.checked.length && !r.checked.some((c) => c.status === 'ok')) return 'Подтвердить по материалам нечем — проверьте вручную по списку выше.';
+  if (!open) return 'Можно переходить к ручной проверке.';
+  return `Можно переходить к ручной проверке. ${attention(open)[0].toUpperCase()}${attention(open).slice(1)}.`;
+}
+
+const HOW: Record<string, string> = { seen: ' (вижу сам)', reported: ' (со слов исполнителя)' };
+
 export function formatReview(r: ReviewResult, sources?: ReviewSources): string {
   const lines: string[] = [`${VERDICT_TITLE[r.verdict]}.`];
   if (r.summary) lines.push(r.summary);
+  const ok = r.checked.filter((c) => c.status === 'ok');
+  const open = r.checked.filter((c) => c.status !== 'ok');
+
   /*
-    Строка источников — против недоверия к проверке.
-
-    Заказчик: «проверяет некорректно». Отчёт объявлял «не выполнено», не показав, по
-    чему судил, и выглядел как приговор по одному пустому чек-листу. Теперь видно,
-    что именно было под рукой, и спорить можно предметно.
+    «Что проверено» — сначала ЧТО ИИ ВИДЕЛ, потом что подтвердилось (#4798 §7): человек
+    должен понимать границы проверки. Строка источников — против недоверия: заказчик
+    говорил «проверяет некорректно», когда вывод не показывал, по чему судил.
   */
-  if (sources) lines.push(sourcesLine(sources));
-
-  if (r.checked.length) {
-    lines.push('', 'Что проверял:');
-    for (const c of r.checked.slice(0, 12)) {
-      const tail = c.evidence ? ` — ${c.evidence}` : '';
-      lines.push(`${MARK[c.status] ?? '?'} ${c.what}${tail}`);
-    }
+  lines.push('', 'Что проверено:');
+  lines.push('— Прочитано описание задачи.');
+  if (sources) lines.push(`— ${sourcesLine(sources)}`);
+  if (r.checked.length) lines.push(`— Подтверждение нашёл для ${ok.length} из ${r.checked.length} требований.`);
+  for (const c of ok.slice(0, 12)) {
+    const tail = c.evidence ? ` — ${c.evidence}` : '';
+    lines.push(`${MARK[c.status]} ${c.what}${tail}${HOW[c.how ?? ''] ?? ''}`);
   }
-  if (r.missing.length) {
-    lines.push('', 'Чего не хватает:');
+  if (open.length || r.missing.length) {
+    lines.push('', 'Что не удалось проверить:');
+    for (const c of open.slice(0, 12)) {
+      const tail = c.evidence ? ` — ${c.evidence}` : '';
+      lines.push(`${MARK[c.status] ?? '?'} ${c.what}${tail}${HOW[c.how ?? ''] ?? ''}`);
+    }
     for (const m of r.missing.slice(0, 8)) lines.push(`— ${m}`);
   }
   if (r.askHuman.length) {
     lines.push('', 'Посмотрите сами:');
     for (const a of r.askHuman.slice(0, 8)) lines.push(`— ${a}`);
   }
+  lines.push('', `Итог: ${reviewConclusion(r)}`);
   // Проверка ИИ — мнение, а не приёмка: решение о закрытии задачи остаётся за людьми.
-  lines.push('', 'Это проверка ИИ по материалам задачи, а не приёмка работы.');
+  lines.push('Это проверка ИИ по материалам задачи, а не приёмка работы.');
   return lines.join('\n');
 }
 
@@ -355,6 +388,7 @@ export function parseReview(raw: string): ReviewResult | null {
       what: String(c?.what ?? '').trim(),
       status: (statuses.includes(String(c?.status) as CheckStatus) ? String(c?.status) : 'unclear') as CheckStatus,
       evidence: String(c?.evidence ?? '').trim(),
+      how: c?.how === 'seen' || c?.how === 'reported' ? (c.how as 'seen' | 'reported') : undefined,
     })).filter((c) => c.what)
     : [];
 

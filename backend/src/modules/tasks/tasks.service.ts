@@ -826,6 +826,32 @@ export class TasksService {
    */
   async approve(tenantId: string, id: string, actor: { userId: string; role: string }): Promise<TaskRow> {
     const task = await this.gateApproval(tenantId, id, actor);
+    return this.closeAccepted(tenantId, task, actor);
+  }
+
+  /**
+   * #4799 BOARD02: проверяющий принял результат — из согласования или из этапа проверки
+   * («На тестировании»). Закрывает задачу так же, как «Принять работу».
+   */
+  async acceptReview(tenantId: string, id: string, actor: { userId: string; role: string }): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    if (task.closed_at) throw AppException.conflict('Результат уже принят', { reason: 'decided' });
+    this.assertCanDecide(task, actor);
+    return this.closeAccepted(tenantId, task, actor);
+  }
+
+  /** #4799 BOARD02: вернуть на доработку из этапа проверки — причина обязательна. */
+  async returnReview(tenantId: string, id: string, actor: { userId: string; role: string }, reason: string): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    if (task.closed_at) throw AppException.conflict('Результат уже принят', { reason: 'decided' });
+    this.assertCanDecide(task, actor);
+    return this.sendBack(tenantId, task, actor, reason);
+  }
+
+  private async closeAccepted(tenantId: string, task: TaskRow, actor: { userId: string; role: string }): Promise<TaskRow> {
+    const id = String(task.id);
     const columns = await this.projects.listColumns(tenantId, task.project_id);
     const done = columns.find((c) => isDoneColumn(c.name));
 
@@ -859,6 +885,11 @@ export class TasksService {
     tenantId: string, id: string, actor: { userId: string; role: string }, reason: string,
   ): Promise<TaskRow> {
     const task = await this.gateApproval(tenantId, id, actor);
+    return this.sendBack(tenantId, task, actor, reason);
+  }
+
+  private async sendBack(tenantId: string, task: TaskRow, actor: { userId: string; role: string }, reason: string): Promise<TaskRow> {
+    const id = String(task.id);
     const note = String(reason ?? '').trim();
     if (!note) throw AppException.validation('Напишите, что доработать');
 
@@ -1164,7 +1195,9 @@ export class TasksService {
 
   private assertCanDecide(task: TaskRow, actor: { userId: string; role: string }): void {
     const isManager = task.created_by && String(task.created_by) === String(actor.userId);
-    if (!isManager && actor.role !== 'owner') {
+    // #4799: назначенный проверяющий решает наравне с постановщиком
+    const isReviewer = task.reviewer_id && String(task.reviewer_id) === String(actor.userId);
+    if (!isManager && !isReviewer && actor.role !== 'owner') {
       throw AppException.forbidden('Решение принимает постановщик задачи');
     }
   }

@@ -5,6 +5,7 @@ import { TasksRepository, TaskRow } from '../tasks/tasks.repository';
 import { TaskReadsRepository } from '../tasks/task-reads.repository';
 import { TaskCardRepository } from '../taskcard/taskcard.repository';
 import { UsersRepository } from '../users/users.repository';
+import { FlowRepository } from '../flow/flow.repository';
 
 /** client-представление задачи — без финансов и внутренних метрик (фичи №9/№8).
  *  Дата прогноза и цвет светофора клиенту видны; cost_current и risk_pct — нет. */
@@ -23,6 +24,7 @@ export class BoardService {
     private readonly card: TaskCardRepository,
     private readonly users: UsersRepository,
     private readonly reads: TaskReadsRepository,
+    private readonly flow: FlowRepository,
   ) {}
 
   async getBoard(tenantId: string, projectId: string, role: string, userId: string) {
@@ -75,8 +77,30 @@ export class BoardService {
       unreadByTask.set(String(u.task_id), Number(u.n));
     }
 
+    /*
+      #4798 / #4799: чей сейчас ход и почему задача стоит — препятствие, ожидание другой
+      задачи, сколько она на этапе и когда по ней было хоть что-то. Три запроса на доску.
+    */
+    const [blockers, links, timing] = await Promise.all([
+      this.flow.blockersByProject(tenantId, projectId),
+      this.flow.linksByProject(tenantId, projectId),
+      this.flow.timingByProject(tenantId, projectId),
+    ]);
+    const blockerByTask = new Map(blockers.map((b) => [String(b.task_id), {
+      reason: b.reason, need: b.need, helper_id: b.helper_id, helper_name: b.helper_name,
+      next_step: b.next_step, due_on: b.due_on, since: b.created_at,
+    }]));
+    const waitsByTask = new Map<string, { id: string; title: string; closed: boolean; deadline_at: Date | null }[]>();
+    for (const l of links) {
+      const arr = waitsByTask.get(String(l.task_id)) ?? [];
+      arr.push({ id: l.depends_on_id, title: l.title, closed: l.closed, deadline_at: l.deadline_at });
+      waitsByTask.set(String(l.task_id), arr);
+    }
+    const timingByTask = new Map(timing.map((x) => [String(x.task_id), x]));
+
     const enrich = (t: any) => {
       const c = countsByTask.get(t.id);
+      const tm = timingByTask.get(String(t.id));
       return {
         ...t,
         assignee_name: nameOf(t.assignee_id),
@@ -91,6 +115,12 @@ export class BoardService {
         checklistTotal: c ? Number(c.cl_total) : 0,
         checklistDone: c ? Number(c.cl_done) : 0,
         unread: unreadByTask.get(String(t.id)) ?? 0,
+        reviewer_name: nameOf(t.reviewer_id ?? t.created_by),
+        blocker: blockerByTask.get(String(t.id)) ?? null,
+        waits_for: waitsByTask.get(String(t.id)) ?? [],
+        stage_since: tm?.stage_since ?? null,
+        last_activity_at: tm?.last_activity_at ?? null,
+        handoff_version: tm?.handoff_version ?? null,
       };
     };
 

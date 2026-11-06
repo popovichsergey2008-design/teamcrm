@@ -30,6 +30,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
 import { AnthillModule } from './modules/anthill/anthill.module';
 import { DealsModule } from './modules/deals/deals.module';
 import { BoardModule } from './modules/board/board.module';
+import { FlowModule } from './modules/flow/flow.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { EconomicsModule } from './modules/economics/economics.module';
 import { TimeTrackingModule } from './modules/timetracking/timetracking.module';
@@ -134,6 +135,7 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     DiagModule,
     DealsModule,
     BoardModule,
+    FlowModule,
     RealtimeModule,
     EconomicsModule,
     TimeTrackingModule,

@@ -6,7 +6,7 @@ import { FilesService } from '../files/files.service';
 import { detectKind, extractText } from '../knowledge/file-text';
 import { TaskActivityRepository } from '../tasks/task-activity.repository';
 import { KnowledgeService } from '../knowledge/knowledge.service';
-import {
+import { reviewConclusion,
   EvidenceNeed, formatReview, parseNeeds, parseReview, REVIEW_FINAL, REVIEW_SYSTEM, ReviewResult,
   ReviewSources, settleVerdict,
 } from './task-review.prompt';
@@ -273,7 +273,11 @@ export class TaskReviewService {
     const body = formatReview(parsed, sources);
     await this.saveAiMessage(tenantId, taskId, userId, body);
     // В историю — факт и вывод: через неделю видно, кто и когда просил проверку.
-    await this.activity.log(tenantId, taskId, userId, 'ai_review', { verdict: parsed.verdict });
+    // #4799: вывод целиком — его показывает очередь решений рядом с результатом
+    await this.activity.log(tenantId, taskId, userId, 'ai_review', {
+      verdict: parsed.verdict, summary: parsed.summary, checked: parsed.checked.slice(0, 12),
+      missing: parsed.missing.slice(0, 8), askHuman: parsed.askHuman.slice(0, 8), conclusion: reviewConclusion(parsed),
+    });
 
     return { ...parsed, body };
   }
