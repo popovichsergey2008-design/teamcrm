@@ -749,22 +749,34 @@ function ActionForm({ action, onSave, onCancel }: {
  */
 function Feedback({ voted, onVote, action = false }: { voted: 1 | -1 | null; onVote: (v: 1 | -1, reason?: string) => void; action?: boolean }) {
   const [asking, setAsking] = useState(false);
+  /*
+    Нажатая кнопка видна сразу (заказчик: «на эти кнопки реакции никакой»): оценка
+    уходила на сервер, но стиль «нажато» был только у чата задачи. Стиль — строкой:
+    app.css первого экрана у потолка.
+  */
+  const on = { background: 'var(--accent-soft)', color: 'var(--accent)', borderColor: 'var(--accent)' };
   return (
     <div className="anthill-feedback">
       <button
         className={`msg-icon${voted === 1 ? ' active' : ''}`}
         onClick={() => { setAsking(false); onVote(1); }}
-        title="Полезный ответ" aria-label="Полезный ответ"
+        title="Полезный ответ" aria-label="Полезный ответ" aria-pressed={voted === 1}
+        style={voted === 1 ? on : undefined}
       >
         <Icon name="check-circle" size={13} />
       </button>
       <button
         className={`msg-icon${voted === -1 ? ' active' : ''}`}
         onClick={() => setAsking((v) => !v)}
-        title="Ответ не подошёл" aria-label="Ответ не подошёл" aria-expanded={asking}
+        title="Ответ не подошёл" aria-label="Ответ не подошёл" aria-expanded={asking} aria-pressed={voted === -1}
+        style={voted === -1 || asking ? on : undefined}
       >
         <Icon name="alert" size={13} />
       </button>
+      {!asking && voted !== null && (
+        <span className="dim" role="status" style={{ fontSize: 12 }}>{voted === 1 ? 'Спасибо, учту' : 'Спасибо, разберёмся'}</span>
+      )}
+      {asking && <span className="dim" style={{ fontSize: 12 }}>Что не так?</span>}
       {asking && (
         <span className="anthill-reasons">
           {(action ? ACTION_REASONS : REASONS).map((r) => (
