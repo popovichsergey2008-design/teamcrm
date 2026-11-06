@@ -16,7 +16,8 @@ import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
 import { PRESENCE_CHANGED } from './MyStatusBar';
-import { FocusMenu, focusLine } from './FocusMenu';
+import { FocusMenu, focusLine, focusSessionLine } from './FocusMenu';
+import { useFocusSession } from '../hooks/useFocusSession';
 import { humanMinutes } from '../lib/human-minutes';
 import { lazyComponent } from '../lib/lazy';
 
@@ -239,6 +240,10 @@ export function Sidebar({
     return next;
   });
   const [focus, setFocus] = useState<Focus | null>(null);
+  // #4777: глубокий фокус сессией (с задачами) важнее ручного статуса — он и в строке под именем
+  const { session: focusSession, receivedAt: focusAt } = useFocusSession();
+  const inSession = !!focusSession && !focusSession.finished;
+  const statusLine = inSession ? focusSessionLine(focusSession, focusAt) : focusLine(focus);
   const [secretary, setSecretary] = useState<{ actions: number; savedMinutes: number } | null>(null);
   /** Сколько предложений секретаря ждут решения (ТЗ-21) — живьём по событию. */
   const [waiting, setWaiting] = useState(0);
@@ -829,11 +834,11 @@ export function Sidebar({
               aria-expanded={menuOpen}
             >
               <Avatar path={avatarPath} fallback={initialsOf(user.fullName)} className="avatar-sm" />
-              <span className={`nav-dot nav-dot-${focus?.kind ?? 'free'}`} aria-hidden="true" />
+              <span className={`nav-dot nav-dot-${inSession ? 'deep' : focus?.kind ?? 'free'}`} aria-hidden="true" />
               <span className="nav-user-text">
                 <span className="nav-user-name">{user.fullName}</span>
-                <span className="nav-user-role" title={organizations.length > 1 ? `Пространство: ${orgName}` : focusLine(focus)}>
-                  {organizations.length > 1 ? orgName : focusLine(focus)}
+                <span className="nav-user-role" title={organizations.length > 1 ? `Пространство: ${orgName} · ${statusLine}` : statusLine}>
+                  {organizations.length > 1 && !inSession ? orgName : statusLine}
                 </span>
               </span>
             </button>

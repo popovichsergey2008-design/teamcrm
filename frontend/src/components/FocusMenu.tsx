@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
+import type { FocusSession } from '../lib/api';
 import { lazyComponent } from '../lib/lazy';
 
 /*
@@ -59,6 +60,19 @@ export function focusLine(focus: Focus | null): string {
   const hh = String(till.getHours()).padStart(2, '0');
   const mm = String(till.getMinutes()).padStart(2, '0');
   return `${what} до ${hh}:${mm}`;
+}
+
+/**
+ * #4777: идёт глубокий фокус — статус говорит, до скольки и над какими задачами:
+ * «В фокусе до 15:20 · №1326, №1350». Конец — по остатку от сервера, а не по плану:
+ * после паузы план сдвигается.
+ */
+export function focusSessionLine(s: FocusSession, receivedAt: number): string {
+  const tasks = s.tasks?.length ? s.tasks : s.task ? [s.task] : [];
+  const nums = tasks.length ? ` · ${tasks.map((t) => `№${t.id}`).join(', ')}` : '';
+  if (s.status === 'paused') return `Фокус на паузе${nums}`;
+  const end = new Date(receivedAt + s.remainingSeconds * 1000);
+  return `В фокусе до ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}${nums}`;
 }
 
 export function FocusMenu({ focus, onChange }: {
