@@ -12,7 +12,7 @@ import { SecurityService } from '../security/security.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { UsersRepository } from '../users/users.repository';
-import { matchUserInText, normalizeDeadline } from './nl.match';
+import { matchUserInText, namesakesInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
 import { MIN_CONFIDENCE, SURE_CONFIDENCE } from './assignee-pick';
 import { Department, departmentOf, isDepartment, isSkill, Skill, skillsCatalog } from '../team/skills';
@@ -56,6 +56,8 @@ export interface NlDraft {
   task?: {
     title: string; description: string | null;
     projectId: string | null; projectName: string | null;
+    /** #4798 §15: тёзки, названные по имени, — человек выбирает, кого имел в виду. */
+    assigneeChoices?: { id: string; name: string }[];
     /** Почему выбран этот проект: человек должен видеть, откуда он взялся. */
     projectHint: string;
     /**
@@ -442,8 +444,11 @@ export class NlService {
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
       // — тогда ищем имя в команде сами.
       const namedId = matchUserInText(clean, users) ?? (around ? matchUserInText(around, users) : null);
-      const assigneeId = namedId ?? idIn(t.assigneeId, userSet);
-      if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
+      // #4798 §15: «Анне» при двух Аннах — не угадываем, а спрашиваем, какую
+      const namesakes = namedId ? [] : namesakesInText(clean, users);
+      const assigneeId = namesakes.length ? null : namedId ?? idIn(t.assigneeId, userSet);
+      if (namesakes.length) warnings.push(`В команде несколько человек с именем «${namesakes[0].name.split(' ')[0]}» — выберите исполнителя`);
+      else if (t.assigneeId && !assigneeId) warnings.push('Исполнитель не распознан');
       // Срочность и срок модель нередко пропускает, хотя они сказаны прямым текстом
       // («срочно», «к пятнице»), — то же самое разбирают правила.
       const priority = PRIORITIES.includes(String(t.priority)) ? String(t.priority)
@@ -469,6 +474,8 @@ export class NlService {
         description: t.description ? String(t.description) : null,
         projectId, projectName: projectId ? projectSet.get(projectId)! : null,
         projectHint: auto ? auto.why : projectId && resolved ? resolved.hint : '',
+        // тёзки: какую из них имели в виду — человек выбирает в черновике
+        assigneeChoices: namesakes.length ? namesakes : undefined,
         projectResolution: resolved ? {
           predictedProjectId: resolved.projectId, confidence: resolved.confidence, level: resolved.level,
           resolution: resolved.resolution, reasonCodes: resolved.reasonCodes, hint: resolved.hint,

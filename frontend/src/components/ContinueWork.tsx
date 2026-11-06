@@ -78,7 +78,11 @@ export default function ContinueWork({ onGo }: { onGo: () => void }) {
           <li key={it.key}>
             <button type="button" className="sbl-item" title={`${it.hint}: ${it.text}`} onClick={() => { onGo(); it.go(); }}>
               <Icon name={it.icon} size={15} />
-              <span className="sbl-text">{it.text}</span>
+              {/* #4799 NAV02: у каждой строки — почему она здесь: таймер, черновик, недавняя задача */}
+              <span className="sbl-two">
+                <span className="sbl-text">{it.text}</span>
+                <span className="sbl-why">{it.hint}</span>
+              </span>
             </button>
           </li>
         ))}

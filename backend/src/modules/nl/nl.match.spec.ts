@@ -1,4 +1,4 @@
-import { matchUserInText, normalizeDeadline, usersNamedInText } from './nl.match';
+import { matchUserInText, namesakesInText, normalizeDeadline, usersNamedInText } from './nl.match';
 
 const USERS = [
   { id: '2', name: 'Сергей Попович' },
@@ -87,5 +87,17 @@ describe('#4788 — исполнитель по уменьшительному �
   it('обычные слова не принимаются за имена', () => {
     expect(matchUserInText('обновить бор на складе и костюм', team)).toBeNull();
     expect(matchUserInText('подготовить отчёт по продажам до пятницы', team)).toBeNull();
+  });
+});
+
+describe('тёзки в команде (#4798 §15)', () => {
+  const TEAM = [{ id: '1', name: 'Анна Иванова' }, { id: '2', name: 'Анна Петрова' }, { id: '3', name: 'Борис Чест' }];
+  it('«Анне» при двух Аннах — спросить, какую', () => {
+    expect(namesakesInText('Анне до пятницы подготовить три варианта первого экрана', TEAM).map((u) => u.id)).toEqual(['1', '2']);
+    expect(matchUserInText('Анне до пятницы подготовить макет', TEAM)).toBeNull();
+  });
+  it('по фамилии или единственному имени — неоднозначности нет', () => {
+    expect(namesakesInText('Петровой подготовить макет', TEAM)).toEqual([]);
+    expect(namesakesInText('Борису проверить', TEAM)).toEqual([]);
   });
 });

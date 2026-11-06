@@ -33,6 +33,8 @@ interface Props {
   projectId: string;
   columnId: string;
   columnName: string;
+  /** #4799 §2.4: куда попадёт задача — проект и колонка видны до сохранения. */
+  projectName?: string;
   users: User[];
   defaultManagerId?: string;
   onClose: () => void;
@@ -64,7 +66,7 @@ const PRIORITY_OPTIONS = [
  * иначе задачу приходится заводить в два захода (создал, открыл, дозаполнил).
  * Всё уходит одним запросом: задача с половиной полей хуже, чем ошибка целиком.
  */
-export function TaskCreateModal({ projectId, columnId, columnName, users, defaultManagerId, onClose, onCreated, draft }: Props) {
+export function TaskCreateModal({ projectId, columnId, columnName, projectName, users, defaultManagerId, onClose, onCreated, draft }: Props) {
   const { user } = useAuth();
   // разбор голоса сорвался в прошлый раз — сказанное возвращается в название (#4668)
   const [title, setTitle] = useState(draft?.title || draft?.speech || '');
@@ -478,7 +480,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, users, defaul
         <header className="ui-modal-head">
           <div className="ui-modal-title-wrap">
             <h2 id="task-create-title" className="ui-modal-title">Новая задача</h2>
-            <span className="ui-modal-sub">в колонку «{columnName}»</span>
+            <span className="ui-modal-sub">{projectName ? `Проект «${projectName}» · ` : ''}колонка «{columnName}»</span>
           </div>
           <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
         </header>

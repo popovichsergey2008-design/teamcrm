@@ -1180,6 +1180,15 @@ function DraftCard({ draft, created, busy, onPatchTask, onPatchDeal, onPatchDraf
         {draft.task.projectHint && draft.task.projectId && draft.task.projectId === draft.task.projectResolution?.predictedProjectId && (
           <div className="dim nl-hint"><Icon name="sparkles" size={11} /> Определено: {draft.task.projectHint}</div>
         )}
+        {/* #4798 §15: две Анны в команде — какую имели в виду */}
+        {!draft.task.assigneeId && (draft.task.assigneeChoices?.length ?? 0) > 1 && (
+          <div className="nl-project-pick" role="group" aria-label="Кого вы имели в виду">
+            <span className="nl-hint">Кого вы имели в виду?</span>
+            {draft.task.assigneeChoices.map((c: { id: string; name: string }) => (
+              <button key={c.id} type="button" className="nl-pchip" onClick={() => onPatchTask({ assigneeId: String(c.id) })}>{c.name}</button>
+            ))}
+          </div>
+        )}
         {/* ТЗ-31: не уверен — «К какому проекту относится задача?» и 2–3 варианта кнопками */}
         {!draft.task.projectId && (draft.task.projectResolution?.candidates?.length ?? 0) > 0 && (
           <div className="nl-project-pick" role="group" aria-label="К какому проекту относится задача">

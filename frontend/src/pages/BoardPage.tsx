@@ -53,13 +53,34 @@ const HandoffDialog = lazyComponent(() => import('../components/task-flow/Handof
 const RulesDialog = lazyComponent(() => import('../components/board/RulesDialog').then((m) => m.RulesDialog));
 
 /** Личный вид доски: ширина колонок, плотность карточек, свёрнутые колонки (#4798 §14, §20). */
-interface BoardUi { w: 'narrow' | 'normal' | 'wide'; dense: boolean; col: Record<string, string[]> }
+interface BoardUi { w: 'narrow' | 'normal' | 'wide'; dense: boolean; col: Record<string, string[]>; sort: BoardSort }
+/** Порядок карточек в колонке (#4798 §14): вручную (как перетащили) или по признаку — только показ. */
+type BoardSort = 'manual' | 'deadline' | 'priority' | 'updated';
+const SORTS: { key: BoardSort; label: string }[] = [
+  { key: 'manual', label: 'Порядок: как расставили' },
+  { key: 'deadline', label: 'Порядок: по сроку' },
+  { key: 'priority', label: 'Порядок: по приоритету' },
+  { key: 'updated', label: 'Порядок: недавно изменённые сверху' },
+];
+const PRIO_RANK: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+function sortTasks(tasks: Task[], sort: BoardSort): Task[] {
+  if (sort === 'manual') return tasks;
+  const time = (s?: string | null) => (s ? new Date(s).getTime() : Number.POSITIVE_INFINITY);
+  const by: Record<Exclude<BoardSort, 'manual'>, (a: Task, b: Task) => number> = {
+    deadline: (a, b) => time(a.deadline_at) - time(b.deadline_at),
+    priority: (a, b) => (PRIO_RANK[a.priority ?? 'normal'] ?? 2) - (PRIO_RANK[b.priority ?? 'normal'] ?? 2) || time(a.deadline_at) - time(b.deadline_at),
+    // свежие сверху, задачи без событий — внизу
+    updated: (a, b) => (b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0) - (a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0),
+  };
+  return [...tasks].sort(by[sort]);
+}
 const uiKey = (uid: string) => `qevo.board.ui:${uid}`;
 function readUi(uid: string): BoardUi {
   try {
     const s = JSON.parse(localStorage.getItem(uiKey(uid)) ?? '{}') as Partial<BoardUi>;
-    return { w: s.w === 'narrow' || s.w === 'wide' ? s.w : 'normal', dense: !!s.dense, col: s.col ?? {} };
-  } catch { return { w: 'normal', dense: false, col: {} }; }
+    const sort = SORTS.some((x) => x.key === s.sort) ? s.sort! : 'manual';
+    return { w: s.w === 'narrow' || s.w === 'wide' ? s.w : 'normal', dense: !!s.dense, col: s.col ?? {}, sort };
+  } catch { return { w: 'normal', dense: false, col: {}, sort: 'manual' }; }
 }
 function writeUi(uid: string, ui: BoardUi) {
   try { localStorage.setItem(uiKey(uid), JSON.stringify(ui)); } catch { /* без хранилища — до перезагрузки */ }
@@ -477,9 +498,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
 
   const deleteColumn = async (columnId: string, name: string) => {
     if (!selected) return;
+    // #4799 §4.2: ничего молча — сколько задач и куда именно они переедут
+    const col = board?.columns.find((c) => String(c.id) === String(columnId));
+    const first = board?.columns.find((c) => String(c.id) !== String(columnId));
+    const n = col?.tasks.length ?? 0;
     if (!(await confirmAction({
       title: `Удалить колонку «${name}»?`,
-      description: 'Её задачи переедут в первую колонку доски.',
+      description: n
+        ? `В колонке задач: ${n}. Они не удалятся — переедут в «${first?.name ?? 'первую колонку'}» со всей перепиской и историей.`
+        : 'Колонка пустая — задачи не затронуты.',
       danger: true,
     }))) return;
     try {
@@ -540,9 +567,12 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       const target = board?.columns.find((c) => c.id === columnId);
       const from = board?.columns.find((c) => c.id === current?.column_id);
       const opts = toFilter(query, String(user?.id ?? ''));
-      const position = !how.raw && user && target && filterActive(opts)
-        ? realPosition(target.tasks, opts, visibleIndex, target.stage_type)
-        : visibleIndex;
+      // при порядке «по сроку» и т. п. место в колонке не выбирают — карточка встаёт в конец
+      const position = !how.raw && target && ui.sort !== 'manual'
+        ? target.tasks.length
+        : !how.raw && user && target && filterActive(opts)
+          ? realPosition(target.tasks, opts, visibleIndex, target.stage_type)
+          : visibleIndex;
       /*
         Сдача на проверку (#4799 BOARD03): исполнитель переносит свою задачу в колонку
         проверки — коротко «что сделано, где посмотреть». Та же задача, тот же срок.
@@ -586,7 +616,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         if (selected) api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b }));
       }
     },
-    [board, selected, query, user],
+    [board, selected, query, user, ui.sort],
   );
 
   const toggleTimer = useCallback(
@@ -635,6 +665,35 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, query, uid, shownCount]);
   const hiddenLabels = useMemo(() => commonLabels(board?.columns.flatMap((c) => c.tasks) ?? []), [board]);
+  /*
+    Инфоцентр: «Что сейчас важно по проекту?» (#4798 §17) — по фактам доски, без
+    догадок. Каждый пункт открывает свой срез; нет сигналов — так и сказано.
+  */
+  const signals = useMemo(() => {
+    if (!board || !user) return [];
+    const all = board.columns.flatMap((c) => c.tasks);
+    const plural = (n: number, one: string, few: string, many: string) => {
+      const m10 = n % 10; const m100 = n % 100;
+      return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+    };
+    const open = (patch: Partial<BoardQuery>) => () => setQuery({ ...query, scope: 'all', quick: [], ...patch } as BoardQuery);
+    const out: { key: string; text: string; onOpen: () => void }[] = [];
+    const decide = counts.quick.decide;
+    if (decide) out.push({ key: 'decide', text: `${decide} ${plural(decide, 'задача ждёт', 'задачи ждут', 'задач ждут')} вашего решения`, onOpen: () => setReviewOpen(true) });
+    const noInfo = all.filter((t) => t.is_blocked && t.blocker?.reason === 'no_info').length;
+    if (noInfo) out.push({ key: 'noinfo', text: `Для ${noInfo} ${plural(noInfo, 'задачи', 'задач', 'задач')} не хватает информации`, onOpen: open({ quick: ['blocked'] }) });
+    const blocked = all.filter((t) => t.is_blocked && t.blocker?.reason !== 'no_info').length;
+    if (blocked) out.push({ key: 'blocked', text: `${blocked} ${plural(blocked, 'задача стоит', 'задачи стоят', 'задач стоят')} из-за препятствий`, onOpen: open({ quick: ['blocked'] }) });
+    const answer = counts.quick.answer;
+    if (answer) out.push({ key: 'answer', text: `В ${answer} ${plural(answer, 'задаче', 'задачах', 'задачах')} помощи ждут от вас`, onOpen: open({ quick: ['answer'] }) });
+    const since = Date.now() - 36 * 3600_000;
+    const fromCalls = all.filter((t) => !t.closed_at && t.audio_proof_sec && t.created_at && new Date(t.created_at).getTime() > since).length;
+    if (fromCalls) out.push({ key: 'calls', text: `Из вчерашних созвонов — ${fromCalls} ${plural(fromCalls, 'новое поручение', 'новых поручения', 'новых поручений')}`, onOpen: open({}) });
+    const overdue = counts.quick.overdue;
+    if (overdue) out.push({ key: 'overdue', text: `${overdue} ${plural(overdue, 'задача просрочена', 'задачи просрочены', 'задач просрочено')}`, onOpen: open({ quick: ['overdue'] }) });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, counts, user?.id]);
   const boardLabels = useMemo(() => [...new Map((board?.columns.flatMap((c) => c.tasks) ?? [])
     .flatMap((t) => t.labels ?? []).map((l) => [String(l.id), { id: String(l.id), name: l.name }])).values()], [board]);
 
@@ -689,9 +748,12 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, board?.columns.length]);
 
-  const shownBoard = board && user && filterActive(filterOpts)
+  const filtered = board && user && filterActive(filterOpts)
     ? { ...board, columns: filterBoard(board.columns, filterOpts, view === 'board') }
     : board;
+  const shownBoard = filtered && ui.sort !== 'manual'
+    ? { ...filtered, columns: filtered.columns.map((c) => ({ ...c, tasks: sortTasks(c.tasks, ui.sort) })) }
+    : filtered;
 
 
   return (
@@ -856,6 +918,13 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                           {w === 'narrow' ? 'Колонки узкие' : w === 'wide' ? 'Колонки широкие' : 'Колонки обычные'}
                         </MenuItem>
                       ))}
+                      <MenuSeparator />
+                      {SORTS.map((x) => (
+                        <MenuItem key={x.key} onSelect={() => setUi({ sort: x.key })} icon={<Icon name={ui.sort === x.key ? 'check' : 'sort'} size={15} />}>
+                          {x.label}
+                        </MenuItem>
+                      ))}
+                      <MenuSeparator />
                       <MenuItem onSelect={() => setUi({ dense: !ui.dense })} icon={<Icon name={ui.dense ? 'check' : 'list'} size={15} />}>
                         Компактные карточки
                       </MenuItem>
@@ -901,7 +970,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               <div className={`board-columns w-${ui.w}${ui.dense ? ' board-dense' : ''}`} ref={columnsRef}>
                 {/* Инфоцентр — перед колонками, но НЕ среди board.columns: «первая колонка»,
                     порядок и перенос карточек его не видят. Клиенту не показываем. */}
-                {!isClient && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} />}
+                {!isClient && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} signals={signals} />}
                 {(shownBoard ?? board).columns.map((col, idx) => (
                   <ColumnView
                     key={col.id}
@@ -967,6 +1036,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
           projectId={selected}
           columnId={createIn.columnId}
           columnName={createIn.columnName}
+          projectName={board?.project.name}
           users={users}
           defaultManagerId={user?.id}
           onClose={() => setCreateIn(null)}

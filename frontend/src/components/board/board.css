@@ -75,6 +75,9 @@
 .col-wip { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); padding: 0 14px 4px; }
 .col-wip.is-over { color: var(--warn-text, var(--text)); }
 
+/* #4799 BOARD11: плашка «Забота 24/7» внизу справа не закрывает «+ Задача» в колонках */
+@media (min-width: 721px) { .board-v2 .board-columns { padding-bottom: 52px; } }
+
 /* отменить перенос */
 .bb-undo {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;

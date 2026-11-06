@@ -195,8 +195,14 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   const inputRef = useRef<HTMLInputElement>(null);
   // Распознанное дописываем в строку, а не заменяем ею: человек мог начать печатать,
   // а договорить голосом.
+  /*
+    #4799 §2.3: продиктованное — только поиск. Вопрос ИИ и создание задачи после голоса —
+    отдельным нажатием («Спросить ИИ», «Создать задачу»), сами не отправляются.
+  */
+  const [fromVoice, setFromVoice] = useState(false);
   const voice = useVoiceInput((text) => {
     setQ((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+    setFromVoice(true);
     inputRef.current?.focus();
   });
 
@@ -385,7 +391,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     finally { setThinking(null); }
   };
 
-  const question = asked ?? (isQuestion(q.trim()) ? q.trim() : null);
+  const question = asked ?? (!fromVoice && isQuestion(q.trim()) ? q.trim() : null);
 
   const items = useMemo<Item[]>(() => {
     const query = norm(q);
@@ -628,7 +634,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
             className="palette-input"
             autoFocus
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => { setQ(e.target.value); setFromVoice(false); }}
             ref={inputRef}
             onKeyDown={onKey}
             onKeyUp={(e) => { if (e.key === ' ' && voice.recording) { e.preventDefault(); voice.stop(); } }}

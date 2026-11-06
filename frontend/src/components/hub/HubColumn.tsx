@@ -60,10 +60,14 @@ function Clamp({ className, children }: { className: string; children: ReactNode
   );
 }
 
-export function HubColumn({ projectId, ownerId, variant = 'column' }: {
+/** Пункт «Что сейчас важно» (#4798 §17): считается доской по фактам и открывает свой срез. */
+export interface HubSignal { key: string; text: string; onOpen: () => void }
+
+export function HubColumn({ projectId, ownerId, variant = 'column', signals }: {
   projectId: string;
   ownerId?: string | null;
   variant?: 'column' | 'button';
+  signals?: HubSignal[];
 }) {
   const { user } = useAuth();
   const phone = useIsPhone();
@@ -152,6 +156,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
         >
           <Icon name="book" size={16} />
           {total > 0 && <span className="hub-strip-count" aria-hidden="true">+{total}</span>}
+          {!!signals?.length && <span className="hub-strip-count" title={signals.map((s) => s.text).join('\n')} aria-hidden="true">{signals.length}</span>}
           <span className="hub-strip-label" aria-hidden="true">Инфоцентр</span>
         </button>
         {overlays}
@@ -204,6 +209,19 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
             <p className="hub-err" role="alert">{error}</p>
             <Button variant="outline" size="sm" onClick={() => void reload()}>Повторить</Button>
           </div>
+        )}
+        {/* «Что сейчас важно по проекту?» — коротко и по фактам доски; каждый пункт открывает задачи */}
+        {signals && (
+          <section className="hub-card" aria-label="Что сейчас важно">
+            <h3 className="hub-card-label">Что сейчас важно</h3>
+            {signals.length ? (
+              <ul className="hub-list">
+                {signals.map((s) => (
+                  <li key={s.key}><button type="button" className="hub-linkish" onClick={s.onOpen}>— {s.text}</button></li>
+                ))}
+              </ul>
+            ) : <p className="hub-hint">Срочного нет: ничего не ждёт вашего решения и не стоит из-за препятствий.</p>}
+          </section>
         )}
         {view && p && (
           <>

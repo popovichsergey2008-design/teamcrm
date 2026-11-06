@@ -41,4 +41,6 @@
 .sbl-continue li { display: flex; min-width: 0; }
 .sbl-continue .sbl-item { padding: 5px 4px; }
 .sbl-continue .sbl-item:hover { color: var(--text); }
+.sbl-two { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.sbl-why { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sbl-continue-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 600; color: var(--text); padding: 2px 4px 4px; }

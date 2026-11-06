@@ -118,6 +118,27 @@ export function matchUserInText(text: string, users: NamedUser[]): string | null
 }
 
 /**
+ * Тёзки, названные в тексте (#4798 §15): «Анне» при двух Аннах. Одного по имени не
+ * выбираем — человек отвечает, какую из них имел в виду. Пусто — неоднозначности нет.
+ */
+export function namesakesInText(text: string, users: NamedUser[]): { id: string; name: string }[] {
+  const wordSet = textWords(text);
+  if (!wordSet.size) return [];
+  const byStem = new Map<string, NamedUser[]>();
+  for (const u of users) {
+    for (const s of nameStems(u.name ?? '')) {
+      if (!wordSet.has(s)) continue;
+      byStem.set(s, [...(byStem.get(s) ?? []), u]);
+    }
+  }
+  for (const group of byStem.values()) {
+    const uniq = [...new Map(group.map((u) => [String(u.id), u])).values()];
+    if (uniq.length >= 2) return uniq.map((u) => ({ id: String(u.id), name: u.name ?? '' }));
+  }
+  return [];
+}
+
+/**
  * Срок из разобранной команды.
  *
  * Модель охотно возвращает дату, просто упомянутую в тексте («с дедлайном на вчера»),
