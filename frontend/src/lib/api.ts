@@ -1245,6 +1245,8 @@ export const api = {
   },
   notificationUnread: () => request<{ unread: number }>('GET', '/notifications/center/unread'),
   notificationsRead: (ids: string[]) => request<{ unread: number }>('POST', '/notifications/center/read', { ids }),
+  /** #4796: выбранные — снова непрочитанными. */
+  notificationsUnread: (ids: string[]) => request<{ unread: number }>('POST', '/notifications/center/unread', { ids }),
   notificationsReadAll: (category?: NotificationCategory | null) =>
     request<{ unread: number }>('POST', '/notifications/center/read-all', category ? { category } : {}),
   /** Политика организации: приватность push и нижняя граница блокировки (владелец). */

@@ -61,6 +61,12 @@ export class NotificationCenterController {
     return this.center.read(u, dto.ids);
   }
 
+  /** #4796: выбранные долгим нажатием — снова непрочитанными. */
+  @Post('unread')
+  markUnread(@CurrentUser() u: AuthUser, @Body() dto: ReadDto) {
+    return this.center.unreadMany(u, dto.ids);
+  }
+
   @Post('read-all')
   readAll(@CurrentUser() u: AuthUser, @Body() dto: ReadAllDto) {
     return this.center.readAll(u, dto.category ?? null);

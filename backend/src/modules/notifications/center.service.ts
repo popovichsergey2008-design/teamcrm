@@ -129,6 +129,12 @@ export class NotificationCenter {
     return { unread: await this.repo.unread(v) };
   }
 
+  /** #4796: снять отметку «прочитано» с выбранных. */
+  async unreadMany(v: CenterViewer, ids: string[]) {
+    if (await this.repo.markUnread(v, ids)) this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.item', { ids });
+    return { unread: await this.repo.unread(v) };
+  }
+
   async readAll(v: CenterViewer, category: string | null) {
     if (await this.repo.markAll(v, category)) this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.read', { all: true });
     return { unread: await this.repo.unread(v) };

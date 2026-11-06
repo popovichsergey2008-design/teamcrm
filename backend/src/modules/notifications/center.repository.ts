@@ -176,6 +176,17 @@ export class CenterRepository {
     return r.rowCount ?? 0;
   }
 
+  /** #4796: выбранные — снова непрочитанными (долгое нажатие на телефоне). */
+  async markUnread(v: CenterViewer, ids: string[]): Promise<number> {
+    if (!ids.length) return 0;
+    const r = await this.db.query(
+      `UPDATE notification_inbox SET read_at = NULL
+        WHERE tenant_id = $1 AND user_id = $2 AND id = ANY($3::bigint[]) AND read_at IS NOT NULL`,
+      [v.tenantId, v.userId, ids],
+    );
+    return r.rowCount ?? 0;
+  }
+
   /** «Прочитать все» — всё своё в этой компании, с фильтром по виду или без. */
   async markAll(v: CenterViewer, category: string | null): Promise<number> {
     const r = await this.db.query(

@@ -61,6 +61,13 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
   const listRef = useRef<HTMLDivElement>(null);
   /** Номер запроса: ответ на устаревший фильтр не должен затереть свежий список. */
   const seq = useRef(0);
+  /** #4796: выбор долгим нажатием — несколько уведомлений и одно действие на все. */
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const togglePick = (id: string) => setPicked((prev) => {
+    const next = new Set(prev ?? []);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next.size ? next : null;
+  });
 
   useEscape(onClose);
 
@@ -132,6 +139,14 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
     if (it.path) { navigate(parsePath(it.path)); onClose(); }
   };
 
+  const applyPicked = (read: boolean) => {
+    if (!picked) return;
+    const ids = [...picked];
+    setItems((prev) => prev?.map((x) => (picked.has(x.id) ? { ...x, readAt: read ? (x.readAt ?? new Date().toISOString()) : null } : x)) ?? prev);
+    setPicked(null);
+    void (read ? api.notificationsRead(ids) : api.notificationsUnread(ids)).then((r) => setCenterUnread(r.unread)).catch(() => undefined);
+  };
+
   const readAll = () => {
     markLocal('all');
     void api.notificationsReadAll(kind).then((r) => {
@@ -154,6 +169,15 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
             <button className="drawer-close" onClick={onClose} aria-label="Закрыть" title="Закрыть"><Icon name="close" size={16} /></button>
           </span>
         </div>
+
+        {picked && (
+          <div className="nc-select-bar" role="toolbar" aria-label="Выбранные уведомления">
+            <b>Выбрано: {picked.size}</b>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => applyPicked(true)}><Icon name="check-check" size={14} /> Прочитано</button>
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => applyPicked(false)}><Icon name="bell" size={14} /> Не прочитано</button>
+            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setPicked(null)}>Отмена</button>
+          </div>
+        )}
 
         <label className="nc-search">
           <Icon name="search" size={15} />
@@ -199,7 +223,10 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
           )}
           {items && items.length > 0 && (
             <ul className="nc-items">
-              {items.map((it) => <Row key={it.id} it={it} onOpen={open} />)}
+              {items.map((it) => (
+                <Row key={it.id} it={it} onOpen={open} picked={picked?.has(it.id) ?? false} selecting={!!picked}
+                  onPick={() => togglePick(it.id)} />
+              ))}
             </ul>
           )}
           {next && <div ref={sentinel} className="nc-more">{busy && <div className="spinner" />}</div>}
@@ -210,7 +237,18 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
 }
 
 /** Одна строка истории: аватар автора, «кто что сделал [#номер] Задача», подробности, время. */
-function Row({ it, onOpen }: { it: CenterItem; onOpen: (it: CenterItem) => void }) {
+function Row({ it, onOpen, picked, selecting, onPick }: {
+  it: CenterItem; onOpen: (it: CenterItem) => void;
+  /** #4796: выбор долгим нажатием; в режиме выбора короткое нажатие тоже выбирает */
+  picked: boolean; selecting: boolean; onPick: () => void;
+}) {
+  const hold = useRef<number | null>(null);
+  const held = useRef(false);
+  const startHold = () => {
+    held.current = false;
+    hold.current = window.setTimeout(() => { held.current = true; onPick(); navigator.vibrate?.(15); }, 500);
+  };
+  const stopHold = () => { if (hold.current) window.clearTimeout(hold.current); hold.current = null; };
   const d = it.details ?? {};
   const unread = !it.readAt;
   const alarm = it.eventKey === 'task.overdue' || it.eventKey === 'task.deadline_soon';
@@ -229,15 +267,21 @@ function Row({ it, onOpen }: { it: CenterItem; onOpen: (it: CenterItem) => void 
   return (
     <li>
       <a
-        className={`nc-item${unread ? ' nc-unread' : ''}`}
+        className={`nc-item${unread ? ' nc-unread' : ''}${picked ? ' nc-picked' : ''}`}
         href={it.path ?? undefined}
+        aria-pressed={selecting ? picked : undefined}
+        onPointerDown={startHold} onPointerUp={stopHold} onPointerLeave={stopHold} onPointerCancel={stopHold}
+        onContextMenu={(e) => { if (held.current || selecting) e.preventDefault(); }}
         onClick={(e) => {
           // Ctrl/Cmd-клик — в новой вкладке, как у обычной ссылки
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
           e.preventDefault();
+          if (held.current) { held.current = false; return; } // долгое нажатие уже выбрало строку
+          if (selecting) { onPick(); return; }
           onOpen(it);
         }}
       >
+        {selecting && <span className="nc-check" aria-hidden="true">{picked && <Icon name="check" size={12} />}</span>}
         {it.actor
           ? <Avatar path={it.actor.avatarUrl} fallback={initialsOf(it.actor.name)} className="avatar-sm nc-avatar" />
           : <span className={`nc-avatar nc-icon${alarm ? ' nc-icon-alarm' : ''}`}><Icon name={alarm ? 'alert' : KIND_ICON[it.category] ?? 'bell'} size={16} /></span>}
