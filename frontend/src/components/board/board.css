@@ -1,0 +1,96 @@
+/* Доска #4798/#4799: панель, быстрые условия, строка «Показано N», карточка «чей ход». */
+.bb { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.bb-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.bb-spacer { flex: 1; }
+.bb-search {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px; min-width: 180px; flex: 0 1 260px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev); color: var(--text-mut);
+}
+.bb-search:focus-within { border-color: var(--accent); }
+.bb-search-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-sm); outline: none; }
+.bb-x { border: 0; background: transparent; color: var(--text-mut); cursor: pointer; padding: 2px; display: inline-flex; }
+.bb-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 15px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-dim); font: inherit; font-size: var(--fs-sm); white-space: nowrap;
+}
+.bb-chip:hover { color: var(--text); border-color: var(--border-2); }
+.bb-chip.is-on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line, var(--accent)); }
+.bb-chip.is-hot:not(.is-on) .bb-n { background: var(--accent); color: var(--on-fill); }
+.bb-n { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--hover); font-weight: 600; font-size: calc(11px * var(--fs-scale)); text-align: center; }
+.bb-status { font-size: var(--fs-sm); color: var(--text); gap: 6px 8px; }
+.bb-dim { color: var(--text-mut); }
+.bb-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 8px; border-radius: 12px;
+  background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim);
+}
+.bb-tag button { border: 0; background: transparent; color: var(--text-mut); cursor: pointer; display: inline-flex; padding: 2px; border-radius: 50%; }
+.bb-tag button:hover { color: var(--text); background: var(--hover); }
+.bb-link { border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-size: var(--fs-sm); padding: 4px 2px; text-align: left; }
+.bb-link:hover { text-decoration: underline; }
+.bb-pop-wrap { position: relative; display: inline-flex; }
+.bb-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: min(340px, calc(100vw - 32px));
+  display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--radius);
+  background: var(--bg-elev); border: 1px solid var(--border); box-shadow: var(--shadow-lg, 0 8px 28px rgba(16,24,40,.18));
+}
+.bb-pop-right { left: auto; right: 0; }
+.bb-pop-head { font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .04em; color: var(--text-mut); margin-top: 4px; }
+.bb-pop-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.bb-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.bb-note { margin: 0; color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); }
+.bb-seg2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border-radius: var(--radius-sm); background: var(--bg-elev-2); }
+.bb-seg2 button { border: 0; border-radius: var(--radius-sm); padding: 6px; background: transparent; color: var(--text-dim); cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+.bb-seg2 button.is-on { background: var(--bg-elev); color: var(--text); box-shadow: 0 1px 2px rgba(16,24,40,.1); }
+.bb-views-row { display: flex; align-items: center; gap: 6px; }
+.bb-views-row > button:first-child { flex: 1; text-align: left; }
+.bb-views-scope { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); }
+
+/* шапка проекта: контекст отдельно от команд доски */
+.bp-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.bp-crumbs { width: 100%; font-size: var(--fs-sm); color: var(--text-mut); }
+.bp-head .bp-ctx { margin-left: auto; display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+/* карточка: чей ход, сколько стоит */
+.kc-step { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: var(--fs-sm); line-height: 1.35; background: var(--bg-elev); color: var(--text-dim); }
+.kc-step svg { flex: none; margin-top: 2px; }
+.kc-step.t-mine { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.kc-step.t-review { background: var(--info-soft, var(--accent-soft)); color: var(--text); }
+.kc-step.t-blocked { background: var(--warn-soft); color: var(--text); border-left: 3px solid var(--warn); }
+.kc-step.t-returned { background: var(--warn-soft); color: var(--text); }
+.kc-step.t-client, .kc-step.t-wait { background: var(--bg-elev-2); color: var(--text-dim); }
+.kc-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; color: var(--text-mut); font-size: calc(12px * var(--fs-scale)); }
+.kc-age { margin-left: auto; white-space: nowrap; }
+.kc-stale { color: var(--warn-text, var(--text-dim)); }
+.board-v2 .task-card-new { box-shadow: inset 3px 0 0 var(--accent), 0 1px 2px rgba(16,24,40,.05); }
+.board-v2 .task-unread { background: var(--accent); }
+.board-dense .task-card .manager-chip, .board-dense .task-card .kc-foot { display: none; }
+.board-dense .task-card .task-meta { margin-top: 6px; }
+
+/* колонки: ширина, свёрнутые, «Показать более ранние» */
+.board-columns.w-narrow .column { width: 248px; }
+.board-columns.w-wide .column { width: 360px; }
+.column.is-collapsed { width: 44px !important; cursor: pointer; align-items: center; padding: 10px 0; gap: 10px; }
+.column.is-collapsed .col-vert { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: 600; font-size: var(--fs-sm); white-space: nowrap; }
+.col-older { margin: 4px 8px 8px; }
+.col-wip { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); padding: 0 14px 4px; }
+.col-wip.is-over { color: var(--warn-text, var(--text)); }
+
+/* отменить перенос */
+.bb-undo {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 60;
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: var(--radius);
+  background: var(--text); color: var(--bg); box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: var(--fs-sm); max-width: calc(100vw - 32px);
+}
+.bb-undo button { border: 0; background: transparent; color: inherit; font-weight: 700; cursor: pointer; text-decoration: underline; font: inherit; }
+
+@media (max-width: 720px) {
+  .bb-search { flex: 1 1 100%; }
+  .bb-spacer { display: none; }
+  .bb-fields { grid-template-columns: 1fr; }
+  .bb-chip, .bb-row .ui-btn { min-height: 36px; }
+  .bp-head .bp-ctx { margin-left: 0; }
+  /* телефон: команды остаются, подписи у второстепенных — в подсказках (#4799 §9) */
+  .bb-lbl, .bp-crumbs, .bb-totals { display: none; }
+  .bb-search { order: 10; }
+  .bb-status { font-size: calc(12px * var(--fs-scale)); }
+}

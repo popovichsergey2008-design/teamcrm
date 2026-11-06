@@ -274,6 +274,8 @@ export interface Project {
   /** all — видят все сотрудники; members — только участники и руководство. */
   visibility?: string;
   is_support?: boolean;
+  /** #4798 §14: мягкий порог «в работе на человека»; пусто — не следим. */
+  wip_limit?: number | null;
 }
 
 /**
@@ -406,6 +408,34 @@ export interface Task {
    * ровно об этом и было замечание.
    */
   unread?: number;
+  /** Соисполнители и наблюдатели — доска отдаёт их вместе с задачей. */
+  co_assignees?: { userId: string; fullName?: string }[];
+  watchers?: { userId: string; fullName?: string }[];
+  /** #4799: кто проверяет результат (пусто — постановщик) и как его зовут. */
+  reviewer_id?: string | null;
+  reviewer_name?: string | null;
+  /** Открытое препятствие: почему стоит, что нужно, кто поможет (#4798 §8). */
+  blocker?: TaskBlocker | null;
+  /** Задачи, которые нужно завершить сначала (#4798 §9). */
+  waits_for?: { id: string; title: string; closed: boolean; deadline_at: string | null }[];
+  /** С какого момента задача на нынешнем этапе и когда по ней было хоть что-то. */
+  stage_since?: string | null;
+  last_activity_at?: string | null;
+  /** Когда сдал на проверку и когда вернули (ТЗ-30). */
+  submitted_at?: string | null;
+  returned_at?: string | null;
+  /** Номер последней сдачи результата (#4799 BOARD03). */
+  handoff_version?: number | null;
+}
+
+export interface TaskBlocker {
+  reason: 'wait_answer' | 'no_access' | 'no_info' | 'depends' | 'other';
+  need: string;
+  helper_id: string | null;
+  helper_name: string | null;
+  next_step: string;
+  due_on: string | null;
+  since?: string;
 }
 
 export interface BoardColumn {

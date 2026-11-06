@@ -1,4 +1,4 @@
-import { DragEvent, useState } from 'react';
+import { DragEvent, useMemo, useState } from 'react';
 import { Icon } from './Icon';
 import { BottomSheet, SheetAction } from './BottomSheet';
 import { useIsPhone } from '../hooks/useMediaQuery';
@@ -10,6 +10,8 @@ import { Avatar } from './ui/avatar';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
+import { nextStep, splitDone, stageAge, staleDays, daysWord } from '../lib/board-card';
+import { PAUSED_STAGES } from '../lib/board-filter';
 
 interface Props {
   column: BoardColumn;
@@ -36,6 +38,15 @@ interface Props {
    * карточке даёт тот же перенос одним нажатием и с клавиатуры.
    */
   columns?: { id: string; name: string; count: number }[];
+  /** #4799: кто смотрит — «Ждёт вашего решения», «Вы выполняете». */
+  me?: string;
+  /** Метки, стоящие почти на всех карточках доски, — ничего не различают и не рисуются. */
+  hiddenLabels?: Set<string>;
+  /** Свёрнута ли колонка — запоминается на человека и проект. */
+  collapsed?: boolean;
+  onToggleCollapse?: (columnId: string) => void;
+  /** Мягкий порог «в работе на человека» (#4798 §14). */
+  wipLimit?: number | null;
 }
 
 /** Тип этапа колонки (ТЗ-30) — что значит «задача стоит здесь» для сроков. */
@@ -47,7 +58,6 @@ const STAGE_OPTIONS: { id: string; label: string }[] = [
   { id: 'waiting_external', label: 'Этап: ждём клиента' },
   { id: 'done', label: 'Этап: готово' },
 ];
-const PAUSED_STAGES = ['testing', 'review', 'approval', 'waiting_external'];
 
 export function ColumnView({
   column,
@@ -67,6 +77,11 @@ export function ColumnView({
   onDeleteColumn,
   onColumnDrop,
   columns,
+  me = '',
+  hiddenLabels,
+  collapsed = false,
+  onToggleCollapse,
+  wipLimit,
 }: Props) {
   const [over, setOver] = useState(false);
   const [colOver, setColOver] = useState(false);
@@ -81,6 +96,28 @@ export function ColumnView({
     else setColName(column.name);
     setRenaming(false);
   };
+
+  /*
+    «Готово» не вываливает всю историю (#4798 §13): на виду — завершённые за две
+    недели и всё, что ещё ждёт согласования; остальное — по «Показать более ранние».
+    Ничего не удаляется и не архивируется, поиск и фильтры видят всё.
+  */
+  const [showOlder, setShowOlder] = useState(false);
+  const isDoneCol = stageNow === 'done';
+  const split = useMemo(() => (isDoneCol ? splitDone(column.tasks) : { recent: column.tasks, older: [] }), [isDoneCol, column.tasks]);
+  const shown = isDoneCol && !showOlder ? split.recent : column.tasks;
+  // место среди показанных → место среди задач колонки (часть «Готово» свёрнута)
+  const realIndex = (i: number) => (shown === column.tasks ? i : i < shown.length ? column.tasks.indexOf(shown[i]) : column.tasks.length);
+  // порог «в работе»: больше N задач у одного человека в этой колонке — мягко подсветить
+  const overWip = useMemo(() => {
+    if (!wipLimit || isDoneCol || PAUSED_STAGES.includes(stageNow)) return [] as string[];
+    const by = new Map<string, number>();
+    for (const t of column.tasks) if (t.assignee_id && !t.closed_at) by.set(String(t.assignee_id), (by.get(String(t.assignee_id)) ?? 0) + 1);
+    return [...by.entries()].filter(([, n]) => n > wipLimit).map(([id, n]) => {
+      const t = column.tasks.find((x) => String(x.assignee_id) === id);
+      return `${t?.assignee_name ?? users?.find((u) => String(u.id) === id)?.fullName ?? 'Кто-то'} — ${n}`;
+    });
+  }, [wipLimit, isDoneCol, stageNow, column.tasks, users]);
 
   const onDropColumn = (e: DragEvent) => {
     e.preventDefault();
@@ -104,8 +141,29 @@ export function ColumnView({
     e.stopPropagation();
     setOver(false);
     const taskId = e.dataTransfer.getData('text/plain');
-    if (taskId) onMoveTask(taskId, column.id, index);
+    if (taskId) onMoveTask(taskId, column.id, realIndex(index));
   };
+
+  if (collapsed) {
+    // Свёрнутая колонка — узкая полоса с названием и числом; принимает карточки как обычная.
+    return (
+      <div
+        className={`column is-collapsed ${over ? 'column-over' : ''}`}
+        role="button"
+        tabIndex={0}
+        title={`Развернуть «${column.name}»`}
+        aria-label={`Колонка «${column.name}», ${column.tasks.length} — развернуть`}
+        onClick={() => onToggleCollapse?.(column.id)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggleCollapse?.(column.id); } }}
+        onDragOver={(e) => { if (canEdit && !isColumnDrag(e)) { e.preventDefault(); setOver(true); } }}
+        onDragLeave={() => setOver(false)}
+        onDrop={canEdit ? onDropColumn : undefined}
+      >
+        <span className="kv2-count">{column.tasks.length}</span>
+        <span className="col-vert">{column.name}</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -156,6 +214,12 @@ export function ColumnView({
         )}
         <span className="col-head-right">
           <span className="kv2-count">{column.tasks.length}</span>
+          {/* свернуть — всем, кто смотрит доску: это вид, а не управление колонкой */}
+          {!canManage && onToggleCollapse && (
+            <Button variant="ghost" size="icon-sm" className="kv2-col-menu" onClick={() => onToggleCollapse(column.id)} aria-label={`Свернуть «${column.name}»`} title="Свернуть колонку">
+              <Icon name="minimize" size={14} />
+            </Button>
+          )}
           {/*
             Действия с колонкой — одним меню «⋯». Три мелкие кнопки в шапке каждой
             колонки рябили по всей доске, а «удалить» стояло в пикселе от «вправо».
@@ -184,6 +248,9 @@ export function ColumnView({
                   </MenuItem>
                 </>
               )}
+              {onToggleCollapse && (
+                <MenuItem onSelect={() => onToggleCollapse(column.id)} icon={<Icon name="minimize" size={15} />}>Свернуть колонку</MenuItem>
+              )}
               <MenuItem onSelect={() => onMoveColumn?.(column.id, 'left')} disabled={isFirst} icon={<Icon name="arrow-left" size={15} />}>Сдвинуть влево</MenuItem>
               <MenuItem onSelect={() => onMoveColumn?.(column.id, 'right')} disabled={isLast} icon={<Icon name="arrow-right" size={15} />}>Сдвинуть вправо</MenuItem>
               {canDelete && (
@@ -197,11 +264,20 @@ export function ColumnView({
         </span>
       </div>
 
+      {!!overWip.length && (
+        <div className="col-wip is-over" title={`Желательно держать в работе не больше ${wipLimit} задач на человека. Количество задач — не оценка занятости: задачи бывают разной сложности.`}>
+          Больше {wipLimit} у человека: {overWip.join(', ')}. Проверьте, что сейчас важнее.
+        </div>
+      )}
       <div className="column-tasks">
-        {column.tasks.map((t, i) => (
+        {shown.map((t, i) => (
           <TaskCard
             key={t.id}
             task={t}
+            me={me}
+            stage={stageNow}
+            columnName={column.name}
+            hiddenLabels={hiddenLabels}
             assigneeName={t.assignee_name ?? users?.find((u) => u.id === t.assignee_id)?.fullName ?? null}
             managerName={t.manager_name ?? users?.find((u) => u.id === t.created_by)?.fullName ?? null}
             canEdit={canEdit}
@@ -213,6 +289,11 @@ export function ColumnView({
             onMoveTo={(columnId) => onMoveTask(t.id, columnId, columns?.find((c) => c.id === columnId)?.count ?? 0)}
           />
         ))}
+        {isDoneCol && split.older.length > 0 && (
+          <Button variant="ghost" size="sm" className="col-older" onClick={() => setShowOlder((v) => !v)}>
+            {showOlder ? 'Скрыть более ранние' : `Показать более ранние (${split.older.length})`}
+          </Button>
+        )}
       </div>
 
       {canEdit && (
@@ -226,6 +307,10 @@ export function ColumnView({
 
 function TaskCard({
   task,
+  me,
+  stage,
+  columnName,
+  hiddenLabels,
   assigneeName,
   managerName,
   canEdit,
@@ -237,6 +322,10 @@ function TaskCard({
   onMoveTo,
 }: {
   task: Task;
+  me: string;
+  stage: string;
+  columnName: string;
+  hiddenLabels?: Set<string>;
   assigneeName: string | null;
   /** Постановщик — тот, с кого спросят результат. На доске он не менее важен исполнителя. */
   managerName: string | null;
@@ -261,6 +350,11 @@ function TaskCard({
   */
   const [moveOpen, setMoveOpen] = useState(false);
   const phone = useIsPhone();
+  // #4798 §3: чей сейчас ход — из фактического состояния задачи, а не догадки
+  const step = nextStep(task, stage, me);
+  const age = stageAge(task, stage, columnName);
+  const stale = staleDays(task);
+  const labels = (task.labels ?? []).filter((l) => !hiddenLabels?.has(String(l.id)));
   return (
     <div
       className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
@@ -312,9 +406,9 @@ function TaskCard({
           )}
         </div>
       )}
-      {task.labels && task.labels.length > 0 && (
+      {labels.length > 0 && (
         <div className="card-labels">
-          {task.labels.map((l) => <span key={l.id} className="card-label" style={{ background: l.color }} title={l.name} />)}
+          {labels.map((l) => <span key={l.id} className="card-label" style={{ background: l.color }} title={`Тег: ${l.name}`} />)}
         </div>
       )}
       <div className="task-title">
@@ -325,7 +419,7 @@ function TaskCard({
             я последний раз открывал карточку. Стоит у заголовка, а не среди значков
             внизу: это не свойство задачи, а повод её открыть. */}
         {!!task.unread && (
-          <span className="task-unread" title={`${task.unread} новых изменений с вашего последнего просмотра`}>
+          <span className="task-unread" title={`Новое для вас: ${task.unread} изменений с вашего последнего просмотра (не просрочка)`}>
             {task.unread > 99 ? '99+' : task.unread}
           </span>
         )}
@@ -362,7 +456,7 @@ function TaskCard({
             <Icon name="refresh" size={11} /> объединена
           </Badge>
         )}
-        {task.is_blocked && <Badge tone="danger"><Icon name="alert" size={11} /> BLOCKED</Badge>}
+
         {prio && (
           <Badge tone={prio.tone} title="Приоритет">
             <Icon name={prio.tone === 'danger' ? 'zap' : prio.tone === 'warn' ? 'arrow-up' : 'arrow-down'} size={11} />{prio.label}
@@ -376,19 +470,30 @@ function TaskCard({
             <Icon name="refresh" size={11} /> повтор
           </Badge>
         )}
-        {!!task.commentsCount && <span className="kv2-stat" title="Комментарии"><Icon name="chat" size={13} /> {task.commentsCount}</span>}
-        {!!task.attachmentsCount && <span className="kv2-stat" title="Вложения"><Icon name="paperclip" size={13} /> {task.attachmentsCount}</span>}
-        {!!task.audio_proof_sec && <span className="kv2-stat" title="Есть фрагмент созвона с поручением"><Icon name="mic" size={13} /> {task.audio_proof_sec} сек</span>}
-        {!!task.checklistTotal && (
-          <span className={`kv2-stat${task.checklistDone === task.checklistTotal ? ' is-done' : ''}`} title="Чек-лист">
-            <Icon name="check-circle" size={13} /> {task.checklistDone}/{task.checklistTotal}
-          </span>
-        )}
         {MONETIZATION_ENABLED && cost !== null && (
           <Badge tone="neutral" title="Себестоимость в реальном времени">
             ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
           </Badge>
         )}
+      </div>
+      {step && (
+        <div className={`kc-step t-${step.tone}`} title={step.title}>
+          <Icon name={step.tone === 'blocked' ? 'ban' : step.tone === 'mine' || step.tone === 'review' ? 'eye' : step.tone === 'wait' || step.tone === 'client' ? 'hourglass' : step.tone === 'returned' ? 'reply' : 'user'} size={13} />
+          <span>{step.text}</span>
+        </div>
+      )}
+      <div className="kc-foot">
+        {!!task.checklistTotal && (
+          <span className={`kv2-stat${task.checklistDone === task.checklistTotal ? ' is-done' : ''}`} title={`Чек-лист: выполнено ${task.checklistDone} из ${task.checklistTotal}`}>
+            <Icon name="check-circle" size={13} /> {task.checklistDone}/{task.checklistTotal}
+          </span>
+        )}
+        {!!task.commentsCount && <span className="kv2-stat" title={`Сообщений в обсуждении: ${task.commentsCount}`}><Icon name="chat" size={13} /> {task.commentsCount}</span>}
+        {!!task.attachmentsCount && <span className="kv2-stat" title={`Вложений: ${task.attachmentsCount}`}><Icon name="paperclip" size={13} /> {task.attachmentsCount}</span>}
+        {!!task.audio_proof_sec && <span className="kv2-stat" title="Есть фрагмент созвона с поручением"><Icon name="mic" size={13} /> {task.audio_proof_sec} сек</span>}
+        {stale > 0
+          ? <span className="kc-age kc-stale" title="Ни правок, ни сообщений, ни переносов. Это не значит, что работа не идёт — уточните состояние в карточке">Нет обновления {daysWord(stale)}</span>
+          : age && <span className="kc-age" title="Сколько рабочих дней задача на нынешнем этапе">{age}</span>}
       </div>
     </div>
   );

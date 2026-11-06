@@ -1915,6 +1915,95 @@ test('Инфоцентр: откуда взял ИИ и кто запускае�
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
+// ── доска #4798/#4799 ─────────────────────────────────────────────────────────
+test('доска: роли — ИЛИ, быстрые условия — И, «Ждут моего решения» и «Срок сегодня»', async () => {
+  const { countMatching, filterBoard } = await load('lib/board-filter.ts');
+  const { DEFAULT_QUERY, toFilter, resetConditions, showAll, normalize } = await load('lib/board-query.ts');
+  const now = new Date(2026, 10, 6, 12, 0);
+  const today = new Date(2026, 10, 6, 18, 0).toISOString();
+  const yesterday = new Date(2026, 10, 5, 18, 0).toISOString();
+  const cols = [
+    { id: 'w', name: 'В работе', stage_type: 'work', tasks: [
+      { id: '1', assignee_id: '7', created_by: '9', deadline_at: today },
+      { id: '2', assignee_id: '9', created_by: '9', co_assignees: [{ userId: '7' }], deadline_at: yesterday },
+      { id: '3', assignee_id: '9', created_by: '9', is_blocked: true, blocker: { helper_id: '7' } },
+    ] },
+    { id: 't', name: 'На тестировании', stage_type: 'testing', tasks: [
+      { id: '4', assignee_id: '9', created_by: '7', deadline_at: yesterday },
+      { id: '5', assignee_id: '9', created_by: '9', reviewer_id: '7' },
+      { id: '6', assignee_id: '9', created_by: '7', reviewer_id: '8' },
+    ] },
+    { id: 'd', name: 'Готово', stage_type: 'done', tasks: [
+      { id: '7', assignee_id: '9', created_by: '7', approval_state: 'pending' },
+      { id: '8', assignee_id: '7', created_by: '9', closed_at: yesterday },
+    ] },
+  ];
+  const ids = (o) => filterBoard(cols, { now, ...o }).flatMap((c) => c.tasks.map((t) => t.id));
+  const f = (patch) => ({ ...toFilter(normalize({ ...DEFAULT_QUERY, ...patch }), '7'), now });
+
+  // «Делаю» + «Помогаю» — ИЛИ
+  assert.deepEqual(ids(f({ roles: ['doing', 'helping'] })), ['1', '2', '8']);
+  // «Поручил» сам по себе в «Ждут моего решения» не попадает — только сданная работа, где решать мне
+  assert.deepEqual(ids(f({ scope: 'all', quick: ['decide'] })), ['4', '5', '7'], 'сдано, решаю я (проверяющий или постановщик без проверяющего)');
+  assert.ok(!ids(f({ scope: 'all', quick: ['decide'] })).includes('6'), 'назначен другой проверяющий — решаю не я');
+  // «Срок сегодня» — только сегодняшняя дата; просроченная не входит
+  assert.deepEqual(ids(f({ scope: 'all', quick: ['today'] })), ['1']);
+  // «Просроченные» — у исполнителя; сданное на проверку просрочкой исполнителя не считается
+  assert.deepEqual(ids(f({ scope: 'all', quick: ['overdue'] })), ['2']);
+  // «Есть препятствия» — только явная отметка; «Нужен мой ответ» — помочь просят меня
+  assert.deepEqual(ids(f({ scope: 'all', quick: ['blocked'] })), ['3']);
+  assert.deepEqual(ids(f({ scope: 'all', quick: ['answer'] })), ['3']);
+  // быстрые условия соединяются И
+  assert.deepEqual(ids(f({ scope: 'all', quick: ['today', 'blocked'] })), []);
+  // «Скрыть завершённые» — по факту закрытия: в «Готово» остаётся то, что ждёт согласования
+  assert.deepEqual(ids(f({ scope: 'all', hideDone: true })).filter((x) => ['7', '8'].includes(x)), ['7']);
+  // поиск по доске — номер
+  assert.deepEqual(ids(f({ scope: 'all', search: '#5' })), ['5']);
+  // колонка: прочие колонки на доске остаются, но пустыми
+  assert.equal(filterBoard(cols, f({ scope: 'all', columnId: 't' }), true).find((c) => c.id === 'w').tasks.length, 0);
+  assert.equal(countMatching(cols, f({ scope: 'all', columnId: 't' })), 3);
+
+  // пустые роли в «Моих» — это все четыре, а не «ничего» и не «всё на доске»
+  assert.equal(normalize({ ...DEFAULT_QUERY, roles: [] }).roles.length, 4);
+  // «Сбросить условия» — режим, роли и «Скрыть завершённые» остаются
+  const q = normalize({ ...DEFAULT_QUERY, roles: ['doing'], hideDone: true, quick: ['today'], search: 'x', assigneeId: '9' });
+  const r = resetConditions(q);
+  assert.deepEqual([r.scope, r.roles, r.hideDone, r.quick, r.search, r.assigneeId], ['mine', ['doing'], true, [], '', '']);
+  // «Показать все задачи» — все задачи доски, роли сняты, «Скрыть завершённые» сохранено
+  const a = showAll(q);
+  assert.deepEqual([a.scope, a.roles.length, a.hideDone, a.quick.length], ['all', 4, true, 0]);
+});
+
+test('карточка: чей ход, сколько на этапе, «Готово» без всей истории', async () => {
+  const { nextStep, stageAge, splitDone, commonLabels, workDays } = await load('lib/board-card.ts');
+  assert.equal(nextStep({ id: '1', assignee_id: '9', assignee_name: 'Анна' }, 'work', '7').text, 'Анна выполняет');
+  assert.equal(nextStep({ id: '1', assignee_id: '7' }, 'work', '7').text, 'Вы выполняете');
+  assert.equal(nextStep({ id: '1', created_by: '7', assignee_id: '9' }, 'testing', '7').text, 'Ждёт вашего решения');
+  assert.equal(nextStep({ id: '1', created_by: '8', reviewer_name: 'Борис', assignee_id: '9' }, 'testing', '7').text, 'Ждёт проверки: Борис');
+  assert.equal(nextStep({ id: '1', assignee_id: '9' }, 'waiting_external', '7').text, 'Нужен ответ клиента');
+  assert.match(nextStep({ id: '1', is_blocked: true, blocker: { reason: 'no_access', need: 'нужен доступ к кабинету', helper_id: '8', helper_name: 'Борис' } }, 'work', '7').text,
+    /^Остановлено: нужен доступ к кабинету · помощь — Борис$/);
+  assert.match(nextStep({ id: '1', is_blocked: true, blocker: { reason: 'no_info', need: 'какой бюджет', helper_id: null, helper_name: null } }, 'work', '7').text, /^Нужно уточнить задание/);
+  assert.equal(nextStep({ id: '1', assignee_id: '9', assignee_name: 'Анна', returned_at: '2026-11-05T10:00:00Z', submitted_at: '2026-11-04T10:00:00Z' }, 'work', '7').text, 'Возвращено исполнителю: Анна');
+  assert.equal(nextStep({ id: '1', assignee_id: '9', waits_for: [{ id: '120', title: 'макет', closed: false }] }, 'work', '7').text, 'Сначала нужно завершить #120');
+  assert.equal(nextStep({ id: '1', closed_at: '2026-11-01T00:00:00Z' }, 'done', '7'), null);
+
+  // пятница вечер → понедельник утро: рабочих суток ещё нет
+  assert.equal(workDays(new Date(2026, 10, 6, 18), new Date(2026, 10, 9, 10)), 0);
+  const now = new Date(2026, 10, 12, 12);
+  assert.equal(stageAge({ id: '1', stage_since: new Date(2026, 10, 9, 10).toISOString() }, 'work', 'В работе', now), 'В работе 3 дня');
+  assert.equal(stageAge({ id: '1', submitted_at: new Date(2026, 10, 10, 10).toISOString() }, 'testing', 'На тестировании', now), 'Ждёт решения 2 дня');
+
+  const old = new Date(2026, 9, 1).toISOString();
+  const fresh = new Date().toISOString();
+  const { recent, older } = splitDone([{ closed_at: fresh }, { closed_at: old }, { closed_at: null }]);
+  assert.equal(recent.length, 2, 'свежие и ждущие согласования — на виду');
+  assert.equal(older.length, 1, 'старые — по «Показать более ранние»');
+
+  const many = Array.from({ length: 5 }, (_, i) => ({ labels: [{ id: 'common' }, ...(i === 0 ? [{ id: 'rare' }] : [])] }));
+  assert.deepEqual([...commonLabels(many)], ['common'], 'метка на всех карточках ничего не различает');
+});
+
 let failed = 0;
 for (const [name, fn] of cases) {
   try {

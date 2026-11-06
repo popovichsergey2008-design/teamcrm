@@ -71,7 +71,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
   const { view, error, loading, reload } = useHub(projectId);
   // выбор человека на компьютере; на телефоне всегда полоса — «развернуть» там открывает паспорт
   const [choice, setChoice] = useState<{ projectId: string; collapsed: boolean } | null>(null);
-  const collapsed = phone || (choice?.projectId === projectId ? choice.collapsed : readCollapsed(uid, projectId, false));
+  const collapsed = phone || (choice?.projectId === projectId ? choice.collapsed : readCollapsed(uid, projectId, true));
   const setCollapsed = (v: boolean) => { setChoice({ projectId, collapsed: v }); writeCollapsed(uid, projectId, v); };
   const [passport, setPassport] = useState<{ tab: HubTab; add?: boolean } | null>(null);
   // номер прогона запоминаем при открытии: окно гасит бейдж (seen), и unseen тут же становится пустым

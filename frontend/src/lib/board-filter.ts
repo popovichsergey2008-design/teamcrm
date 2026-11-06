@@ -13,6 +13,17 @@
 
 import type { TaskView } from './task-views';
 
+/**
+ * Быстрые условия доски (#4799 §3.2–3.3). Соединяются И: «Ждут моего решения» + «Срок
+ * сегодня» — карточка должна подходить под оба.
+ */
+export type QuickKey = 'decide' | 'today' | 'blocked' | 'overdue' | 'answer';
+
+/** Этапы, на которых работа сдана и ждёт решения (ТЗ-30). */
+export const REVIEW_STAGES = ['testing', 'review', 'approval'];
+/** Этапы, на которых срок исполнителя не тикает: работа у проверяющего или клиента. */
+export const PAUSED_STAGES = ['testing', 'review', 'approval', 'waiting_external'];
+
 interface TaskLike {
   id?: string;
   assignee_id?: string | null;
@@ -24,12 +35,23 @@ interface TaskLike {
   watchers?: { userId: string }[];
   /** Задача закрыта: по этому полю работает переключатель «Только в работе». */
   closed_at?: string | null;
+  title?: string;
+  description?: string | null;
+  deadline_at?: string | null;
+  approval_state?: string;
+  reviewer_id?: string | null;
+  is_blocked?: boolean;
+  blocker?: { helper_id?: string | null } | null;
+  priority?: string;
+  labels?: { id: string }[];
 }
 
 interface ColumnLike<T> {
   id: string;
   name: string;
   tasks: T[];
+  /** Тип этапа колонки (ТЗ-30): по нему «Ждут моего решения» и «Просроченные». */
+  stage_type?: string;
 }
 
 /**
@@ -46,9 +68,74 @@ const eq = (a: unknown, b: unknown) => String(a ?? '') === String(b ?? '') && St
 export interface FilterOpts {
   userId: string;
   mode: MineMode;
+  /**
+   * #4799: роли «Моих задач» галочками — соединяются ИЛИ. Пустой набор в режиме «Мои»
+   * не значит «всё»: это все четыре роли (их и восстанавливаем при возврате).
+   */
+  roles?: TaskView[];
   creatorId?: string | null;
   /** Скрыть завершённое — переключатель «Только в работе». */
   inWorkOnly?: boolean;
+  quick?: QuickKey[];
+  assigneeId?: string | null;
+  /** Колонка: на доске прочие колонки остаются, но пустыми. */
+  columnId?: string | null;
+  priority?: string | null;
+  labelId?: string | null;
+  /** Поиск по ЭТОЙ доске: номер, название, описание. */
+  search?: string;
+  now?: Date;
+}
+
+/** Срок — на сегодняшнюю дату по часам человека. Просроченная задача сюда не входит. */
+const sameLocalDay = (iso: string, now: Date) => {
+  const d = new Date(iso);
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+};
+
+/** Чьего решения ждёт сданная работа: назначенного проверяющего, иначе постановщика. */
+export const reviewerOf = (task: TaskLike) => task.reviewer_id ?? task.created_by ?? null;
+
+/** Задача ждёт решения именно этого человека (#4799 §3.3): сдана, не принята, решать ему. */
+export function waitsForDecision(task: TaskLike, userId: string, stage?: string): boolean {
+  if (task.closed_at) return false;
+  const inReview = task.approval_state === 'pending' || (!!stage && REVIEW_STAGES.includes(stage));
+  return inReview && eq(reviewerOf(task), userId);
+}
+
+function quickMatch(task: TaskLike, k: QuickKey, o: FilterOpts, stage?: string): boolean {
+  const now = o.now ?? new Date();
+  switch (k) {
+    case 'decide': return waitsForDecision(task, o.userId, stage);
+    case 'today': return !task.closed_at && !!task.deadline_at && sameLocalDay(task.deadline_at, now);
+    case 'overdue': {
+      if (task.closed_at || !task.deadline_at || new Date(task.deadline_at).getTime() >= now.getTime()) return false;
+      // работа у проверяющего или клиента — это не просрочка исполнителя (ТЗ-30)
+      return task.approval_state !== 'pending' && !(stage && PAUSED_STAGES.includes(stage));
+    }
+    // только явная отметка: просрочка сама по себе препятствием не считается
+    case 'blocked': return !!task.is_blocked;
+    case 'answer': return !!task.is_blocked && eq(task.blocker?.helper_id, o.userId);
+    default: return true;
+  }
+}
+
+function searchMatch(task: TaskLike, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  const num = s.replace(/^#/, '');
+  if (/^\d+$/.test(num) && String(task.id ?? '') === num) return true;
+  return (task.title ?? '').toLowerCase().includes(s) || (task.description ?? '').toLowerCase().includes(s);
+}
+
+function roleMatch(task: TaskLike, role: TaskView, userId: string): boolean {
+  switch (role) {
+    case 'doing': return eq(task.assignee_id, userId);
+    case 'helping': return isHelping(task, userId);
+    case 'delegated': return isCreatedBy(task, userId);
+    case 'watching': return isWatching(task, userId);
+    default: return false;
+  }
 }
 
 /**
@@ -74,11 +161,20 @@ export const isWatching = (task: TaskLike, userId: string) =>
  * Постановщик из выпадающего списка работает НЕЗАВИСИМО от режима «мои»: выбрав
  * коллегу, человек видит всё, что тот раздал, — кому бы ни назначил.
  */
-export function matches<T extends TaskLike>(task: T, o: FilterOpts): boolean {
+export function matches<T extends TaskLike>(task: T, o: FilterOpts, stage?: string): boolean {
   // «Только в работе» отсекает завершённое ДО всех прочих условий: это ответ на
-  // вопрос «что сейчас делается», и он не зависит от того, чья это задача.
+  // вопрос «что сейчас делается», и он не зависит от того, чья это задача. Признак —
+  // факт закрытия, а не колонка: в «Готово» лежит и то, что ещё ждёт согласования.
   if (o.inWorkOnly && task.closed_at) return false;
   if (o.creatorId && !isCreatedBy(task, o.creatorId)) return false;
+  // Прочие фильтры независимы друг от друга и соединяются И (#4799 §3.2).
+  if (o.assigneeId && !isAssignedTo(task, o.assigneeId)) return false;
+  if (o.priority && String(task.priority ?? 'normal') !== o.priority) return false;
+  if (o.labelId && !(task.labels ?? []).some((l) => eq(l.id, o.labelId))) return false;
+  if (o.search && !searchMatch(task, o.search)) return false;
+  for (const k of o.quick ?? []) if (!quickMatch(task, k, o, stage)) return false;
+  // Роли — ИЛИ: «Делаю» + «Помогаю» оставляет карточку, если подходит хоть одна.
+  if (o.mode === 'both' && o.roles?.length) return o.roles.some((r) => roleMatch(task, r, o.userId));
   switch (o.mode) {
     case 'doing': return eq(task.assignee_id, o.userId);
     case 'helping': return isHelping(task, o.userId);
@@ -91,7 +187,8 @@ export function matches<T extends TaskLike>(task: T, o: FilterOpts): boolean {
 
 /** Фильтр вообще что-то отсекает? От этого зависит и пересчёт позиций при переносе. */
 export const filterActive = (o: FilterOpts): boolean =>
-  o.mode !== 'off' || !!o.creatorId || !!o.inWorkOnly;
+  o.mode !== 'off' || !!o.creatorId || !!o.inWorkOnly || !!o.quick?.length || !!o.assigneeId
+  || !!o.columnId || !!o.priority || !!o.labelId || !!o.search?.trim();
 
 /**
  * Оставить подходящие задачи.
@@ -105,7 +202,10 @@ export function filterBoard<T extends TaskLike, C extends ColumnLike<T>>(
   o: FilterOpts,
   keepEmpty = false,
 ): C[] {
-  const filtered = columns.map((col) => ({ ...col, tasks: col.tasks.filter((t) => matches(t, o)) }));
+  const filtered = columns.map((col) => ({
+    ...col,
+    tasks: o.columnId && !eq(col.id, o.columnId) ? [] : col.tasks.filter((t) => matches(t, o, col.stage_type)),
+  }));
   return keepEmpty ? filtered : filtered.filter((col) => col.tasks.length > 0);
 }
 
@@ -114,7 +214,9 @@ export function countMatching<T extends TaskLike, C extends ColumnLike<T>>(
   columns: C[],
   o: FilterOpts,
 ): number {
-  return columns.reduce((sum, col) => sum + col.tasks.filter((t) => matches(t, o)).length, 0);
+  return columns.reduce((sum, col) => (o.columnId && !eq(col.id, o.columnId)
+    ? sum
+    : sum + col.tasks.filter((t) => matches(t, o, col.stage_type)).length), 0);
 }
 
 /**
@@ -129,9 +231,10 @@ export function realPosition<T extends TaskLike>(
   fullTasks: T[],
   o: FilterOpts,
   visibleIndex: number,
+  stage?: string,
 ): number {
   const shownAt: number[] = [];
-  fullTasks.forEach((t, i) => { if (matches(t, o)) shownAt.push(i); });
+  fullTasks.forEach((t, i) => { if (matches(t, o, stage)) shownAt.push(i); });
   // видимых в колонке нет — человек бросает «просто сюда»; ставим в конец,
   // чтобы не влезать поверх задач, которых он сейчас не видит
   if (!shownAt.length) return fullTasks.length;

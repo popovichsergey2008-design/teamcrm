@@ -59,7 +59,9 @@ export function deadlineBadge(deadlineAt?: string | null, closed = false, paused
   // ТЗ-30: работа сдана на проверку — срок задачи прошёл, но это не просрочка исполнителя
   if (paused && days < 0) return { text: `⏰ ${date} · на проверке`, cls: 'badge badge-warn', title: `${title} — срок задачи прошёл; исполнитель сдал работу, задержка на проверке`, label: `${date} · на проверке`, tone: 'warn' };
   if (days < 0) return { text: `⏰ ${date} · просрочен`, cls: 'badge badge-danger', title: `${title} — просрочен на ${-days} дн.`, label: `${date} · просрочен`, tone: 'danger' };
-  if (days === 0) return { text: '⏰ сегодня', cls: 'badge badge-danger', title, label: 'сегодня', tone: 'danger' };
+  // #4798 §2: красный — только просрочка; «сегодня» — предупреждение, со временем, если оно задано
+  const hm = due.getHours() || due.getMinutes() ? due.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+  if (days === 0) return { text: `⏰ сегодня${hm ? `, ${hm}` : ''}`, cls: 'badge badge-warn', title, label: `сегодня${hm ? `, ${hm}` : ''}`, tone: 'warn' };
   if (days === 1) return { text: '⏰ завтра', cls: 'badge badge-warn', title, label: 'завтра', tone: 'warn' };
   if (days <= 3) return { text: `⏰ ${date}`, cls: 'badge badge-warn', title: `${title} — через ${days} дн.`, label: date, tone: 'warn' };
   return { text: `⏰ ${date}`, cls: 'badge badge-muted', title, label: date, tone: 'neutral' };

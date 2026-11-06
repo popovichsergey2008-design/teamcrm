@@ -18,7 +18,7 @@ import {
   Info, CircleHelp, Lock, Eye, EyeOff, LogOut, BookOpen, Inbox, Plug, Handshake, Sparkles,
   ChartColumn, Wallet, Sun, Moon, Monitor, Play, Pause, Mail, Building2, Target, Zap, ShieldCheck,
   Pin, ThumbsUp, ThumbsDown, Heart, Rocket, Megaphone, PartyPopper, Trophy, Lightbulb, WandSparkles,
-  Funnel, CheckCheck, SquarePen, House, AtSign,
+  Funnel, CheckCheck, SquarePen, House, AtSign, Undo2, Hourglass, Columns3, Ban,
 } from 'lucide-react';
 
 const ICONS = {
@@ -49,6 +49,8 @@ const ICONS = {
   home: House,
   // упоминание в центре уведомлений (#4655)
   at: AtSign,
+  // доска #4798/#4799: отменить перенос, ожидание, ширина колонок, препятствие
+  undo: Undo2, hourglass: Hourglass, columns: Columns3, ban: Ban,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

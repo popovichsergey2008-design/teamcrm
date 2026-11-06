@@ -1,0 +1,9 @@
+/* Правила доски (#4798 §18): лениво, вместе с окном. */
+.rules-list, .rules-log { display: flex; flex-direction: column; gap: 6px; }
+.rules-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.rules-row > div:first-child { flex: 1; min-width: 0; }
+.rules-h { margin: 14px 0 6px; font-size: var(--fs-sm); color: var(--text-mut); text-transform: uppercase; letter-spacing: .04em; }
+.rules-build { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rules-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.rules-preview { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg-elev-2); }
+.rules-preview p { margin: 4px 0; }

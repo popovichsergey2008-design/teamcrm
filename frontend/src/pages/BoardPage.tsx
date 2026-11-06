@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { forgetProject, lastProject, rememberProject } from '../lib/last-project';
@@ -13,11 +13,16 @@ const ProjectSettingsModal = lazyComponent(() => import('../components/ProjectSe
 import { GateBlock, HandoffGateDialog, gateFromError } from '../components/HandoffGateDialog';
 import { TaskListView } from '../components/TaskListView';
 import {
-  countMatching, filterActive, filterBoard, MineMode, realPosition,
+  countMatching, filterActive, filterBoard, PAUSED_STAGES, QuickKey, realPosition, REVIEW_STAGES,
 } from '../lib/board-filter';
-import { MineFilter } from '../components/MineFilter';
 import { takeDraftOpen, TASK_DRAFT_OPEN, type TaskDraft } from '../lib/task-draft';
-import { LEGACY_VIEWS, TASK_VIEWS } from '../lib/task-views';
+import { BoardQuery, loadQuery, normalize, QUICK, saveQuery, toFilter } from '../lib/board-query';
+import { commonLabels } from '../lib/board-card';
+import { BoardBar } from '../components/board/BoardBar';
+import { ViewsMenu } from '../components/board/ViewsMenu';
+import { DropdownMenu, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
+import { flowApi } from '../lib/flow-api';
+import { showToast } from '../lib/notifications';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { EmptyState } from '../components/EmptyState';
 import { CareEmpty } from '../components/care';
@@ -28,7 +33,6 @@ import { useDismiss } from '../hooks/useDismiss';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';
 import { SkeletonBoard } from '../components/Skeleton';
 import { MONETIZATION_ENABLED } from '../config';
-import { useStickyCheck } from '../lib/sticky-checks';
 import { Button } from '../components/ui/button';
 import { confirmAction, promptText } from '../components/ui/dialog';
 import { useTitleHint } from '../lib/page-title';
@@ -43,6 +47,23 @@ const TaskDrawer = lazyComponent(() => import('../components/TaskDrawer').then((
 const TaskCreateModal = lazyComponent(() => import('../components/TaskCreateModal').then((m) => m.TaskCreateModal));
 /* Инфоцентр проекта (#4659): нулевая колонка — своим куском, первый экран не тяжелеет. */
 const HubColumn = lazyComponent(() => import('../components/hub/HubColumn').then((m) => m.HubColumn));
+/* #4798/#4799: очередь решений, сдача результата и правила — окна, которые открывают не каждый день. */
+const ReviewQueue = lazyComponent(() => import('../components/review/ReviewQueue').then((m) => m.ReviewQueue));
+const HandoffDialog = lazyComponent(() => import('../components/task-flow/HandoffDialog').then((m) => m.HandoffDialog));
+const RulesDialog = lazyComponent(() => import('../components/board/RulesDialog').then((m) => m.RulesDialog));
+
+/** Личный вид доски: ширина колонок, плотность карточек, свёрнутые колонки (#4798 §14, §20). */
+interface BoardUi { w: 'narrow' | 'normal' | 'wide'; dense: boolean; col: Record<string, string[]> }
+const uiKey = (uid: string) => `qevo.board.ui:${uid}`;
+function readUi(uid: string): BoardUi {
+  try {
+    const s = JSON.parse(localStorage.getItem(uiKey(uid)) ?? '{}') as Partial<BoardUi>;
+    return { w: s.w === 'narrow' || s.w === 'wide' ? s.w : 'normal', dense: !!s.dense, col: s.col ?? {} };
+  } catch { return { w: 'normal', dense: false, col: {} }; }
+}
+function writeUi(uid: string, ui: BoardUi) {
+  try { localStorage.setItem(uiKey(uid), JSON.stringify(ui)); } catch { /* без хранилища — до перезагрузки */ }
+}
 
 type Action =
   | { type: 'SET'; board: Board }
@@ -182,6 +203,10 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   );
   const switchView = (v: 'board' | 'list') => { setView(v); localStorage.setItem('teamcrm.boardView', v); };
   useDragEdgeScroll(columnsRef, view === 'board');
+  const { organizations } = useAuth();
+  const uid = String(user?.id ?? '');
+  const [ui, setUiState] = useState<BoardUi>(() => readUi(uid));
+  const setUi = (patch: Partial<BoardUi>) => setUiState((cur) => { const next = { ...cur, ...patch }; writeUi(uid, next); return next; });
   /**
    * Чьи задачи показывать — фильтр, а не отдельный вид: человек остаётся там, где
    * работал, и просто перестаёт видеть чужое. На доске это доска, в списке — список.
@@ -189,22 +214,35 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
    * «Назначены мне» и «Поставлены мной» разделены намеренно: это разные роли в работе.
    * Первое — что мне делать, второе — что я жду от других и с чего спрошу.
    */
-  const [mineMode, setMineMode] = useState<MineMode>(() => {
-    // Ключ сменён (#1542): по умолчанию доска открывается на «Моих задачах» — делаю,
-    // помогаю и поручил вместе. Старый ключ у многих хранит «off» от прежнего умолчания,
-    // поэтому его не читаем: каждый один раз начинает с нового умолчания.
-    const saved = localStorage.getItem('teamcrm.boardMine2');
-    if (saved === null) return 'both';
-    if (saved === 'both' || TASK_VIEWS.some((v) => v.key === saved)) return saved as MineMode;
-    // прежние названия срезов: у людей они лежат в памяти браузера со вчерашнего дня
-    if (LEGACY_VIEWS[saved]) return LEGACY_VIEWS[saved];
-    return saved === '1' ? 'doing' : 'off'; // самая старая настройка «Мои задачи» = назначенные
-  });
-  /** Постановщик из списка: работает независимо от «моих» — что человек раздал кому угодно. */
-  const [creatorId, setCreatorId] = useState<string>('');
-  /** «Только в работе»: скрыть завершённые карточки. По умолчанию выключено — см. MineFilter. */
-  // «только в работе» — привычка человека, а не браузера (sticky-checks)
-  const [inWorkOnly, setInWorkOnly] = useStickyCheck('board.inWorkOnly', localStorage.getItem('teamcrm.boardInWork') === '1');
+  /*
+    Что показывает доска (#4799 §3): режим, роли (ИЛИ), быстрые условия (И), фильтры и
+    поиск по доске — одним объектом, на человека, компанию и проект (lib/board-query).
+  */
+  const [query, setQueryState] = useState<BoardQuery>(() => loadQuery(user?.tenantId, user?.id, selected));
+  /** Открытый сохранённый вид — его имя на кнопке «Виды», пока условия не меняли. */
+  const [activeView, setActiveView] = useState<string | null>(null);
+  const setQuery = useCallback((q: BoardQuery) => {
+    const n = normalize(q);
+    setQueryState(n);
+    setActiveView(null);
+    saveQuery(user?.tenantId, user?.id, selected, n);
+  }, [user?.tenantId, user?.id, selected]);
+  useEffect(() => { setQueryState(loadQuery(user?.tenantId, user?.id, selected)); setActiveView(null); }, [selected, user?.tenantId, user?.id]);
+  /** Ссылка на сохранённый вид (?view=12) — откроем, когда загрузится доска. */
+  const pendingView = useRef<string | null>(new URLSearchParams(window.location.search).get('view'));
+  /** Сообщение о том, что часть условий снята: доступ или состав доски изменились. */
+  const [accessNote, setAccessNote] = useState('');
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+  /** Сдача результата при переносе в колонку проверки (#4799 BOARD03). */
+  const [handoff, setHandoff] = useState<{ task: Task; columnId: string; columnName: string; position: number } | null>(null);
+  /** «Отменить» ошибочный перенос (#4798 §20): несколько секунд после переноса. */
+  const [undo, setUndo] = useState<{ taskId: string; title: string; to: string; fromColumn: string; fromPosition: number } | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const t = window.setTimeout(() => setUndo(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [undo]);
 
 
   /*
@@ -382,6 +420,20 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
 
 
 
+  /** #4798 §14: мягкий порог «в работе на человека» — только предупреждение. */
+  const setWipLimit = async () => {
+    if (!selected) return;
+    const v = await promptText({
+      title: 'Порог «в работе» на человека',
+      description: 'Когда у человека в одной колонке задач больше порога, доска мягко предупредит. Это не запрет и не оценка занятости. Пусто — не следить.',
+      placeholder: 'Например: 3', defaultValue: board?.project.wip_limit ? String(board.project.wip_limit) : '', confirmLabel: 'Сохранить', singleLine: true, minLength: 0,
+    });
+    if (v === null) return;
+    const n = Number(v.trim());
+    try { await flowApi.setWip(selected, v.trim() && Number.isFinite(n) && n > 0 ? Math.round(n) : null); reloadBoard(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : 'Не удалось сохранить порог'); }
+  };
+
   const addColumn = async () => {
     if (!selected) return;
     const name = await promptText({ title: 'Новая колонка', placeholder: 'Например: На проверке', confirmLabel: 'Добавить', singleLine: true });
@@ -480,22 +532,46 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   }, [board, selected]);
 
   const moveTask = useCallback(
-    async (taskId: string, columnId: string, visibleIndex: number, confirmGate = false, noAfterReason?: string) => {
+    async (taskId: string, columnId: string, visibleIndex: number, confirmGate = false, noAfterReason?: string, how: { raw?: boolean; undo?: boolean } = {}) => {
       const current = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === taskId);
       // Перетаскивание сообщает место среди ВИДИМЫХ карточек. При включённом фильтре
       // это не настоящая позиция: между двумя своими задачами могут стоять чужие,
       // и без пересчёта задача уехала бы в начало колонки.
       const target = board?.columns.find((c) => c.id === columnId);
-      const opts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null, inWorkOnly };
-      const position = user && target && filterActive(opts)
-        ? realPosition(target.tasks, opts, visibleIndex)
+      const from = board?.columns.find((c) => c.id === current?.column_id);
+      const opts = toFilter(query, String(user?.id ?? ''));
+      const position = !how.raw && user && target && filterActive(opts)
+        ? realPosition(target.tasks, opts, visibleIndex, target.stage_type)
         : visibleIndex;
+      /*
+        Сдача на проверку (#4799 BOARD03): исполнитель переносит свою задачу в колонку
+        проверки — коротко «что сделано, где посмотреть». Та же задача, тот же срок.
+      */
+      const me = String(user?.id ?? '');
+      const isDoer = !!current && (String(current.assignee_id ?? '') === me || (current.co_assignees ?? []).some((p) => String(p.userId) === me));
+      const toReview = !!target && REVIEW_STAGES.includes(target.stage_type ?? '')
+        && !REVIEW_STAGES.includes(from?.stage_type ?? '') && !current?.closed_at;
+      if (!how.undo && !confirmGate && current && target && isDoer && toReview && current.column_id !== columnId) {
+        setHandoff({ task: current, columnId, columnName: target.name, position });
+        return;
+      }
       if (current) dispatch({ type: 'UPSERT_TASK', task: { ...current, column_id: columnId, position } });
       feedback('tap');
       try {
         const server = await api.moveTask(taskId, { columnId, position, confirmGate, noAfterReason });
         dispatch({ type: 'UPSERT_TASK', task: server });
         setGate(null);
+        if (!how.undo && current && current.column_id !== columnId && from) {
+          setUndo({ taskId, title: current.title, to: target?.name ?? '', fromColumn: from.id, fromPosition: current.position });
+        }
+        // мягкий порог «в работе на человека»: подсказка, а не запрет (#4798 §14)
+        const limit = board?.project.wip_limit;
+        if (limit && target && server.assignee_id && !PAUSED_STAGES.includes(target.stage_type ?? '') && target.stage_type !== 'done') {
+          const n = target.tasks.filter((t) => String(t.assignee_id) === String(server.assignee_id) && String(t.id) !== String(taskId) && !t.closed_at).length + 1;
+          if (n > limit) {
+            showToast({ title: `У ${server.assignee_name ?? current?.assignee_name ?? 'исполнителя'} уже ${n} задач в «${target.name}»`, body: 'Проверьте, что сейчас важнее. Число задач — не оценка занятости: задачи бывают разной сложности.', kind: 'info' });
+          }
+        }
         // задача закрылась этим переносом — подтверждение, когда сервер согласился (ТЗ-23)
         const el = document.querySelector(`[data-task-id="${CSS.escape(String(taskId))}"]`);
         if (server?.closed_at && !current?.closed_at) feedback('task.completed', { el });
@@ -510,7 +586,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         if (selected) api.getBoard(selected).then((b) => dispatch({ type: 'SET', board: b }));
       }
     },
-    [board, selected, mineMode, creatorId, inWorkOnly, user],
+    [board, selected, query, user],
   );
 
   const toggleTimer = useCallback(
@@ -531,9 +607,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   );
 
   const openTask = board?.columns.flatMap((c) => c.tasks).find((t) => t.id === openTaskId) ?? null;
-  // число рядом с «Моими задачами»: видно, есть ли по проекту работа лично на мне,
-  // не переключаясь на эту вкладку
-  const filterOpts = { userId: String(user?.id ?? ''), mode: mineMode, creatorId: creatorId || null, inWorkOnly };
+  const filterOpts = toFilter(query, uid);
   /**
    * Кто вообще ставил задачи в этом проекте.
    *
@@ -549,6 +623,61 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       .entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'))
     : [];
   const shownCount = board && user ? countMatching(board.columns, filterOpts) : 0;
+  /*
+    Числа у быстрых условий — каждое отдельно, в текущем режиме, ролях и фильтрах
+    (#4799 §3.4); итог после всех «И» — отдельной строкой «Показано N».
+  */
+  const counts = useMemo(() => {
+    const all = board?.columns.flatMap((c) => c.tasks) ?? [];
+    const quick = {} as Record<QuickKey, number>;
+    for (const q of QUICK) quick[q.key] = board ? countMatching(board.columns, { ...filterOpts, quick: [q.key] }) : 0;
+    return { shown: shownCount, quick, active: all.filter((t) => !t.closed_at).length, done: all.filter((t) => !!t.closed_at).length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, query, uid, shownCount]);
+  const hiddenLabels = useMemo(() => commonLabels(board?.columns.flatMap((c) => c.tasks) ?? []), [board]);
+  const boardLabels = useMemo(() => [...new Map((board?.columns.flatMap((c) => c.tasks) ?? [])
+    .flatMap((t) => t.labels ?? []).map((l) => [String(l.id), { id: String(l.id), name: l.name }])).values()], [board]);
+
+  /*
+    Условие ссылается на то, чего больше нет (человека убрали, колонку удалили, тег
+    стёрли) — снимаем его и говорим об этом, а не показываем молча пустую доску (§10).
+  */
+  useEffect(() => {
+    if (!board || !users.length) return;
+    const gone: string[] = [];
+    const next = { ...query };
+    if (query.assigneeId && !users.some((u) => String(u.id) === query.assigneeId)) { next.assigneeId = ''; gone.push('исполнитель'); }
+    if (query.columnId && !board.columns.some((c) => String(c.id) === query.columnId)) { next.columnId = ''; gone.push('колонка'); }
+    if (gone.length) { setQuery(next); setAccessNote(`Состав доски или доступа изменился — условие снято: ${gone.join(', ')}.`); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board?.project?.id, board?.columns.length, users.length]);
+
+  // Ссылка на сохранённый вид: условия — из вида, задачи — по правам смотрящего.
+  useEffect(() => {
+    const id = pendingView.current;
+    if (!id || !board || String(board.project.id) !== String(selected)) return;
+    pendingView.current = null;
+    flowApi.views(String(selected)).then((vs) => {
+      const v = vs.find((x) => String(x.id) === id);
+      if (!v) { setAccessNote('Этот вид вам недоступен — он личный или его удалили.'); return; }
+      setQuery({ ...query, ...(v.query as Partial<BoardQuery>) } as BoardQuery);
+      setActiveView(v.id);
+    }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [board, selected]);
+
+  // Положение доски: вернулись в проект — колонки прокручены туда же, где их оставили.
+  const scrollKey = selected ? `qevo.board.scroll:${selected}` : '';
+  const hasBoard = !!board;
+  useEffect(() => {
+    const el = columnsRef.current;
+    if (!el || !scrollKey || view !== 'board') return;
+    try { const x = Number(sessionStorage.getItem(scrollKey) ?? 0); if (x) el.scrollLeft = x; } catch { /* без хранилища */ }
+    let t = 0;
+    const onScroll = () => { window.clearTimeout(t); t = window.setTimeout(() => { try { sessionStorage.setItem(scrollKey, String(el.scrollLeft)); } catch { /* без хранилища */ } }, 200); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { el.removeEventListener('scroll', onScroll); window.clearTimeout(t); };
+  }, [scrollKey, view, hasBoard]);
   // пустой проект — «пустая воронка» (ТЗ-34): вместо «под фильтр ничего» — карточка заботы
   const boardEmpty = board?.columns.every((c) => !c.tasks.length);
   // Доске оставляем все колонки даже пустыми — иначе бросать задачу становится некуда;
@@ -556,7 +685,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   // Проект сменился, а выбранный постановщик в нём ничего не ставил — снимаем выбор,
   // иначе человек видит пустую доску и не понимает, почему.
   useEffect(() => {
-    if (creatorId && board && !creators.some(([id]) => id === creatorId)) setCreatorId('');
+    if (query.creatorId && board && !creators.some(([id]) => id === query.creatorId)) setQuery({ ...query, creatorId: '' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, board?.columns.length]);
 
@@ -607,15 +736,14 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         )}
         {board && (
           <>
-            <div className="board-header">
-              <div className="board-title">
-                {/*
-                  Название проекта — переключатель досок.
-
-                  Список проектов ушёл из левой панели, и перескакивать между досками
-                  надо оттуда, где ты уже находишься: нажал на название — выбрал другой
-                  проект. «Все проекты» уводит в таблицу со всеми досками.
-                */}
+            {/*
+              Три уровня (#4799 §1, TOP01): где я (компания → раздел → проект), куда можно
+              уйти из проекта («Все проекты», «Общие задачи») и команды ЭТОЙ доски ниже.
+            */}
+            <div className="bp-head">
+              <div className="bp-crumbs">
+                {organizations.find((o) => String(o.tenantId) === String(user?.tenantId))?.name ?? 'Компания'} / Проекты и задачи
+              </div>
                 <span className="board-switch">
                   <button
                     className="board-switch-btn"
@@ -661,118 +789,106 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 </span>
                 {/* #4713: проект — в избранное, он появится в сайдбаре */}
                 <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
-                {/*
-                  «Все проекты» рядом с названием доски (задача #1374).
-
-                  Раньше выход к таблице проектов был спрятан в самом низу списка досок:
-                  доска открывается на последней, и человек, которому нужен общий список,
-                  сначала открывал выпадашку, потом искал в ней строку. Одно нажатие вместо трёх.
-                */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="board-all-btn"
-                  onClick={() => { forgetProject(); navigate({ section: 'projects' }); }}
-                  title="Таблица со всеми проектами"
-                >
+              <span className="bp-ctx">
+                {/* «Все проекты» — реестр проектов; «Общие задачи» — задачи из нескольких проектов */}
+                <Button variant="ghost" size="sm" onClick={() => { forgetProject(); navigate({ section: 'projects' }); }} title="Реестр всех проектов">
                   <Icon name="list" size={15} /> Все проекты
                 </Button>
-                {/* Сквозной реестр задач по всем проектам: из меню он переехал сюда */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="board-all-btn"
-                  onClick={() => navigate({ section: 'tasks' })}
-                  title="Задачи по всем проектам: делаю, поручил, помогаю, наблюдаю"
-                >
-                  <Icon name="check-circle" size={15} /> Общие задачи
+                <Button variant="ghost" size="sm" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
+                  <Icon name="check-circle" size={15} /> Общие задачи <Icon name="arrow-right" size={13} />
                 </Button>
-                {/* Вид доски — переключатель из двух сегментов, а не две отдельные кнопки. */}
-                <span className="kv2-seg" role="group" aria-label="Вид доски">
-                  <button className="kv2-seg-btn" aria-pressed={view === 'board'} onClick={() => switchView('board')} title="Канбан-доска"><Icon name="board" size={15} /> Доска</button>
-                  <button className="kv2-seg-btn" aria-pressed={view === 'list'} onClick={() => switchView('list')} title="Список"><Icon name="list" size={15} /> Список</button>
-                </span>
-                {!isClient && (
-                  /* Один фильтр вместо трёх элементов: «чьи задачи» — один вопрос,
-                     и в шапке доски ему хватает одной кнопки с выпадающим списком. */
-                  <MineFilter
-                    mode={mineMode}
-                    creatorId={creatorId}
-                    creators={creators}
-                    count={shownCount}
-                    inWorkOnly={inWorkOnly}
-                    onChange={({ mode, creatorId: creator, inWorkOnly: onlyWork }) => {
-                      setMineMode(mode);
-                      setCreatorId(creator);
-                      setInWorkOnly(onlyWork);
-                      localStorage.setItem('teamcrm.boardMine2', mode);
-                      localStorage.setItem('teamcrm.boardInWork', onlyWork ? '1' : '0');
-                    }}
-                  />
+                {board.project.origin === 'bitrix' && (
+                  <Button variant="ghost" size="sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</Button>
                 )}
-                {!isClient && (
-                  <span className="board-actions">
-                    {/*
-                      Постановка задачи — здесь, а не в левой панели.
-
-                      Заказчик перенёс её туда, где задачи и живут. Текстом — обычная
-                      форма в первую колонку доски (с файлами и проверкой дублей);
-                      голосом — то же окно диктовки, что и раньше, с этим проектом.
-                    */}
-                    {board.columns.length > 0 && (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        data-tour="board-new"
-                        onClick={() => openCreate(board.columns[0].id)}
-                        title={`Новая задача в колонку «${board.columns[0].name}» (клавиша C — голосом или текстом)`}
-                      >
-                        <Icon name="plus" size={15} /> Новая задача
-                      </Button>
-                    )}
-                    {onVoiceTask && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="board-mic"
-                        onClick={onVoiceTask}
-                        title="Продиктовать задачу голосом"
-                        aria-label="Продиктовать задачу голосом"
-                      >
-                        <Icon name="mic" size={15} />
-                      </Button>
-                    )}
-                    {/* Настройки самой доски: место в списке и порядок досок компании.
-                        Раньше это висело кнопкой в левой панели — не её дело. */}
-                    {canManageBoard && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowProjectSettings(true)}
-                        title="Настройки проекта: место в списке досок"
-                      >
-                        <Icon name="settings" size={15} /> Настройки
-                      </Button>
-                    )}
-                    {view === 'list' && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} variant="button" />}
-                    {board.project.origin === 'bitrix' && (
-                      <Button variant="ghost" size="sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</Button>
-                    )}
-                  </span>
-                )}
-              </div>
+              </span>
               {showFinance && <PnlPanel pnl={pnl} alert={alert} cow={cow} />}
             </div>
+            {!isClient ? (
+              <BoardBar
+                query={query}
+                onChange={setQuery}
+                counts={counts}
+                view={view}
+                onView={switchView}
+                onCreate={board.columns.length > 0 ? () => openCreate(board.columns[0].id) : undefined}
+                createHint={board.columns[0] ? `Новая задача в «${board.project.name}», колонка «${board.columns[0].name}» (клавиша C)` : undefined}
+                onVoice={onVoiceTask}
+                onOpenReview={() => setReviewOpen(true)}
+                users={users}
+                columns={board.columns.map((c) => ({ id: c.id, name: c.name }))}
+                labels={boardLabels}
+                creators={creators}
+                viewsSlot={(
+                  <ViewsMenu
+                    projectId={String(board.project.id)}
+                    userId={uid}
+                    isBoss={user?.role === 'owner' || user?.role === 'manager'}
+                    query={query}
+                    activeViewId={activeView}
+                    onApply={(v) => { setQuery({ ...query, ...(v.query as Partial<BoardQuery>) } as BoardQuery); setActiveView(v.id); }}
+                  />
+                )}
+                extraActions={(
+                  <>
+                    {view === 'list' && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} variant="button" />}
+                    <DropdownMenu
+                      trigger={(
+                        <Button variant="ghost" size="sm" title="Настройки этой доски и вашего вида" aria-label="Настройки доски">
+                          <Icon name="settings" size={15} /> <span className="bb-lbl">Настройки</span>
+                        </Button>
+                      )}
+                    >
+                      {canManageBoard && (
+                        <MenuItem onSelect={() => setShowProjectSettings(true)} icon={<Icon name="settings" size={15} />}>Настройки проекта: место в списке досок</MenuItem>
+                      )}
+                      <MenuItem onSelect={() => setRulesOpen(true)} icon={<Icon name="zap" size={15} />}>Правила доски «Когда — тогда»</MenuItem>
+                      {canManageBoard && (
+                        <MenuItem
+                          onSelect={() => { void setWipLimit(); }}
+                          icon={<Icon name="users" size={15} />}
+                        >
+                          {board.project.wip_limit ? `Порог «в работе»: ${board.project.wip_limit} на человека` : 'Порог «в работе» на человека…'}
+                        </MenuItem>
+                      )}
+                      <MenuSeparator />
+                      {(['narrow', 'normal', 'wide'] as const).map((w) => (
+                        <MenuItem key={w} onSelect={() => setUi({ w })} icon={<Icon name={ui.w === w ? 'check' : 'columns'} size={15} />}>
+                          {w === 'narrow' ? 'Колонки узкие' : w === 'wide' ? 'Колонки широкие' : 'Колонки обычные'}
+                        </MenuItem>
+                      ))}
+                      <MenuItem onSelect={() => setUi({ dense: !ui.dense })} icon={<Icon name={ui.dense ? 'check' : 'list'} size={15} />}>
+                        Компактные карточки
+                      </MenuItem>
+                      {!!(ui.col[String(board.project.id)] ?? []).length && (
+                        <MenuItem onSelect={() => setUi({ col: { ...ui.col, [String(board.project.id)]: [] } })} icon={<Icon name="maximize" size={15} />}>
+                          Развернуть все колонки
+                        </MenuItem>
+                      )}
+                    </DropdownMenu>
+                  </>
+                )}
+              />
+            ) : (
+              <div className="bb-row" style={{ marginBottom: 10 }}>
+                <span className="kv2-seg" role="group" aria-label="Вид доски">
+                  <button className="kv2-seg-btn" aria-pressed={view === 'board'} onClick={() => switchView('board')}><Icon name="board" size={15} /> Доска</button>
+                  <button className="kv2-seg-btn" aria-pressed={view === 'list'} onClick={() => switchView('list')}><Icon name="list" size={15} /> Список</button>
+                </span>
+              </div>
+            )}
+            {accessNote && (
+              <div className="tv2-callout tv2-callout-info" role="status">
+                <Icon name="info" size={15} /> {accessNote}
+                <Button variant="ghost" size="sm" onClick={() => setAccessNote('')}>Понятно</Button>
+              </div>
+            )}
             {!isClient && boardEmpty && <CareEmpty k="board" />}
             {filterActive(filterOpts) && shownCount === 0 && !boardEmpty ? (
               <EmptyState
-                icon="user"
-                title={mineMode === 'delegated' ? 'В этом проекте вы ничего не поручали'
-                  : mineMode === 'doing' ? 'В этом проекте на вас ничего не назначено'
-                    : mineMode === 'helping' ? 'В этом проекте вы никому не помогаете'
-                      : mineMode === 'watching' ? 'В этом проекте вы ни за чем не наблюдаете'
-                        : 'Под выбранный фильтр ничего не подходит'}
-                hint="Снимите фильтр, чтобы увидеть работу всей команды."
+                icon="filter"
+                title="По этим условиям задач нет"
+                hint="Условия перечислены над доской — снимите лишнее крестиком или сбросьте их разом. Режим и роли при сбросе останутся."
+                action={{ label: 'Сбросить условия', onClick: () => setQuery({ ...query, quick: [], creatorId: '', assigneeId: '', columnId: '', priority: '', labelId: '', search: '' }) }}
               />
             ) : view === 'list' ? (
               <TaskListView
@@ -782,7 +898,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 onOpenTask={(t) => setOpenTaskId(t.id)}
               />
             ) : (
-              <div className="board-columns" ref={columnsRef}>
+              <div className={`board-columns w-${ui.w}${ui.dense ? ' board-dense' : ''}`} ref={columnsRef}>
                 {/* Инфоцентр — перед колонками, но НЕ среди board.columns: «первая колонка»,
                     порядок и перенос карточек его не видят. Клиенту не показываем. */}
                 {!isClient && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} />}
@@ -806,6 +922,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     onDeleteColumn={deleteColumn}
                     onColumnDrop={reorderColumns}
                     columns={board.columns.map((c) => ({ id: c.id, name: c.name, count: c.tasks.length }))}
+                    me={uid}
+                    hiddenLabels={hiddenLabels}
+                    wipLimit={board.project.wip_limit ?? null}
+                    collapsed={(ui.col[String(board.project.id)] ?? []).includes(String(col.id))}
+                    onToggleCollapse={(id) => {
+                      const pid = String(board.project.id);
+                      const cur = ui.col[pid] ?? [];
+                      setUi({ col: { ...ui.col, [pid]: cur.includes(String(id)) ? cur.filter((x) => x !== String(id)) : [...cur, String(id)] } });
+                    }}
                   />
                 ))}
                 {canManageBoard && (
@@ -857,6 +982,33 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         />
       )}
       {showFeed && selected && <ImportedFeedPanel projectId={selected} onClose={() => setShowFeed(false)} />}
+      {reviewOpen && (
+        <ReviewQueue
+          onClose={() => { setReviewOpen(false); reloadBoard(); }}
+          onOpenTask={(t) => { setReviewOpen(false); if (String(t.project_id) === String(selected)) setOpenTaskId(String(t.id)); else navigate({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) }); }}
+        />
+      )}
+      {rulesOpen && selected && <RulesDialog projectId={selected} onClose={() => setRulesOpen(false)} />}
+      {handoff && (
+        <HandoffDialog
+          task={handoff.task}
+          columnId={handoff.columnId}
+          columnName={handoff.columnName}
+          position={handoff.position}
+          users={users}
+          canPickReviewer={user?.role === 'owner' || user?.role === 'manager' || String(handoff.task.created_by ?? '') === uid}
+          onClose={() => setHandoff(null)}
+          onDone={(t) => { if (t) dispatch({ type: 'UPSERT_TASK', task: t }); setHandoff(null); reloadBoard(); }}
+        />
+      )}
+      {undo && (
+        <div className="bb-undo" role="status">
+          <span>«{undo.title.length > 40 ? `${undo.title.slice(0, 40)}…` : undo.title}» → {undo.to}</span>
+          <button onClick={() => { const u = undo; setUndo(null); void moveTask(u.taskId, u.fromColumn, u.fromPosition, false, undefined, { raw: true, undo: true }); }}>
+            <Icon name="undo" size={13} /> Отменить
+          </button>
+        </div>
+      )}
     </div>
   );
 }
