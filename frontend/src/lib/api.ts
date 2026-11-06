@@ -231,6 +231,8 @@ export interface FocusItem {
   assigneeName: string | null;
   checklistTotal: number;
   checklistDone: number;
+  /** #4767: оценка задачи в минутах; null — оценки нет */
+  estimateMin?: number | null;
   /** «почему эта задача» — готовые строки, собранные сервером */
   reasons: string[];
   score: number;

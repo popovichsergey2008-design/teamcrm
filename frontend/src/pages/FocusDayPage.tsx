@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense, lazy } from 'react';
+import { focusSize } from '../lib/focus-size';
 import './focus-day.css';
 import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
@@ -238,6 +239,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   );
 
   const card = (item: FocusItem) => {
+    // #4767: короткое решение или глубокая работа — по оценке; без оценки время выбирает человек
+    const size = focusSize(item.kind, item.estimateMin);
+    const minutesFor = size.minutes ?? focusMin;
     const done = item.status === 'done';
     const due = deadlineBadge(item.deadlineAt, done);
     const prio = priorityBadge(item.priority);
@@ -289,6 +293,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               {item.projectName && <Badge tone="outline">{item.projectName}</Badge>}
               {due && <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>}
               {prio && <Badge tone={prio.tone}>{prio.label}</Badge>}
+              {/* #4767: короткое решение / глубокая работа — по оценке задачи */}
+              {item.status !== 'done' && <Badge tone="outline" title={size.minutes === null ? 'У задачи нет оценки — время фокуса выберите сами' : 'По оценке задачи'}>{size.label}</Badge>}
               {item.kind === 'task' && item.checklistTotal > 0 && (
                 <span className="fd-check"><Icon name="check-circle" size={13} /> {item.checklistDone} из {item.checklistTotal}</span>
               )}
@@ -317,22 +323,25 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
                 <span className="fd-focus-start">
                   <Button
                     variant={isMission && item.kind === 'task' ? 'primary' : item.kind === 'review' ? 'outline' : 'ghost'} size="sm" disabled={busy}
-                    onClick={() => void startFocus(item)}
+                    onClick={() => void startFocus(item, minutesFor)}
                   ><Icon name="target" size={14} /> {item.kind === 'review'
                     ? (isMission ? 'Глубокий фокус на проверку' : 'Фокус на проверку')
-                    : (isMission ? 'Войти в глубокий фокус' : 'Фокус')} · {focusMin} мин</Button>
+                    : (isMission ? 'Войти в глубокий фокус' : 'Фокус')} · {minutesFor} мин</Button>
                   {/* #1568: длительность — рядом с кнопкой, выбор запоминается */}
-                  <DropdownMenu align="start" trigger={(
-                    <Button variant="outline" size="sm" disabled={busy} aria-label={`Длительность фокуса: ${focusMin} мин. Изменить`} title="Сколько длится фокус">
-                      <Icon name="clock" size={13} /> {focusMin} мин <Icon name="chevron-down" size={12} />
-                    </Button>
-                  )}>
-                    {FOCUS_MINUTES.map((m) => (
-                      <MenuItem key={m} onSelect={() => pickFocusMin(m)}>
-                        {m} минут{m === focusMin ? ' ✓' : ''}
-                      </MenuItem>
-                    ))}
-                  </DropdownMenu>
+                  {/* оценки нет — длительность выбирает человек (#1568); есть — берём из неё (#4767) */}
+                  {size.minutes === null && (
+                    <DropdownMenu align="start" trigger={(
+                      <Button variant="outline" size="sm" disabled={busy} aria-label={`Длительность фокуса: ${focusMin} мин. Изменить`} title="Оценки нет — сколько длится фокус, выберите сами">
+                        <Icon name="clock" size={13} /> {focusMin} мин <Icon name="chevron-down" size={12} />
+                      </Button>
+                    )}>
+                      {FOCUS_MINUTES.map((m) => (
+                        <MenuItem key={m} onSelect={() => pickFocusMin(m)}>
+                          {m} минут{m === focusMin ? ' ✓' : ''}
+                        </MenuItem>
+                      ))}
+                    </DropdownMenu>
+                  )}
                 </span>
               )}
               {item.kind === 'task' && !done && item.taskId && !item.startedAt && (
@@ -554,6 +563,19 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         />
       ) : (
         <section className="fd-top" aria-label="Три главных действия дня">
+          {/* #4767: короткие решения отдельно от глубокой работы */}
+          {(() => {
+            const groups = { short: [] as FocusItem[], medium: [] as FocusItem[], deep: [] as FocusItem[], unknown: [] as FocusItem[] };
+            for (const it of top.filter((i) => i.status !== 'done')) groups[focusSize(it.kind, it.estimateMin).size].push(it);
+            const part = (label: string, list: FocusItem[], each: number | null) => list.length
+              ? `${label}: ${list.map((i) => `#${i.rank}`).join(', ')}${each ? ` (≈${list.reduce((n, i) => n + (focusSize(i.kind, i.estimateMin).minutes ?? 0), 0)} мин)` : ''}`
+              : null;
+            const line = [
+              part('Короткие решения', groups.short, 10), part('Средние', groups.medium, 30),
+              part('Глубокая работа', groups.deep, 60), part('Без оценки', groups.unknown, null),
+            ].filter(Boolean).join(' · ');
+            return line ? <div className="dim fd-split" style={{ fontSize: 13 }}>{line}</div> : null;
+          })()}
           {mission ? card(mission) : emptySlot(1)}
           {mission?.status === 'done' && activeItems.length < 3 && (
             <div className="fd-note">

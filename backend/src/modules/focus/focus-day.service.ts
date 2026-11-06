@@ -612,6 +612,8 @@ function present(i: ItemRow, l: ItemLive | undefined) {
     deadlineAt: gone ? null : l?.deadline_at ?? null,
     priority: gone ? null : l?.priority ?? null,
     assigneeName: gone ? null : l?.assignee_name ?? null,
+    // #4767: из оценки — короткое решение или глубокая работа; нет оценки — null, точность не изображаем
+    estimateMin: gone || l?.estimate_hours == null ? null : Math.round(Number(l.estimate_hours) * 60) || null,
     checklistTotal: l?.checklist_total ?? 0,
     checklistDone: l?.checklist_done ?? 0,
     reasons: gone ? [] : i.reasons,

@@ -60,6 +60,8 @@ export interface ItemLive {
   assignee_name: string | null;
   /** #4768: начало описания — по одному названию не понять, что проверять. */
   task_about: string | null;
+  /** #4767: оценка исполнителя в часах — короткое решение или глубокая работа. */
+  estimate_hours: string | null;
 }
 
 /** Условие «проект виден человеку $2» — то же, что в списке проектов. */
@@ -451,7 +453,7 @@ export class FocusDayRepository {
               CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN left(t.description, 800) END AS task_about,
               CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN t.project_id END AS project_id,
               CASE WHEN t.id IS NOT NULL AND t.deleted_at IS NULL AND ${VISIBLE} THEN p.name END AS project_name,
-              t.deadline_at, t.priority,
+              t.deadline_at, t.priority, t.estimate_hours::text AS estimate_hours,
               (t.closed_at IS NOT NULL) AS closed,
               (i.item_type <> 'approval' AND (t.id IS NULL OR t.deleted_at IS NOT NULL OR NOT ${VISIBLE})) AS gone,
               (${pausedSql('t')}) AS in_review,
