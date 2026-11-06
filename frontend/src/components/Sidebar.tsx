@@ -21,6 +21,8 @@ import { humanMinutes } from '../lib/human-minutes';
 import { lazyComponent } from '../lib/lazy';
 
 const SidebarLists = lazyComponent(() => import('./SidebarLists').then((m) => m.default));
+/** #4764: «Продолжить работу» — тем же отдельным куском, что и избранное. */
+const ContinueWork = lazyComponent(() => import('./ContinueWork').then((m) => m.default));
 import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
@@ -578,6 +580,8 @@ export function Sidebar({
 
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav ref={navRef} className={`nav-main${drag ? ' nav-editing' : ''}`} aria-label="Разделы">
+          {/* #4764: появляется только при незавершённых действиях */}
+          {!collapsed && <ContinueWork onGo={() => setOpen(false)} />}
           {menuItems.map((item) => {
             if (isBlock(item.section) && collapsed) return null;
             // реестр задач живёт внутри «Проектов» — там и подсветка
