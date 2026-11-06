@@ -5,6 +5,7 @@ import { confirmAction, Dialog } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { api, ApiError, type BookingRules, type BookingType, type BookingTypeInput, type WeeklyHours } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
+import type { User } from '../../types';
 
 const DAYS: [string, string][] = [['1', 'Пн'], ['2', 'Вт'], ['3', 'Ср'], ['4', 'Чт'], ['5', 'Пт'], ['6', 'Сб'], ['0', 'Вс']];
 const REMINDERS = [5, 10, 15, 30, 60, 1440];
@@ -47,6 +48,7 @@ export function ShareTimeDialog({ onClose }: { onClose: () => void }) {
                     <span className="dim">
                       {t.durationMin} мин · {t.locationKind === 'call' ? 'созвон' : t.locationKind === 'phone' ? 'телефон' : (t.location || 'место')}
                       {t.weekly ? ' · свои дни и часы' : ''}{t.bufferAfter ? ` · перерыв ${t.bufferAfter} мин` : ''}
+                      {t.mode === 'round_robin' ? ' · к команде' : t.mode === 'collective' ? ' · несколько сотрудников' : t.mode === 'group' ? ` · группа до ${t.seats}` : ''}
                     </span>
                   </div>
                   <div className="cal-share-actions">
@@ -77,6 +79,10 @@ function TypeEditor({ value, onDone }: { value: BookingType | null; onDone: () =
     title: '', durationMin: 30, weekly: null, locationKind: 'call', location: null, bufferBefore: 0, bufferAfter: 0, questions: [], reminders: [15],
   });
   const [ownDays, setOwnDays] = useState(!!value?.weekly);
+  const [people, setPeople] = useState<User[]>([]);
+  useEffect(() => { api.listUsers().then(setPeople).catch(() => undefined); }, []);
+  const mode = t.mode ?? 'personal';
+  const team = t.memberIds ?? [];
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (p: Partial<BookingTypeInput>) => setT((x) => ({ ...x, ...p }));
@@ -114,6 +120,37 @@ function TypeEditor({ value, onDone }: { value: BookingType | null; onDone: () =
           {[15, 30, 45, 60, 90].map((m) => <button key={m} className={`cal-pill${t.durationMin === m ? ' on' : ''}`} onClick={() => set({ durationMin: m })}>{m} мин</button>)}
           <label className="cal-pill-input"><Input type="number" min={5} max={480} value={t.durationMin} onChange={(e) => set({ durationMin: Number(e.target.value) || 30 })} aria-label="Своя длительность" /><span>мин</span></label>
         </div>
+      </div>
+      <div className="cal-field">Кто проводит
+        <div className="kv2-seg cal-seg-wrap">
+          <button className="kv2-seg-btn" aria-pressed={mode === 'personal'} onClick={() => set({ mode: 'personal' })}>Я</button>
+          <button className="kv2-seg-btn" aria-pressed={mode === 'round_robin'} onClick={() => set({ mode: 'round_robin' })}>Любой свободный из команды</button>
+          <button className="kv2-seg-btn" aria-pressed={mode === 'collective'} onClick={() => set({ mode: 'collective' })}>Сразу несколько сотрудников</button>
+          <button className="kv2-seg-btn" aria-pressed={mode === 'group'} onClick={() => set({ mode: 'group' })}>Групповая встреча</button>
+        </div>
+        {(mode === 'round_robin' || mode === 'collective') && (
+          <>
+            <span className="dim">{mode === 'round_robin' ? 'Клиент видит время команды, встреча назначается подходящему сотруднику.' : 'Показываются только окна, когда свободны все выбранные и вы.'}</span>
+            <div className="cal-chips">
+              {people.filter((u) => u.role !== 'client').map((u) => {
+                const on = team.includes(String(u.id));
+                return <button key={u.id} className={`cal-pill${on ? ' on' : ''}`} aria-pressed={on}
+                  onClick={() => set({ memberIds: on ? team.filter((x) => x !== String(u.id)) : [...team, String(u.id)] })}>{u.fullName}</button>;
+              })}
+            </div>
+            {mode === 'round_robin' && (
+              <div className="kv2-seg">
+                <button className="kv2-seg-btn" aria-pressed={(t.rrRule ?? 'nearest') === 'nearest'} onClick={() => set({ rrRule: 'nearest' })}>Ближайший доступный</button>
+                <button className="kv2-seg-btn" aria-pressed={t.rrRule === 'even'} onClick={() => set({ rrRule: 'even' })}>Равномерное распределение</button>
+              </div>
+            )}
+          </>
+        )}
+        {mode === 'group' && (
+          <label className="cal-check">Мест на одну встречу
+            <Input type="number" min={2} max={500} value={t.seats ?? 10} onChange={(e) => set({ seats: Math.max(2, Number(e.target.value) || 10) })} style={{ width: 90 }} />
+          </label>
+        )}
       </div>
       <div className="cal-field">Доступные дни и часы
         <label className="cal-check"><input type="checkbox" checked={ownDays} onChange={(e) => setOwnDays(e.target.checked)} /> Свои для этого вида (иначе — общие из «Когда принимаю»)</label>

@@ -17,6 +17,8 @@ const DEFAULT_TYPES = [
 ];
 
 export interface TypeInput {
+  /** #4787, п. 16 */
+  mode?: 'personal' | 'round_robin' | 'collective' | 'group'; memberIds?: string[]; rrRule?: 'nearest' | 'even'; seats?: number | null;
   title: string; description?: string | null; durationMin: number; weekly?: Weekly | null;
   locationKind?: 'call' | 'place' | 'phone'; location?: string | null;
   bufferBefore?: number; bufferAfter?: number; questions?: { text: string; required?: boolean }[]; reminders?: number[];
@@ -55,6 +57,7 @@ export class BookingService {
       id: String(t.id), slug: t.slug, url: this.bookUrl(t.slug), title: t.title, description: t.description,
       durationMin: t.duration_min, weekly: t.weekly, locationKind: t.location_kind, location: t.location,
       bufferBefore: t.buffer_before, bufferAfter: t.buffer_after, questions: t.questions ?? [], reminders: t.reminders ?? [],
+      mode: t.mode ?? 'personal', memberIds: (t.member_ids ?? []).map(String), rrRule: t.rr_rule ?? 'nearest', seats: t.seats ?? null,
     };
   }
 
@@ -68,10 +71,14 @@ export class BookingService {
     const clampBuf = (n: unknown) => Math.max(0, Math.min(240, Math.round(Number(n) || 0)));
     const questions = (t.questions ?? []).map((q) => ({ text: String(q.text ?? '').trim().slice(0, 300), required: !!q.required })).filter((q) => q.text).slice(0, 10);
     const reminders = [...new Set((t.reminders ?? [15]).map((n) => Math.round(Number(n))).filter((n) => n >= 0 && n <= 20160))].slice(0, 6);
+    const mode = (['round_robin', 'collective', 'group'] as const).find((m) => m === t.mode) ?? 'personal';
+    const memberIds = [...new Set((t.memberIds ?? []).map(String))].slice(0, 20);
+    if ((mode === 'round_robin' || mode === 'collective') && !memberIds.length) throw AppException.validation('Выберите сотрудников команды');
+    const seats = mode === 'group' ? Math.max(2, Math.min(500, Math.round(Number(t.seats) || 10))) : null;
     return {
       title, description: t.description?.trim().slice(0, 1000) || null, durationMin, weekly, locationKind,
       location: t.location?.trim().slice(0, 255) || null, bufferBefore: clampBuf(t.bufferBefore), bufferAfter: clampBuf(t.bufferAfter),
-      questions, reminders,
+      questions, reminders, mode, memberIds: mode === 'round_robin' || mode === 'collective' ? memberIds : [], rrRule: t.rrRule === 'even' ? 'even' : 'nearest', seats,
     };
   }
 
@@ -100,8 +107,16 @@ export class BookingService {
 
   private newSlug() { return randomBytes(9).toString('base64url'); }
 
+  /** Состав команды — только сотрудники этой же компании. */
+  private async checkTeam(tenantId: string, ids: string[]) {
+    if (!ids.length) return;
+    const ok = await this.repo.teamMembers(tenantId, ids);
+    if (ok.length !== new Set(ids).size) throw AppException.validation('В команде могут быть только сотрудники компании');
+  }
+
   async createType(tenantId: string, userId: string, t: TypeInput) {
     const c = this.cleanType(t);
+    await this.checkTeam(tenantId, c.memberIds);
     const n = (await this.repo.types(tenantId, userId)).length;
     if (n >= 30) throw AppException.validation('Не больше 30 видов встреч');
     const row = await this.repo.createType(tenantId, userId, this.newSlug(), { ...c, position: n });
@@ -109,7 +124,9 @@ export class BookingService {
   }
 
   async updateType(tenantId: string, userId: string, id: string, t: TypeInput) {
-    const row = await this.repo.updateType(tenantId, userId, id, this.cleanType(t));
+    const c = this.cleanType(t);
+    await this.checkTeam(tenantId, c.memberIds);
+    const row = await this.repo.updateType(tenantId, userId, id, c);
     if (!row) throw AppException.notFound('Вид встречи не найден');
     return this.typeView(row);
   }
@@ -169,11 +186,19 @@ export class BookingService {
 
   // ── расчёт слотов ──
 
-  private async slotsInput(t: BookingTypeRow, exceptBookingId: string | null) {
-    const { rules, timeZone } = await this.rulesOf(String(t.tenant_id), String(t.user_id));
+  /** Кто ведёт встречи вида: сам человек, команда по очереди, все сразу (п. 16). */
+  private hosts(t: BookingTypeRow): string[] {
+    const members = (t.member_ids ?? []).map(String);
+    if (t.mode === 'round_robin') return members.length ? members : [String(t.user_id)];
+    if (t.mode === 'collective') return [...new Set([String(t.user_id), ...members])];
+    return [String(t.user_id)];
+  }
+
+  private async slotsInput(t: BookingTypeRow, exceptBookingId: string | null, hostId: string = String(t.user_id)) {
+    const { rules, timeZone } = await this.rulesOf(String(t.tenant_id), hostId);
     const now = Date.now();
     const to = new Date(now + (rules.horizonDays + 2) * 86_400_000).toISOString();
-    const busyRows = await this.repo.busy(String(t.tenant_id), String(t.user_id), new Date(now - 86_400_000).toISOString(), to, exceptBookingId);
+    const busyRows = await this.repo.busy(String(t.tenant_id), hostId, new Date(now - 86_400_000).toISOString(), to, exceptBookingId);
     return { rules, timeZone, busyRows, now };
   }
 
@@ -191,9 +216,41 @@ export class BookingService {
     };
   }
 
+  /** Свободные слоты одного ведущего — моментами (мс). */
+  private async hostSlots(t: BookingTypeRow, hostId: string, exceptBookingId: string | null) {
+    const { rules, timeZone, busyRows, now } = await this.slotsInput(t, exceptBookingId, hostId);
+    return { slots: new Set(bookingSlots(this.input(t, rules, timeZone, busyRows, now)).flatMap((d) => d.slots)), timeZone, rules, now };
+  }
+
+  private group(slots: Iterable<string>, timeZone: string) {
+    const by = new Map<string, string[]>();
+    for (const s of [...slots].sort()) {
+      const d = zonedParts(Date.parse(s), timeZone).date;
+      (by.get(d) ?? by.set(d, []).get(d)!).push(s);
+    }
+    return [...by.entries()].map(([date, slots]) => ({ date, slots }));
+  }
+
+  /**
+   * Дни и время для гостя (п. 6, 16): к себе — свои правила; к команде — объединение
+   * свободного времени сотрудников; ко всем сразу — только общее; группа — ещё и уже
+   * назначенные потоки, где остались места.
+   */
   private async daysFor(t: BookingTypeRow, exceptBookingId: string | null = null) {
-    const { rules, timeZone, busyRows, now } = await this.slotsInput(t, exceptBookingId);
-    return bookingSlots(this.input(t, rules, timeZone, busyRows, now));
+    const hosts = this.hosts(t);
+    const per = await Promise.all(hosts.map((h) => this.hostSlots(t, h, exceptBookingId)));
+    const tz = per[0].timeZone;
+    let slots: Set<string>;
+    if (t.mode === 'round_robin') slots = new Set(per.flatMap((p) => [...p.slots]));
+    else if (t.mode === 'collective') slots = new Set([...per[0].slots].filter((s) => per.every((p) => p.slots.has(s))));
+    else slots = per[0].slots;
+    if (t.mode === 'group') {
+      const earliest = per[0].now + per[0].rules.minNoticeMin * 60_000;
+      for (const g of await this.repo.groupSessions(String(t.id), exceptBookingId)) {
+        if (g.starts_at.getTime() >= earliest && g.taken < (t.seats ?? 10)) slots.add(g.starts_at.toISOString());
+      }
+    }
+    return this.group(slots, tz);
   }
 
   private publicType(t: BookingTypePublicRow) {
@@ -233,45 +290,105 @@ export class BookingService {
     const questions = t.questions ?? [];
     const answers = questions.map((q, i) => ({ q: q.text, a: String(dto.answers?.[i] ?? '').trim().slice(0, 2000) }));
     if (questions.some((q, i) => q.required && !answers[i].a)) throw AppException.validation('Ответьте на обязательный вопрос');
-    const guestTz = this.cleanTz(dto.timeZone);
-
-    const { rules, timeZone, now } = await this.slotsInput(t, null);
-    const end = start + t.duration_min * 60_000;
     const token = randomBytes(24).toString('base64url');
-    const row = await this.repo.reserve(String(t.tenant_id), String(t.user_id),
-      (busy) => slotAllowed(this.input(t, rules, timeZone, busy.map((b) => ({ ...b, kind: (b as { kind?: string }).kind })), now), start),
-      { typeId: String(t.id), guestName: name, guestEmail: email, guestTz, answers, startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), manageHash: sha(token) });
-    if (!row) {
-      // занято, пока гость выбирал: подтверждение получает только один, второму — другие варианты
-      throw AppException.conflict('Это время только что заняли — выберите другое', { days: await this.daysFor(t) });
-    }
-
-    let callUrl: string | null = null;
-    try {
-      const ev = await this.calendar.create(String(t.tenant_id), { userId: String(t.user_id), role: 'member' }, {
-        title: `${t.title}: ${name}`.slice(0, 255),
-        description: this.description(email, answers),
-        location: t.location_kind === 'call' ? undefined : (t.location ?? undefined),
-        startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(),
-        scope: 'personal', participantIds: [], isCall: t.location_kind === 'call', reminders: t.reminders ?? [15],
-      } as Parameters<CalendarService['create']>[2]);
-      await this.repo.setEvent(String(row.id), String(ev.id));
-      if (t.location_kind === 'call') {
-        const inv = await this.guests.inviteGuest({ userId: String(t.user_id), tenantId: String(t.tenant_id) }, String(ev.id), email, name, { silent: true });
-        callUrl = inv.url;
-      }
-    } catch (e) {
-      await this.repo.cancel(String(row.id));
-      this.log.warn(`запись ${row.id}: встреча не создана — ${(e as Error).message}`);
-      throw AppException.conflict('Не удалось записать на это время — выберите другое', { days: await this.daysFor(t) });
-    }
-
-    await this.mailGuest('confirm', t, row, token, callUrl);
+    const placed = await this.place(t, start, { guestName: name, guestEmail: email, guestTz: this.cleanTz(dto.timeZone), answers, manageHash: sha(token) }, null);
+    const row = placed.row;
+    await this.mailGuest('confirm', t, row, token, placed.callUrl);
     await this.mailOrganizer('new', t, row);
     return {
       ...this.publicType(t),
-      booking: { startsAt: row.starts_at.toISOString(), endsAt: row.ends_at.toISOString(), name, email, callUrl, manageUrl: this.manageUrl(token) },
+      booking: { startsAt: row.starts_at.toISOString(), endsAt: row.ends_at.toISOString(), name, email, callUrl: placed.callUrl, manageUrl: this.manageUrl(token) },
     };
+  }
+
+  /**
+   * Занять время по правилам вида (п. 6, 16) и завести встречу.
+   * Групповая: к уже назначенному потоку, пока есть места, иначе — новый поток.
+   * К команде: ведущий — ближайший доступный или тот, у кого меньше записей.
+   * Ко всем сразу: время должно быть свободно у каждого, встреча — общая.
+   */
+  private async place(t: BookingTypePublicRow, start: number, guest: { guestName: string; guestEmail: string; guestTz: string | null; answers: unknown; manageHash: string }, exceptBookingId: string | null) {
+    const tenantId = String(t.tenant_id);
+    const end = start + t.duration_min * 60_000;
+    const startsAt = new Date(start).toISOString();
+    const endsAt = new Date(end).toISOString();
+    const fresh = async () => this.daysFor(t, exceptBookingId);
+    const taken = async () => AppException.conflict('Это время только что заняли — выберите другое', { days: await fresh() });
+
+    if (t.mode === 'group') {
+      const session = (await this.repo.groupSessions(String(t.id), exceptBookingId)).find((g) => g.starts_at.getTime() === start);
+      if (session?.event_id) {
+        // в существующий поток — только пока есть места; места считаем под замком
+        const row = await this.repo.reserveFor(tenantId, [String(t.user_id)], () => true, { typeId: String(t.id), hostId: String(t.user_id), ...guest, startsAt, endsAt, isGroup: true, eventId: session.event_id, exceptBookingId });
+        if (!row || (await this.repo.groupSessions(String(t.id))).find((g) => g.starts_at.getTime() === start)!.taken > (t.seats ?? 10)) {
+          if (row) await this.repo.cancel(String(row.id));
+          throw AppException.conflict('Места на это время закончились — выберите другое', { days: await fresh() });
+        }
+        const callUrl = await this.inviteToEvent(t, String(t.user_id), session.event_id, guest.guestEmail, guest.guestName);
+        return { row, callUrl, hostId: String(t.user_id) };
+      }
+    }
+
+    // кто ведёт: по правилу команды — среди тех, кто свободен в это время
+    const hosts = this.hosts(t);
+    const free: string[] = [];
+    for (const h of hosts) if ((await this.hostSlots(t, h, exceptBookingId)).slots.has(startsAt)) free.push(h);
+    let hostId = String(t.user_id);
+    if (t.mode === 'round_robin') {
+      if (!free.length) throw await taken();
+      hostId = free[0];
+      if (t.rr_rule === 'even') {
+        const counts = await Promise.all(free.map(async (h) => ({ h, n: await this.repo.recentCount(String(t.id), h) })));
+        hostId = counts.sort((a, b) => a.n - b.n)[0].h;
+      }
+    } else if (t.mode === 'collective') {
+      if (free.length !== hosts.length) throw await taken();
+    } else if (!free.length) throw await taken();
+    const lockIds = t.mode === 'collective' ? hosts : [hostId];
+    const ruled = await Promise.all(lockIds.map(async (h) => ({ h, ...(await this.slotsInput(t, exceptBookingId, h)) })));
+    const row = await this.repo.reserveFor(tenantId, lockIds,
+      (busy) => ruled.every((r) => slotAllowed(this.input(t, r.rules, r.timeZone, busy[r.h] ?? [], r.now), start)),
+      { typeId: String(t.id), hostId, ...guest, startsAt, endsAt, isGroup: t.mode === 'group', exceptBookingId });
+    if (!row) throw await taken();
+
+    try {
+      const others = t.mode === 'collective' ? hosts.filter((h) => h !== hostId) : [];
+      const ev = await this.calendar.create(tenantId, { userId: hostId, role: 'member' }, {
+        title: (t.mode === 'group' ? t.title : `${t.title}: ${guest.guestName}`).slice(0, 255),
+        description: this.description(guest.guestEmail, guest.answers as { q: string; a: string }[]),
+        location: t.location_kind === 'call' ? undefined : (t.location ?? undefined),
+        startsAt, endsAt, scope: 'personal', participantIds: others, isCall: t.location_kind === 'call', reminders: t.reminders ?? [15],
+      } as Parameters<CalendarService['create']>[2]);
+      await this.repo.setEvent(String(row.id), String(ev.id));
+      row.event_id = String(ev.id);
+      const callUrl = await this.inviteToEvent(t, hostId, String(ev.id), guest.guestEmail, guest.guestName);
+      return { row, callUrl, hostId };
+    } catch (e) {
+      await this.repo.cancel(String(row.id));
+      this.log.warn(`запись ${row.id}: встреча не создана — ${(e as Error).message}`);
+      throw AppException.conflict('Не удалось записать на это время — выберите другое', { days: await fresh() });
+    }
+  }
+
+  private async inviteToEvent(t: BookingTypeRow, hostId: string, eventId: string, email: string, name: string) {
+    if (t.location_kind !== 'call') return null;
+    const inv = await this.guests.inviteGuest({ userId: hostId, tenantId: String(t.tenant_id) }, eventId, email, name, { silent: true });
+    return inv.url;
+  }
+
+  /** Убрать гостя со встречи: свою — целиком, общую групповую — только его место. */
+  private async leaveEvent(t: BookingTypeRow, b: BookingRow) {
+    if (!b.event_id) return;
+    const host = { userId: String(b.user_id), role: 'member' };
+    if (b.is_group && (await this.repo.confirmedOnEvent(String(b.event_id))) > 0) {
+      const invites = await this.guests.listInvites({ userId: host.userId, tenantId: String(t.tenant_id) }, String(b.event_id)).catch(() => []);
+      const mine = (invites as { id: string; email?: string | null }[]).find((i) => (i.email ?? '').toLowerCase() === b.guest_email.toLowerCase());
+      if (mine) await this.guests.revokeInvite({ userId: host.userId, tenantId: String(t.tenant_id) }, String(b.event_id), mine.id).catch(() => undefined);
+      return;
+    }
+    await this.calendar.remove(String(t.tenant_id), host, String(b.event_id)).catch((e) => {
+      this.log.warn(`запись ${b.id}: встреча ${b.event_id} — ${(e as Error).message}`);
+    });
   }
 
   private cleanTz(tz?: string | null): string | null {
@@ -293,7 +410,7 @@ export class BookingService {
   }
 
   /** Подтверждение гостю (п. 6, 9, 20): время в ЕГО поясе, ссылка на созвон, перенос и отмена. */
-  private async mailGuest(kind: 'confirm', t: BookingTypePublicRow, b: BookingRow, token: string, callUrl: string | null) {
+  private async mailGuest(kind: 'confirm', t: BookingTypePublicRow, b: BookingRow, token: string, callUrl: string | null, dedupSuffix = '') {
     const tz = b.guest_tz || t.owner_tz || 'Europe/Moscow';
     const manage = this.manageUrl(token);
     const lines = [
@@ -317,12 +434,12 @@ export class BookingService {
       method: 'REQUEST', sequence: 0, url: callUrl,
     } as Parameters<typeof buildIcs>[0]);
     await this.repo.mail(String(t.tenant_id), b.guest_email, `Встреча подтверждена: ${t.title}`, lines.filter((x, i, a) => x || a[i - 1]).join('\n'),
-      `booking.${kind}`, `booking.${kind}:${b.id}`, [{ name: 'meeting.ics', content: Buffer.from(ics, 'utf8').toString('base64') }]);
+      `booking.${kind}`, `booking.${kind}:${b.id}${dedupSuffix}`, [{ name: 'meeting.ics', content: Buffer.from(ics, 'utf8').toString('base64') }]);
   }
 
   /** Организатору — что произошло с его записью: новая, перенесена, отменена. */
   private async mailOrganizer(kind: 'new' | 'moved' | 'cancelled', t: BookingTypePublicRow, b: BookingRow) {
-    const me = await this.repo.userTz(String(t.tenant_id), String(t.user_id));
+    const me = await this.repo.userTz(String(t.tenant_id), String(b.user_id ?? t.user_id));
     if (!me?.email) return;
     const tz = me.tz || 'Europe/Moscow';
     const head = kind === 'new' ? 'Новая запись по ссылке' : kind === 'moved' ? 'Гость перенёс встречу' : 'Гость отменил встречу';
@@ -365,14 +482,34 @@ export class BookingService {
     const start = Date.parse(startsAtRaw);
     if (Number.isNaN(start)) throw AppException.validation('Выберите время');
     const end = start + t.duration_min * 60_000;
-    const { rules, timeZone, now } = await this.slotsInput(t, String(b.id));
-    const ok = await this.repo.move(String(t.tenant_id), String(t.user_id), String(b.id),
-      (busy) => slotAllowed(this.input(t, rules, timeZone, busy, now), start), new Date(start).toISOString(), new Date(end).toISOString());
-    if (!ok) throw AppException.conflict('Это время только что заняли — выберите другое', { days: await this.daysFor(t, String(b.id)) });
-    // та же встреча, новое время: письмо гостю о переносе, напоминания и ссылка — следом (без второй встречи)
-    if (b.event_id) {
-      await this.calendar.update(String(t.tenant_id), { userId: String(t.user_id), role: 'member' }, String(b.event_id),
-        { startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString() } as Parameters<CalendarService['update']>[3]);
+    const days = await this.daysFor(t, String(b.id));
+    if (!days.some((d) => d.slots.includes(new Date(start).toISOString()))) {
+      throw AppException.conflict('Это время только что заняли — выберите другое', { days });
+    }
+    if (t.mode === 'personal' || t.mode === 'collective') {
+      // та же встреча, новое время: письмо гостю о переносе, напоминания и ссылка — следом
+      const ok = await this.repo.move(String(t.tenant_id), String(b.user_id), String(b.id), () => true, new Date(start).toISOString(), new Date(end).toISOString());
+      if (!ok) throw AppException.conflict('Это время только что заняли — выберите другое', { days });
+      if (b.event_id) {
+        await this.calendar.update(String(t.tenant_id), { userId: String(b.user_id), role: 'member' }, String(b.event_id),
+          { startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString() } as Parameters<CalendarService['update']>[3]);
+      }
+    } else {
+      // к команде — ведущий мог смениться; группа — другой поток: место переезжает, а не копируется
+      await this.repo.cancel(String(b.id));
+      try {
+        const placed = await this.place(t, start, {
+          guestName: b.guest_name, guestEmail: b.guest_email, guestTz: b.guest_tz, answers: b.answers, manageHash: sha(`${token}~move~${Date.now()}`),
+        }, String(b.id));
+        await this.leaveEvent(t, b);
+        // запись остаётся той же (ссылка «перенести/отменить» не меняется): переносим на неё новое место
+        await this.repo.swapIn(String(b.id), String(placed.row.id), placed.hostId, new Date(start).toISOString(), new Date(end).toISOString(), placed.row.event_id ? String(placed.row.event_id) : null);
+        // новая встреча — новая ссылка на созвон: гостю подтверждение с ней и с прежними «перенести/отменить»
+        await this.mailGuest('confirm', t, { ...b, user_id: placed.hostId, starts_at: new Date(start), ends_at: new Date(end) }, token, placed.callUrl, `:${start}`);
+      } catch (e) {
+        await this.repo.restore(String(b.id));
+        throw e;
+      }
     }
     const moved = { ...b, starts_at: new Date(start), ends_at: new Date(end) };
     await this.mailOrganizer('moved', t, moved);
@@ -384,13 +521,10 @@ export class BookingService {
     if (b.status === 'cancelled') return this.manage(token);
     if (b.ends_at.getTime() <= Date.now()) throw AppException.conflict('Встреча уже прошла');
     await this.repo.cancel(String(b.id));
-    // встреча уходит из календаря — с ней письмо гостю об отмене и все напоминания
-    if (b.event_id) {
-      await this.calendar.remove(String(t.tenant_id), { userId: String(t.user_id), role: 'member' }, String(b.event_id)).catch((e) => {
-        this.log.warn(`отмена записи ${b.id}: встреча ${b.event_id} — ${(e as Error).message}`);
-      });
-    }
+    // своя встреча уходит из календаря — с ней письмо гостю и все напоминания; общая групповая — только его место
+    await this.leaveEvent(t, b);
     await this.mailOrganizer('cancelled', t, b);
     return this.manage(token);
   }
+
 }

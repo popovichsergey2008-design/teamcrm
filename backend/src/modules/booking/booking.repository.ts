@@ -8,6 +8,8 @@ export interface BookingTypeRow {
   location_kind: 'call' | 'place' | 'phone'; location: string | null;
   buffer_before: number; buffer_after: number;
   questions: { text: string; required?: boolean }[]; reminders: number[]; position: number; active: boolean;
+  /** #4787, п. 16: к кому запись — к себе, к любому из команды, ко всем сразу, группа */
+  mode: 'personal' | 'round_robin' | 'collective' | 'group'; member_ids: string[]; rr_rule: 'nearest' | 'even'; seats: number | null;
 }
 export interface BookingTypePublicRow extends BookingTypeRow {
   owner_name: string; owner_avatar: string | null; owner_tz: string | null; tenant_name: string | null;
@@ -20,7 +22,7 @@ export interface RulesRow {
 export interface BookingRow {
   id: string; tenant_id: string; type_id: string; user_id: string; event_id: string | null;
   guest_name: string; guest_email: string; guest_tz: string | null; answers: { q: string; a: string }[];
-  starts_at: Date; ends_at: Date; status: 'confirmed' | 'cancelled';
+  starts_at: Date; ends_at: Date; status: 'confirmed' | 'cancelled'; is_group: boolean;
 }
 
 type Q = Pick<PoolClient, 'query'> | null;
@@ -60,26 +62,31 @@ export class BookingRepository {
   async createType(tenantId: string, userId: string, slug: string, t: {
     title: string; description: string | null; durationMin: number; weekly: unknown; locationKind: string; location: string | null;
     bufferBefore: number; bufferAfter: number; questions: unknown; reminders: number[]; position: number;
+    mode?: string; memberIds?: string[]; rrRule?: string; seats?: number | null;
   }) {
     return this.db.one<BookingTypeRow>(
       `INSERT INTO booking_types (tenant_id, user_id, slug, title, description, duration_min, weekly, location_kind, location,
-                                  buffer_before, buffer_after, questions, reminders, position)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::int[],$14) RETURNING *`,
+                                  buffer_before, buffer_after, questions, reminders, position, mode, member_ids, rr_rule, seats)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::int[],$14,$15,$16::bigint[],$17,$18) RETURNING *`,
       [tenantId, userId, slug, t.title, t.description, t.durationMin, t.weekly == null ? null : JSON.stringify(t.weekly),
-        t.locationKind, t.location, t.bufferBefore, t.bufferAfter, JSON.stringify(t.questions ?? []), t.reminders, t.position],
+        t.locationKind, t.location, t.bufferBefore, t.bufferAfter, JSON.stringify(t.questions ?? []), t.reminders, t.position,
+        t.mode ?? 'personal', t.memberIds ?? [], t.rrRule ?? 'nearest', t.seats ?? null],
     );
   }
 
   updateType(tenantId: string, userId: string, id: string, t: {
     title: string; description: string | null; durationMin: number; weekly: unknown; locationKind: string; location: string | null;
     bufferBefore: number; bufferAfter: number; questions: unknown; reminders: number[];
+    mode?: string; memberIds?: string[]; rrRule?: string; seats?: number | null;
   }) {
     return this.db.one<BookingTypeRow>(
       `UPDATE booking_types SET title=$4, description=$5, duration_min=$6, weekly=$7::jsonb, location_kind=$8, location=$9,
-              buffer_before=$10, buffer_after=$11, questions=$12::jsonb, reminders=$13::int[], updated_at=now()
+              buffer_before=$10, buffer_after=$11, questions=$12::jsonb, reminders=$13::int[],
+              mode=$14, member_ids=$15::bigint[], rr_rule=$16, seats=$17, updated_at=now()
         WHERE tenant_id=$1 AND user_id=$2 AND id=$3 AND active RETURNING *`,
       [tenantId, userId, id, t.title, t.description, t.durationMin, t.weekly == null ? null : JSON.stringify(t.weekly),
-        t.locationKind, t.location, t.bufferBefore, t.bufferAfter, JSON.stringify(t.questions ?? []), t.reminders],
+        t.locationKind, t.location, t.bufferBefore, t.bufferAfter, JSON.stringify(t.questions ?? []), t.reminders,
+        t.mode ?? 'personal', t.memberIds ?? [], t.rrRule ?? 'nearest', t.seats ?? null],
     );
   }
 
@@ -228,5 +235,85 @@ export class BookingRepository {
        VALUES ($1, NULL, $2, $3, $4, NULL, $5, $6, $7) ON CONFLICT (dedup_key) DO NOTHING`,
       [tenantId, toEmail, subject.slice(0, 255), text, key, dedup.slice(0, 160), attachments ? JSON.stringify(attachments) : null],
     );
+  }
+
+  // ── командная и групповая запись (п. 16) ──
+
+  /** Сотрудники компании среди переданных — для состава команды вида встречи. */
+  teamMembers(tenantId: string, ids: string[]) {
+    if (!ids.length) return Promise.resolve([] as { id: string; full_name: string }[]);
+    return this.db.many<{ id: string; full_name: string }>(
+      `SELECT u.id::text, u.full_name FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND u.id = ANY($2::bigint[]) AND u.is_active AND r.code <> 'client'`,
+      [tenantId, ids],
+    );
+  }
+
+  /**
+   * Запись под замком на всех, кого она касается (п. 6, 16): ведущий, а у записи «ко
+   * всем сразу» — каждый участник. Занятость каждого смотрим внутри замка.
+   */
+  async reserveFor(tenantId: string, lockIds: string[], check: (busy: Record<string, { starts_at: Date; ends_at: Date; kind: string }[]>) => boolean, row: {
+    typeId: string; hostId: string; guestName: string; guestEmail: string; guestTz: string | null; answers: unknown;
+    startsAt: string; endsAt: string; manageHash: string; isGroup?: boolean; eventId?: string | null; exceptBookingId?: string | null;
+  }): Promise<BookingRow | null> {
+    return this.db.withTransaction(async (c) => {
+      for (const id of [...new Set(lockIds)].sort()) await c.query(`SELECT pg_advisory_xact_lock(hashtext('booking:' || $1::text))`, [id]);
+      const from = new Date(Date.parse(row.startsAt) - 86_400_000).toISOString();
+      const to = new Date(Date.parse(row.endsAt) + 86_400_000).toISOString();
+      const busy: Record<string, { starts_at: Date; ends_at: Date; kind: string }[]> = {};
+      for (const id of new Set(lockIds)) busy[id] = await this.busy(tenantId, id, from, to, row.exceptBookingId ?? null, c);
+      if (!check(busy)) return null;
+      const r = await c.query(
+        `INSERT INTO bookings (tenant_id, type_id, user_id, guest_name, guest_email, guest_tz, answers, starts_at, ends_at, manage_hash, is_group, event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12)
+         ON CONFLICT DO NOTHING RETURNING *`,
+        [tenantId, row.typeId, row.hostId, row.guestName, row.guestEmail, row.guestTz, JSON.stringify(row.answers ?? []),
+          row.startsAt, row.endsAt, row.manageHash, !!row.isGroup, row.eventId ?? null],
+      );
+      return (r.rows[0] as BookingRow | undefined) ?? null;
+    });
+  }
+
+  /** Потоки групповой встречи: время, событие и сколько мест занято. */
+  groupSessions(typeId: string, exceptBookingId?: string | null) {
+    return this.db.many<{ starts_at: Date; event_id: string | null; taken: number }>(
+      `SELECT starts_at, max(event_id)::text AS event_id, count(*)::int AS taken FROM bookings
+        WHERE type_id = $1 AND status = 'confirmed' AND is_group AND ($2::bigint IS NULL OR id <> $2::bigint)
+        GROUP BY starts_at`,
+      [typeId, exceptBookingId ?? null],
+    );
+  }
+
+  /** Сколько записей этого вида у сотрудника за месяц — для «равномерного распределения». */
+  async recentCount(typeId: string, hostId: string) {
+    const r = await this.db.one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM bookings WHERE type_id = $1 AND user_id = $2 AND status = 'confirmed' AND created_at > now() - interval '30 days'`,
+      [typeId, hostId],
+    );
+    return r?.n ?? 0;
+  }
+
+  /**
+   * Перенос с новым местом (п. 9, 16): временная запись держала новый слот — она уходит,
+   * а исходная (с той же ссылкой «перенести/отменить») получает её место. Одной транзакцией.
+   */
+  swapIn(origId: string, tempId: string, hostId: string, startsAt: string, endsAt: string, eventId: string | null) {
+    return this.db.withTransaction(async (c) => {
+      await c.query(`DELETE FROM bookings WHERE id = $1`, [tempId]);
+      await c.query(
+        `UPDATE bookings SET status='confirmed', cancelled_at=NULL, user_id=$2, starts_at=$3, ends_at=$4, event_id=$5, updated_at=now() WHERE id=$1`,
+        [origId, hostId, startsAt, endsAt, eventId],
+      );
+    });
+  }
+
+  /** Перенос не удался — запись возвращается как была. */
+  restore(id: string) {
+    return this.db.query(`UPDATE bookings SET status='confirmed', cancelled_at=NULL, updated_at=now() WHERE id=$1`, [id]);
+  }
+
+  confirmedOnEvent(eventId: string) {
+    return this.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM bookings WHERE event_id = $1 AND status = 'confirmed'`, [eventId]).then((r) => r?.n ?? 0);
   }
 }
