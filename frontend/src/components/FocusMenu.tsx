@@ -27,6 +27,13 @@ const TEMPLATES: { kind: Focus['kind']; label: string; icon: IconName; note?: st
   { kind: 'break', label: 'Обед / перерыв', icon: 'clock' },
 ];
 
+/** #4782, п. 8: ручные статусы — «Занят» и «Отошёл» (presence), «Свободен» снимает всё. */
+const MANUAL: { key: 'busy' | 'away' | 'free'; label: string; icon: IconName }[] = [
+  { key: 'busy', label: 'Занят', icon: 'target' },
+  { key: 'away', label: 'Отошёл', icon: 'user' },
+  { key: 'free', label: 'Свободен', icon: 'check-circle' },
+];
+
 const DURATIONS: { label: string; minutes: () => number }[] = [
   { label: '30 мин', minutes: () => 30 },
   { label: '1 час', minutes: () => 60 },
@@ -64,15 +71,16 @@ export function focusLine(focus: Focus | null): string {
 
 /**
  * #4777: идёт глубокий фокус — статус говорит, до скольки и над какими задачами:
- * «В фокусе до 15:20 · №1326, №1350». Конец — по остатку от сервера, а не по плану:
+ * «Глубокий фокус · до 15:20 · #1326, #1350» (#4782, п. 3). Конец — по остатку от сервера, а не по плану:
  * после паузы план сдвигается.
  */
 export function focusSessionLine(s: FocusSession, receivedAt: number): string {
   const tasks = s.tasks?.length ? s.tasks : s.task ? [s.task] : [];
-  const nums = tasks.length ? ` · ${tasks.map((t) => `№${t.id}`).join(', ')}` : '';
-  if (s.status === 'paused') return `Фокус на паузе${nums}`;
+  // #4782, п. 3: «Глубокий фокус · до 15:20 · #1326, #1476»
+  const nums = tasks.length ? ` · ${tasks.map((t) => `#${t.id}`).join(', ')}` : '';
+  if (s.status === 'paused') return `Глубокий фокус на паузе${nums}`;
   const end = new Date(receivedAt + s.remainingSeconds * 1000);
-  return `В фокусе до ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}${nums}`;
+  return `Глубокий фокус · до ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}${nums}`;
 }
 
 export function FocusMenu({ focus, onChange }: {
@@ -95,6 +103,17 @@ export function FocusMenu({ focus, onChange }: {
       onChange(next);
       window.dispatchEvent(new Event('teamcrm:focus-changed'));
     } catch { /* панель не место для разбора ошибок сети */ }
+    finally { setBusy(false); }
+  };
+
+  const manual = async (key: 'busy' | 'away' | 'free') => {
+    setBusy(true);
+    try {
+      await api.setPresenceStatus(key === 'free' ? null : key);
+      if (key === 'free' && focus) { await api.clearFocus(); onChange(null); }
+      window.dispatchEvent(new Event('teamcrm:focus-changed'));
+      window.dispatchEvent(new Event('teamcrm:presence-changed'));
+    } catch { /* см. ниже */ }
     finally { setBusy(false); }
   };
 
@@ -135,6 +154,14 @@ export function FocusMenu({ focus, onChange }: {
         {TEMPLATES.map((t) => (
           <button key={t.kind} className="focus-template" disabled={busy} onClick={() => (t.kind === 'deep' ? setDeepOpen(true) : set(t.kind, t.note))}>
             <Icon name={t.icon} size={15} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="focus-templates">
+        {MANUAL.map((m) => (
+          <button key={m.key} className="focus-template" disabled={busy} onClick={() => void manual(m.key)}>
+            <Icon name={m.icon} size={15} /> {m.label}
           </button>
         ))}
       </div>

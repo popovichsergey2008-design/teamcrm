@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { quietFor } from '../lib/quiet';
 import { inFocusSession, noteMissedCall } from '../hooks/useFocusSession';
 import { wsUrl } from '../lib/origin';
 import { Icon } from './Icon';
@@ -49,8 +50,9 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
             callerName: msg.payload?.caller_name ?? 'Коллега',
             callerId: msg.payload?.caller_id,
           });
-          // звонок слышно, даже когда вкладка свёрнута: окно вызова человек попросту не увидит
-          startRingtone();
+          // звонок слышно, даже когда вкладка свёрнута: окно вызова человек попросту не увидит.
+          // #4782, п. 8: «На созвоне» и «Обед / перерыв» — окно есть, но без звука
+          if (!quietFor()) startRingtone();
           // …а в оболочке свёрнутое приложение ещё и показывает уведомление ОС (волна 12)
           if (document.hidden) void platform.calls.reportIncoming({ id: String(msg.payload?.meeting_id), title: msg.payload?.caller_name ?? 'Коллега', video: false });
         }

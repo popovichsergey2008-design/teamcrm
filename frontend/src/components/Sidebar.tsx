@@ -4,7 +4,7 @@ import { Icon, IconName } from './Icon';
 import { NotificationBell } from './NotificationBell';
 import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
-import { setQuietSource } from '../lib/quiet';
+import { setQuietSource, setStatusQuiet } from '../lib/quiet';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { Logo } from './Logo';
@@ -410,6 +410,34 @@ export function Sidebar({
 
   // «Не беспокоить» — это в том числе тишина: глубокий фокус глушит и сигналы, и звонок
   useEffect(() => { setQuietSource('manual', focus?.kind === 'deep'); }, [focus]);
+  /*
+    #4782, п. 8: остальные статусы тоже объясняют, что пробивается. «Занят» — ручной
+    статус (presence), остальные — фокус под именем. Просроченный фокус не действует.
+  */
+  const [manualStatus, setManualStatus] = useState<'busy' | 'away' | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    const load = () => api.presence().then((rows) => setManualStatus(rows.find((r) => String(r.userId) === String(user.id))?.status ?? null)).catch(() => undefined);
+    load();
+    window.addEventListener(PRESENCE_CHANGED, load);
+    return () => window.removeEventListener(PRESENCE_CHANGED, load);
+  }, [user?.id]);
+  // «Отошёл» кончается при возвращении (#4782, п. 8): вкладка снова перед глазами — снимаем
+  useEffect(() => {
+    if (manualStatus !== 'away') return;
+    const since = Date.now();
+    const back = () => {
+      if (document.hidden || Date.now() - since < 60_000) return;
+      void api.setPresenceStatus(null).then(() => { setManualStatus(null); window.dispatchEvent(new Event(PRESENCE_CHANGED)); }).catch(() => undefined);
+    };
+    window.addEventListener('focus', back);
+    document.addEventListener('visibilitychange', back);
+    return () => { window.removeEventListener('focus', back); document.removeEventListener('visibilitychange', back); };
+  }, [manualStatus]);
+  useEffect(() => {
+    const live = focus && (!focus.until || new Date(focus.until).getTime() > Date.now()) ? focus.kind : null;
+    setStatusQuiet(live === 'call' || live === 'break' ? 'all' : live === 'quick' || manualStatus === 'busy' ? 'personal' : 'none');
+  }, [focus, manualStatus]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {

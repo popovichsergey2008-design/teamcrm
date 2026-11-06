@@ -27,21 +27,15 @@ const hm = (iso: string | null) => {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-/** «Работаю над задачей №1326» / «над задачами №1326 и №1350». */
-function focusTasksLine(tasks: { id: string }[]): string {
-  const nums = tasks.map((t) => `№${t.id}`);
-  if (nums.length === 1) return `Работаю над задачей ${nums[0]}`;
-  return `Работаю над задачами ${nums.slice(0, -1).join(', ')} и ${nums[nums.length - 1]}`;
-}
-
 function line(p: TeamPresence): string {
   switch (p.status) {
     case 'deep_focus': {
       // #4787, п. 12: «В фокусе до 15:20 · Работаю над задачами №1326 и №1350» — номера
       // только тем, кому задачи видны (сервер присылает лишь их); остальным — «В фокусе»
+      // #4782, п. 3: тот же вид, что у самого человека: «Глубокий фокус · до 15:20 · #1326, #1476»
       const tasks = p.focusTasks ?? [];
-      const what = tasks.length ? ` · ${focusTasksLine(tasks)}` : '';
-      return p.until ? `В фокусе до ${hm(p.until)}${what}` : `В фокусе${what}`;
+      const what = tasks.length ? ` · ${tasks.map((t) => `#${t.id}`).join(', ')}` : '';
+      return p.until ? `Глубокий фокус · до ${hm(p.until)}${what}` : `Глубокий фокус${what}`;
     }
     case 'in_meeting': return p.note ? `На созвоне · ${p.note}` : 'На созвоне';
     case 'do_not_disturb': return 'Не беспокоить';

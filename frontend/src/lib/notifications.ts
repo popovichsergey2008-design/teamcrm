@@ -1,5 +1,5 @@
 import { platform } from '../platform';
-import { isQuiet } from './quiet';
+import { quietFor } from './quiet';
 
 /**
  * Уведомления о новых сообщениях.
@@ -32,8 +32,8 @@ export function requestNotificationPermission(): Promise<NotificationPermission 
  * Показ уведомления. Молча ничего не делает, если разрешения нет — и во время
  * глубокой работы, кроме критичного (стук «срочно», безопасность).
  */
-export function showNotification(title: string, body: string, onClick?: () => void, opts?: { critical?: boolean; key?: string }): void {
-  if (isQuiet() && !opts?.critical) return;
+export function showNotification(title: string, body: string, onClick?: () => void, opts?: { critical?: boolean; key?: string; personal?: boolean }): void {
+  if (quietFor(opts)) return;
   platform.notifications.show(title, body, onClick, opts?.key);
 }
 
@@ -66,6 +66,8 @@ export interface ToastPayload {
   kind?: 'info' | 'saved';
   /** Пробивается сквозь глубокую работу (ТЗ-16): стук «срочно», безопасность. */
   critical?: boolean;
+  /** Личное — упоминание или личное сообщение: пробивается в статусах «Занят» и «Быстрые ответы» (#4782). */
+  personal?: boolean;
   /** Не гаснет сама — висит, пока не закроют или не откроют (#4742: «Задача поставлена от вас»). */
   sticky?: boolean;
   /** Висит до этого момента (мс), потом уходит в «Пропущенные» — #4749: напоминание до начала встречи. */
@@ -76,7 +78,7 @@ export interface ToastPayload {
 export function showToast(payload: ToastPayload): void {
   // В глубоком фокусе — тишина. Ответ на действие самого человека («сохранено») не
   // отвлекает: он его и ждёт.
-  if (isQuiet() && !payload.critical && payload.kind !== 'saved') return;
+  if (payload.kind !== 'saved' && quietFor(payload)) return;
   window.dispatchEvent(new CustomEvent<ToastPayload>(TOAST_EVENT, { detail: payload }));
 }
 

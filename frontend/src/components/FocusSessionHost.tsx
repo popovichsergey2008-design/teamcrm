@@ -4,7 +4,8 @@ import { Icon } from './Icon';
 import { api } from '../lib/api';
 import { setQuietSource } from '../lib/quiet';
 import { getSocket } from '../lib/socket';
-import { showNotification, showToast } from '../lib/notifications';
+import { showNotification } from '../lib/notifications';
+import { navigate } from '../lib/router';
 import { playKnock } from '../lib/sound';
 import { lazyComponent } from '../lib/lazy';
 import { refreshFocusSession, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
@@ -27,6 +28,8 @@ export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: strin
   const { session } = useFocusSession();
   /** Запланированный в календаре фокус наступил (#4787, п. 12) — предложить начать. */
   const [due, setDue] = useState<{ minutes: number; taskIds: string[] } | null>(null);
+  /** #4782, п. 5: срочное обращение — один заметный сигнал и выбор «Ответить» / «Продолжить фокус». */
+  const [urgent, setUrgent] = useState<{ fromUserId: string; fromName: string; reason: string | null } | null>(null);
   useEffect(() => {
     const socket = getSocket();
     const onDue = (p: { minutes: number; taskIds: string[] }) => setDue({ minutes: p.minutes, taskIds: p.taskIds ?? [] });
@@ -57,10 +60,11 @@ export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: strin
     void refreshFocusSession();
     const socket = getSocket();
     const refresh = () => { void refreshFocusSession(); };
-    const onKnock = (p: { fromName: string; reason: string | null }) => {
+    const onKnock = (p: { fromUserId: string; fromName: string; reason: string | null }) => {
       const body = p.reason ? `«${p.reason}»` : 'Просит отвлечься — срочно';
-      showToast({ title: `${p.fromName} стучит`, body, section: 'chat', critical: true });
-      showNotification(`${p.fromName} стучит`, body, undefined, { critical: true });
+      setUrgent({ fromUserId: String(p.fromUserId), fromName: p.fromName, reason: p.reason });
+      // окно со свёрнутой вкладкой не видно — системное уведомление, и то одно
+      if (document.hidden) showNotification(`${p.fromName}: срочно`, body, undefined, { critical: true });
       playKnock(true);
     };
     const events = ['focus.session.started', 'focus.session.paused', 'focus.session.resumed', 'focus.session.completed', 'focus.session.ended', 'connect'];
@@ -72,8 +76,27 @@ export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: strin
     };
   }, []);
 
+  const urgentBox = urgent && (
+    <div role="alertdialog" aria-label="Срочное обращение" style={{
+      position: 'fixed', left: '50%', top: 24, transform: 'translateX(-50%)', zIndex: 80, display: 'flex', flexDirection: 'column', gap: 8,
+      width: 'min(440px, calc(100vw - 32px))', padding: '14px 16px', borderRadius: 12, border: '2px solid var(--warn)',
+      background: 'var(--bg-elev)', color: 'var(--text)', boxShadow: '0 12px 32px rgba(0,0,0,.25)',
+    }}>
+      <b><Icon name="hand" size={16} /> {urgent.fromName}: срочно</b>
+      <span>{urgent.reason ? `«${urgent.reason}»` : 'Просит отвлечься'}</span>
+      <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <Button size="sm" variant="primary" onClick={() => {
+          const u = urgent;
+          setUrgent(null);
+          void api.openDm(u.fromUserId).then((dm) => navigate({ section: 'chat', chatId: String(dm.id) })).catch(() => undefined);
+        }}>Ответить</Button>
+        <Button size="sm" variant="ghost" onClick={() => setUrgent(null)}>Продолжить фокус</Button>
+      </span>
+    </div>
+  );
+
   if (!session) {
-    if (!due) return null;
+    if (!due) return urgentBox || null;
     return (
       // стиль — здесь же: плашка живёт в первом экране, а стили фокуса грузятся только с его окном
       <div role="alertdialog" aria-label="Время глубокого фокуса" style={{
@@ -92,5 +115,5 @@ export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: strin
       </div>
     );
   }
-  return <FocusZen session={session} onOpenTask={onOpenTask} />;
+  return <>{urgentBox}<FocusZen session={session} onOpenTask={onOpenTask} /></>;
 }

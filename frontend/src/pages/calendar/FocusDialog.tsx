@@ -32,11 +32,22 @@ export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClos
   const [urgent, setUrgent] = useState<'all' | 'selected' | 'nobody'>('all');
   const [urgentIds, setUrgentIds] = useState<string[]>([]);
   const [people, setPeople] = useState<User[]>([]);
+  /** #4782, п. 1: поиск по названию и номеру; п. 2: своё время 10–120 минут. */
+  const [query, setQuery] = useState('');
+  const [custom, setCustom] = useState('');
 
   useEffect(() => { api.calendarPlanTasks().then(setTasks).catch(() => setTasks([])); }, []);
   useEffect(() => { if (urgent === 'selected' && !people.length) api.listUsers().then(setPeople).catch(() => undefined); }, [urgent, people.length]);
   useEffect(() => { setOptions(null); setMsg(null); }, [minutes, mode]);
 
+  const q = query.trim().toLowerCase().replace(/^[#№]/, '');
+  const shown = q ? tasks.filter((t) => t.id.includes(q) || t.title.toLowerCase().includes(q)) : tasks;
+  const endAt = new Date(Date.now() + minutes * 60_000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const pickCustom = (v: string) => {
+    setCustom(v.replace(/\D/g, '').slice(0, 3));
+    const n = Number(v);
+    if (n >= 10 && n <= 120) setMinutes(n);
+  };
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= 10 ? p : [...p, id]));
 
   const startNow = async () => {
@@ -77,29 +88,45 @@ export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClos
   };
 
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title="Глубокий фокус"
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} title={mode === 'now' ? 'На чём сосредоточимся?' : 'Глубокий фокус'}
       description="Звонки и уведомления не отвлекают — работа над выбранными задачами." size="md">
       <div className="cal-tt">
-        <div className="cal-tt-label">Какие задачи выполнять</div>
+        <div className="cal-tt-label">Мои активные задачи</div>
+        {tasks.length > 0 && (
+          <input className="ui-input" type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск по названию или номеру" aria-label="Поиск задачи для фокуса" />
+        )}
         <ul className="cal-tt-tasks cal-tt-tasks-multi" aria-label="Задачи для фокуса">
-          {tasks.slice(0, 40).map((t) => (
+          {shown.slice(0, 40).map((t) => (
             <li key={t.id}>
               <label className={`cal-tt-task${picked.includes(t.id) ? ' on' : ''}`}>
                 <input type="checkbox" checked={picked.includes(t.id)} onChange={() => toggle(t.id)} />
-                <span className="cal-tt-title">№{t.id} — {t.title}</span>
+                <span className="cal-tt-title">#{t.id} — {t.title}{t.projectName ? <span className="dim"> · {t.projectName}</span> : null}</span>
               </label>
             </li>
           ))}
-          {!tasks.length && <li className="dim">Открытых задач нет — фокус можно начать и без задачи</li>}
+          {tasks.length > 0 && !shown.length && <li className="dim">Ничего не нашлось — попробуйте номер задачи</li>}
+          {!tasks.length && (
+            <li className="dim">
+              Активных задач пока нет.{' '}
+              <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm"
+                onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('teamcrm:quick-task', { detail: { text: '' } })); }}>
+                <Icon name="plus" size={14} /> Создать задачу
+              </button>
+            </li>
+          )}
         </ul>
 
         <div className="cal-tt-label">Сколько времени выделить</div>
         <div className="cal-chips" role="group" aria-label="Длительность фокуса">
           {FOCUS_MINUTES.map((m) => (
-            <button key={m} className={`cal-pill${minutes === m ? ' on' : ''}`} aria-pressed={minutes === m} onClick={() => setMinutes(m)}>{m}</button>
+            <button key={m} className={`cal-pill${minutes === m && !custom ? ' on' : ''}`} aria-pressed={minutes === m && !custom} onClick={() => { setCustom(''); setMinutes(m); }}>{m}</button>
           ))}
+          <input className="ui-input cal-tt-custom" inputMode="numeric" value={custom} onChange={(e) => pickCustom(e.target.value)}
+            placeholder="Своё время" aria-label="Своё время, от 10 до 120 минут" style={{ width: 110 }} />
           <span className="dim">минут</span>
         </div>
+        {custom && (Number(custom) < 10 || Number(custom) > 120) && <div className="dim cal-small">От 10 до 120 минут</div>}
 
         <div className="cal-tt-label">Кто может обратиться по срочному вопросу</div>
         <div className="kv2-seg" role="group" aria-label="Срочные обращения">
@@ -126,9 +153,15 @@ export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClos
         </div>
 
         {mode === 'now' ? (
-          <div className="cal-tt-actions">
-            <Button variant="primary" onClick={() => void startNow()} disabled={busy}><Icon name="target" size={15} /> Начать фокус на {minutes} мин</Button>
-          </div>
+          <>
+            {/* #4782, п. 2: итог до запуска */}
+            <div className="tv2-callout" role="status">
+              {picked.length ? `Задачи ${picked.map((id) => `#${id}`).join(', ')} · ` : ''}{minutes} минут · до {endAt}
+            </div>
+            <div className="cal-tt-actions">
+              <Button variant="primary" onClick={() => void startNow()} disabled={busy}><Icon name="target" size={15} /> Начать фокус</Button>
+            </div>
+          </>
         ) : (
           <>
             <div className="cal-tt-actions">

@@ -24,3 +24,22 @@ export function setQuietSource(source: Source, on: boolean): void {
 export function isQuiet(): boolean {
   return quiet;
 }
+
+/*
+  #4782, п. 8: статус объясняет, что пробивается. «Занят» и «Быстрые ответы» — личное
+  (упоминания и личные сообщения) по настройкам, остальное тихо; «На созвоне» и
+  «Обед / перерыв» — тихо совсем; «Свободен» и «Отошёл» — по личным настройкам.
+  Глубокий фокус — выше, через sources: тихо всё, кроме критичного.
+*/
+export type StatusQuiet = 'none' | 'personal' | 'all';
+let statusQuiet: StatusQuiet = 'none';
+export function setStatusQuiet(level: StatusQuiet): void {
+  statusQuiet = level;
+}
+
+/** Молчать ли о событии: `personal` — упоминание или личное сообщение, `critical` — стук, безопасность. */
+export function quietFor(o: { personal?: boolean; critical?: boolean } = {}): boolean {
+  if (o.critical) return false;
+  if (quiet || statusQuiet === 'all') return true;
+  return statusQuiet === 'personal' && !o.personal;
+}

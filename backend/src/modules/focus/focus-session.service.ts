@@ -31,6 +31,14 @@ export const BREAK_MINUTES = 10;
  * состояние присутствия, push и Telegram молчат (InboxRepository.isQuiet), а
  * пробиться можно только «постучать срочно» — один раз за сессию от каждого.
  */
+/** #4782: разговор QEVO Bot, куда приходит сообщение после глубокого фокуса. */
+const RECAP_THREAD = 'Глубокий фокус';
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10; const m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+}
+
 @Injectable()
 export class FocusSessionService {
   constructor(
@@ -241,6 +249,7 @@ export class FocusSessionService {
       );
     }
     this.changed(me, 'focus.session.completed');
+    void this.recap(me, String(ended.id)).catch(() => undefined);
     const worked = Math.max(0, Math.round((new Date(ended.ended_at).getTime() - new Date(ended.started_at).getTime()) / 60_000));
     return { id: String(ended.id), status: ended.status, notes: ended.notes ?? '', taskId: ended.task_id ? String(ended.task_id) : null, minutes: Math.min(worked, Number(ended.planned_minutes)) };
   }
@@ -273,7 +282,7 @@ export class FocusSessionService {
       `UPDATE focus_sessions s SET end_notified_at = now()
         WHERE s.status = 'running' AND s.end_notified_at IS NULL
           AND s.planned_end_at <= now() AND s.planned_end_at > now() - interval '15 minutes'
-        RETURNING s.tenant_id, s.user_id, s.planned_minutes,
+        RETURNING s.id, s.tenant_id, s.user_id, s.planned_minutes,
                   (SELECT title FROM tasks WHERE id = s.task_id) AS task_title`,
     );
     for (const r of rows) {
@@ -281,12 +290,68 @@ export class FocusSessionService {
       const userId = String(r.user_id);
       this.presence.changed(tenantId, userId);
       this.realtime.emitToUsers(tenantId, [userId], 'focus.session.ended', {});
+      // #4782, п. 7: закончилось по таймеру — сообщение приходит и при закрытом приложении
+      void this.recap({ tenantId, userId, role: 'member' } as Me, String(r.id)).catch(() => undefined);
       void this.push.focusEvent({
         tenantId, userId, kind: 'ended', title: 'Фокус завершён',
         body: r.task_title ? `${r.planned_minutes} минут над «${String(r.task_title).slice(0, 80)}». Что дальше?` : `${r.planned_minutes} минут без отвлечений. Что дальше?`,
       });
     }
     return rows.length;
+  }
+
+  /**
+   * Сообщение после сессии (#4782, п. 7) — в личный диалог с QEVO Bot, один раз на
+   * сессию (с нескольких устройств и по таймеру — всё равно одно). События за время
+   * фокуса, сгруппированные по чату и задаче, каждая строка ведёт к источнику; ничего
+   * не пришло — просто «Фокус завершён». Звуков не проигрываем: это тихое сообщение.
+   */
+  async recap(me: Me, id: string): Promise<boolean> {
+    const claimed = await this.db.one<{ id: string }>(
+      `UPDATE focus_sessions SET recap_sent_at = now()
+        WHERE tenant_id = $1 AND user_id = $2 AND id = $3 AND recap_sent_at IS NULL RETURNING id::text`,
+      [me.tenantId, me.userId, id],
+    );
+    if (!claimed) return false;
+    const sum = await this.summary(me, id);
+    const base = (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, '');
+    const href = (l: { section: string; projectId?: string; taskId?: string; chatId?: string } | null) =>
+      !l ? null : l.section === 'projects' && l.projectId && l.taskId ? `${base}/projects/${l.projectId}/task/${l.taskId}`
+        : l.section === 'chat' && l.chatId ? `${base}/chat/${l.chatId}` : l.section === 'calendar' ? `${base}/calendar` : null;
+    const n = sum.items.length;
+    const lines = [`**Фокус завершён · ${sum.minutes} ${plural(sum.minutes, 'минута', 'минуты', 'минут')}**`];
+    if (n) {
+      lines.push('', `За это время ${n === 1 ? 'пришло 1 уведомление' : `пришло ${n} ${plural(n, 'уведомление', 'уведомления', 'уведомлений')}`} без звука.`);
+      for (const it of sum.items) {
+        const url = href(it.link as never);
+        lines.push(url ? `- [${it.text}](${url})` : `- ${it.text}`);
+      }
+    }
+    const session = await this.db.one<{ id: string }>(
+      `SELECT id::text FROM ai_sessions WHERE tenant_id=$1 AND user_id=$2 AND title=$3 AND context_entity_type IS NULL ORDER BY id LIMIT 1`,
+      [me.tenantId, me.userId, RECAP_THREAD],
+    ) ?? await this.db.one<{ id: string }>(
+      `INSERT INTO ai_sessions (tenant_id, user_id, title) VALUES ($1,$2,$3) RETURNING id::text`, [me.tenantId, me.userId, RECAP_THREAD],
+    );
+    await this.db.query(`INSERT INTO ai_messages (tenant_id, session_id, role, content) VALUES ($1,$2,'assistant',$3)`,
+      [me.tenantId, session!.id, lines.join(String.fromCharCode(10))]);
+    await this.db.query(`UPDATE ai_sessions SET updated_at=now() WHERE id=$1`, [session!.id]);
+    this.realtime.emitToUsers(me.tenantId, [me.userId], 'anthill.session.updated', { sessionId: session!.id });
+    return true;
+  }
+
+  /**
+   * Звонят человеку в фокусе (#4782, п. 4): вызов не звонит, а записывается в его
+   * сообщение после сессии. Вернёт конец фокуса — звонящему «В глубоком фокусе до 15:20».
+   */
+  async missedCall(tenantId: string, toUserId: string, fromUserId: string): Promise<Date | null> {
+    const s = await this.db.one<{ id: string; planned_end_at: Date }>(
+      `SELECT id::text, planned_end_at FROM focus_sessions
+        WHERE tenant_id=$1 AND user_id=$2 AND status='running' AND planned_end_at > now()`, [tenantId, toUserId],
+    );
+    if (!s) return null;
+    await this.db.query(`INSERT INTO focus_missed_calls (tenant_id, session_id, from_user_id) VALUES ($1,$2,$3)`, [tenantId, s.id, fromUserId]);
+    return s.planned_end_at;
   }
 
   /**
@@ -359,14 +424,19 @@ export class FocusSessionService {
           AND (t.assignee_id = $2 OR t.created_by = $2)
         GROUP BY u.full_name, c.task_id, t.project_id
         ORDER BY max(c.created_at) LIMIT 20`, params);
+    // #4782, п. 7: по чату, и только то, что ещё не прочитано (прочитанное во время фокуса не повторяем)
     const messages = await this.db.many<any>(
-      `SELECT u.full_name, m.chat_id, count(*)::int AS n
+      `SELECT m.chat_id, c.kind, c.title, max(pu.full_name) AS peer, count(*)::int AS n,
+              count(cmn.message_id)::int AS mentions
          FROM chat_messages m
+         JOIN chats c ON c.id = m.chat_id
          JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id = $2
-         JOIN users u ON u.id = m.author_id
+         LEFT JOIN chat_mentions cmn ON cmn.message_id = m.id AND cmn.user_id = $2
+         LEFT JOIN users pu ON pu.id = m.author_id
         WHERE m.tenant_id = $1 AND m.author_id IS NOT NULL AND m.author_id <> $2 AND m.deleted_at IS NULL
           AND m.created_at BETWEEN $3 AND $4
-        GROUP BY u.full_name, m.chat_id
+          AND m.created_at > COALESCE(cm.last_read_at, '-infinity'::timestamptz)
+        GROUP BY m.chat_id, c.kind, c.title
         ORDER BY max(m.created_at) LIMIT 20`, params);
     const meetings = await this.db.many<any>(
       `SELECT e.id, e.title, e.starts_at, (p.created_at BETWEEN $3 AND $4) AS invited
@@ -379,22 +449,28 @@ export class FocusSessionService {
     const knocks = await this.db.many<any>(
       `SELECT u.full_name, k.reason FROM focus_knocks k JOIN users u ON u.id = k.from_user_id
         WHERE k.tenant_id = $1 AND k.session_id = $2`, [me.tenantId, s.id]);
+    // #4782, п. 4 и 7: звонки во время фокуса не звонили — здесь они пропущенными
+    const missed = await this.db.many<any>(
+      `SELECT u.full_name, mc.created_at FROM focus_missed_calls mc JOIN users u ON u.id = mc.from_user_id
+        WHERE mc.tenant_id = $1 AND mc.session_id = $2 ORDER BY mc.created_at`, [me.tenantId, s.id]).catch(() => []);
     const when = (d: Date) => new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' });
-    const plural = (n: number, one: string, few: string, many: string) => {
-      const m10 = n % 10; const m100 = n % 100;
-      return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-    };
     const items = [
       ...knocks.map((k: any) => ({ kind: 'knock', text: `${k.full_name} ${verb(k.full_name, 'обращался', 'обращалась')} срочно${k.reason ? `: «${k.reason}»` : ''}`, link: null })),
       ...comments.map((c: any) => ({
         kind: 'comment',
-        text: `${c.full_name} ${verb(c.full_name, 'оставил', 'оставила')} ${c.n > 1 ? `${c.n} ${plural(c.n, 'комментарий', 'комментария', 'комментариев')}` : 'комментарий'} к задаче №${c.task_id}`,
+        text: `Задача #${c.task_id} — ${c.n > 1 ? `${c.n} ${plural(c.n, 'новый комментарий', 'новых комментария', 'новых комментариев')}` : 'новый комментарий'} (${c.full_name})`,
         link: { section: 'projects', projectId: String(c.project_id), taskId: String(c.task_id) },
       })),
-      ...messages.map((m: any) => ({
-        kind: 'message',
-        text: `${m.full_name} ${verb(m.full_name, 'отправил', 'отправила')} ${m.n > 1 ? `${m.n} ${plural(m.n, 'сообщение', 'сообщения', 'сообщений')}` : 'сообщение'}`,
-        link: { section: 'chat', chatId: String(m.chat_id) },
+      ...messages.map((m: any) => {
+        const where = m.kind === 'dm' ? `Личный чат с ${m.peer ?? 'коллегой'}` : `Чат «${m.title ?? 'без названия'}»`;
+        const n = `${m.n} ${plural(m.n, 'сообщение', 'сообщения', 'сообщений')}`;
+        const ment = m.mentions ? `, ${m.mentions === 1 ? (m.n === 1 ? 'с упоминанием' : 'одно с упоминанием') : `${m.mentions} с упоминанием`}` : '';
+        return { kind: 'message', text: `${where} — ${n}${ment}`, link: { section: 'chat', chatId: String(m.chat_id) } };
+      }),
+      ...missed.map((c: any) => ({
+        kind: 'call',
+        text: `Пропущенный звонок в ${new Date(c.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' })} — ${c.full_name}`,
+        link: { section: 'chat' },
       })),
       ...meetings.map((e: any) => ({
         kind: 'meeting',

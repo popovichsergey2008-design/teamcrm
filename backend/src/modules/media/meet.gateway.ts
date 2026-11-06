@@ -668,6 +668,21 @@ export class MeetGateway implements OnModuleInit {
             this.send(c.ws, 'meet.peer-busy', { meeting_id: room.id, user_id: String(target) });
             continue;
           }
+          /*
+            #4782, п. 4: человек в глубоком фокусе — вызов не звонит и не открывает окно.
+            Звонок попадает в его сообщение после фокуса, звонящий видит «В глубоком фокусе
+            до 15:20» и может оставить сообщение. Срочное — через «Срочно связаться».
+          */
+          const focus = await this.db.one<{ id: string; until: Date }>(
+            `SELECT id::text, planned_end_at AS until FROM focus_sessions
+              WHERE tenant_id=$1 AND user_id=$2 AND status='running' AND planned_end_at > now()`, [c.tenantId, String(target)],
+          ).catch(() => null);
+          if (focus) {
+            await this.db.query(`INSERT INTO focus_missed_calls (tenant_id, session_id, from_user_id) VALUES ($1,$2,$3)`,
+              [c.tenantId, focus.id, c.userId]).catch(() => undefined);
+            this.send(c.ws, 'meet.peer-focus', { meeting_id: room.id, user_id: String(target), until: focus.until });
+            continue;
+          }
           // позвали — значит, войдёт без стука, даже если примет вызов позже
           room.allowed.add(String(target));
           this.ringing.add(room.id, String(target));

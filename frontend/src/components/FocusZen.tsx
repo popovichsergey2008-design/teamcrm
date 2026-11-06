@@ -278,7 +278,7 @@ export function FocusZen({ session, onOpenTask }: {
               {session.status === 'running'
                 ? <Button variant="outline" disabled={busy} onClick={() => void act(async () => setFocusSession(await api.focusPause(session.id)))}><Icon name="pause" size={15} /> Пауза</Button>
                 : <Button variant="primary" disabled={busy} onClick={() => void act(async () => setFocusSession(await api.focusResume(session.id)))}><Icon name="play" size={15} /> Продолжить</Button>}
-              <Button variant="ghost" disabled={busy} onClick={() => setEarly(true)}><Icon name="stop" size={15} /> Завершить</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => setEarly(true)}><Icon name="stop" size={15} /> Завершить фокус</Button>
               <Button variant="ghost" disabled={busy} onClick={() => void finish('cancel')}>Отменить фокус</Button>
             </div>
             {err && <div className="error-text" role="alert">{err}</div>}

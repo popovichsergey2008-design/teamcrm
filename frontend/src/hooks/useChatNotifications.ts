@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { quietFor } from '../lib/quiet';
 import { loadChats, setChatsViewer, subscribeChats, type FeedChat } from '../lib/chats-feed';
 import { getSocket } from '../lib/socket';
 import { CHATS_CHANGED, setTitleUnread, showNotification, showToast } from '../lib/notifications';
@@ -16,6 +17,7 @@ import { playMessageChime } from '../lib/sound';
 export function useChatNotifications(enabled: boolean, meId: string | null, openChatId: string | null, onOpenChats: (chatId?: string, threadId?: string) => void) {
   const [unread, setUnread] = useState(0);
   /** Режим уведомлений по чатам — из списка: тихие чаты не звучат и не считаются в панели. */
+  const kinds = useRef<Map<string, string>>(new Map());
   const modes = useRef<Map<string, string>>(new Map());
   // в колбэке сокета нужны свежие значения, но пересоздавать подписку на каждый чат не хочется
   const openRef = useRef(openChatId);
@@ -30,6 +32,7 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
   // счётчик — из общего списка чатов (lib/chats-feed): он сам правится на каждое сообщение
   const recount = useCallback((chats: FeedChat[]) => {
     modes.current = new Map(chats.map((c) => [String(c.id), String(c.notify ?? 'all')]));
+    kinds.current = new Map(chats.map((c) => [String(c.id), String(c.kind ?? '')]));
     // «none» — тихий чат: непрочитанное у него своё, а панель молчит
     setUnread(chats.reduce((sum, c) => sum + (c.notify === 'none' ? 0 : (Number(c.unread) || 0)), 0));
   }, []);
@@ -64,9 +67,13 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       // Показываем сразу двумя способами: системное уведомление видно и при свёрнутом
       // окне, но требует разрешения; своё — работает всегда, пока вкладка открыта.
       const threadId = m.thread_root_id ? String(m.thread_root_id) : undefined;
+      // #4782, п. 8: личное (упоминание, личный чат) пробивается в «Занят» и «Быстрых ответах»
+      const personal = kinds.current.get(String(p.chatId)) === 'dm'
+        || (p.mentionIds ?? []).map(String).includes(String(meRef.current ?? ''));
+      if (quietFor({ personal })) return;
       // #4710: щелчок по системному уведомлению ведёт в сам чат (и ветку), а не в общий список
-      showNotification(title, body, () => openChats.current(String(p.chatId), threadId));
-      showToast({ title, body, chatId: String(p.chatId), threadId });
+      showNotification(title, body, () => openChats.current(String(p.chatId), threadId), { personal });
+      showToast({ title, body, chatId: String(p.chatId), threadId, personal });
       playMessageChime();
     };
 

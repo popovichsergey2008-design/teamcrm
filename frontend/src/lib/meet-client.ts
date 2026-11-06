@@ -43,6 +43,8 @@ export interface MeetEvents {
   onRecording: (active: boolean, limit?: { limitSec: number | null; startedAt: number | null }) => void;
   /** Сообщение всем в комнате (#4779: «Запись остановится через 2 минуты…»). */
   onNotice?: (message: string) => void;
+  /** #4782: позвали человека в глубоком фокусе — вызов не ушёл, звонок попал в его сводку. */
+  onPeerFocus?: (userId: string, until: string | null) => void;
   onAiInvited?: () => void;
   /** Гостю: стучимся, ждём впуска (hostPresent — есть ли кому впускать). */
   onGuestWaiting?: (hostPresent: boolean, hostCalled: boolean) => void;
@@ -429,6 +431,11 @@ export class MeetClient {
       case 'meet.ai-invited':
         // ИИ позвали при старте: запись включится с первым звуком, но сказать надо сразу
         this.ev.onAiInvited?.();
+        return;
+
+      case 'meet.peer-focus':
+        // #4782, п. 4: у человека глубокий фокус — вызов не звонит, придёт ему в сводку
+        (this.ev.onPeerFocus ?? ((_u: string, until: string | null) => this.ev.onError(`Собеседник в глубоком фокусе${until ? ` до ${new Date(until).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}` : ''} — звонок не прошёл, оставьте ему сообщение`)))(String(p.user_id), p.until ?? null);
         return;
 
       case 'meet.peer-busy':

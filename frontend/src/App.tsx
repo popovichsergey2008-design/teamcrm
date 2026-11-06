@@ -6,6 +6,7 @@ import { api } from './lib/api';
 import { getSocket } from './lib/socket';
 import { LoginPage } from './pages/LoginPage';
 import { isAuthPath } from './lib/signup-intent';
+import { precheckCall } from './lib/call-precheck';
 import { legalKindOf } from './legal';
 import { BoardPage } from './pages/BoardPage';
 import { ProjectsPage } from './pages/ProjectsPage';
@@ -549,6 +550,8 @@ export function App() {
     // Уже в созвоне — второй не начинаем. Иначе собеседник, с которым вы и так
     // говорите, получал вызов в новую комнату, и разговор рвался пополам.
     if (callId) return;
+    // #4782, п. 8: звонок одному — сначала его статус (занят, на созвоне, обед, фокус)
+    if (!(await precheckCall(chat.memberIds, user?.id))) return;
     try {
       // Чат передаём серверу: после разбора итог созвона вернётся именно в этот
       // разговор, а не осядет в разделе встреч, куда надо специально пойти.
@@ -569,6 +572,7 @@ export function App() {
     const onRequest = async (e: Event) => {
       const req = (e as CustomEvent<StartCallRequest>).detail;
       if (!req || callId) return;
+      if (!req.roomId && !(await precheckCall(req.memberIds, user?.id))) return;
       try {
         // Комната уже есть (созвон из службы заботы) — входим в неё, второй не поднимаем.
         const roomId = req.roomId
@@ -580,11 +584,12 @@ export function App() {
     };
     window.addEventListener(START_CALL_EVENT, onRequest);
     return () => window.removeEventListener(START_CALL_EVENT, onRequest);
-  }, [callId]);
+  }, [callId, user?.id]);
 
   /** Созвон из панели чатов: та же комната, что и из чата, только без переписки вокруг. */
   const startCallFromPanel = async ({ memberIds, withAi }: { memberIds: string[]; withAi: boolean }) => {
     if (callId) return; // уже разговариваем — второй созвон рвал бы первый пополам
+    if (!(await precheckCall(memberIds, user?.id))) return;
     try {
       const room = await api.startCall(undefined, withAi);
       setCallInvite(memberIds);
