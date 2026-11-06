@@ -603,7 +603,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
             {key === 'ask' && (
               <>
                 <button className="wl-chip" onClick={() => void askInvite()}><Icon name="user-plus" size={14} /> {ASK_INVITE}</button>
-                <button className="wl-chip" onClick={() => void askTelegram()}><Icon name="send" size={14} /> {ASK_TG}</button>
+                <button className="wl-chip" onClick={() => void askTelegram()} title="За регистрацию в Telegram-боте +7 дней к пробному периоду."><Icon name="send" size={14} /> {ASK_TG} · +7 дней</button>
                 <button className="wl-chip" onClick={askProject}><Icon name="folder" size={14} /> {ASK_PROJECT}</button>
               </>
             )}

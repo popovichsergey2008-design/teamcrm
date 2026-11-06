@@ -21,6 +21,9 @@ export interface TenantSubRow extends SubRow {
   plan_version: number | null;
   /** Тестовая компания — её может продлить тестовый платёж (только в sub()). */
   is_test?: boolean;
+  /** #4779: пробный 7 + 7 — начало и начисленный бонус за Telegram-бота (только в sub()). */
+  trial_started_at?: Date | null;
+  trial_bonus_days?: number;
 }
 
 export interface PaymentRow {
@@ -80,10 +83,11 @@ export class BillingRepository {
   sub(tenantId: string): Promise<TenantSubRow | null> {
     return this.db.one<TenantSubRow>(
       `SELECT t.id::text AS tenant_id, t.name AS tenant_name, t.created_at AS tenant_created_at, t.is_platform,
-              COALESCE(s.status, 'TRIAL') AS status, s.plan_code, s.trial_ends_at, s.current_period_end,
+              COALESCE(s.status, 'TRIAL') AS status, s.plan_code, COALESCE(s.trial_ends_at, t.trial_ends_at) AS trial_ends_at, s.current_period_end,
               COALESCE(s.complimentary, FALSE) AS complimentary, s.payment_method_id,
               COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified,
-              COALESCE(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version, t.is_test
+              COALESCE(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version, t.is_test,
+              t.trial_started_at, COALESCE(t.trial_bonus_days, 0) AS trial_bonus_days
          FROM tenants t LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
         WHERE t.id = $1`,
       [tenantId],
@@ -94,7 +98,7 @@ export class BillingRepository {
   watchList(): Promise<TenantSubRow[]> {
     return this.db.many<TenantSubRow>(
       `SELECT t.id::text AS tenant_id, t.name AS tenant_name, t.created_at AS tenant_created_at, t.is_platform,
-              COALESCE(s.status, 'TRIAL') AS status, s.plan_code, s.trial_ends_at, s.current_period_end,
+              COALESCE(s.status, 'TRIAL') AS status, s.plan_code, COALESCE(s.trial_ends_at, t.trial_ends_at) AS trial_ends_at, s.current_period_end,
               COALESCE(s.complimentary, FALSE) AS complimentary, s.payment_method_id,
               COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified,
               COALESCE(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version

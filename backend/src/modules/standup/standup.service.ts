@@ -9,7 +9,7 @@ import { TasksRepository } from '../tasks/tasks.repository';
 import { TimeTrackingRepository } from '../timetracking/timetracking.repository';
 import { EconomicsProducer } from '../economics/economics.producer';
 import { RealtimeService } from '../realtime/realtime.service';
-import { TelegramService } from '../telegram/telegram.service';
+import { linkReply, TelegramService } from '../telegram/telegram.service';
 import { TelegramSender } from '../telegram/telegram.sender';
 import { SecretaryService } from '../secretary/secretary.service';
 import { StandupRepository, SubmissionRow } from './standup.repository';
@@ -58,7 +58,7 @@ export class StandupService {
         const linked = await this.telegram.tryLink(tgUser, msg.text);
         await this.sender.sendMessage(
           tgUser,
-          linked ? '✅ Аккаунт привязан. Можно присылать дейлик.' : 'Аккаунт не привязан. Отправьте код привязки из веб-CRM.',
+          linked ? linkReply(linked, 'Можно присылать дейлик.') : 'Аккаунт не привязан. Отправьте код привязки из веб-CRM.',
         );
       } else {
         await this.sender.sendMessage(tgUser, 'Аккаунт не привязан. Получите код в веб-CRM и отправьте его сюда.');

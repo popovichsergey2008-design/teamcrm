@@ -6,6 +6,7 @@ import { Checkbox } from './ui/checkbox';
 import { confirmAction } from './ui/dialog';
 import { PlanCards } from './AiPlanChooser';
 import { CareEmpty } from './care/CareEmpty';
+import { TrialBlock } from './billing/TrialBlock';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import { useEscape } from '../hooks/useEscape';
@@ -64,6 +65,8 @@ export function AiPlanPanel({ canManage, onClose }: { canManage: boolean; onClos
 
         {/* ТЗ-34 «Сегодня» п.6.1: забота включена в каждый тариф */}
         <CareEmpty k="badge" />
+        {/* #4779, п. 3–4: пробный период 7 + 7 и его лимиты */}
+        <TrialBlock />
 
         {!v && !err && <SkeletonList rows={4} />}
         {err && <div className="error-text" role="alert">{err}</div>}

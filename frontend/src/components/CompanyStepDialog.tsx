@@ -148,6 +148,8 @@ export function CompanyStepDialog({ company, onClose, onSaved }: {
               Уведомления и сводки в личный чат, задачи и дейлики голосом. Подключается
               каждым сотрудником отдельно — начните с себя.
             </div>
+            {/* #4779, п. 3.3 */}
+            <div className="tpl-hint"><b>За регистрацию в Telegram-боте +7 дней к пробному периоду.</b></div>
           </div>
           <button
             className="ui-btn ui-btn-outline ui-btn-sm"

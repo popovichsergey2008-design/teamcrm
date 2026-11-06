@@ -91,10 +91,12 @@ describe('кнопки', () => {
     expect(appButton('A', 'https://app.qevo.one/tg/board')).toEqual({ text: 'A', web_app: { url: 'https://app.qevo.one/tg/board' } });
     expect(appButton('A', 'http://localhost/tg/board')).toEqual({ text: 'A', url: 'http://localhost/tg/board' });
   });
-  it('приветствие — текст ТЗ и три кнопки', () => {
+  it('приветствие — текст ТЗ, условие 7 + 7 и кнопка регистрации первой (#4779)', () => {
     const w = welcome('https://app.qevo.one');
     expect(w.text.startsWith('Привет! Я ИИ-помощник QEVO.')).toBe(true);
+    expect(w.text).toContain('Пробный период QEVO: 7 дней при регистрации на сайте и ещё 7 за регистрацию здесь.');
     expect(w.markup.inline_keyboard.map((r) => r[0].text)).toEqual([
+      'Зарегистрироваться: +7 дней',
       'Проверить на готовом примере', 'Открыть демо-доску QEVO (Mini App)', 'Перенести доски из Битрикс24 / YouGile',
     ]);
     expect(JSON.stringify(w.markup)).toContain('/tg/board?demo=1');

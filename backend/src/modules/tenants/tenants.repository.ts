@@ -18,7 +18,9 @@ export class TenantsRepository {
     dataRegion: string,
     client?: PoolClient,
   ): Promise<TenantRow> {
-    const text = `INSERT INTO tenants (name, data_region) VALUES ($1, $2) RETURNING *`;
+    // #4779: пробный период 7 дней сразу + 7 за регистрацию в Telegram-боте (TelegramService.grantTrialBonus)
+    const text = `INSERT INTO tenants (name, data_region, trial_started_at, trial_ends_at)
+                  VALUES ($1, $2, now(), now() + interval '7 days') RETURNING *`;
     if (client) {
       const res = await client.query<TenantRow>(text, [name, dataRegion]);
       return res.rows[0];

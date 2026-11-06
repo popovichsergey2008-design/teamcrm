@@ -101,6 +101,21 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       })),
       configured: !!this.kassa,
       testMode: this.kassa?.testMode ?? false,
+      trial: this.trialOut(row, eff),
+    };
+  }
+
+  /**
+   * Пробный период 7 + 7 (#4779): сколько из первых 7 дней осталось и начислен ли бонус
+   * за Telegram-бота. Только для пространств по новой схеме (есть начало пробного).
+   */
+  private trialOut(row: TenantSubRow | null, eff: Effective) {
+    if (eff.status !== 'TRIAL' || !row?.trial_started_at) return null;
+    const firstEnds = new Date(new Date(row.trial_started_at).getTime() + 7 * 86_400_000);
+    return {
+      baseDays: 7, bonusDays: 7,
+      bonusGranted: Number(row.trial_bonus_days ?? 0) > 0,
+      firstEnds, until: eff.until,
     };
   }
 

@@ -126,16 +126,13 @@ export class TelegramBotRepository {
     );
   }
 
-  /** Бонус за бота — один раз. */
-  async addTrialBonus(tenantId: string, days: number): Promise<void> {
-    await this.db.query(
-      `UPDATE tenants SET trial_bonus_days = $2::int, trial_ends_at = trial_ends_at + make_interval(days => $2::int), updated_at = now()
-        WHERE id = $1 AND trial_bonus_days = 0 AND trial_ends_at IS NOT NULL`, [tenantId, days],
+  /** Пробный период пространства: конец, начислен ли бонус, оплачено ли (тогда о пробном молчим). */
+  trialOf(tenantId: string): Promise<{ trial_ends_at: Date | null; trial_bonus_days: number; paid: boolean } | null> {
+    return this.db.one(
+      `SELECT COALESCE(s.trial_ends_at, t.trial_ends_at) AS trial_ends_at, t.trial_bonus_days,
+              (s.current_period_end IS NOT NULL OR COALESCE(s.complimentary, FALSE) OR t.is_platform) AS paid
+         FROM tenants t LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id WHERE t.id = $1`, [tenantId],
     );
-  }
-
-  trialOf(tenantId: string): Promise<{ trial_ends_at: Date | null } | null> {
-    return this.db.one<{ trial_ends_at: Date | null }>(`SELECT trial_ends_at FROM tenants WHERE id = $1`, [tenantId]);
   }
 
   async createLoginCode(codeHash: string, tgId: string, tenantId: string, userId: string, expiresAt: Date): Promise<void> {
