@@ -8,8 +8,15 @@ import { api } from './api';
  * запоминаем вместе с номером, чтобы список в сайдбаре рисовался без запросов;
  * переименовали — обновится при следующем открытии карточки.
  */
-/** `view` — экран целиком (#4735: «Мои задачи» по всем проектам), id — его ключ. */
-export interface Favorite { kind: 'project' | 'task' | 'view'; id: string; title: string; projectId?: string }
+/**
+ * `view` — экран целиком (#4735: «Мои задачи» по всем проектам), id — его ключ.
+ * `file` — файл или ссылка из инфоцентра проекта (#4765): id — запись инфоцентра; чтобы
+ * открыть из сайдбара без похода в проект — адрес ссылки или номер файла.
+ */
+export interface Favorite {
+  kind: 'project' | 'task' | 'view' | 'file'; id: string; title: string; projectId?: string;
+  url?: string | null; fileId?: string | null; fileName?: string | null;
+}
 
 export const FAVORITES_CHANGED = 'qevo:favorites';
 /** Больше не держим: избранное — короткий список, а не второй реестр. */
@@ -24,7 +31,7 @@ const same = (a: Favorite, kind: Favorite['kind'], id: string) => a.kind === kin
 export function initFavorites(prefs: unknown): void {
   if (loaded) return;
   const raw = (prefs as { favorites?: unknown } | null)?.favorites;
-  list = Array.isArray(raw) ? (raw as Favorite[]).filter((f) => f && (f.kind === 'project' || f.kind === 'task' || f.kind === 'view') && f.id).slice(0, MAX) : [];
+  list = Array.isArray(raw) ? (raw as Favorite[]).filter((f) => f && (f.kind === 'project' || f.kind === 'task' || f.kind === 'view' || f.kind === 'file') && f.id).slice(0, MAX) : [];
   loaded = true;
 }
 

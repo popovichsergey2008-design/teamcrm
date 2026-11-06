@@ -201,3 +201,10 @@
 @media (prefers-reduced-transparency: reduce) {
   .hub-col { background: var(--bg-elev-2); backdrop-filter: none; }
 }
+
+/* #4765: звёздочка «в избранное» у файлов и ссылок инфоцентра */
+.hub-star { flex: none; background: none; border: none; padding: 2px; color: var(--text-mut); cursor: pointer; border-radius: 6px; display: inline-flex; align-items: center; }
+.hub-star:hover { color: var(--text); background: var(--hover); }
+.hub-star.on { color: var(--warn); }
+.hub-star.on svg { fill: currentColor; }
+.hub-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

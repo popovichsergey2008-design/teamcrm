@@ -252,7 +252,7 @@ export function HubColumn({ projectId, ownerId, variant = 'column' }: {
               <h3 className="hub-card-label">База знаний</h3>
               {kb.length ? (
                 <ul className="hub-list">
-                  {kb.map((it) => <ItemRow key={it.id} item={it} compact onError={setNote} />)}
+                  {kb.map((it) => <ItemRow key={it.id} item={it} projectId={projectId} compact onError={setNote} />)}
                 </ul>
               ) : (
                 <p className="hub-hint">ТЗ, брендбук, макеты и репозиторий — в одном месте. ИИ соберёт ссылки из чатов сам каждое утро в 8:00.</p>

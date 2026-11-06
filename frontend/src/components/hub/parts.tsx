@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { FAVORITES_CHANGED, isFavorite, toggleFavorite } from '../../lib/favorites';
 import { Icon } from '../Icon';
 import { Button } from '../ui/button';
 import { api, ApiError } from '../../lib/api';
@@ -53,8 +54,10 @@ export function AiMark({ item, inline }: { item: Pick<HubItem, 'source' | 'origi
 }
 
 /** Строка записи: значок по категории, название, домен; действия — у тех, кто правит. */
-export function ItemRow({ item, canEdit, compact, onPin, onEdit, onRemove, onError }: {
+export function ItemRow({ item, projectId, canEdit, compact, onPin, onEdit, onRemove, onError }: {
   item: HubItem;
+  /** Проект записи — для избранного (#4765): из сайдбара откроется без похода в проект. */
+  projectId?: string;
   canEdit?: boolean;
   compact?: boolean;
   onPin?: (item: HubItem) => void;
@@ -64,6 +67,17 @@ export function ItemRow({ item, canEdit, compact, onPin, onEdit, onRemove, onErr
 }) {
   const [busy, setBusy] = useState(false);
   const openable = (item.kind === 'file' && !!item.fileId) || !!safeHref(item.url);
+  // #4765: звёздочка «в избранное» — у каждого файла и ссылки, для всех, кто видит инфоцентр
+  const [fav, setFav] = useState(() => isFavorite('file', item.id));
+  useEffect(() => {
+    const on = () => setFav(isFavorite('file', item.id));
+    window.addEventListener(FAVORITES_CHANGED, on);
+    return () => window.removeEventListener(FAVORITES_CHANGED, on);
+  }, [item.id]);
+  const star = () => setFav(toggleFavorite({
+    kind: 'file', id: item.id, title: item.title, projectId,
+    url: safeHref(item.url) ?? null, fileId: item.kind === 'file' ? item.fileId : null, fileName: item.fileName,
+  }));
   const meta = [categoryLabel(item.section, item.category), item.kind === 'file' ? (item.fileName ?? 'файл') : hostOf(item.url)]
     .filter(Boolean).join(' · ');
   const open = async () => {
@@ -85,6 +99,12 @@ export function ItemRow({ item, canEdit, compact, onPin, onEdit, onRemove, onErr
         {!compact && meta && <span className="hub-row-meta">{meta}</span>}
         {!compact && <AiMark item={item} inline />}
       </span>
+      {openable && (
+        <button type="button" className={`hub-star${fav ? ' on' : ''}`} onClick={star} aria-pressed={fav}
+          aria-label={fav ? `Убрать «${item.title}» из избранного` : `В избранное: ${item.title}`} title={fav ? 'Убрать из избранного' : 'В избранное'}>
+          <Icon name="star" size={compact ? 12 : 14} />
+        </button>
+      )}
       {item.pinned && compact && <span className="hub-pinned" title="Закреплено" aria-label="Закреплено"><Icon name="pin" size={12} /></span>}
       {compact && <AiMark item={item} />}
       {!compact && canEdit && (

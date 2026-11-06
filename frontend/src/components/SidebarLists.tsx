@@ -20,6 +20,25 @@ import './sidebar-lists.css';
  * его. #4733: при каждой загрузке страницы свёрнуто — и «Избранное», и «Последние
  * задачи» внутри него (тоже кнопка, раскрывается отдельно); отмеченное — ниже.
  */
+/**
+ * Избранный файл инфоцентра (#4765): ссылка — в новой вкладке, файл — скачать (он за входом,
+ * обычная ссылка дала бы 401). Записи нет — ведём в проект, к его инфоцентру.
+ */
+async function openFavFile(f: Favorite): Promise<void> {
+  if (f.url && /^https?:\/\//i.test(f.url)) { window.open(f.url, '_blank', 'noopener'); return; }
+  if (f.fileId) {
+    try {
+      const blob = await api.authedBlob(`/api/files/${f.fileId}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.fileName ?? f.title; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return;
+    } catch { /* файл удалён или нет доступа — откроем проект */ }
+  }
+  if (f.projectId) navigate({ section: 'projects', projectId: f.projectId });
+}
+
 export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void; part?: 'fav' | 'drafts' }) {
   const { user } = useAuth();
   initFavorites(user?.uiPrefs);
@@ -60,6 +79,7 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
 
   const goFav = (f: Favorite) => {
     onGo();
+    if (f.kind === 'file') { void openFavFile(f); return; } // #4765: файл/ссылка из инфоцентра
     if (f.kind === 'view') navigate({ section: 'tasks' }); // #4735: «Мои задачи» по всем проектам
     else if (f.kind === 'project') navigate({ section: 'projects', projectId: f.id });
     else if (f.projectId) navigate({ section: 'projects', projectId: f.projectId, taskId: f.id });
@@ -182,7 +202,7 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
               {favs.map((f) => (
                 <li key={`${f.kind}:${f.id}`} className="sbl-row">
                   <button type="button" className="sbl-item" onClick={() => goFav(f)} title={f.title}>
-                    <Icon name={f.kind === 'project' ? 'folder' : f.kind === 'view' ? 'user' : 'check-circle'} size={15} />
+                    <Icon name={f.kind === 'project' ? 'folder' : f.kind === 'view' ? 'user' : f.kind === 'file' ? (f.url ? 'link' : 'file') : 'check-circle'} size={15} />
                     <span className="sbl-text">{f.kind === 'task' ? `#${f.id} ` : ''}{f.title}</span>
                   </button>
                   <button type="button" className="sbl-x" onClick={() => toggleFavorite(f)} title="Убрать из избранного" aria-label={`Убрать «${f.title}» из избранного`}>

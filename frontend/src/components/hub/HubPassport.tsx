@@ -201,7 +201,7 @@ function ItemsBlock({ ctx, section, items, kinds, empty, grouped, startAdd }: {
       <ItemForm ctx={ctx} section={section} kinds={[it.kind]} item={it} onDone={() => setEditing(null)} />
     </li>
   ) : (
-    <ItemRow key={it.id} item={it} canEdit={ctx.canEdit} onPin={pin} onEdit={setEditing} onRemove={remove} onError={ctx.setErr} />
+    <ItemRow key={it.id} item={it} projectId={ctx.projectId} canEdit={ctx.canEdit} onPin={pin} onEdit={setEditing} onRemove={remove} onError={ctx.setErr} />
   ));
   const groups = grouped
     ? HUB_CATEGORIES[section]
