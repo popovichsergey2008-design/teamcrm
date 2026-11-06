@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { CalendarBlocksRepository } from './calendar-blocks.repository';
+import { blockView } from './calendar-blocks.view';
 import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository, EventRow, MeetingSettings } from './calendar.repository';
 import { CalendarSyncService } from './calendar-sync.service';
@@ -60,6 +62,7 @@ export class CalendarService {
     private readonly mail: CalendarMailService,
     private readonly sync: CalendarSyncService,
     private readonly crypto: IntegrationCryptoService,
+    private readonly blocksRepo: CalendarBlocksRepository,
   ) {}
 
   /**
@@ -136,7 +139,10 @@ export class CalendarService {
       source: x.link_title ?? 'Внешний календарь',
       participants: [],
     }));
-    return { events, external, tasks, work: await this.work(tenantId) };
+    // #4787: свои блоки — время на задачи и запланированный фокус (сроки задач — отдельно)
+    const blocks = (await this.blocksRepo.inRange(tenantId, user.userId, from, to)).map((b) => blockView(b));
+    const overdue = withTasks ? await this.repo.overdueTasks(tenantId, user.userId) : [];
+    return { events, external, tasks, overdue, blocks, work: await this.work(tenantId) };
   }
 
   async work(tenantId: string) {

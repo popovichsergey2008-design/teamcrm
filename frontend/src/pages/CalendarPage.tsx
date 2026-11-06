@@ -28,10 +28,25 @@ import { confirmAction } from '../components/ui/dialog';
 import { Field, Textarea } from '../components/ui/field';
 import { Input } from '../components/ui/input';
 import { Select } from '../components/ui/select';
-import { Toggle } from '../components/ui/toggle';
 import { initialsOf } from '../lib/initials';
+import { plural } from '../lib/chat-text';
+import { DropdownMenu, MenuGroup, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
+import type { CalBlock } from '../lib/api';
+import { DeadlinesBar } from './calendar/DeadlinesBar';
+import { TaskTimeDialog, fmtMinutes } from './calendar/TaskTimeDialog';
+import { FocusDialog } from './calendar/FocusDialog';
+import { BlockDialog } from './calendar/BlockDialog';
+import { DRAG_TASK, PlanPanel } from './calendar/PlanPanel';
+import { SyncStatus } from './calendar/SyncStatus';
+import './calendar/calendar.css';
 
 type View = 'day' | 'week' | 'month' | 'list';
+
+/** Элемент сетки: встреча или блок своего расписания (#4787). */
+type GridItem = CalEvent | (CalBlock & { block: true });
+const isBlock = (x: GridItem): x is CalBlock & { block: true } => (x as { block?: boolean }).block === true;
+/** Телефон: другой основной вид и кнопка вместо перетаскивания (#4787, п. 4, 18). */
+const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches;
 
 export interface CalEvent {
   id: string;
@@ -210,10 +225,19 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [workOpen, setWorkOpen] = useState(false);
   /** Панель синхронизации: ссылка на наш календарь и адреса чужих. */
   const [syncOpen, setSyncOpen] = useState(false);
-  const [view, setView] = useState<View>(() => (localStorage.getItem('teamcrm.calendarView') as View) || 'week');
+  // на телефоне основной вид — день (#4787, п. 18); выбранный вид запоминается (п. 19)
+  const [view, setView] = useState<View>(() => (localStorage.getItem('teamcrm.calendarView') as View) || (isPhone() ? 'day' : 'week'));
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [tasks, setTasks] = useState<CalTask[]>([]);
+  /** #4787: просроченные — отдельным списком; блоки — время на задачи и фокус. */
+  const [overdue, setOverdue] = useState<CalTask[]>([]);
+  const [blocks, setBlocks] = useState<CalBlock[]>([]);
+  const [taskTime, setTaskTime] = useState<{ taskId?: string | null; block?: CalBlock | null; at?: Date | null } | null>(null);
+  const [focusDlg, setFocusDlg] = useState<{ at?: Date | null } | null>(null);
+  const [openBlock, setOpenBlock] = useState<CalBlock | null>(null);
+  const [planOpen, setPlanOpen] = useState(() => !isPhone() && localStorage.getItem('teamcrm.calendarPlan') !== '0');
+  const [planKey, setPlanKey] = useState(0);
   const [work, setWork] = useState<Work>({ workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] });
   // было в браузере — теперь у человека: тот же выбор на телефоне и на другом компьютере
   const [showTasks, setShowTasks] = useStickyCheck('calendar.showTasks', localStorage.getItem('teamcrm.calendarTasks') !== '0');
@@ -234,6 +258,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       // человека один. Отличаются они видом и тем, что их нельзя править.
       setEvents([...r.events, ...(r.external ?? [])]);
       setTasks(r.tasks ?? []);
+      setOverdue(r.overdue ?? []);
+      setBlocks(r.blocks ?? []);
+      setPlanKey((k) => k + 1);
       setWork(r.work);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить календарь');
@@ -322,57 +349,69 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const timed = events.filter((e) => !e.allDay);
   const allDay = events.filter((e) => e.allDay);
 
+  // встречи и блоки — в одной раскладке: блок не должен ложиться поверх встречи невидимо
   const segmentsByDay = useMemo(() => {
-    const per: DaySegment<CalEvent>[][] = days.map(() => []);
-    for (const e of timed) for (const seg of splitByDay(e, days)) per[seg.dayIndex].push(seg);
+    const items: GridItem[] = [...timed, ...blocks.map((b) => ({ ...b, block: true as const }))];
+    const per: DaySegment<GridItem>[][] = days.map(() => []);
+    for (const e of items) for (const seg of splitByDay(e, days)) per[seg.dayIndex].push(seg);
     return per.map((list) => layoutDay(list));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, days]);
+  }, [events, blocks, days]);
 
-  const tasksOfDay = (day: Date) => tasks.filter((t) => startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(day).getTime());
   const allDayOf = (day: Date) => allDay.filter((e) => splitByDay(e, [day]).length > 0);
+
+  /** Сводка дня (#4787, п. 19): только по реальному расписанию. */
+  const today0 = startOfDay(new Date()).getTime();
+  const isToday = (iso: string) => startOfDay(new Date(iso)).getTime() === today0;
+  const meetingsToday = timed.filter((e) => isToday(e.startsAt) && e.myStatus !== 'declined').length;
+  const minutesOf = (b: CalBlock) => Math.round((Date.parse(b.endsAt) - Date.parse(b.startsAt)) / 60000);
+  const taskMinToday = blocks.filter((b) => b.kind === 'task' && isToday(b.startsAt)).reduce((n, b) => n + minutesOf(b), 0);
+  const focusMinToday = blocks.filter((b) => b.kind === 'focus' && isToday(b.startsAt)).reduce((n, b) => n + minutesOf(b), 0);
+  const showSummary = days.some((d) => startOfDay(d).getTime() === today0);
+
+  /** Ближайший созвон (п. 18): идёт сейчас или начнётся в ближайшие 15 минут. */
+  const now = Date.now();
+  const nextCall = timed
+    .filter((e) => e.meetRoomId && e.myStatus !== 'declined' && Date.parse(e.endsAt) > now && Date.parse(e.startsAt) - now <= 15 * 60_000)
+    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))[0];
+
+  const togglePlan = () => {
+    const next = !planOpen;
+    setPlanOpen(next);
+    localStorage.setItem('teamcrm.calendarPlan', next ? '1' : '0');
+  };
 
   return (
     <div className="page calendar-page cal-v2">
+      {/*
+        Шапка (#4787, п. 1): слева — Сегодня ← → и вид; справа — Создать и Настройки.
+        Рабочие часы, Google и прочее — в меню настроек, а не россыпью иконок, о
+        назначении которых надо догадываться.
+      */}
       <div className="cal-head">
         <div className="cal-nav">
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setAnchor(new Date())}>Сегодня</button>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => move(-1)} aria-label="Назад"><Icon name="chevron-left" size={16} /></button>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => move(1)} aria-label="Вперёд"><Icon name="chevron-right" size={16} /></button>
           <h2 className="cal-title">{rangeTitle(view, days)}</h2>
-        </div>
-        <div className="cal-actions">
-          <Toggle pressed={showTasks} onPressedChange={() => toggleTasks()} title="Показывать задачи со сроком отдельным слоем">
-            <Icon name="check-circle" size={14} /> Задачи
-          </Toggle>
-          {/* Вид — сегментами, как на доске: один выбор из четырёх, а не четыре кнопки. */}
-          <span className="kv2-seg" role="group" aria-label="Вид календаря">
+          <span className="kv2-seg cal-views" role="group" aria-label="Вид календаря">
             {(Object.keys(VIEW_LABEL) as View[]).map((v) => (
               <button key={v} className="kv2-seg-btn" aria-pressed={view === v} onClick={() => switchView(v)}>
                 {VIEW_LABEL[v]}
               </button>
             ))}
           </span>
-          <button
-            className="ui-btn ui-btn-ghost ui-btn-sm"
-            onClick={() => setWorkOpen(true)}
-            title="Рабочие часы, выходные и праздники компании"
-          >
-            <Icon name="clock" size={15} />
-          </button>
-          {/* Синхронизация с Google — рядом с рабочим временем: обе настройки календаря */}
-          <button
-            className="ui-btn ui-btn-ghost ui-btn-sm"
-            onClick={() => setSyncOpen(true)}
-            title="Синхронизация с Google-календарём: наши встречи туда, чужие сюда"
-            aria-label="Синхронизация календаря"
-          >
-            <Icon name="refresh" size={15} />
-          </button>
+        </div>
+        <div className="cal-actions">
           <div className="cal-new-row">
-            <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => createNow()}>
-              <Icon name="plus" size={15} /> Событие
-            </button>
+            <DropdownMenu
+              align="end"
+              trigger={<button className="ui-btn ui-btn-primary ui-btn-sm cal-create"><Icon name="plus" size={15} /> Создать</button>}
+            >
+              <MenuItem icon={<Icon name="video" size={15} />} onSelect={() => createNow()}>Встречу</MenuItem>
+              <MenuItem icon={<Icon name="check-circle" size={15} />} onSelect={() => setTaskTime({})}>Время на выполнение задачи</MenuItem>
+              <MenuItem icon={<Icon name="target" size={15} />} onSelect={() => setFocusDlg({})}>Глубокий фокус</MenuItem>
+            </DropdownMenu>
             <button
               className={`ui-btn ui-btn-primary ui-btn-sm cal-new-mic${voice.recording ? ' cal-mic-on' : ''}`}
               onClick={voice.toggle}
@@ -383,8 +422,39 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               <Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} />
             </button>
           </div>
+          <DropdownMenu
+            align="end"
+            trigger={<button className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Настройки календаря" title="Настройки календаря"><Icon name="settings" size={15} /><span className="cal-hide-phone"> Настройки</span></button>}
+          >
+            <MenuGroup label="Подключённые календари">
+              <div className="cal-menu-status"><SyncStatus onSynced={() => void reload()} /></div>
+            </MenuGroup>
+            <MenuSeparator />
+            <MenuItem icon={<Icon name="clock" size={15} />} onSelect={() => setWorkOpen(true)}>Рабочие часы, выходные, праздники</MenuItem>
+            <MenuItem icon={<Icon name="refresh" size={15} />} onSelect={() => setSyncOpen(true)}>Google и другие календари</MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={<Icon name={showTasks ? 'eye-off' : 'eye'} size={15} />} onSelect={() => toggleTasks()}>
+              {showTasks ? 'Скрыть сроки задач' : 'Показывать сроки задач'}
+            </MenuItem>
+            <MenuItem icon={<Icon name="list" size={15} />} onSelect={togglePlan}>
+              {planOpen ? 'Скрыть «Задачи для планирования»' : 'Показать «Задачи для планирования»'}
+            </MenuItem>
+          </DropdownMenu>
         </div>
       </div>
+
+      {showSummary && (
+        <div className="cal-summary" aria-label="Сводка на сегодня">
+          <span>Сегодня: {meetingsToday} {plural(meetingsToday, 'встреча', 'встречи', 'встреч')}</span>
+          <span>· {taskMinToday ? fmtMinutes(taskMinToday) : 'нет времени'} на задачи</span>
+          <span>· {focusMinToday ? `${fmtMinutes(focusMinToday)} фокуса` : 'фокус не запланирован'}</span>
+          {nextCall && (
+            <button className="ui-btn ui-btn-primary ui-btn-sm cal-join" onClick={() => onStartCall(nextCall.meetRoomId!)}>
+              <Icon name="video" size={14} /> Войти в созвон: {nextCall.title}
+            </button>
+          )}
+        </div>
+      )}
 
       {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
       {(voice.error || voiceErr) && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {voice.error || voiceErr}</div>}
@@ -414,19 +484,46 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           должны появиться, а не ждать перелистывания недели. */}
       {syncOpen && <CalendarSyncPanel onClose={() => { setSyncOpen(false); reload(); }} />}
 
-      {view === 'list' ? (
-        <ListView days={days} events={events} tasks={showTasks ? tasks : []} onOpen={setEditing} onRespond={respond} />
-      ) : view === 'month' ? (
-        <MonthGrid days={days} events={events} tasks={showTasks ? tasks : []} work={work} anchor={anchor} onOpen={setEditing} onCreate={(d) => createAt(d, 10)} />
-      ) : (
-        <TimeGrid
-          days={days}
-          work={work}
-          segments={segmentsByDay}
-          allDayOf={allDayOf}
-          tasksOfDay={showTasks ? tasksOfDay : () => []}
-          onOpen={setEditing}
-          onCreate={createAt}
+      {showTasks && <DeadlinesBar tasks={tasks} overdue={overdue} days={days} />}
+
+      <div className={`cal-body${planOpen ? ' with-plan' : ''}`}>
+        <div className="cal-main">
+          {view === 'list' ? (
+            <ListView days={days} events={events} tasks={showTasks ? tasks : []} blocks={blocks} onOpen={setEditing} onOpenBlock={setOpenBlock} onRespond={respond} />
+          ) : view === 'month' ? (
+            <MonthGrid days={days} events={events} tasks={showTasks ? tasks : []} work={work} anchor={anchor} onOpen={setEditing} onCreate={(d) => createAt(d, 10)} />
+          ) : (
+            <TimeGrid
+              days={days}
+              work={work}
+              segments={segmentsByDay}
+              allDayOf={allDayOf}
+              onOpen={setEditing}
+              onOpenBlock={setOpenBlock}
+              onCreate={createAt}
+              onDropTask={(taskId, at) => setTaskTime({ taskId, at })}
+            />
+          )}
+        </div>
+        {planOpen && <PlanPanel refreshKey={planKey} onPlan={(taskId) => setTaskTime({ taskId })} onClose={togglePlan} />}
+      </div>
+
+      {taskTime && (
+        <TaskTimeDialog
+          taskId={taskTime.taskId}
+          block={taskTime.block}
+          at={taskTime.at}
+          onClose={() => setTaskTime(null)}
+          onSaved={() => { setTaskTime(null); void reload(); }}
+        />
+      )}
+      {focusDlg && <FocusDialog at={focusDlg.at} onClose={() => setFocusDlg(null)} onSaved={() => { setFocusDlg(null); void reload(); }} />}
+      {openBlock && (
+        <BlockDialog
+          block={openBlock}
+          onClose={() => setOpenBlock(null)}
+          onChanged={() => { setOpenBlock(null); void reload(); }}
+          onReschedule={(b) => { setOpenBlock(null); setTaskTime({ block: b }); }}
         />
       )}
 
@@ -447,20 +544,34 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 }
 
 /** Сетка дня и недели: часы слева, события в колонках дней. */
-function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate }: {
+function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreate, onDropTask }: {
   days: Date[];
   work: Work;
-  segments: DaySegment<CalEvent>[][];
+  segments: DaySegment<GridItem>[][];
   allDayOf: (d: Date) => CalEvent[];
-  tasksOfDay: (d: Date) => CalTask[];
   onOpen: (e: CalEvent) => void;
+  onOpenBlock: (b: CalBlock) => void;
   onCreate: (day: Date, hour: number) => void;
+  /** Задача из панели «Задачи для планирования» брошена на сетку (#4787, п. 4). */
+  onDropTask: (taskId: string, at: Date) => void;
 }) {
   const today = startOfDay(new Date()).getTime();
   const workTop = timeToFraction(work.workStart);
   const workHeight = Math.max(timeToFraction(work.workEnd) - workTop, 0);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hasTasks = days.some((d) => tasksOfDay(d).length > 0);
+  // отметка текущего времени (п. 19) — двигается сама, раз в минуту
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNowMs(Date.now()), 60_000); return () => window.clearInterval(t); }, []);
+  const nowFrac = (nowMs - startOfDay(new Date(nowMs)).getTime()) / 86_400_000;
+  /** Брошенная задача: время — по месту в колонке, с шагом 15 минут. */
+  const dropAt = (day: Date, e: React.DragEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = Math.min(Math.max((e.clientY - rect.top) / rect.height, 0), 1);
+    const mins = Math.round((frac * 24 * 60) / 15) * 15;
+    const at = startOfDay(day);
+    at.setMinutes(Math.min(mins, 23 * 60 + 45));
+    return at;
+  };
 
   /**
    * Прокрутка к началу рабочего дня.
@@ -505,31 +616,50 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
         </div>
       ))}
 
-      {/* Сроки задач — ОТДЕЛЬНОЙ строкой со своей подписью. В одной полосе с событиями
-          «весь день» они читались как чужой мусор: непонятно, встреча это или задача. */}
-      {hasTasks && (
-        <>
-          <div className="cal-corner cal-allday-label">сроки</div>
-          {days.map((d) => (
-            <div key={`t${d.getTime()}`} className="cal-allday cal-deadlines">
-              {tasksOfDay(d).map((t) => <DueChip key={t.id} task={t} />)}
-            </div>
-          ))}
-        </>
-      )}
-
       <div className="cal-scroll" style={columns} ref={scrollRef}>
         <div className="cal-hours">
           {HOURS.map((h) => <div key={h} className="cal-hour"><span>{String(h).padStart(2, '0')}:00</span></div>)}
         </div>
         {days.map((d, i) => (
-          <div key={`c${d.getTime()}`} className={`cal-col ${isDayOff(d, work) ? 'off' : ''}`}>
+          <div
+            key={`c${d.getTime()}`}
+            className={`cal-col ${isDayOff(d, work) ? 'off' : ''}`}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes(DRAG_TASK)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+            onDrop={(e) => {
+              const id = e.dataTransfer.getData(DRAG_TASK);
+              if (!id) return;
+              e.preventDefault();
+              onDropTask(id, dropAt(d, e));
+            }}
+          >
             {/* рабочие часы подсвечены, остальное приглушено — по настройке организации */}
             <div className="cal-worktime" style={{ top: `${workTop * 100}%`, height: `${workHeight * 100}%` }} />
+            {startOfDay(d).getTime() === startOfDay(new Date(nowMs)).getTime() && (
+              <div className="cal-now" style={{ top: `${nowFrac * 100}%` }} aria-label="Сейчас" />
+            )}
             {HOURS.map((h) => (
               <button key={h} className="cal-slot" onClick={() => onCreate(d, h)} aria-label={`Создать событие ${d.toLocaleDateString('ru-RU')} в ${h}:00`} />
             ))}
-            {segments[i]?.map((seg) => (
+            {segments[i]?.map((seg) => isBlock(seg.event) ? (
+              <button
+                key={`b${seg.event.id}-${seg.dayIndex}`}
+                className={`cal-event cal-block ${seg.event.kind === 'focus' ? 'focus' : 'task'}${seg.event.taskDone ? ' done' : ''}`}
+                style={{
+                  top: `${seg.top * 100}%`,
+                  height: `${seg.height * 100}%`,
+                  left: `${(seg.column / seg.columns) * 100}%`,
+                  width: `${(1 / seg.columns) * 100}%`,
+                }}
+                onClick={() => onOpenBlock(seg.event as CalBlock)}
+                title={`${seg.event.kind === 'focus' ? 'Глубокий фокус' : `Время на задачу №${seg.event.taskId}`} · ${hhmm(seg.event.startsAt)}–${hhmm(seg.event.endsAt)} · ${seg.event.title}`}
+              >
+                <span className="cal-event-time">
+                  <Icon name={seg.event.kind === 'focus' ? 'target' : 'check-circle'} size={11} />
+                  {hhmm(seg.event.startsAt)}–{hhmm(seg.event.endsAt)}
+                </span>
+                <span className="cal-event-title">{seg.event.kind === 'task' ? `№${seg.event.taskId} ${seg.event.title}` : seg.event.title}</span>
+              </button>
+            ) : (
               <button
                 key={`${seg.event.id}-${seg.dayIndex}`}
                 className={`cal-event ${seg.event.scope === 'company' ? 'company' : ''} ${seg.event.scope === 'external' ? 'external' : ''} ${seg.event.myStatus === 'declined' ? 'declined' : ''} ${seg.event.myStatus === 'invited' ? 'invited' : ''}`}
@@ -539,8 +669,8 @@ function TimeGrid({ days, work, segments, allDayOf, tasksOfDay, onOpen, onCreate
                   left: `${(seg.column / seg.columns) * 100}%`,
                   width: `${(1 / seg.columns) * 100}%`,
                 }}
-                onClick={() => onOpen(seg.event)}
-                title={hint(seg.event)}
+                onClick={() => onOpen(seg.event as CalEvent)}
+                title={hint(seg.event as CalEvent)}
               >
                 <span className="cal-event-time">
                   {seg.continuesFrom ? '↑ ' : ''}{hhmm(seg.event.startsAt)}–{hhmm(seg.event.endsAt)}
@@ -578,7 +708,7 @@ function MonthGrid({ days, events, tasks, work, anchor, onOpen, onCreate }: {
       {['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map((d) => <div key={d} className="cal-month-head">{d}</div>)}
       {days.map((d) => {
         const dayEvents = events.filter((e) => splitByDay(e, [d]).length > 0);
-        const dayTasks = tasks.filter((t) => startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime());
+        const dayTasks = tasks.filter((t) => startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime() && !t.closed_at); // выполненные не кричат (#4787, п. 2)
         return (
           <div
             key={d.getTime()}
@@ -613,15 +743,17 @@ function MonthGrid({ days, events, tasks, work, anchor, onOpen, onCreate }: {
 }
 
 /** Список: ближайшее подряд. Нужен, когда важно прочитать, а не разглядывать сетку. */
-function ListView({ days, events, tasks, onOpen, onRespond }: {
-  days: Date[]; events: CalEvent[]; tasks: CalTask[];
-  onOpen: (e: CalEvent) => void; onRespond: (id: string, s: 'accepted' | 'declined') => void;
+function ListView({ days, events, tasks, blocks, onOpen, onOpenBlock, onRespond }: {
+  days: Date[]; events: CalEvent[]; tasks: CalTask[]; blocks: CalBlock[];
+  onOpen: (e: CalEvent) => void; onOpenBlock: (b: CalBlock) => void; onRespond: (id: string, s: 'accepted' | 'declined') => void;
 }) {
   const rows = days.map((d) => ({
     day: d,
     events: events.filter((e) => splitByDay(e, [d]).length > 0),
-    tasks: tasks.filter((t) => startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime()),
-  })).filter((r) => r.events.length || r.tasks.length);
+    blocks: blocks.filter((b) => splitByDay(b, [d]).length > 0),
+    // выполненные по умолчанию не кричат (#4787, п. 2)
+    tasks: tasks.filter((t) => startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime() && !t.closed_at),
+  })).filter((r) => r.events.length || r.tasks.length || r.blocks.length);
 
   if (!rows.length) {
     return <EmptyState icon="calendar" title="Впереди пусто" hint="На ближайшие две недели событий нет. Щёлкните по сетке в виде «Неделя», чтобы назначить встречу." />;
@@ -650,6 +782,16 @@ function ListView({ days, events, tasks, onOpen, onRespond }: {
                   <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => onRespond(e.id, 'declined')}>Отклонить</button>
                 </span>
               )}
+            </div>
+          ))}
+          {/* время на задачи и фокус (#4787) — своими строками со значком */}
+          {r.blocks.map((b) => (
+            <div key={`b${b.id}`} className={`cal-list-row cal-list-block ${b.kind}`}>
+              <span className="cal-list-time">{hhmm(b.startsAt)}–{hhmm(b.endsAt)}</span>
+              <button className="cal-list-title" onClick={() => onOpenBlock(b)}>
+                <span><Icon name={b.kind === 'focus' ? 'target' : 'check-circle'} size={13} /> {b.kind === 'task' ? `№${b.taskId} ${b.title}` : b.title}</span>
+                <span className="cal-list-sub dim">{b.kind === 'focus' ? 'Глубокий фокус' : `Время на задачу${b.projectName ? ` · ${b.projectName}` : ''}`}</span>
+              </button>
             </div>
           ))}
           {r.tasks.map((t) => {

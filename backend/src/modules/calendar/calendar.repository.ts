@@ -311,6 +311,27 @@ export class CalendarRepository {
   }
 
   /**
+   * Просроченные открытые задачи человека (#4787, п. 2): отдельным раскрываемым списком
+   * над расписанием — где бы ни стоял срок, хоть месяц назад.
+   */
+  overdueTasks(tenantId: string, userId: string) {
+    return this.db.many<{
+      id: string; title: string; deadline_at: Date; project_id: string; status: string;
+      priority: string | null; closed_at: Date | null;
+    }>(
+      `SELECT t.id, t.title, t.deadline_at, t.project_id, t.status, t.priority, t.closed_at
+         FROM tasks t
+         JOIN projects p ON p.id = t.project_id AND p.status <> 'archived'
+        WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND t.closed_at IS NULL
+          AND t.deadline_at IS NOT NULL AND t.deadline_at < now()
+          AND t.assignee_id = $2
+        ORDER BY t.deadline_at
+        LIMIT 100`,
+      [tenantId, userId],
+    );
+  }
+
+  /**
    * Занятость людей в промежутке: события и отпуска, без названий.
    *
    * Именно интервалы, а не события: коллеге при выборе времени нужно знать, что человек

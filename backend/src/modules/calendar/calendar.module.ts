@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { CalendarController } from './calendar.controller';
+import { CalendarBlocksController } from './calendar-blocks.controller';
+import { CalendarBlocksRepository } from './calendar-blocks.repository';
+import { CalendarBlocksService } from './calendar-blocks.service';
 import { CalendarMailService } from './calendar-mail.service';
 import { CalendarRepository } from './calendar.repository';
 import { CalendarScheduler } from './calendar.scheduler';
@@ -12,12 +15,14 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
  * Напоминания, занятость коллег и повторы — следующие шаги (см. specs/tz2-06-calendar-step1.md).
  */
 @Module({
-  controllers: [CalendarController],
+  controllers: [CalendarController, CalendarBlocksController],
   providers: [
     CalendarService, CalendarRepository, CalendarMailService, CalendarScheduler,
     CalendarSyncService, IntegrationCryptoService,
+    // #4787: время на задачи и запланированный фокус
+    CalendarBlocksService, CalendarBlocksRepository,
   ],
   // репозиторий нужен счётчикам панели; почта — приглашениям гостей встреч (ТЗ-14)
-  exports: [CalendarService, CalendarRepository, CalendarMailService],
+  exports: [CalendarService, CalendarRepository, CalendarMailService, CalendarBlocksService],
 })
 export class CalendarModule {}

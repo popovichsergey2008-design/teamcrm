@@ -2656,8 +2656,27 @@ export const api = {
   calendarRange: (from: string, to: string, withTasks = true) =>
     request<{
       events: any[]; external?: any[]; tasks: any[];
+      /** #4787: просроченные открытые задачи — отдельным списком над расписанием */
+      overdue?: any[];
+      /** #4787: время на задачи и запланированный фокус */
+      blocks?: CalBlock[];
       work: { workStart: string; workEnd: string; weekendDays: number[]; holidays: string[] };
     }>('GET', `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&tasks=${withTasks ? '1' : '0'}`),
+  calendarBlockCreate: (b: { kind: 'task' | 'focus'; taskId?: string; taskIds?: string[]; title?: string; startsAt: string; endsAt: string }) =>
+    request<{ block: CalBlock; conflicts: BlockConflict[] }>('POST', '/calendar/blocks', b),
+  calendarBlockMove: (id: string, startsAt: string, endsAt: string) =>
+    request<{ block: CalBlock; conflicts: BlockConflict[] }>('PATCH', `/calendar/blocks/${id}`, { startsAt, endsAt }),
+  calendarBlockDelete: (id: string) => request<{ ok: true }>('DELETE', `/calendar/blocks/${id}`),
+  calendarTaskBlocks: (taskId: string) => request<CalBlock[]>('GET', `/calendar/blocks/task/${taskId}`),
+  calendarPlanTasks: () => request<PlanTask[]>('GET', '/calendar/plan-tasks'),
+  calendarFindTime: (q: { taskId?: string; minutes?: number; before?: string; exceptBlockId?: string }) => {
+    const p = new URLSearchParams();
+    if (q.taskId) p.set('taskId', q.taskId);
+    if (q.minutes) p.set('minutes', String(q.minutes));
+    if (q.before) p.set('before', q.before);
+    if (q.exceptBlockId) p.set('exceptBlockId', q.exceptBlockId);
+    return request<FindTimeResult>('GET', `/calendar/find-time?${p.toString()}`);
+  },
   /**
    * Синхронизация с внешним календарём — двумя обычными ссылками, без OAuth.
    * Наш календарь отдаём по секретному адресу, чужой читаем по «секретному адресу
@@ -3531,4 +3550,29 @@ export interface ChangeEvent {
   from: string; to: string; fromLabel: string; toLabel: string;
   actorName: string | null; actorType: string; assigneeName: string | null;
   source: string; sourceLabel: string; changedAt: string;
+}
+
+/** #4787: блок своего расписания — время на задачу или запланированный фокус. */
+export interface CalBlock {
+  id: string;
+  kind: 'task' | 'focus';
+  taskId: string | null;
+  taskIds: string[];
+  title: string;
+  projectId: string | null;
+  projectName: string | null;
+  deadlineAt: string | null;
+  taskDone: boolean;
+  startsAt: string;
+  endsAt: string;
+}
+export interface BlockConflict { title: string; startsAt: string; endsAt: string }
+export interface PlanTask {
+  id: string; title: string; projectId: string; projectName: string; deadlineAt: string | null;
+  priority: string | null; estimateMin: number | null; plannedMin: number;
+}
+export interface FindTimeResult {
+  minutes: number; deadlineAt: string | null; timeZone: string;
+  options: { startsAt: string; endsAt: string; note: string }[];
+  message: string | null;
 }
