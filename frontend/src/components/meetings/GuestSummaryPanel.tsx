@@ -25,6 +25,8 @@ export default function GuestSummaryPanel({ meetingId }: { meetingId: string }) 
   const [data, setData] = useState<GuestSummaryHost | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState<'' | 'draft' | 'save' | 'publish' | 'file'>('');
+  /** Что показать гостю (#4787, п. 20) — выбирается перед отправкой. */
+  const [show, setShow] = useState({ summary: true, agreements: true, files: true, nextMeeting: true });
   const [err, setErr] = useState('');
   const [preview, setPreview] = useState(false);
   const [changed, setChanged] = useState(false);
@@ -81,7 +83,7 @@ export default function GuestSummaryPanel({ meetingId }: { meetingId: string }) 
     }))) return;
     setBusy('publish'); setErr('');
     try {
-      const r = await api.guestSummaryPublish(meetingId);
+      const r = await api.guestSummaryPublish(meetingId, show);
       apply(r);
       toastSaved(r.mailed ? `Итоги опубликованы, писем: ${r.mailed}` : 'Итоги опубликованы');
     } catch (e) {
@@ -189,6 +191,18 @@ export default function GuestSummaryPanel({ meetingId }: { meetingId: string }) 
       )}
 
       {err && <div className="error-text">{err}</div>}
+
+      {s && (
+        <fieldset className="gs-show" style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', margin: '8px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 16px' }}>
+          <legend style={{ fontWeight: 600, padding: '0 4px' }}>Показать гостю</legend>
+          {([['summary', 'Кратко'], ['agreements', 'Договорённости и следующие шаги'], ['files', 'Файлы'], ['nextMeeting', 'Следующая встреча']] as const).map(([k, label]) => (
+            <label key={k} className="gs-show-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <input type="checkbox" checked={show[k]} onChange={(e) => setShow((v) => ({ ...v, [k]: e.target.checked }))} /> {label}
+            </label>
+          ))}
+          <span className="dim">Внутренние комментарии, закрытые задачи и личные материалы гостю не видны.</span>
+        </fieldset>
+      )}
 
       <div className="pc-actions">
         {!s && busy !== 'draft' && <Button variant="primary" onClick={() => void run('draft', () => api.guestSummaryDraft(meetingId))}><Icon name="sparkles" size={14} /> Подготовить черновик</Button>}

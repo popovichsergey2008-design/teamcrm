@@ -426,6 +426,20 @@ export class CalendarRepository {
    * напоминание о встрече, которая давно идёт, человеку не нужно — оно только сбивает.
    * Отказавшихся не тревожим, отправленное отсеиваем по журналу.
    */
+  /**
+   * Тихо ли у человека (#4787, п. 17: напоминания учитывают тихие часы и глубокий фокус) —
+   * то же правило, что у push (InboxRepository.isQuiet): идёт фокус или день закрыт с тишиной.
+   */
+  async isQuiet(tenantId: string, userId: string): Promise<boolean> {
+    const row = await this.db.one<{ quiet: boolean }>(
+      `SELECT (EXISTS (SELECT 1 FROM focus_sessions s WHERE s.tenant_id = $1 AND s.user_id = $2 AND s.status = 'running' AND s.planned_end_at > now())
+            OR EXISTS (SELECT 1 FROM user_focus f WHERE f.tenant_id = $1 AND f.user_id = $2 AND f.kind = 'deep' AND (f.until IS NULL OR f.until > now()))
+            OR EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = $1 AND u.id = $2 AND u.quiet_after_close AND u.workday_closed_until > now())) AS quiet`,
+      [tenantId, userId],
+    );
+    return !!row?.quiet;
+  }
+
   dueReminders(windowMinutes = 30) {
     return this.db.many<{
       event_id: string; tenant_id: string; user_id: string; minutes_before: number;

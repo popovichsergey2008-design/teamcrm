@@ -2797,7 +2797,9 @@ export const api = {
   guestSummaryDraft: (meetingId: string, language?: string) => request<GuestSummaryHost>('POST', `/meetings/${meetingId}/guest-summary/draft`, language ? { language } : {}),
   guestSummarySave: (meetingId: string, d: { language: string; text: string; agreements: GuestAgreement[]; nextMeeting?: { title: string; at: string; url?: string | null } | null }) =>
     request<GuestSummaryHost>('PUT', `/meetings/${meetingId}/guest-summary`, d),
-  guestSummaryPublish: (meetingId: string) => request<GuestSummaryHost & { mailed: number }>('POST', `/meetings/${meetingId}/guest-summary/publish`),
+  /** show (#4787, п. 20): что показать гостю — не отмеченное не публикуется. */
+  guestSummaryPublish: (meetingId: string, show?: { summary?: boolean; agreements?: boolean; files?: boolean; nextMeeting?: boolean }) =>
+    request<GuestSummaryHost & { mailed: number }>('POST', `/meetings/${meetingId}/guest-summary/publish`, show ? { show } : {}),
   guestSummaryAddFile: (meetingId: string, fileId: string) => request<GuestSummaryHost>('POST', `/meetings/${meetingId}/guest-summary/files`, { fileId }),
   guestSummaryRemoveFile: (meetingId: string, fileId: string) => request<GuestSummaryHost>('DELETE', `/meetings/${meetingId}/guest-summary/files/${fileId}`),
   guestFeedbackHandled: (meetingId: string, id: string) => request<GuestSummaryHost>('POST', `/meetings/${meetingId}/guest-summary/feedback/${id}/handled`),

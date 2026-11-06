@@ -47,7 +47,8 @@ export class CalendarScheduler implements OnModuleInit, OnModuleDestroy {
     try {
       for (const r of await this.repo.dueReminders()) {
         try {
-          await this.mail.sendReminder(r);
+          // в тишине (фокус, закрытый день) письмо не шлём: напоминание остаётся в приложении без звука
+          if (!(await this.repo.isQuiet(String(r.tenant_id), String(r.user_id)).catch(() => false))) await this.mail.sendReminder(r);
           this.realtime.emitToUsers(String(r.tenant_id), [String(r.user_id)], 'calendar.reminder', {
             eventId: String(r.event_id),
             title: r.title,

@@ -178,8 +178,8 @@ export class GuestHostController {
   }
 
   @Post('meetings/:id/guest-summary/publish')
-  publish(@CurrentUser() u: AuthUser, @Param('id') id: string) {
-    return this.portal.publish(this.u(u), id);
+  publish(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() body?: { show?: { summary?: boolean; agreements?: boolean; files?: boolean; nextMeeting?: boolean } }) {
+    return this.portal.publish(this.u(u), id, body?.show);
   }
 
   @Post('meetings/:id/guest-summary/files')

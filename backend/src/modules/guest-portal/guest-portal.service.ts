@@ -410,20 +410,27 @@ export class GuestPortalService {
    * готовы» (или «обновлены»), запись в ленту клиента. Гость видит ровно этот снимок,
    * даже пока хозяин правит черновик дальше.
    */
-  async publish(u: HostUser, meetingId: string) {
+  /**
+   * `show` (#4787, п. 20): перед отправкой организатор выбирает, что показать гостю —
+   * «Кратко», договорённости, файлы, следующую встречу. Не отмеченное не публикуется.
+   * Внутренние комментарии, закрытые задачи и личные материалы сюда не попадают никогда.
+   */
+  async publish(u: HostUser, meetingId: string, show?: { summary?: boolean; agreements?: boolean; files?: boolean; nextMeeting?: boolean }) {
+    const on = (k: 'summary' | 'agreements' | 'files' | 'nextMeeting') => show?.[k] !== false;
     const meeting = await this.hostMeeting(u, meetingId);
     const s = await this.repo.summaryOf(u.tenantId, meetingId);
     if (!s) throw AppException.notFound('Сначала подготовьте черновик');
     const [agreements, files] = await Promise.all([this.repo.agreements(s.id), this.repo.files(s.id)]);
     if (!s.summary_text.trim() && !agreements.length) throw AppException.validation('Протокол пуст — добавьте текст или договорённости');
+    if (!on('summary') && !on('agreements') && !on('files') && !on('nextMeeting')) throw AppException.validation('Отметьте, что показать гостю');
     const version = s.version + 1;
     const json: PublishedSummary = {
       version,
       language: s.language,
-      summary: s.summary_text,
-      agreements: agreements.map((a) => ({ text: a.text, side: a.owner_side, deadlineAt: a.deadline_at ? new Date(a.deadline_at).toISOString() : null })),
-      files: files.map((f) => f.file_id),
-      nextMeeting: s.next_meeting_at ? { title: s.next_meeting_title ?? 'Встреча', at: new Date(s.next_meeting_at).toISOString(), url: s.next_meeting_url } : null,
+      summary: on('summary') ? s.summary_text : '',
+      agreements: on('agreements') ? agreements.map((a) => ({ text: a.text, side: a.owner_side, deadlineAt: a.deadline_at ? new Date(a.deadline_at).toISOString() : null })) : [],
+      files: on('files') ? files.map((f) => f.file_id) : [],
+      nextMeeting: on('nextMeeting') && s.next_meeting_at ? { title: s.next_meeting_title ?? 'Встреча', at: new Date(s.next_meeting_at).toISOString(), url: s.next_meeting_url } : null,
       publishedAt: new Date().toISOString(),
     };
     await this.repo.publish(s.id, u.userId, json);
