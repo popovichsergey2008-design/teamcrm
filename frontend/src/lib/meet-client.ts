@@ -39,7 +39,10 @@ export interface MeetEvents {
    * и закрыл его каналы. Поэтому окно созвона входит заново само (16.10).
    */
   onSocketLost?: () => void;
-  onRecording: (active: boolean) => void;
+  /** #4779: limitSec — предел записи в пробный период (секунды), startedAt — когда пошла запись. */
+  onRecording: (active: boolean, limit?: { limitSec: number | null; startedAt: number | null }) => void;
+  /** Сообщение всем в комнате (#4779: «Запись остановится через 2 минуты…»). */
+  onNotice?: (message: string) => void;
   onAiInvited?: () => void;
   /** Гостю: стучимся, ждём впуска (hostPresent — есть ли кому впускать). */
   onGuestWaiting?: (hostPresent: boolean, hostCalled: boolean) => void;
@@ -413,7 +416,14 @@ export class MeetClient {
         return;
 
       case 'meet.recording':
-        this.ev.onRecording(!!p.active);
+        this.ev.onRecording(!!p.active, {
+          limitSec: typeof p.limit_sec === 'number' ? p.limit_sec : null,
+          startedAt: p.startedAt ? new Date(p.startedAt).getTime() : null,
+        });
+        return;
+
+      case 'meet.notice':
+        (this.ev.onNotice ?? this.ev.onError)(String(p.message ?? ''));
         return;
 
       case 'meet.ai-invited':

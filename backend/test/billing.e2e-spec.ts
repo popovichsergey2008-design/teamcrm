@@ -65,7 +65,9 @@ describe('Оплата подписки (e2e)', () => {
 
   it('напоминание владельцу о конце пробного — одно письмо, без повторов', async () => {
     const o = await register();
-    await db.query(`UPDATE tenants SET created_at = now() - interval '12 days' WHERE id = $1`, [o.tenantId]);
+    // #4779: пробный — 7 + 7 дней от регистрации (tenants.trial_ends_at); до конца осталось 2 дня
+    await db.query(`UPDATE tenants SET created_at = now() - interval '12 days', trial_started_at = now() - interval '12 days',
+                           trial_ends_at = now() + interval '2 days' WHERE id = $1`, [o.tenantId]);
     const svc = app.get(BillingService);
     await svc.sweep(new Date());
     await svc.sweep(new Date());

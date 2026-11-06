@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { TRIAL_CALL_SEC, TRIAL_TEXT, TrialLimitsService } from '../billing/trial-limits.service';
 import { ConfigService } from '@nestjs/config';
 import { HttpAdapterHost } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
@@ -102,6 +103,7 @@ export class MeetGateway implements OnModuleInit {
     private readonly guests: GuestLinksService,
     private readonly push: PushService,
     private readonly mirror: TelegramMirror,
+    private readonly trialLimits: TrialLimitsService,
   ) {}
 
   /**
@@ -1028,6 +1030,13 @@ export class MeetGateway implements OnModuleInit {
       this.toUser(room.tenantId, actorId, 'meet.error', { message: 'Звонок поддержки записывается только с разрешения пользователя' });
       return;
     }
+    // #4779, п. 4: в пробный период — один ИИ-разбор созвона на пространство, до 15 минут записи
+    const trialLeft = support ? null : await this.trialLimits.left(room.tenantId, 'call_ai').catch(() => null);
+    if (trialLeft === 0) {
+      room.aiEnabled = false;
+      this.toUser(room.tenantId, actorId, 'meet.error', { message: TRIAL_TEXT.callUsed, code: 'trial_call_used' });
+      return;
+    }
     try {
       await this.recording.start(room, actorId);
     } catch (e) {
@@ -1035,11 +1044,46 @@ export class MeetGateway implements OnModuleInit {
       this.toUser(room.tenantId, actorId, 'meet.error', { message: 'Не удалось начать запись' });
       return;
     }
+    room.recordLimitSec = trialLeft === null ? null : TRIAL_CALL_SEC;
+    if (trialLeft !== null) {
+      await this.trialLimits.add(room.tenantId, 'call_ai').catch(() => undefined);
+      this.armTrialStop(room);
+    }
     const info = this.recording.recordingInfo(room.id);
     for (const userId of room.participants.keys()) {
-      this.toUser(room.tenantId, userId, 'meet.recording', { meeting_id: room.id, ...info });
+      this.toUser(room.tenantId, userId, 'meet.recording', { meeting_id: room.id, ...info, limit_sec: room.recordLimitSec ?? null });
     }
     this.syncParticipants(room); // ИИ появляется в списке
+  }
+
+  /**
+   * Пробный период (#4779, п. 4.2): за 2 минуты до конца — предупреждение всем, на 15-й
+   * минуте запись останавливается, созвон идёт дальше без ИИ, разбор — по записанному.
+   */
+  private armTrialStop(room: MeetingRoom): void {
+    this.clearTrialStop(room);
+    const say = (message: string) => {
+      for (const userId of room.participants.keys()) this.toUser(room.tenantId, userId, 'meet.notice', { meeting_id: room.id, message });
+    };
+    const warn = setTimeout(() => { if (this.recording.isRecording(room.id)) say(TRIAL_TEXT.callSoon); }, (TRIAL_CALL_SEC - 120) * 1000);
+    const stop = setTimeout(() => {
+      if (!this.recording.isRecording(room.id)) return;
+      room.aiEnabled = false;
+      void this.finishRecording(room, null).then(() => {
+        for (const userId of room.participants.keys()) {
+          this.toUser(room.tenantId, userId, 'meet.recording', { meeting_id: room.id, active: false });
+        }
+        say(TRIAL_TEXT.callStopped);
+        this.syncParticipants(room);
+      });
+    }, TRIAL_CALL_SEC * 1000);
+    warn.unref?.(); stop.unref?.();
+    room.trialTimers = [warn, stop];
+  }
+
+  private clearTrialStop(room: MeetingRoom): void {
+    for (const t of room.trialTimers ?? []) clearTimeout(t);
+    room.trialTimers = [];
   }
 
   /**
@@ -1047,6 +1091,7 @@ export class MeetGateway implements OnModuleInit {
    * сводка, черновики задач. Ошибка обработки не должна ронять созвон.
    */
   private async finishRecording(room: MeetingRoom, actorId: string | null): Promise<void> {
+    this.clearTrialStop(room);
     if (!this.recording.isRecording(room.id)) return;
     // автор записи — всегда сотрудник: created_by и uploaded_by ссылаются на users(id)
     const author = room.startedBy ?? (actorId && !actorId.startsWith('guest:') ? actorId : null);

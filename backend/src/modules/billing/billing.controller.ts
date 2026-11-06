@@ -4,6 +4,7 @@ import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validato
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { BillingService } from './billing.service';
+import { TrialLimitsService } from './trial-limits.service';
 
 class CheckoutDto {
   @IsString() @MaxLength(32) plan!: string;
@@ -18,13 +19,20 @@ class AutopayDto {
 export class BillingController {
   private readonly log = new Logger('BillingWebhook');
 
-  constructor(private readonly billing: BillingService) {}
+  constructor(private readonly billing: BillingService, private readonly limits: TrialLimitsService) {}
 
   /** Состояние подписки — видят все: сотруднику надо знать, почему «только чтение». */
   @ApiBearerAuth()
   @Get()
   view(@CurrentUser() u: AuthUser) {
     return this.billing.view(u.tenantId);
+  }
+
+  /** #4779, п. 4: лимиты пробного периода — созвон с ИИ и задачи голосом. Видят все. */
+  @ApiBearerAuth()
+  @Get('trial-limits')
+  trialLimits(@CurrentUser() u: AuthUser) {
+    return this.limits.view(u.tenantId);
   }
 
   /** Платит владелец. */

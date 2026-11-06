@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { billingApi, type BillingView } from '../../lib/billing-api';
 import { dayMonth, daysUntil, openTelegramBot } from '../../lib/tg-bonus';
 import { Icon } from '../Icon';
+import { useTrialLimits } from '../../lib/trial-limits';
 
 /**
  * Блок пробного периода в «Настройки → Тариф и ИИ» (#4779, п. 3): на сайте обещаем
@@ -11,6 +12,7 @@ import { Icon } from '../Icon';
 export function TrialBlock() {
   const [v, setV] = useState<BillingView | null>(null);
   const [note, setNote] = useState('');
+  const limits = useTrialLimits();
   useEffect(() => {
     const load = () => billingApi.view().then(setV).catch(() => undefined);
     load();
@@ -36,6 +38,13 @@ export function TrialBlock() {
           </button>
           {note && <p className="dim" style={{ margin: '6px 0 0', fontSize: 12 }}>{note}</p>}
         </>
+      )}
+      {/* #4779, п. 4.5: лимиты пробного периода */}
+      {limits?.trial && (
+        <ul className="dim" style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 13 }}>
+          <li>ИИ-разбор созвона: использовано {limits.callAi.used} из {limits.callAi.limit} (до {limits.callAi.maxMinutes} минут)</li>
+          <li>Задачи голосом: использовано {limits.voiceTasks.used} из {limits.voiceTasks.limit}</li>
+        </ul>
       )}
     </div>
   );

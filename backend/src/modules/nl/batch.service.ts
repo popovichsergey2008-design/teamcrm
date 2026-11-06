@@ -69,7 +69,7 @@ export class BatchService {
     for (let i = 0; i < drafts.length; i++) {
       const draft = drafts[i] ?? {};
       try {
-        const res = await this.nl.apply(tenantId, userId, { intent: 'create_task', task: draft.task });
+        const res = await this.nl.apply(tenantId, userId, { intent: 'create_task', task: draft.task }, { voice: input.sourceType === 'voice' });
         const taskId = String((res as { task?: { id?: string | number } })?.task?.id ?? '');
         if (!taskId) throw new Error('Задача не создана');
         await this.repo.linkTask(taskId, String(batch.id));

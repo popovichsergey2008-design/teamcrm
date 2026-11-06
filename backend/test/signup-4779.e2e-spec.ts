@@ -48,6 +48,22 @@ describe('#4779 регистрация с сайта (e2e)', () => {
     expect(titles).toContain('Подготовить КП для клиента до пятницы');
   });
 
+  it('пробный период: лимиты видны; 21-я задача голосом — отказ, текстом можно (п. 4)', async () => {
+    const reg = (await http.post('/api/auth/register').send({ acceptPrivacy: true, email: `l_${uniq()}@t.test`, password: 'Test-pass-2026' }).expect(201)).body.data;
+    const tok = reg.accessToken;
+    const tenantId = reg.organizations[0].tenantId;
+    const lim = (await http.get('/api/billing/trial-limits').set(H(tok)).expect(200)).body.data;
+    expect(lim).toMatchObject({ trial: true, callAi: { used: 0, limit: 1, maxMinutes: 15 }, voiceTasks: { used: 0, limit: 20 } });
+    const p = (await http.post('/api/projects').set(H(tok)).send({ name: 'Лимиты' }).expect(201)).body.data;
+    await db.query(`INSERT INTO trial_usage (tenant_id, kind, used) VALUES ($1, 'voice_task', 20)`, [tenantId]);
+    const draft = { task: { projectId: p.id, title: 'Позвонить клиенту', tagsConfirmed: true, confirmedWithoutTags: true } };
+    const voice = (await http.post('/api/nl/batches').set(H(tok)).send({ drafts: [draft], sourceType: 'voice' }).expect(201)).body.data;
+    expect(voice.created).toBe(0);
+    expect(JSON.stringify(voice)).toContain('Лимит задач голосом в пробный период исчерпан');
+    const text = (await http.post('/api/nl/batches').set(H(tok)).send({ drafts: [draft], sourceType: 'text' }).expect(201)).body.data;
+    expect(text.created).toBe(1);
+  });
+
   it('ошибка почты — по-русски, с примером', async () => {
     const res = await http.post('/api/auth/register').send({ acceptPrivacy: true, email: 'a@b', password: 'Test-pass-2026' }).expect(400);
     expect(res.body.error.message).toMatch(/Проверьте почту/);

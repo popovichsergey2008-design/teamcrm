@@ -1,4 +1,5 @@
 import { ProjectResolverService } from './project-resolver.service';
+import { TRIAL_TEXT, TrialLimitsService } from '../billing/trial-limits.service';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
@@ -169,6 +170,8 @@ export class NlService {
     private readonly autoConfirm: AutoConfirmService,
     /** #4615, 23.10: структура компании и одно правило подбора исполнителя. */
     private readonly org: OrgService,
+    /** #4779, п. 4.4: 20 задач голосом на пространство в пробный период. */
+    private readonly trialLimits: TrialLimitsService,
   ) {}
 
   private async roleOf(tenantId: string, userId: string): Promise<string | null> {
@@ -981,10 +984,17 @@ export class NlService {
        * Авто-постановка быстрой командой шлёт его и без этого флага.
        */
       confirm?: ConfirmSource;
+      /** Задача из голоса (пакет с голосовой надиктовки) — для лимита пробного периода. */
+      voice?: boolean;
     } = {},
   ) {
     if (body.intent === 'create_task') {
       const t = body.task ?? {};
+      // #4779, п. 4.4: в пробный период — 20 задач голосом на пространство; 21-я — отказ
+      const byVoice = t.voice === true || opts.voice === true;
+      if (byVoice && (await this.trialLimits.left(tenantId, 'voice_task')) === 0) {
+        throw AppException.conflict(TRIAL_TEXT.voiceUsed, { reason: 'trial_voice_limit' });
+      }
       // проект — общей проверкой (ТЗ-31): нет, архив, недоступен человеку
       await this.tasks.assertProject(tenantId, t.projectId, { userId });
       if (!String(t.title ?? '').trim()) throw AppException.validation('Укажите название задачи');
@@ -1090,6 +1100,7 @@ export class NlService {
           source,
         }).catch((e) => { this.log.warn(`подтверждение постановки ${task.id}: ${(e as Error).message}`); return null; })
         : null;
+      if (byVoice) await this.trialLimits.add(tenantId, 'voice_task').catch(() => undefined);
       return { type: 'task', task, ...(confirmAt ? { confirmAt } : {}) };
     }
     if (body.intent === 'create_deal') {

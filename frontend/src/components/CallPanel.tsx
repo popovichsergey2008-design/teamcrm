@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { loadTrialLimits, useTrialLimits } from '../lib/trial-limits';
 import { createPortal } from 'react-dom';
 import './call-pointer.css';
 import { Icon } from './Icon';
@@ -133,6 +134,18 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
   supportRef.current = support;
   const [hand, setHand] = useState(false);
   const [recording, setRecording] = useState(false);
+  /** #4779, п. 4: пробный период — запись до 15 минут, таймер и предупреждение. */
+  const [recLimit, setRecLimit] = useState<{ limitSec: number; startedAt: number } | null>(null);
+  const [notice, setNotice] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!recording || !recLimit) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [recording, recLimit]);
+  const trialLimits = useTrialLimits(!isGuest);
+  const trialCall = trialLimits?.trial ? trialLimits.callAi : null;
+  const trialCallUsed = !!trialCall && trialCall.used >= trialCall.limit && !recording;
   // запись могли выключить посреди разговора — итоги всё равно будут
   const everRecorded = useRef(false);
   useEffect(() => { if (recording) everRecorded.current = true; }, [recording]);
@@ -403,7 +416,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
             if (s === 'connected') rejoinTries.current = 0;
           },
           onSocketLost: () => { if (!cancelled && !noRejoin.current) scheduleRejoin(); },
-          onRecording: setRecording,
+          onRecording: (active, lim) => {
+            setRecording(active);
+            setRecLimit(active && lim?.limitSec ? { limitSec: lim.limitSec, startedAt: lim.startedAt ?? Date.now() } : null);
+            if (active) setNotice('');
+            if (!isGuest) void loadTrialLimits(true);
+          },
+          onNotice: setNotice,
           onAiInvited: () => setAiInvited(true),
           onPointer: (p) => {
             // подсвечивают мой показ: на странице, если показана эта вкладка, иначе — словами в окне
@@ -1031,6 +1050,21 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
         {recording && (
           <div className="call-recording">
             <Icon name="record" /> Идёт запись. После завершения ИИ соберёт стенограмму с именами, сводку и предложит задачи.
+            {recLimit && (() => {
+              const passed = Math.max(0, Math.floor((now - recLimit.startedAt) / 1000));
+              const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+              return <b className="call-rec-timer"> {mmss(Math.min(passed, recLimit.limitSec))} из {mmss(recLimit.limitSec)}</b>;
+            })()}
+          </div>
+        )}
+        {/* #4779, п. 4.2: предупреждение за 2 минуты и остановка на 15-й */}
+        {notice && <div className="call-recording call-ai-waiting" role="status"><Icon name="clock" /> {notice}</div>}
+        {/* #4779, п. 4.1 и 4.3: подпись к «Включить ИИ» в пробный период */}
+        {!isGuest && !recording && trialCall && (
+          <div className={trialCallUsed ? 'error-text' : 'dim'} style={{ padding: '0 12px', fontSize: 12 }}>
+            {trialCallUsed
+              ? 'ИИ-разбор в пробный период уже использован. Оплатите тариф, чтобы разбирать все созвоны.'
+              : `В пробный период: ${trialCall.limit} созвон, до ${trialCall.maxMinutes} минут записи.`}
           </div>
         )}
         {/* ИИ позвали, но запись ещё не пошла: звук не начался */}
@@ -1211,8 +1245,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
             <button
               className={`ui-btn ui-btn-outline ui-btn-sm ${recording ? 'call-rec-on' : 'call-off'}`}
               onClick={() => client.current?.setRecording(!recording)}
-              disabled={recordBlocked && !recording}
-              title={recordBlocked && !recording ? 'Звонок поддержки записывается только с разрешения пользователя' : recording ? 'Выключить ИИ: остановить запись и получить стенограмму' : 'Включить ИИ: записать созвон для стенограммы, сводки и задач'}
+              disabled={(recordBlocked || trialCallUsed) && !recording}
+              title={recordBlocked && !recording ? 'Звонок поддержки записывается только с разрешения пользователя'
+                : trialCallUsed ? 'ИИ-разбор в пробный период уже использован. Оплатите тариф, чтобы разбирать все созвоны.'
+                  : recording ? 'Выключить ИИ: остановить запись и получить стенограмму'
+                    : trialCall ? `Включить ИИ. В пробный период: ${trialCall.limit} созвон, до ${trialCall.maxMinutes} минут записи.`
+                      : 'Включить ИИ: записать созвон для стенограммы, сводки и задач'}
             >
               <Icon name={recording ? 'stop' : 'robot'} size={15} />
               <span className="call-btn-label">ИИ: {recording ? 'вкл' : 'выкл'}</span>

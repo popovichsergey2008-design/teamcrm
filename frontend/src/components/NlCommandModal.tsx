@@ -15,6 +15,7 @@ import { newChangeId } from '../lib/offline-queue';
 import { plural } from '../lib/chat-text';
 import { stickyCheck, useStickyCheck } from '../lib/sticky-checks';
 import { Button } from './ui/button';
+import { VoiceTrialLeft } from './VoiceTrialLeft';
 import { Checkbox } from './ui/checkbox';
 import { Textarea } from './ui/field';
 import { Input } from './ui/input';
@@ -901,6 +902,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             <Button variant={recording ? 'destructive' : 'outline'} onClick={voice.toggle} disabled={busy || working}>
               {recording ? <><Icon name="stop" size={15} /> Остановить</> : <><Icon name="mic" size={15} /> Голосом</>}
             </Button>
+            <VoiceTrialLeft />
             <Button
               variant="primary"
               className="nl-parse"
@@ -978,6 +980,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
               ? <><Icon name="stop" size={15} /> Остановить</>
               : <><Icon name="mic" size={15} /> {drafts.length ? 'Сказать заново' : 'Голосом'}</>}
           </Button>
+          <VoiceTrialLeft />
           <Button variant="primary" className="nl-parse" onClick={() => void parse()} disabled={recording || working} loading={busy}>
             {!busy && <Icon name="sparkles" size={15} />} {busy ? 'Разбираю…' : 'Разобрать'}
           </Button>
