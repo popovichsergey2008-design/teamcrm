@@ -42,6 +42,13 @@ export class AiUsageController {
     return this.ai.checkModel(u.tenantId);
   }
 
+  /** Лимит ИИ пространства (#4779): шкала, обновление, прогноз; закончился ли. Всем сотрудникам. */
+  @Get('limit')
+  @Roles('owner', 'manager', 'member')
+  limit(@CurrentUser() u: AuthUser) {
+    return this.settings.limit(u.tenantId);
+  }
+
   // ── BYOK: ключи и модель (owner) ──
   @Get('settings')
   @Roles('owner')

@@ -1,11 +1,11 @@
 import { sharedSecret } from '../shared-secrets/secrets-registry';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../../database/db.service';
 import { AiGuardService } from './ai-guard.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { KIMI_BASE_URL, KIMI_DEFAULT_MODEL, KIMI_FALLBACK_MODELS } from './ai.provider';
-import { TRIAL_DAYS_DEFAULT, TRIAL_TOKENS_DEFAULT, trialVerdict, TrialVerdict } from './ai-trial';
+import { limitAlert, TRIAL_DAYS_DEFAULT, TRIAL_TOKENS_DEFAULT, trialVerdict, TrialVerdict } from './ai-trial';
 
 /** Решение «можно ли общим ключом» живёт минуту: считать токены на каждый вызов модели незачем. */
 const TRIAL_CACHE_MS = 60_000;
@@ -31,14 +31,17 @@ const OPENROUTER_FREE_FALLBACK = [
 
 /** BYOK: ключи ИИ на арендатора (шифрованные в БД). Приоритет — ключ арендатора, иначе глобальный .env. */
 @Injectable()
-export class AiSettingsService {
+export class AiSettingsService implements OnModuleInit {
   private readonly log = new Logger('AiSettings');
   // Общие ключи — из реестра консоли владельца (§5.6, 0226), без него — из .env.
   // Геттеры, а не поля: замена ключа в консоли доходит без перезапуска API.
-  private get globalOpenai() { return sharedSecret('OPENAI_API_KEY'); }
-  private get globalAnthropic() { return sharedSecret('ANTHROPIC_API_KEY'); }
-  private get globalOpenrouter() { return sharedSecret('OPENROUTER_API_KEY'); }
-  private get globalKimi() { return sharedSecret('KIMI_API_KEY'); }
+  // #4779: и там пусто — ключи самой площадки (её «Интеграции → ИИ»), см. ai-trial.ts.
+  private get globalOpenai() { return sharedSecret('OPENAI_API_KEY') || this.platform.openai; }
+  private get globalAnthropic() { return sharedSecret('ANTHROPIC_API_KEY') || this.platform.anthropic; }
+  private get globalOpenrouter() { return sharedSecret('OPENROUTER_API_KEY') || this.platform.openrouter; }
+  private get globalKimi() { return sharedSecret('KIMI_API_KEY') || this.platform.kimi; }
+  /** Ключи площадки вендора — перечитываются раз в 5 минут (смена ключа в её настройках). */
+  private platform: { openai?: string; anthropic?: string; openrouter?: string; kimi?: string; at: number } = { at: 0 };
   private readonly globalBrainModel?: string;
   private readonly trialDays: number;
   private readonly trialTokens: number;
@@ -55,6 +58,23 @@ export class AiSettingsService {
     this.trialTokens = Number(config.get('AI_TRIAL_TOKENS') ?? TRIAL_TOKENS_DEFAULT) || TRIAL_TOKENS_DEFAULT;
   }
 
+  async onModuleInit(): Promise<void> {
+    await this.loadPlatformKeys().catch((e) => this.log.warn(`ключи площадки: ${(e as Error).message}`));
+  }
+
+  /** Ключи ИИ площадки вендора как общий ключ (#4779): без них у новых пространств ИИ молчал. */
+  private async loadPlatformKeys(): Promise<void> {
+    if (Date.now() - this.platform.at < 5 * 60_000) return;
+    const r = await this.db.one<any>(
+      `SELECT a.* FROM ai_settings a JOIN tenants t ON t.id = a.tenant_id WHERE t.is_platform ORDER BY t.id LIMIT 1`,
+    );
+    const dec = (enc?: string | null) => { try { return enc ? this.crypto.decrypt(enc) : undefined; } catch { return undefined; } };
+    this.platform = {
+      openai: dec(r?.openai_key_enc), anthropic: dec(r?.anthropic_key_enc),
+      openrouter: dec(r?.openrouter_key_enc), kimi: dec(r?.kimi_key_enc), at: Date.now(),
+    };
+  }
+
   /**
    * Пробный ИИ общим ключом (#4624, см. ai-trial.ts): площадке вендора — всегда, новой
    * организации — две недели и до лимита токенов. `fresh` — не брать из минутного кэша.
@@ -62,6 +82,7 @@ export class AiSettingsService {
   async trial(tenantId: string, fresh = false): Promise<TrialVerdict> {
     const hit = this.trialCache.get(tenantId);
     if (!fresh && hit && Date.now() - hit.at < TRIAL_CACHE_MS) return hit.v;
+    await this.loadPlatformKeys().catch(() => undefined);
     const r = await this.db.one<{
       is_platform: boolean; created_at: Date; status: string | null; started_at: Date | null; trial_ends_at: Date | null;
     }>(
@@ -73,9 +94,9 @@ export class AiSettingsService {
       ? { startedAt: new Date(r.started_at), endsAt: new Date(r.trial_ends_at) } : null;
     const created = r ? new Date(r.created_at) : new Date(0);
     const pre = trialVerdict({ isPlatform: !!r?.is_platform, tenantCreatedAt: created, planTrial, tokensUsed: 0 }, new Date(), this.trialDays, this.trialTokens);
-    // токены считаем только когда окно открыто: у старых компаний и площадки — незачем
+    // токены месяца: у площадки — незачем, у остальных — лимит 1 млн в месяц (#4779)
     let used = 0;
-    if (pre.allowed && pre.reason === 'trial') {
+    if (pre.reason !== 'platform') {
       const u = await this.db.one<{ n: string }>(
         `SELECT COALESCE(SUM(input_tokens + output_tokens), 0)::text AS n FROM ai_usage WHERE tenant_id = $1 AND created_at >= $2`,
         [tenantId, pre.windowStart],
@@ -83,9 +104,40 @@ export class AiSettingsService {
       used = Number(u?.n ?? 0);
     }
     const v = trialVerdict({ isPlatform: !!r?.is_platform, tenantCreatedAt: created, planTrial, tokensUsed: used }, new Date(), this.trialDays, this.trialTokens);
+    await this.alertLimit(tenantId, v).catch(() => undefined);
     this.trialCache.set(tenantId, { at: Date.now(), v });
     if (this.trialCache.size > 5000) this.trialCache.clear();
     return v;
+  }
+
+  /**
+   * Письмо владельцам при 80% и 100% месячного лимита (#4779, п. 6.6): один раз за месяц
+   * на порог (dedup в очереди писем), копия уходит в Telegram и центр уведомлений.
+   * Только если ИИ идёт общим ключом — со своим ключом лимита нет.
+   */
+  private async alertLimit(tenantId: string, v: TrialVerdict): Promise<void> {
+    const level = limitAlert(v.tokensUsed, v.tokensLimit);
+    if (!level || v.reason === 'platform') return;
+    const own = await this.db.one<{ n: number }>(
+      `SELECT 1 AS n FROM ai_settings WHERE tenant_id=$1
+          AND (openai_key_enc IS NOT NULL OR anthropic_key_enc IS NOT NULL OR openrouter_key_enc IS NOT NULL OR kimi_key_enc IS NOT NULL)`, [tenantId]);
+    if (own) return;
+    const month = v.windowStart.toISOString().slice(0, 7);
+    const used = Math.round(v.tokensUsed / 1000).toLocaleString('ru-RU');
+    const reset = v.endsAt ? v.endsAt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }) : '';
+    const subject = level === 100 ? 'Лимит ИИ закончился' : 'Израсходовано 80% лимита ИИ';
+    const text = level === 100
+      ? `Лимит ИИ на этот месяц (1 000 000 токенов) закончился. Обновится ${reset}. Чтобы ИИ работал сейчас, подключите ключ Kimi в «Настройки → Интеграции → ИИ» — для команды из 15 человек это примерно $2–5 в месяц.`
+      : `Пространство израсходовало ${used} тыс. из 1 000 000 токенов ИИ этого месяца. Лимит обновится ${reset}. Чтобы ИИ не остановился, можно заранее подключить ключ Kimi в «Настройки → Интеграции → ИИ».`;
+    const owners = await this.db.many<{ id: string; email: string }>(
+      `SELECT u.id::text, u.email FROM users u JOIN roles r ON r.id=u.role_id WHERE u.tenant_id=$1 AND u.is_active AND r.code='owner'`, [tenantId]);
+    for (const o of owners) {
+      await this.db.query(
+        `INSERT INTO mail_outbox (tenant_id, user_id, to_email, subject, body_text, body_html, event_key, dedup_key)
+         VALUES ($1,$2,$3,$4,$5,$6,'ai.limit',$7) ON CONFLICT (dedup_key) DO NOTHING`,
+        [tenantId, o.id, o.email, subject, text, `<p>${text}</p>`, `ai_limit:${tenantId}:${o.id}:${month}:${level}`],
+      );
+    }
   }
 
   /** Общие ключи сервера без организации (#4619: демо в Telegram-боте до регистрации). */
@@ -109,6 +161,24 @@ export class AiSettingsService {
 
   private row(tenantId: string) {
     return this.db.one<any>(`SELECT * FROM ai_settings WHERE tenant_id=$1`, [tenantId]);
+  }
+
+  /**
+   * Лимит ИИ пространства (#4779, п. 6.6 и 12): шкала «использовано N из 1 000 000», дата
+   * обновления, прогноз до конца месяца. `own` — свой ключ: лимита нет. Видят все сотрудники:
+   * по нему чат задачи и итоги созвона решают, показывать ли «Лимит ИИ закончился».
+   */
+  async limit(tenantId: string) {
+    const r = await this.row(tenantId).catch(() => null);
+    const own = !!(r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc);
+    const v = await this.trial(tenantId, true);
+    return {
+      own, platform: v.reason === 'platform',
+      allowed: own || v.allowed,
+      tokensUsed: v.tokensUsed, tokensLimit: v.tokensLimit,
+      resetsAt: v.endsAt, forecast: v.forecast,
+      serverKey: !!(this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi),
+    };
   }
 
   /** Публичный статус (без раскрытия ключей). */
@@ -166,6 +236,7 @@ export class AiSettingsService {
 
   /** Разрешить действующие ключи/модель для арендатора (ключ арендатора > глобальный). */
   async resolve(tenantId: string): Promise<ResolvedAi> {
+    await this.loadPlatformKeys().catch(() => undefined);
     const r = await this.row(tenantId).catch(() => null);
     const dec = (enc?: string | null) => { try { return enc ? this.crypto.decrypt(enc) : undefined; } catch { return undefined; } };
     const tOpenai = dec(r?.openai_key_enc);

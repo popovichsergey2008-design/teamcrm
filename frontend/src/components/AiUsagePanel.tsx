@@ -5,6 +5,7 @@ import { SkeletonList } from './Skeleton';
 import { api } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
+import { AiLimitBar } from './AiLimitBar';
 
 interface FeatureRow {
   feature: string;
@@ -83,6 +84,9 @@ export function AiUsagePanel({ onClose }: { onClose: () => void }) {
           <h3><Icon name="sparkles" size={18} /> Расход ИИ</h3>
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onClose} title="Закрыть"><Icon name="close" /></button>
         </div>
+
+        {/* #4779, п. 6.6: вверху — шкала месячного лимита */}
+        <AiLimitBar />
 
         <div className="ai-usage-period">
           {[7, 30, 90].map((d) => (

@@ -127,6 +127,12 @@ export class AiService {
     return (await this.providerFor(tenantId)).provider.name !== 'mock';
   }
 
+  /** Лимит ИИ пространства на месяц кончился (#4779): своего ключа нет, общий исчерпан. */
+  async limitExhausted(tenantId: string): Promise<boolean> {
+    const l = await this.settings.limit(tenantId).catch(() => null);
+    return !!l && !l.own && !l.allowed;
+  }
+
   /**
    * Распознаётся ли речь (ТЗ-22): без него итоги встречи не из чего собрать, и экран
    * после звонка показывает короткий вариант. На проде заглушка стоит у компаний без

@@ -331,6 +331,12 @@ function PostCall({ meetingId }: { meetingId: string }) {
                 : processing ? 'QEVO Bot готовит итоги — блоки появятся по мере готовности'
                   : 'QEVO Bot подготовил итоги'}
             </div>
+            {/* #4779, п. 6.7: без распознавания речи — сразу дорога к ключу */}
+            {!ai && (
+              <Button variant="outline" size="sm" style={{ marginTop: 8 }} onClick={() => navigate({ section: 'settings', tab: 'integrations' })}>
+                <Icon name="link" size={14} /> Подключить ключ OpenAI
+              </Button>
+            )}
             {people.length > 0 && (
               <div className="pc-people">
                 {people.map((p, i) => <span key={`${p.userId}${i}`} className={`pc-person${p.guest ? ' pc-guest' : ''}`}>{p.name}</span>)}

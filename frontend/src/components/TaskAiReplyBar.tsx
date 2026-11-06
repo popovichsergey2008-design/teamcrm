@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { navigate } from '../lib/router';
 import { Icon, type IconName } from './Icon';
 import { ApiError, request } from '../lib/api';
 import { awaitsMyReply, type FeedMessage } from '../lib/task-ai-reply';
@@ -43,6 +44,8 @@ export function TaskAiReplyBar({
   /** Черновик ИИ в поле: что было в поле до него и какой вариант показан. */
   const [draft, setDraft] = useState<{ kind: Kind; prev: string; variant: number } | null>(null);
   const [loading, setLoading] = useState<Kind | null>(null);
+  /** #4779, п. 12.2: лимит ИИ кончился — своя строка с переходом в настройки. */
+  const [limitHit, setLimitHit] = useState(false);
 
   // Отправили или стёрли — плашка больше ни к чему.
   useEffect(() => { if (draft && !body.trim()) setDraft(null); }, [body, draft]);
@@ -62,7 +65,9 @@ export function TaskAiReplyBar({
       setDraft({ kind, prev, variant });
       onFilled();
     } catch (e) {
-      onError(e instanceof ApiError ? e.message : 'ИИ не ответил — попробуйте ещё раз');
+      const limit = e instanceof ApiError && (e.details as { reason?: string } | undefined)?.reason === 'ai_limit';
+      setLimitHit(limit);
+      onError(limit ? '' : e instanceof ApiError ? e.message : 'ИИ не ответил — попробуйте ещё раз');
     } finally { setLoading(null); }
   };
 
@@ -77,6 +82,12 @@ export function TaskAiReplyBar({
             <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setBody(draft.prev); setDraft(null); }}>Удалить</button>
             <button className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => { setDraft(null); onFilled(); }}>Оставить</button>
           </span>
+        </div>
+      )}
+      {limitHit && (
+        <div className="error-text" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          Лимит ИИ закончился. Подключите ключ в настройках.
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => navigate({ section: 'settings', tab: 'integrations' })}>Перейти в настройки</button>
         </div>
       )}
       <div className="tc-ai-chips" role="toolbar" aria-label="Ответить с помощью ИИ">

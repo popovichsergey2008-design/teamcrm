@@ -1839,6 +1839,8 @@ export const api = {
   skipGap: (taskId: string, kind: 'assignee' | 'deadline') =>
     request<{ skipped: true }>('POST', '/assistant/gaps/skip', { taskId, kind }),
 
+  /** #4779: лимит ИИ пространства — 1 млн токенов в месяц общим ключом. */
+  aiLimit: () => request<{ own: boolean; platform: boolean; allowed: boolean; tokensUsed: number; tokensLimit: number | null; resetsAt: string | null; forecast: number | null; serverKey: boolean }>('GET', '/ai/limit'),
   telegramStatus: () => request<{ linked: boolean; botUrl: string | null }>('GET', '/me/telegram/status'),
   telegramUnlink: () => request<{ ok: true }>('DELETE', '/me/telegram/link'),
   listStandups: () => request<any[]>('GET', '/standup/submissions'),

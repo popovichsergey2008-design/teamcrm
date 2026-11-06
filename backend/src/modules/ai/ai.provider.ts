@@ -213,7 +213,8 @@ export class MockAiProvider implements AiProvider {
   остаются на ключе OpenAI (или OpenRouter для эмбеддингов).
 */
 export const KIMI_BASE_URL = 'https://api.moonshot.ai/v1';
-export const KIMI_DEFAULT_MODEL = 'kimi-k3';
+// #4779, п. 6.4: по умолчанию kimi-k2.6 — быстрый и дешёвый (команда из 15 человек — $2–5 в месяц)
+export const KIMI_DEFAULT_MODEL = 'kimi-k2.6';
 export const KIMI_FALLBACK_MODELS = ['kimi-k3', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed'];
 export const isKimiModel = (m?: string | null) => /^kimi/i.test(m ?? '');
 

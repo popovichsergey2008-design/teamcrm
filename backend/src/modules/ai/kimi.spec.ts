@@ -27,10 +27,10 @@ describe('Kimi как основной ИИ', () => {
     expect(p.lastModel).toBe('kimi-k3');
   });
 
-  it('только ключ Kimi, модель не выбрана — Kimi K3', async () => {
+  it('только ключ Kimi, модель не выбрана — Kimi K2.6 (#4779, п. 6.4)', async () => {
     const p = new RealAiProvider(undefined, undefined, 'claude-haiku-4-5', undefined, undefined, 'sk-kimi');
     await p.generate('с', 'в');
-    expect(calls[0].body.model).toBe('kimi-k3');
+    expect(calls[0].body.model).toBe('kimi-k2.6');
   });
 
   it('K2.6 — без рассуждения', async () => {

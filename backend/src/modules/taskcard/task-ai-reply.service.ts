@@ -20,6 +20,8 @@ export const AI_REPLY_FEATURE = 'task_ai_reply';
 export const AI_REPLY_PROMPT = 'task.ai_reply';
 
 export const NO_MODEL_TEXT = 'ИИ не подключён. Подключите ИИ в Интеграциях → ИИ, чтобы предлагать ответы.';
+/** #4779, п. 12.2: красная строка — только когда кончился лимит, с кнопкой в настройки. */
+export const LIMIT_TEXT = 'Лимит ИИ закончился. Подключите ключ в настройках.';
 
 /** Если промпт в библиотеке не заведён или сломан — тот же текст, что в миграции. */
 export const AI_REPLY_FALLBACK = [
@@ -96,7 +98,10 @@ export class TaskAiReplyService {
       throw AppException.validation('В обсуждении пока нет сообщений от коллег — отвечать не на что');
     }
 
-    if (!(await this.ai.hasModel(tenantId))) throw AppException.conflict(NO_MODEL_TEXT, { reason: 'no_model' });
+    if (!(await this.ai.hasModel(tenantId))) {
+      if (await this.ai.limitExhausted(tenantId)) throw AppException.conflict(LIMIT_TEXT, { reason: 'ai_limit' });
+      throw AppException.conflict(NO_MODEL_TEXT, { reason: 'no_model' });
+    }
     await this.checkRate(tenantId, String(viewer.userId));
 
     const addressee = kind === 'reply'

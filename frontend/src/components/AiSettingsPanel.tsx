@@ -48,21 +48,30 @@ export function AiSettingsSection() {
   if (!s) return null;
   return (
     <>
-        <div className="dim" style={{ fontSize: 12 }}>Ваш ключ шифруется на сервере и используется вместо общего. Нужен для реального семантического поиска и ответов ИИ.</div>
-        {/* #4624: пробный ИИ общим ключом — пока своего ключа нет */}
-        {s.trial?.serverKey && s.trial.reason !== 'platform' && (
-          <div className={s.trial.allowed ? 'pnl-good' : 'error-text'} style={{ fontSize: 12, margin: '6px 0' }}>
-            {s.trial.allowed
-              ? `Пробный ИИ: использовано ${Math.round(s.trial.tokensUsed / 1000)} тыс. из ${Math.round(s.trial.tokensLimit / 1000)} тыс. токенов, до ${new Date(s.trial.endsAt).toLocaleDateString('ru-RU')}. Потом — свой ключ ниже.`
-              : s.trial.reason === 'exhausted'
-                ? 'Пробные токены ИИ закончились. Чтобы ИИ работал дальше, укажите свой ключ ниже.'
-                : 'Пробный период ИИ закончился. Чтобы ИИ работал дальше, укажите свой ключ ниже.'}
+        {/* #4779, п. 6.5: лимит месяца кончился — что делать */}
+        {s.trial?.serverKey && s.trial.reason === 'exhausted' && (
+          <div className="error-text" style={{ fontSize: 13, margin: '6px 0' }} role="alert">
+            Лимит ИИ закончился. Подключите ключ Kimi, для команды из 15 человек это примерно $2-5 в месяц.
           </div>
         )}
+        {/* #4779, п. 6.1: какой ключ подключить */}
+        <div style={{ fontSize: 13, margin: '6px 0' }}>
+          Рекомендуем Kimi (модель kimi-k2.6) для текста и OpenAI для речи. В тариф входит 1 000 000 токенов в месяц на пространство, этого хватает на 3-6 человек. Команда из 15 человек платит Kimi примерно $2-5 в месяц.
+        </div>
+        {s.trial?.serverKey && s.trial.reason === 'trial' && (
+          <div className="pnl-good" style={{ fontSize: 12, margin: '6px 0' }}>
+            Без своего ключа: использовано {Math.round(s.trial.tokensUsed / 1000).toLocaleString('ru-RU')} тыс. из 1 000 тыс. токенов этого месяца, лимит обновится {s.trial.endsAt ? new Date(s.trial.endsAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '1-го числа'}.
+          </div>
+        )}
+        <div className="dim" style={{ fontSize: 12 }}>Ваш ключ шифруется на сервере и используется вместо общего — без лимита QEVO.</div>
         {msg && <div className="dim">{msg}</div>}
 
         {/* Kimi — основной ИИ (19.10): с его ключом вся текстовая работа ИИ идёт через Kimi */}
-        <div className="drawer-section-title">Ключ Kimi (Moonshot AI) — основной ИИ</div>
+        <div className="drawer-section-title">Ключ Kimi (Moonshot AI) — основной ИИ <span className="ui-badge ui-badge-neutral">Рекомендуем</span></div>
+        {/* #4779, п. 6.2 */}
+        <div style={{ fontSize: 12, marginBottom: 4 }}>
+          Рекомендуем. Зарегистрируйтесь на <a href="https://platform.kimi.ai" target="_blank" rel="noreferrer">сайте Kimi</a>, пополните баланс от $1, создайте ключ.
+        </div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
           Статус: {s.kimiKeySet ? 'задан (свой)' : s.globalKimi && s.trial?.allowed !== false ? 'используется общий' : '— не задан —'}.
           {' '}С ключом Kimi через него идёт вся текстовая работа ИИ: QEVO Bot, разбор встреч и чатов, черновики задач,
@@ -72,6 +81,8 @@ export function AiSettingsSection() {
         <input className="input add-user-input" type="password" placeholder="sk-... (ключ Kimi)" value={kimiKey} onChange={(e) => setKimiKey(e.target.value)} />
 
         <div className="drawer-section-title">Ключ OpenAI (GPT) — речь, голос, поиск</div>
+        {/* #4779, п. 6.3 */}
+        <div style={{ fontSize: 12, marginBottom: 4 }}>Нужен для созвонов и голосовых.</div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
           Статус: {s.openaiKeySet ? 'задан (свой)' : s.globalOpenai ? 'используется общий' : '— не задан —'}
         </div>
@@ -95,7 +106,7 @@ export function AiSettingsSection() {
         <div className="drawer-section-title">Модель ответов ИИ (Brain)</div>
         <div className="team-rate">
           <OptionSelect className="input" value={brainModel} onChange={(e) => setBrainModel(e.target.value)}>
-            <option value="">по умолчанию</option>
+            <option value="">по умолчанию (kimi-k2.6)</option>
             {models.map((m) => <option key={m} value={m}>{m}{m.endsWith(':free') ? ' — бесплатно' : ''}{KIMI_HINT[m] ? ` — ${KIMI_HINT[m]}` : ''}</option>)}
           </OptionSelect>
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => save({ brainModel })}>Применить</button>
