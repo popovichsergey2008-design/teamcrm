@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import './focus-zen.css';
 import { Icon } from './Icon';
 import { Button } from './ui/button';
-import { api, ApiError, FocusSession } from '../lib/api';
+import { api, ApiError, FocusSession, type FocusSummary } from '../lib/api';
+import { navigate } from '../lib/router';
 import { focusSoundOn, setFocusSound } from '../lib/sound';
-import { readFocusMinutes, refreshFocusSession, remainingNow, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
+import { readFocusMinutes, refreshFocusSession, remainingNow, setFocusSession, takeMissedCalls, useFocusSession } from '../hooks/useFocusSession';
 import { useEscape } from '../hooks/useEscape';
 import { feedback } from '../lib/feedback';
 import { Linkify } from './Linkify';
@@ -70,10 +71,22 @@ export function FocusZen({ session, onOpenTask }: {
   const [sound, setSound] = useState(focusSoundOn());
   const saveTimer = useRef<number | null>(null);
   const task = session.task;
+  /** #4787, п. 13: сводка «пока вы были заняты» и «как продвинулась работа» по задачам. */
+  const [summary, setSummary] = useState<FocusSummary | null>(null);
+  const [missed, setMissed] = useState<{ name: string; at: number }[]>([]);
+  const [results, setResults] = useState<Record<string, 'done' | 'later' | 'more'>>({});
+  const [later, setLater] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const focusTasks = session.tasks?.length ? session.tasks : task ? [{ id: task.id, title: task.title, projectId: task.projectId }] : [];
 
   useEscape(() => setMini(true), !mini && !ended);
 
   useEffect(() => { setEnded(session.finished); }, [session.finished]);
+  useEffect(() => {
+    if (!ended && !early) return;
+    api.focusSummary(session.id).then(setSummary).catch(() => setSummary(null));
+    setMissed((m) => [...m, ...takeMissedCalls(Date.parse(session.startedAt))]);
+  }, [ended, early, session.id, session.startedAt]);
 
   useEffect(() => {
     if (!task) return;
@@ -107,6 +120,9 @@ export function FocusZen({ session, onOpenTask }: {
   /** Завершить с одним из исходов из ТЗ (п. 58) и, если просили, перенести заметки в задачу. */
   const finish = (next: 'done' | 'again' | 'break' | 'back' | 'cancel') => act(async () => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    // «как продвинулась работа» — до завершения; таймер сам задачи не закрывает
+    const picked = Object.entries(results).map(([taskId, result]) => ({ taskId, result }));
+    if (picked.length && next !== 'cancel') await api.focusOutcomes(session.id, picked).catch(() => undefined);
     await api.focusFinish(session.id, next === 'cancel' ? 'cancelled' : 'completed', next === 'break');
     const text = notes.trim();
     if (task && toTask && text && next !== 'cancel') {
@@ -119,6 +135,15 @@ export function FocusZen({ session, onOpenTask }: {
       feedback('focus.started');
     }
     if (next === 'done' && task) onOpenTask(task.projectId, task.id);
+    // «Задача выполнена» — в её карточку: сдаётся обычным путём, с проверками приёмки
+    const doneTask = focusTasks.find((t) => results[t.id] === 'done');
+    const moreTask = focusTasks.find((t) => results[t.id] === 'more');
+    if (next !== 'done' && next !== 'cancel' && doneTask) onOpenTask(doneTask.projectId, doneTask.id);
+    // «Нужно ещё время» — в календарь, к подбору времени для этой задачи
+    else if (next !== 'cancel' && moreTask) {
+      try { sessionStorage.setItem('calendar.planTask', moreTask.id); } catch { /* без хранилища — просто календарь */ }
+      navigate({ section: 'calendar' });
+    }
     void refreshFocusSession();
   });
 
@@ -152,6 +177,49 @@ export function FocusZen({ session, onOpenTask }: {
         {ended || early ? (
           <section className="zen-end" aria-live="polite">
             <h2><Icon name="check-circle" size={22} /> {early ? 'Закончить фокус?' : 'Фокус завершён'}</h2>
+            {summary && <p className="zen-worked">Вы работали {summary.minutes} мин.</p>}
+            {summary && !later && (summary.items.length > 0 || missed.length > 0) && (
+              <div className="zen-summary">
+                <div className="zen-sub">Пока вы были заняты:</div>
+                <ul>
+                  {[...missed.map((c) => ({ kind: 'call', text: `${c.name} звонил(а) — звонок не прерывал фокус`, link: null })), ...summary.items]
+                    .slice(0, showAll ? 50 : 4)
+                    .map((it, i) => (
+                      <li key={i}>
+                        {it.link ? (
+                          <button type="button" className="zen-sum-link" onClick={() => {
+                            setMini(true);
+                            const l = it.link!;
+                            if (l.section === 'projects' && l.projectId && l.taskId) onOpenTask(l.projectId, l.taskId);
+                            else navigate(l.section === 'chat' ? { section: 'chat', chatId: l.chatId } : { section: l.section as 'calendar' });
+                          }}>— {it.text}</button>
+                        ) : <span>— {it.text}</span>}
+                      </li>
+                    ))}
+                </ul>
+                <div className="zen-end-acts">
+                  {missed.length + summary.items.length > 4 && !showAll && <Button size="sm" variant="outline" onClick={() => setShowAll(true)}>Посмотреть</Button>}
+                  <Button size="sm" variant="ghost" onClick={() => setLater(true)}>Разобрать позже</Button>
+                </div>
+              </div>
+            )}
+            {summary && summary.items.length === 0 && missed.length === 0 && <p className="zen-worked dim">Пока вы были заняты, ничего не произошло.</p>}
+            {focusTasks.length > 0 && (
+              <div className="zen-outcomes">
+                <div className="zen-sub">Как продвинулась работа?</div>
+                {focusTasks.map((t) => (
+                  <div key={t.id} className="zen-outcome">
+                    <span className="zen-outcome-title">№{t.id} {t.title}</span>
+                    <span className="kv2-seg" role="group" aria-label={`Итог по задаче №${t.id}`}>
+                      {([['done', 'Задача выполнена'], ['later', 'Продолжить позже'], ['more', 'Нужно ещё время']] as const).map(([k, label]) => (
+                        <button key={k} type="button" className="kv2-seg-btn" aria-pressed={results[t.id] === k}
+                          onClick={() => setResults((r) => ({ ...r, [t.id]: k }))}>{label}</button>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {task && notes.trim() && (
               <label className="zen-tonote">
                 <input type="checkbox" checked={toTask} onChange={(e) => setToTask(e.target.checked)} />
@@ -175,6 +243,16 @@ export function FocusZen({ session, onOpenTask }: {
                 {task.title}
               </button>
             ) : <div className="zen-task zen-task-free">Работа без отвлечений</div>}
+            {(session.tasks?.length ?? 0) > 1 && (
+              <div className="zen-more-tasks">
+                Ещё в этом фокусе:{' '}
+                {session.tasks!.slice(1).map((t, i) => (
+                  <button key={t.id} type="button" className="zen-sum-link" onClick={() => { setMini(true); onOpenTask(t.projectId, t.id); }}>
+                    {i ? ', ' : ''}№{t.id} {t.title}
+                  </button>
+                ))}
+              </div>
+            )}
             {task?.description && (
               <details className="zen-dod">
                 <summary>Что нужно сделать</summary>

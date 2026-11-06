@@ -113,3 +113,5 @@
   .cal-share-actions { width: 100%; }
   .cal-week-row > .cal-check { width: auto; }
 }
+
+.cal-small { font-size: var(--fs-sm); }

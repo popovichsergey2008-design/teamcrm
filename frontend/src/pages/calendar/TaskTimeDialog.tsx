@@ -5,6 +5,7 @@ import { Dialog } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
 import { api, ApiError, type BlockConflict, type CalBlock, type FindTimeResult, type PlanTask } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
+import './calendar.css';
 
 export const DURATIONS = [25, 30, 50, 60, 90, 120];
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });

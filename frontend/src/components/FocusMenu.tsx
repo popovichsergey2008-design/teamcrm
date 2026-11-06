@@ -2,6 +2,14 @@ import { useState } from 'react';
 import { Icon, IconName } from './Icon';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
+import { lazyComponent } from '../lib/lazy';
+
+/*
+  #4787, п. 12: один и тот же глубокий фокус из меню аккаунта и из календаря — окно
+  календаря (задачи, 10–120 минут, сейчас или в календарь, кто может обратиться срочно).
+  Отдельным куском: меню живёт в первом экране, окно нужно редко.
+*/
+const FocusDialog = lazyComponent(() => import('../pages/calendar/FocusDialog').then((m) => m.FocusDialog));
 
 /**
  * Переключатель текущего фокуса.
@@ -60,6 +68,7 @@ export function FocusMenu({ focus, onChange }: {
   const [note, setNote] = useState(focus?.note ?? '');
   const [duration, setDuration] = useState(1); // «1 час» — самый частый ответ
   const [busy, setBusy] = useState(false);
+  const [deepOpen, setDeepOpen] = useState(false);
 
   const set = async (kind: Focus['kind'], preset?: string) => {
     setBusy(true);
@@ -110,12 +119,13 @@ export function FocusMenu({ focus, onChange }: {
 
       <div className="focus-templates">
         {TEMPLATES.map((t) => (
-          <button key={t.kind} className="focus-template" disabled={busy} onClick={() => set(t.kind, t.note)}>
+          <button key={t.kind} className="focus-template" disabled={busy} onClick={() => (t.kind === 'deep' ? setDeepOpen(true) : set(t.kind, t.note))}>
             <Icon name={t.icon} size={15} /> {t.label}
           </button>
         ))}
       </div>
 
+      {deepOpen && <FocusDialog onClose={() => setDeepOpen(false)} onSaved={() => setDeepOpen(false)} />}
       {focus && (
         <button className="focus-clear" disabled={busy} onClick={clear}>
           <Icon name="close" size={14} /> Снять фокус

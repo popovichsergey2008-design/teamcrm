@@ -27,12 +27,21 @@ const hm = (iso: string | null) => {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
+/** «Работаю над задачей №1326» / «над задачами №1326 и №1350». */
+function focusTasksLine(tasks: { id: string }[]): string {
+  const nums = tasks.map((t) => `№${t.id}`);
+  if (nums.length === 1) return `Работаю над задачей ${nums[0]}`;
+  return `Работаю над задачами ${nums.slice(0, -1).join(', ')} и ${nums[nums.length - 1]}`;
+}
+
 function line(p: TeamPresence): string {
   switch (p.status) {
     case 'deep_focus': {
-      if (!p.until) return 'Глубокий фокус';
-      const left = Math.max(0, Math.round((new Date(p.until).getTime() - Date.now()) / 60_000));
-      return `Глубокий фокус · ещё ${left} мин`;
+      // #4787, п. 12: «В фокусе до 15:20 · Работаю над задачами №1326 и №1350» — номера
+      // только тем, кому задачи видны (сервер присылает лишь их); остальным — «В фокусе»
+      const tasks = p.focusTasks ?? [];
+      const what = tasks.length ? ` · ${focusTasksLine(tasks)}` : '';
+      return p.until ? `В фокусе до ${hm(p.until)}${what}` : `В фокусе${what}`;
     }
     case 'in_meeting': return p.note ? `На созвоне · ${p.note}` : 'На созвоне';
     case 'do_not_disturb': return 'Не беспокоить';
@@ -50,8 +59,9 @@ const Row = memo(function Row({ p, me, open, onToggle }: { p: TeamPresence; me: 
     try { const dm = await api.openDm(p.userId); navigate({ section: 'chat', chatId: String(dm.id) }); } finally { setBusy(false); }
   };
   const knock = async () => {
-    const reason = await promptText({ title: `Постучать: ${p.fullName}`, placeholder: 'Что случилось (можно пусто)', confirmLabel: 'Постучать', singleLine: true });
+    const reason = await promptText({ title: `Постучать: ${p.fullName}`, placeholder: 'Что случилось — без причины не отправится', confirmLabel: 'Постучать', singleLine: true });
     if (reason === null) return;
+    if (!reason.trim()) { toastSaved('Напишите причину', 'Срочное обращение отправляется только с причиной'); return; }
     setBusy(true);
     try { await api.knock(p.userId, reason || undefined); toastSaved('Постучали'); }
     catch (e) { toastSaved('Не получилось', e instanceof ApiError ? e.message : ''); }

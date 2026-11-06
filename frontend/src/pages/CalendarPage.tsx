@@ -275,6 +275,13 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   }, [from.getTime(), to.getTime(), showTasks]);
 
   useEffect(() => { void reload(); }, [reload]);
+  // «Нужно ещё время» после фокуса (#4787, п. 13) — сразу к подбору времени для задачи
+  useEffect(() => {
+    try {
+      const id = sessionStorage.getItem('calendar.planTask');
+      if (id) { sessionStorage.removeItem('calendar.planTask'); setTaskTime({ taskId: id }); }
+    } catch { /* без хранилища — просто календарь */ }
+  }, []);
   useEffect(() => { api.listUsers().then(setPeople).catch(() => undefined); }, []);
 
   const switchView = (v: View) => { setView(v); localStorage.setItem('teamcrm.calendarView', v); };

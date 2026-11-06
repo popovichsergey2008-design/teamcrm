@@ -33,6 +33,8 @@ export class FocusScheduler implements OnModuleInit, OnModuleDestroy {
     this.busy = true;
     try {
       await this.sessions.notifyEnded();
+      // #4787: запланированный в календаре фокус — «пора начинать»
+      await this.sessions.remindPlanned();
     } catch (e) {
       this.log.warn(`конец фокуса не разослан: ${e instanceof Error ? e.message : e}`);
     } finally {

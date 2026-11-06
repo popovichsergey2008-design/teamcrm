@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { inFocusSession, noteMissedCall } from '../hooks/useFocusSession';
 import { wsUrl } from '../lib/origin';
 import { Icon } from './Icon';
 import { tokens } from '../lib/api';
@@ -37,6 +38,12 @@ export function useIncomingCalls(enabled: boolean): { incoming: Incoming | null;
         let msg: any;
         try { msg = JSON.parse(e.data); } catch { return; }
         if (msg.type === 'meet.incoming-call') {
+          // #4787, п. 12: в глубоком фокусе обычный звонок не прерывает — он попадёт в сводку
+          // после фокуса; срочное проходит через «постучать срочно» по правилам человека
+          if (inFocusSession()) {
+            noteMissedCall(msg.payload?.caller_name ?? 'Коллега');
+            return;
+          }
           show({
             meetingId: String(msg.payload?.meeting_id),
             callerName: msg.payload?.caller_name ?? 'Коллега',

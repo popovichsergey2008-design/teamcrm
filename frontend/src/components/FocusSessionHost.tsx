@@ -1,11 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Button } from './ui/button';
+import { Icon } from './Icon';
 import { api } from '../lib/api';
 import { setQuietSource } from '../lib/quiet';
 import { getSocket } from '../lib/socket';
 import { showNotification, showToast } from '../lib/notifications';
 import { playKnock } from '../lib/sound';
 import { lazyComponent } from '../lib/lazy';
-import { refreshFocusSession, useFocusSession } from '../hooks/useFocusSession';
+import { refreshFocusSession, setFocusSession, useFocusSession } from '../hooks/useFocusSession';
 
 /*
   Окно глубокой работы — отдельным куском сборки: открывается только тогда, когда
@@ -23,6 +25,14 @@ const FocusZen = lazyComponent(() => import('./FocusZen').then((m) => m.FocusZen
  */
 export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: string, taskId: string) => void }) {
   const { session } = useFocusSession();
+  /** Запланированный в календаре фокус наступил (#4787, п. 12) — предложить начать. */
+  const [due, setDue] = useState<{ minutes: number; taskIds: string[] } | null>(null);
+  useEffect(() => {
+    const socket = getSocket();
+    const onDue = (p: { minutes: number; taskIds: string[] }) => setDue({ minutes: p.minutes, taskIds: p.taskIds ?? [] });
+    socket.on('focus.block.due', onDue);
+    return () => { socket.off('focus.block.due', onDue); };
+  }, []);
 
   // День закрыт с тихим режимом — молчим до утра; утром тишина снимается сама.
   useEffect(() => {
@@ -62,6 +72,25 @@ export function FocusSessionHost({ onOpenTask }: { onOpenTask: (projectId: strin
     };
   }, []);
 
-  if (!session) return null;
+  if (!session) {
+    if (!due) return null;
+    return (
+      // стиль — здесь же: плашка живёт в первом экране, а стили фокуса грузятся только с его окном
+      <div role="alertdialog" aria-label="Время глубокого фокуса" style={{
+        position: 'fixed', right: 16, bottom: 16, zIndex: 60, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8,
+        maxWidth: 'min(460px, calc(100vw - 32px))', padding: '10px 14px', borderRadius: 12, border: '1px solid var(--accent)',
+        background: 'var(--bg-elev)', color: 'var(--text)', boxShadow: '0 8px 24px rgba(0,0,0,.18)',
+      }}>
+        <Icon name="target" size={18} />
+        <span>Время глубокого фокуса: {due.minutes} мин{due.taskIds.length ? ` · ${due.taskIds.map((id) => `№${id}`).join(', ')}` : ''}</span>
+        <Button size="sm" variant="primary" onClick={() => {
+          const d = due;
+          setDue(null);
+          void api.focusStart({ taskIds: d.taskIds, minutes: d.minutes }).then(setFocusSession).catch(() => undefined);
+        }}>Начать</Button>
+        <Button size="sm" variant="ghost" onClick={() => setDue(null)}>Позже</Button>
+      </div>
+    );
+  }
   return <FocusZen session={session} onOpenTask={onOpenTask} />;
 }

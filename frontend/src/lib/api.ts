@@ -418,6 +418,17 @@ export interface FocusSession {
   notes: string;
   itemId: string | null;
   task: { id: string; title: string; description: string | null; projectId: string } | null;
+  /** #4787, п. 12: все задачи фокуса и кто может обратиться срочно */
+  tasks?: { id: string; title: string; projectId: string }[];
+  urgentMode?: 'all' | 'selected' | 'nobody';
+  urgentUserIds?: string[];
+}
+
+/** #4787, п. 13: что произошло, пока человек был в фокусе. */
+export interface FocusSummary {
+  id: string; minutes: number; startedAt: string; endedAt: string | null;
+  items: { kind: 'knock' | 'comment' | 'message' | 'meeting'; text: string; link: { section: string; projectId?: string; taskId?: string; chatId?: string } | null }[];
+  tasks: { id: string; title: string; projectId: string; outcome: 'done' | 'later' | 'more' | null }[];
 }
 
 export interface TeamPresence {
@@ -432,6 +443,8 @@ export interface TeamPresence {
   note: string | null;
   focusSessionId: string | null;
   online: boolean;
+  /** #4787: задачи глубокого фокуса — только видимые вам */
+  focusTasks?: { id: string; title: string }[];
 }
 
 export type FocusChangeReason = 'not_relevant' | 'wrong_priority' | 'done' | 'blocked' | 'other';
@@ -2967,7 +2980,13 @@ export const api = {
   focusSessionCurrent: () => request<FocusSession | null>('GET', '/focus/sessions/current'),
   focusPreflight: (minutes = 50) =>
     request<{ meeting: { title: string; startsAt: string; minutesLeft: number } | null }>('GET', `/focus/sessions/preflight?minutes=${minutes}`),
-  focusStart: (b: { taskId?: string | null; itemId?: string | null; minutes?: number }) =>
+  focusSummary: (id: string) => request<FocusSummary>('GET', `/focus/sessions/${id}/summary`),
+  focusOutcomes: (id: string, results: { taskId: string; result: 'done' | 'later' | 'more' }[]) =>
+    request<FocusSummary>('POST', `/focus/sessions/${id}/outcomes`, { results }),
+  focusStart: (b: {
+    taskId?: string | null; itemId?: string | null; minutes?: number;
+    taskIds?: string[]; urgentMode?: 'all' | 'selected' | 'nobody'; urgentUserIds?: string[];
+  }) =>
     request<FocusSession>('POST', '/focus/sessions', b),
   focusPause: (id: string) => request<FocusSession>('POST', `/focus/sessions/${id}/pause`),
   focusResume: (id: string) => request<FocusSession>('POST', `/focus/sessions/${id}/resume`),

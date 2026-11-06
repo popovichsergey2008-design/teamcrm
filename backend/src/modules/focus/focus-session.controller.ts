@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { FocusSessionService } from './focus-session.service';
@@ -10,6 +10,10 @@ class StartDto {
   @IsOptional() @IsString() taskId?: string;
   @IsOptional() @IsString() itemId?: string;
   @IsOptional() @IsInt() @Min(5) @Max(120) minutes?: number;
+  /** #4787, п. 12: несколько задач и кто может обратиться срочно */
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) taskIds?: string[];
+  @IsOptional() @IsIn(['all', 'selected', 'nobody']) urgentMode?: 'all' | 'selected' | 'nobody';
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) urgentUserIds?: string[];
 }
 
 class NotesDto {
@@ -20,6 +24,15 @@ class FinishDto {
   @IsIn(['completed', 'cancelled']) outcome!: 'completed' | 'cancelled';
   /** сразу перерыв на 10 минут */
   @IsOptional() @IsBoolean() takeBreak?: boolean;
+}
+
+class OutcomeItem {
+  @IsString() taskId!: string;
+  @IsIn(['done', 'later', 'more']) result!: 'done' | 'later' | 'more';
+}
+
+class OutcomesDto {
+  @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => OutcomeItem) results!: OutcomeItem[];
 }
 
 class KnockDto {
@@ -81,6 +94,18 @@ export class FocusSessionController {
   @Post('focus/sessions/:id/finish')
   finish(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: FinishDto) {
     return this.sessions.finish(this.me(u), id, dto.outcome, dto.takeBreak === true);
+  }
+
+  /** #4787, п. 13: что произошло, пока человек был в фокусе — одной сводкой. */
+  @Get('focus/sessions/:id/summary')
+  summary(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.sessions.summary(this.me(u), id);
+  }
+
+  /** «Как продвинулась работа?» — по каждой задаче фокуса. */
+  @Post('focus/sessions/:id/outcomes')
+  outcomes(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: OutcomesDto) {
+    return this.sessions.outcomes(this.me(u), id, dto.results);
   }
 
   /** «Постучать срочно» в глубокий фокус коллеги. */

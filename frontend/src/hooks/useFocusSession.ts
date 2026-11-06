@@ -35,6 +35,26 @@ export function setFocusSession(s: FocusSession | null) {
   publish(s);
 }
 
+/** Идёт ли сейчас глубокий фокус (#4787, п. 12): обычные звонки его не прерывают. */
+export function inFocusSession(): boolean {
+  return !!state.session && state.session.status === 'running' && !state.session.finished;
+}
+
+/**
+ * Звонки, пропущенные за время фокуса, — в сводку после него (п. 13), а не окном
+ * поверх работы. Живут в памяти вкладки: сводка показывается здесь же.
+ */
+const missedCalls: { name: string; at: number }[] = [];
+export function noteMissedCall(name: string): void {
+  missedCalls.push({ name, at: Date.now() });
+  if (missedCalls.length > 20) missedCalls.shift();
+}
+export function takeMissedCalls(since: number): { name: string; at: number }[] {
+  const out = missedCalls.filter((c) => c.at >= since);
+  missedCalls.length = 0;
+  return out;
+}
+
 /** Сколько секунд осталось сейчас — по ответу сервера и прошедшему с него времени. */
 export function remainingNow(s: FocusSession, receivedAt: number): number {
   if (s.status === 'paused') return s.remainingSeconds;

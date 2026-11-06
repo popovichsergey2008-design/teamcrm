@@ -39,11 +39,13 @@ export function DeepFocusGuard({ peerId, peerName }: { peerId: string; peerName:
     const reason = await promptText({
       title: `Постучать: ${first}`,
       description: 'Стук пробивает тишину фокуса. Он один на весь фокус — по-настоящему срочное.',
-      placeholder: 'Что случилось (можно пусто)',
+      placeholder: 'Что случилось — без причины не отправится',
       confirmLabel: 'Постучать',
       singleLine: true,
     });
     if (reason === null) return;
+    // #4787, п. 12: при срочном обращении отправитель указывает причину
+    if (!reason.trim()) { toastSaved('Напишите причину', 'Срочное обращение отправляется только с причиной'); return; }
     setBusy(true);
     try {
       await api.knock(peerId, reason || undefined);
@@ -60,7 +62,7 @@ export function DeepFocusGuard({ peerId, peerName }: { peerId: string; peerName:
     <div className="tv2-callout" role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px' }}>
       <Icon name="target" size={15} />
       <span style={{ flex: 1, minWidth: 200 }}>
-        {first} сейчас в глубоком фокусе{p.until ? ` до ${hm(p.until)}` : ''}. Сообщение будет доставлено без звука.
+        {first} сейчас в глубоком фокусе{p.until ? ` до ${hm(p.until)}` : ''}{p.focusTasks?.length ? ` · ${p.focusTasks.map((t) => `№${t.id}`).join(', ')}` : ''}. Сообщение будет доставлено без звука.
       </span>
       {knocked
         ? <span className="dim">Вы постучали</span>

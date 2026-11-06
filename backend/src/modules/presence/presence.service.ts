@@ -15,6 +15,11 @@ export type TeamPresence = Presence & {
   avatarUrl: string | null;
   /** название задачи — только если смотрящему виден её проект, иначе null */
   taskTitle: string | null;
+  /**
+   * #4787, п. 12: все задачи глубокого фокуса — «Работаю над задачами №1326 и №1350».
+   * Только те, что видны смотрящему; остальным достаточно «В фокусе до …».
+   */
+  focusTasks: { id: string; title: string }[];
 };
 
 /**
@@ -99,6 +104,12 @@ export class PresenceService {
       `SELECT u.id, u.full_name, u.avatar_file_id, u.presence_status, u.workday_closed_until,
               f.kind, f.note, f.task_id, f.until,
               fs.id AS session_id, fs.task_id AS session_task_id, fs.planned_end_at AS session_end,
+              (SELECT COALESCE(json_agg(json_build_object('id', x.id::text, 'title', x.title)), '[]'::json)
+                 FROM tasks x JOIN projects xp ON xp.id = x.project_id
+                WHERE x.id = ANY(fs.task_ids) AND x.deleted_at IS NULL
+                  AND ($3::boolean OR xp.visibility = 'all' OR xp.owner_user_id = $2::bigint
+                       OR EXISTS (SELECT 1 FROM project_members xpm WHERE xpm.project_id = xp.id AND xpm.user_id = $2::bigint))
+              ) AS focus_tasks,
               CASE WHEN t.id IS NOT NULL AND ($3::boolean OR p.visibility = 'all'
                         OR p.owner_user_id = $2::bigint
                         OR EXISTS (SELECT 1 FROM project_members pm
@@ -138,6 +149,7 @@ export class PresenceService {
         taskId: hidden ? null : p.taskId,
         userId, fullName: r.full_name, avatarUrl: r.avatar_file_id ? `/api/files/${r.avatar_file_id}` : null,
         taskTitle: p.taskId && r.task_title ? r.task_title : null,
+        focusTasks: p.status === 'deep_focus' && r.session_id ? ((r.focus_tasks ?? []) as { id: string; title: string }[]) : [],
       };
     });
   }
@@ -156,7 +168,7 @@ export class PresenceService {
         // В общую рассылку не кладём ни задачу, ни подпись при ней: подпись автофокуса —
         // это название задачи, а компания одна на всех смотрящих.
         this.realtime.emitToTenant(tenantId, 'presence.updated', {
-          ...p, taskTitle: null, taskId: null, note: p.taskId ? null : p.note,
+          ...p, taskTitle: null, taskId: null, note: p.taskId ? null : p.note, focusTasks: [],
         });
       })
       .catch((e) => this.log.warn(`presence.updated не разослан: ${e instanceof Error ? e.message : e}`));

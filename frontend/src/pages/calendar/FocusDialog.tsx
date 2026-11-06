@@ -3,7 +3,10 @@ import { Icon } from '../../components/Icon';
 import { Button } from '../../components/ui/button';
 import { Dialog } from '../../components/ui/dialog';
 import { api, ApiError, type PlanTask } from '../../lib/api';
+import type { User } from '../../types';
+import { setFocusSession } from '../../hooks/useFocusSession';
 import { toastSaved } from '../../lib/notifications';
+import './calendar.css';
 import { dayLabel, warnConflicts } from './TaskTimeDialog';
 
 /** Быстрый выбор времени фокуса (#4787, п. 12). */
@@ -25,8 +28,13 @@ export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClos
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** Кто может обратиться по срочному вопросу (п. 12): все с правом, выбранные или никто. */
+  const [urgent, setUrgent] = useState<'all' | 'selected' | 'nobody'>('all');
+  const [urgentIds, setUrgentIds] = useState<string[]>([]);
+  const [people, setPeople] = useState<User[]>([]);
 
   useEffect(() => { api.calendarPlanTasks().then(setTasks).catch(() => setTasks([])); }, []);
+  useEffect(() => { if (urgent === 'selected' && !people.length) api.listUsers().then(setPeople).catch(() => undefined); }, [urgent, people.length]);
   useEffect(() => { setOptions(null); setMsg(null); }, [minutes, mode]);
 
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= 10 ? p : [...p, id]));
@@ -34,7 +42,7 @@ export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClos
   const startNow = async () => {
     setBusy(true); setErr('');
     try {
-      await api.focusStart({ taskId: picked[0] ?? null, minutes });
+      setFocusSession(await api.focusStart({ taskIds: picked, minutes, urgentMode: urgent, urgentUserIds: urgent === 'selected' ? urgentIds : [] }));
       toastSaved(`Фокус до ${new Date(Date.now() + minutes * 60_000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`);
       window.dispatchEvent(new Event('qevo:focus-changed'));
       onSaved();
@@ -92,6 +100,25 @@ export function FocusDialog({ at, onClose, onSaved }: { at?: Date | null; onClos
           ))}
           <span className="dim">минут</span>
         </div>
+
+        <div className="cal-tt-label">Кто может обратиться по срочному вопросу</div>
+        <div className="kv2-seg" role="group" aria-label="Срочные обращения">
+          <button className="kv2-seg-btn" aria-pressed={urgent === 'all'} onClick={() => setUrgent('all')}>Все, кому разрешено</button>
+          <button className="kv2-seg-btn" aria-pressed={urgent === 'selected'} onClick={() => setUrgent('selected')}>Только выбранные</button>
+          <button className="kv2-seg-btn" aria-pressed={urgent === 'nobody'} onClick={() => setUrgent('nobody')}>Никто</button>
+        </div>
+        {urgent === 'selected' && (
+          <div className="cal-chips" aria-label="Кто может обратиться">
+            {people.filter((u) => u.role !== 'client').map((u) => {
+              const on = urgentIds.includes(String(u.id));
+              return (
+                <button key={u.id} className={`cal-pill${on ? ' on' : ''}`} aria-pressed={on}
+                  onClick={() => setUrgentIds((l) => (on ? l.filter((x) => x !== String(u.id)) : [...l, String(u.id)]))}>{u.fullName}</button>
+              );
+            })}
+          </div>
+        )}
+        <div className="dim cal-small">Обычные звонки и уведомления фокус не прерывают — придут одной сводкой после. Срочное обращение — только с причиной.</div>
 
         <div className="kv2-seg" role="group" aria-label="Когда">
           <button className="kv2-seg-btn" aria-pressed={mode === 'now'} onClick={() => setMode('now')}>Начать сейчас</button>
