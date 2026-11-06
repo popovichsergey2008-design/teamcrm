@@ -35,6 +35,11 @@ class ApplyPlanDto {
 class GoalDto {
   @IsOptional() @IsString() @MaxLength(500) goal?: string | null;
 }
+class CommonTimeDto {
+  @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) participantIds!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) optionalIds?: string[];
+  @IsInt() @Min(5) @Max(480) minutes!: number;
+}
 class LinkDto {
   @IsString() taskId!: string;
 }
@@ -82,6 +87,12 @@ export class CalendarBlocksController {
   @Post('plan-day/apply')
   applyPlan(@CurrentUser() u: AuthUser, @Body() dto: ApplyPlanDto) {
     return this.blocks.applyPlan(u.tenantId, u.userId, dto.plan);
+  }
+
+  /** Общее время для нескольких людей (п. 15): только «занят», без чужих подробностей. */
+  @Post('common-time')
+  commonTime(@CurrentUser() u: AuthUser, @Body() dto: CommonTimeDto) {
+    return this.blocks.commonTime(u.tenantId, u.userId, dto);
   }
 
   /** Карточка встречи до и после (п. 10–11). */

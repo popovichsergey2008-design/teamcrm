@@ -1,4 +1,4 @@
-import { findTime, freeSlots, planDay, workWindows, zonedToUtc } from './find-time';
+import { commonTime, findTime, freeSlots, planDay, workWindows, zonedToUtc } from './find-time';
 
 const TZ = 'Europe/Moscow';
 const WORK = { workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] as string[] };
@@ -84,5 +84,18 @@ describe('#4787 — помоги спланировать день', () => {
     expect(r.plan.map((p) => p.id)).toEqual(['a']);
     expect(r.unplaced).toEqual(['b', 'c']);
     expect(r.message).toBe('На задачи нужно 5 ч, свободно 2 ч 55 мин. Выберите, что оставить на сегодня.');
+  });
+});
+
+describe('#4787 — общее время для нескольких людей', () => {
+  it('свободны все обязательные; необязательный — по возможности', () => {
+    const r = commonTime({
+      now: at(2, 8), minutes: 60, timeZone: TZ, work: WORK, days: 2, limit: 3,
+      required: { a: [{ start: at(2, 9), end: at(2, 14) }], b: [{ start: at(2, 15), end: at(2, 18) }] },
+      optional: { c: [{ start: at(2, 14), end: at(2, 15) }] },
+    });
+    expect(r[0]).toEqual({ startsAt: iso(at(2, 14)), endsAt: iso(at(2, 15)), busyOptional: ['c'], note: 'Свободны все, кроме одного необязательного участника' });
+    expect(r[1].startsAt).toBe(iso(at(3, 9)));
+    expect(r[1].note).toBe('Свободны все участники');
   });
 });

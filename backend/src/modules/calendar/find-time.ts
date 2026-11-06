@@ -209,3 +209,58 @@ export function planDay(input: PlanDayInput): PlanDayResult {
     message: unplaced.length ? `На задачи нужно ${h(needMin)}, свободно ${h(freeMin)}. Выберите, что оставить на сегодня.` : null,
   };
 }
+
+export interface CommonTimeInput {
+  now: number;
+  minutes: number;
+  /** Занятость каждого участника — только интервалы, без названий (п. 15). */
+  required: Record<string, Interval[]>;
+  optional: Record<string, Interval[]>;
+  work: WorkHours;
+  timeZone: string;
+  days?: number;
+  limit?: number;
+}
+
+export interface CommonOption { startsAt: string; endsAt: string; busyOptional: string[]; note: string }
+
+/**
+ * Общее время для нескольких людей (#4787, п. 15): окна, где свободны все обязательные
+ * участники; лучше — где свободны и необязательные. Чужих подробностей не нужно:
+ * на вход — только «занят с … по …».
+ */
+export function commonTime(input: CommonTimeInput): CommonOption[] {
+  const dur = input.minutes * MIN;
+  const step = 30 * MIN;
+  const days = input.days ?? 10;
+  const startFrom = Math.ceil((input.now + 30 * MIN) / step) * step;
+  const windows = workWindows(input.now, days, input.work, input.timeZone)
+    .map((w) => ({ start: Math.max(w.start, startFrom), end: w.end })).filter((w) => w.end > w.start);
+  const busyAt = (list: Interval[], s: number, e: number) => list.some((b) => b.start < e && b.end > s);
+  const cand: { s: number; missed: string[] }[] = [];
+  for (const w of windows) {
+    for (let s = Math.ceil(w.start / step) * step; s + dur <= w.end; s += step) {
+      if (Object.values(input.required).some((l) => busyAt(l, s, s + dur))) continue;
+      const missed = Object.entries(input.optional).filter(([, l]) => busyAt(l, s, s + dur)).map(([id]) => id);
+      cand.push({ s, missed });
+    }
+  }
+  // сначала — где свободны все; по одному варианту на день, чтобы был выбор
+  cand.sort((a, b) => a.missed.length - b.missed.length || a.s - b.s);
+  const out: CommonOption[] = [];
+  const usedDays = new Set<string>();
+  for (const pass of [0, 1]) {
+    for (const c of cand) {
+      if (out.length >= (input.limit ?? 5)) break;
+      const day = zonedParts(c.s, input.timeZone).date;
+      if ((pass === 0 && usedDays.has(day)) || out.some((o) => Date.parse(o.startsAt) === c.s)) continue;
+      usedDays.add(day);
+      const n = c.missed.length;
+      out.push({
+        startsAt: new Date(c.s).toISOString(), endsAt: new Date(c.s + dur).toISOString(), busyOptional: c.missed,
+        note: n === 0 ? 'Свободны все участники' : n === 1 ? 'Свободны все, кроме одного необязательного участника' : `Свободны все обязательные, заняты необязательных: ${n}`,
+      });
+    }
+  }
+  return out.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+}

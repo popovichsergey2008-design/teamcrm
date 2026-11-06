@@ -2697,6 +2697,12 @@ export const api = {
   calendarEventUnlinkTask: (id: string, taskId: string) => request<EventCard>('DELETE', `/calendar/events/${id}/tasks/${taskId}`),
   /** #4787, п. 14: «Помоги спланировать день» — предложение и «Применить план». */
   calendarPlanDay: (b: { date?: string; items: { taskId: string; minutes?: number }[] }) => request<DayPlan>('POST', '/calendar/plan-day', b),
+  /** #4787, п. 15: общее время и опрос времени. */
+  calendarCommonTime: (b: { participantIds: string[]; optionalIds?: string[]; minutes: number }) =>
+    request<{ minutes: number; timeZone: string; options: { startsAt: string; endsAt: string; busyOptional: string[]; note: string }[] }>('POST', '/calendar/common-time', b),
+  timePolls: () => request<TimePoll[]>('GET', '/calendar/booking/polls'),
+  timePollCreate: (b: { title: string; minutes: number; options: string[]; participantIds?: string[] }) => request<TimePoll>('POST', '/calendar/booking/polls', b),
+  timePollDecide: (id: string, optionId: string) => request<TimePoll>('POST', `/calendar/booking/polls/${id}/decide`, { optionId }),
   calendarApplyPlan: (plan: { taskId: string; startsAt: string; endsAt: string }[]) => request<{ created: CalBlock[] }>('POST', '/calendar/plan-day/apply', { plan }),
   calendarFindTime: (q: { taskId?: string; minutes?: number; before?: string; exceptBlockId?: string }) => {
     const p = new URLSearchParams();
@@ -3640,4 +3646,9 @@ export interface DayPlan {
   meetings: { title: string; startsAt: string; endsAt: string }[];
   plan: { taskId: string; title: string; startsAt: string; endsAt: string }[];
   unplaced: { taskId: string; title: string }[];
+}
+export interface TimePoll {
+  id: string; title: string; minutes: number; status: 'open' | 'decided' | 'closed'; url: string; eventId: string | null;
+  options: { id: string; startsAt: string; yes: number; maybe: number; no: number }[];
+  votes: { name: string; email: string | null; answers: Record<string, 'yes' | 'maybe' | 'no'> }[];
 }

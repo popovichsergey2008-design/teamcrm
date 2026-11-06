@@ -135,3 +135,9 @@
 .cal-day-plan li.meeting { border-left: 4px solid var(--accent); }
 .cal-day-time { font-variant-numeric: tabular-nums; color: var(--text-dim); min-width: 96px; }
 .cal-plan-min { width: 72px; margin-left: auto; }
+
+/* общее время и опрос (#4787, п. 15) */
+.cal-pill-opt { border-style: dashed; }
+.cal-poll { flex-direction: column; align-items: stretch; }
+.cal-poll-opts { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.cal-poll-opts li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }

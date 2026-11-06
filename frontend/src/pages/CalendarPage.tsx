@@ -41,6 +41,7 @@ import { SyncStatus } from './calendar/SyncStatus';
 import { ShareTimeDialog } from './calendar/ShareTimeDialog';
 import { PlanDayDialog } from './calendar/PlanDayDialog';
 import { EventCardPanel } from './calendar/EventCardPanel';
+import { CommonTimeDialog, PollDialog } from './calendar/MeetingTimeDialogs';
 import './calendar/calendar.css';
 
 type View = 'day' | 'week' | 'month' | 'list';
@@ -245,6 +246,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [shareOpen, setShareOpen] = useState(false);
   /** «Помоги спланировать день» (#4787, п. 14). */
   const [planDayOpen, setPlanDayOpen] = useState(false);
+  /** Общее время и опрос времени (#4787, п. 15). */
+  const [commonOpen, setCommonOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
   const [work, setWork] = useState<Work>({ workStart: '09:00', workEnd: '18:00', weekendDays: [0, 6], holidays: [] });
   // было в браузере — теперь у человека: тот же выбор на телефоне и на другом компьютере
   const [showTasks, setShowTasks] = useStickyCheck('calendar.showTasks', localStorage.getItem('teamcrm.calendarTasks') !== '0');
@@ -425,6 +429,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               <MenuItem icon={<Icon name="video" size={15} />} onSelect={() => createNow()}>Встречу</MenuItem>
               <MenuItem icon={<Icon name="check-circle" size={15} />} onSelect={() => setTaskTime({})}>Время на выполнение задачи</MenuItem>
               <MenuItem icon={<Icon name="target" size={15} />} onSelect={() => setFocusDlg({})}>Глубокий фокус</MenuItem>
+              <MenuItem icon={<Icon name="users" size={15} />} onSelect={() => setCommonOpen(true)}>Встречу в общее свободное время</MenuItem>
+              <MenuItem icon={<Icon name="list" size={15} />} onSelect={() => setPollOpen(true)}>Опрос времени встречи</MenuItem>
               <MenuSeparator />
               <MenuItem icon={<Icon name="sparkles" size={15} />} onSelect={() => setPlanDayOpen(true)}>Помоги спланировать день</MenuItem>
             </DropdownMenu>
@@ -537,6 +543,18 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onSaved={() => { setTaskTime(null); void reload(); }}
         />
       )}
+      {commonOpen && (
+        <CommonTimeDialog
+          meId={user?.id ? String(user.id) : undefined}
+          onClose={() => setCommonOpen(false)}
+          onPoll={() => { setCommonOpen(false); setPollOpen(true); }}
+          onPick={(v) => {
+            setCommonOpen(false);
+            setEditing({ startsAt: v.startsAt, endsAt: v.endsAt, scope: 'personal', participants: v.participantIds.map((id) => ({ userId: id, isOrganizer: false })) as CalEvent['participants'] });
+          }}
+        />
+      )}
+      {pollOpen && <PollDialog onClose={() => setPollOpen(false)} onDecided={() => { setPollOpen(false); void reload(); }} />}
       {planDayOpen && <PlanDayDialog onClose={() => setPlanDayOpen(false)} onSaved={() => { setPlanDayOpen(false); void reload(); }} />}
       {shareOpen && <ShareTimeDialog onClose={() => { setShareOpen(false); void reload(); }} />}
       {focusDlg && <FocusDialog at={focusDlg.at} onClose={() => setFocusDlg(null)} onSaved={() => { setFocusDlg(null); void reload(); }} />}

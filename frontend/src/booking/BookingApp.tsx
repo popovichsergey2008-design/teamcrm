@@ -65,11 +65,12 @@ function regroup(days: Page['days']): Page['days'] {
 export default function BookingApp() {
   const path = location.pathname.replace(/\/+$/, '');
   const manage = path.startsWith('/book/manage/') ? decodeURIComponent(path.slice('/book/manage/'.length)) : null;
-  const slug = manage ? null : decodeURIComponent(path.slice('/book/'.length));
+  const poll = path.startsWith('/book/poll/') ? decodeURIComponent(path.slice('/book/poll/'.length)) : null;
+  const slug = manage || poll ? null : decodeURIComponent(path.slice('/book/'.length));
   useEffect(() => { document.title = manage ? 'Ваша запись — QEVO' : 'Запись на встречу — QEVO'; }, [manage]);
   return (
     <main className="bk">
-      {manage ? <Manage token={manage} /> : slug ? <Book slug={slug} /> : <Missing />}
+      {manage ? <Manage token={manage} /> : poll ? <Poll slug={poll} /> : slug ? <Book slug={slug} /> : <Missing />}
       <footer className="bk-foot">Работает на <a href="https://qevo.one" target="_blank" rel="noreferrer">QEVO</a></footer>
     </main>
   );
@@ -272,6 +273,65 @@ function Manage({ token }: { token: string }) {
             <button className="ui-btn ui-btn-ghost" onClick={() => setMode('view')}>Не отменять</button>
           </div>
         </div>
+      )}
+      {err && <p className="bk-err" role="alert"><Icon name="alert" size={15} /> {err}</p>}
+    </section>
+  );
+}
+
+interface PollPage {
+  title: string; minutes: number; status: string; organizer: { name: string; company: string | null };
+  options: { id: string; startsAt: string; yes: number; maybe: number }[]; voters: number;
+}
+
+/** Опрос времени (#4787, п. 15): «Подходит · Возможно · Не подходит» по каждому варианту. */
+function Poll({ slug }: { slug: string }) {
+  const [page, setPage] = useState<PollPage | null>(null);
+  const [err, setErr] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [answers, setAnswers] = useState<Record<string, 'yes' | 'maybe' | 'no'>>({});
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => { call<PollPage>('GET', `poll/${encodeURIComponent(slug)}`).then(setPage).catch((e: Error) => setErr(e.message)); }, [slug]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try { setPage(await call<PollPage>('POST', `poll/${encodeURIComponent(slug)}/vote`, { name, email: email || undefined, answers })); setDone(true); }
+    catch (x) { setErr((x as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  if (!page) return <section className="bk-card">{err ? <><h1>Опрос недоступен</h1><p className="bk-dim">{err}</p></> : <p className="bk-dim">Загружаю…</p>}</section>;
+  const end = (s: string) => new Date(Date.parse(s) + page.minutes * 60_000).toISOString();
+  return (
+    <section className="bk-card">
+      <header>
+        <div className="bk-dim">{page.organizer.name}{page.organizer.company ? ` · ${page.organizer.company}` : ''} предлагает время</div>
+        <h1>{page.title}</h1>
+        <div className="bk-meta"><span><Icon name="clock" size={15} /> {page.minutes} мин</span><span><Icon name="users" size={15} /> ответили: {page.voters}</span></div>
+      </header>
+      {page.status !== 'open' && <p className="bk-okmsg">Организатор уже выбрал время — приглашение придёт на почту.</p>}
+      {done && page.status === 'open' && <p className="bk-okmsg" role="status">Спасибо! Ответ сохранён. Когда организатор выберет время, придёт приглашение со ссылкой на встречу.</p>}
+      {page.status === 'open' && (
+        <form className="bk-form" onSubmit={(e) => void submit(e)}>
+          <div className="bk-tz bk-dim"><Icon name="clock" size={13} /> Время показано в вашем часовом поясе: {tzLabel()}</div>
+          {page.options.map((o) => (
+            <div key={o.id} className="bk-poll-row">
+              <span className="bk-poll-when">{fullWhen(o.startsAt, end(o.startsAt))}</span>
+              <span className="bk-poll-acts" role="radiogroup" aria-label={fullWhen(o.startsAt, end(o.startsAt))}>
+                {([['yes', 'Подходит'], ['maybe', 'Возможно'], ['no', 'Не подходит']] as const).map(([k, label]) => (
+                  <button key={k} type="button" role="radio" aria-checked={answers[o.id] === k} className={`bk-slot${answers[o.id] === k ? ' on' : ''}`}
+                    onClick={() => setAnswers((a) => ({ ...a, [o.id]: k }))}>{label}</button>
+                ))}
+              </span>
+            </div>
+          ))}
+          <label>Ваше имя<input className="ui-input" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
+          <label>Email — чтобы получить приглашение<input className="ui-input" type="email" maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
+          <button className="ui-btn ui-btn-primary bk-wide" type="submit" disabled={busy || !Object.keys(answers).length}>{busy ? 'Сохраняю…' : 'Отправить ответ'}</button>
+        </form>
       )}
       {err && <p className="bk-err" role="alert"><Icon name="alert" size={15} /> {err}</p>}
     </section>

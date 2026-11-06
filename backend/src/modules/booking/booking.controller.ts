@@ -9,6 +9,7 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { AuthThrottleService } from '../auth/auth-throttle.service';
 import { FilesService } from '../files/files.service';
 import { BookingService } from './booking.service';
+import { TimePollService } from './time-poll.service';
 import type { Weekly } from '../calendar/booking-slots';
 
 class TypeDto {
@@ -42,6 +43,21 @@ class BookDto {
   @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) answers?: string[];
 }
 
+class PollDto {
+  @IsString() @MaxLength(255) title!: string;
+  @IsInt() @Min(5) @Max(480) minutes!: number;
+  @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) options!: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) participantIds?: string[];
+}
+class DecideDto {
+  @IsString() optionId!: string;
+}
+class VoteDto {
+  @IsString() @MaxLength(120) name!: string;
+  @IsOptional() @IsString() @MaxLength(320) email?: string;
+  @IsObject() answers!: Record<string, string>;
+}
+
 class MoveDto {
   @IsString() startsAt!: string;
 }
@@ -56,7 +72,7 @@ const VIEW_IP = { name: 'booking:view', limit: 300, windowSec: 10 * 60 };
 @Controller('calendar/booking')
 @Roles('owner', 'manager', 'member')
 export class BookingController {
-  constructor(private readonly booking: BookingService) {}
+  constructor(private readonly booking: BookingService, private readonly polls: TimePollService) {}
 
   @Get('types')
   types(@CurrentUser() u: AuthUser) { return this.booking.types(u.tenantId, u.userId); }
@@ -78,6 +94,16 @@ export class BookingController {
 
   @Get('upcoming')
   upcoming(@CurrentUser() u: AuthUser) { return this.booking.upcoming(u.tenantId, u.userId); }
+
+  /** Опрос времени для внешних участников (#4787, п. 15). */
+  @Get('polls')
+  listPolls(@CurrentUser() u: AuthUser) { return this.polls.list(u.tenantId, u.userId); }
+
+  @Post('polls')
+  createPoll(@CurrentUser() u: AuthUser, @Body() dto: PollDto) { return this.polls.create(u.tenantId, u.userId, dto); }
+
+  @Post('polls/:id/decide')
+  decide(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: DecideDto) { return this.polls.decide(u.tenantId, u, id, dto.optionId); }
 }
 
 /** Страница записи для гостя — без входа (п. 6, 9). */
@@ -88,7 +114,22 @@ export class BookingPublicController {
     private readonly booking: BookingService,
     private readonly throttle: AuthThrottleService,
     private readonly files: FilesService,
+    private readonly polls: TimePollService,
   ) {}
+
+  @Public()
+  @Get('poll/:slug')
+  async poll(@Param('slug') slug: string, @Req() req: Request) {
+    await this.throttle.hit(VIEW_IP, req.ip);
+    return this.polls.page(slug);
+  }
+
+  @Public()
+  @Post('poll/:slug/vote')
+  async vote(@Param('slug') slug: string, @Body() dto: VoteDto, @Req() req: Request) {
+    await this.throttle.hit(BOOK_IP, req.ip);
+    return this.polls.vote(slug, dto);
+  }
 
   @Public()
   @Get('manage/:token')

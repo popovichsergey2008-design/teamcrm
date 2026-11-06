@@ -46,3 +46,8 @@
   .bk-card { padding: 16px; border-radius: 12px; }
   .bk-row > * { flex: 1 1 100%; justify-content: center; }
 }
+
+/* опрос времени (#4787, п. 15) */
+.bk-poll-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.bk-poll-when { font-weight: 600; text-transform: capitalize; }
+.bk-poll-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }

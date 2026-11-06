@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { CalendarBlocksRepository, BlockRow } from './calendar-blocks.repository';
 import { CalendarService } from './calendar.service';
-import { findTime, planDay, zonedParts } from './find-time';
+import { commonTime, findTime, planDay, zonedParts } from './find-time';
 import { blockView } from './calendar-blocks.view';
 
 /**
@@ -173,5 +173,32 @@ export class CalendarBlocksService {
       created.push((await this.create(tenantId, userId, { kind: 'task', taskId: p.taskId, startsAt: p.startsAt, endsAt: p.endsAt })).block);
     }
     return { created };
+  }
+
+  /**
+   * Общее время (#4787, п. 15): свободны все обязательные, лучше — и необязательные.
+   * О чужих встречах — только «занят», без названий.
+   */
+  async commonTime(tenantId: string, userId: string, dto: { participantIds: string[]; optionalIds?: string[]; minutes: number }) {
+    const req = [...new Set([String(userId), ...(dto.participantIds ?? []).map(String)])].slice(0, 30);
+    const opt = [...new Set((dto.optionalIds ?? []).map(String))].filter((x) => !req.includes(x)).slice(0, 30);
+    const minutes = Math.max(5, Math.min(480, Math.round(Number(dto.minutes) || 30)));
+    const from = new Date().toISOString();
+    const to = new Date(Date.now() + 15 * 86_400_000).toISOString();
+    const [busy, work, timeZone] = await Promise.all([
+      this.calendar.busy(tenantId, [...req, ...opt], from, to),
+      this.calendar.work(tenantId),
+      this.repo.timezoneOf(tenantId, userId),
+    ]);
+    const mine = (await this.repo.busyOfMe(tenantId, userId, from, to)).map((r) => ({ start: r.starts_at.getTime(), end: r.ends_at.getTime() }));
+    const of = (id: string) => (busy.busy[id] ?? []).filter((b) => b.kind !== 'all_day')
+      .map((b) => ({ start: new Date(b.startsAt).getTime(), end: new Date(b.endsAt).getTime() }));
+    const options = commonTime({
+      now: Date.now(), minutes, timeZone, days: 10, limit: 5,
+      required: Object.fromEntries(req.map((id) => [id, id === String(userId) ? [...of(id), ...mine] : of(id)])),
+      optional: Object.fromEntries(opt.map((id) => [id, of(id)])),
+      work: { workStart: work.workStart, workEnd: work.workEnd, weekendDays: work.weekendDays, holidays: work.holidays },
+    });
+    return { minutes, timeZone, options };
   }
 }

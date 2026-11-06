@@ -6,6 +6,7 @@ import { MediaModule } from '../media/media.module';
 import { BookingController, BookingPublicController } from './booking.controller';
 import { BookingRepository } from './booking.repository';
 import { BookingService } from './booking.service';
+import { TimePollService } from './time-poll.service';
 
 /**
  * Запись по ссылке (#4787, п. 6–9) — отдельным модулем: ей нужны и календарь (встреча
@@ -14,6 +15,6 @@ import { BookingService } from './booking.service';
 @Module({
   imports: [AuthModule, CalendarModule, MediaModule, FilesModule],
   controllers: [BookingController, BookingPublicController],
-  providers: [BookingService, BookingRepository],
+  providers: [BookingService, BookingRepository, TimePollService],
 })
 export class BookingModule {}
