@@ -24,10 +24,12 @@ export interface GateFacts {
   /** Комментарии ИМЕННО исполнителя: чужие вопросы в карточке отчётом не считаются. */
   ownComments: number;
   attachments: number;
+  /** #4763: изображений в файлах и обсуждении задачи — скриншотов результата. */
+  images?: number;
 }
 
 /** after_reason (#4748): снимки «было» есть, «после» нет — сдать можно только с причиной. */
-export type GateMissCode = 'checklist' | 'comment' | 'attachment' | 'after_reason';
+export type GateMissCode = 'checklist' | 'comment' | 'attachment' | 'after_reason' | 'shots';
 
 export interface GateMiss {
   code: GateMissCode;
@@ -47,8 +49,12 @@ export const DEFAULT_GATE: GateRequirements = { checklist: true, comment: true, 
  * (по умолчанию включено). Тогда неотмеченный чек-лист — не совет, а запрет: сдать
  * задачу нельзя, пока пункты не отмечены, даже если компания мягкую проверку выключила.
  */
-export function handoffGate(req: GateRequirements, facts: GateFacts, strictChecklist = false): GateMiss[] {
+export function handoffGate(req: GateRequirements, facts: GateFacts, strictChecklist = false, strictShots = false): GateMiss[] {
   const missing: GateMiss[] = [];
+  // #4763: постановщик не принимает без скриншотов результата — нет ни одного снимка
+  if (strictShots && facts.images !== undefined && facts.images === 0) {
+    missing.push({ code: 'shots', text: 'Не приложены скриншоты результата', blocking: true });
+  }
 
   // Чек-листа нет — и требовать нечего: пустой список не признак недоделанной работы.
   if ((req.checklist || strictChecklist) && facts.checklistTotal > 0 && facts.checklistDone < facts.checklistTotal) {

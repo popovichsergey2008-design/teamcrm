@@ -95,6 +95,8 @@ describe('ТЗ-2 — счётчики навигации (e2e)', () => {
     expect(c.focus.today).toBe(1);
     expect(c.focus.decide).toBe(0);
 
+    // #4763: здесь считаются счётчики, а не снимки результата — постановщик их не требует
+    await http.patch(`/api/tasks/${delegated.id}/shots-required`).set(H(tok)).send({ required: false }).expect(200);
     // 4. Сотрудник сдал работу — задача уехала на проверку → теперь она ждёт меня
     // confirmGate: приёмка работы здесь ни при чём — проверяем счётчики, а не отчёт исполнителя
     await http.post(`/api/tasks/${delegated.id}/move`).set(H(memTok))

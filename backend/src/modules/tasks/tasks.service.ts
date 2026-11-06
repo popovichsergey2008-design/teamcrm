@@ -1191,8 +1191,12 @@ export class TasksService {
       Запрет — это «постановщик не примет без чек-листа». Своя собственная задача
       (сам поставил, сам делаешь) — решение самого человека: там проверка мягкая.
     */
-    const strict = task.checklist_required !== false && String(task.created_by ?? '') !== String(actorId);
-    return handoffGate(req, facts, strict);
+    const notOwn = String(task.created_by ?? '') !== String(actorId);
+    const strict = task.checklist_required !== false && notOwn;
+    // #4763: скриншоты результата — то же правило: своя задача — решение самого человека
+    // и только если компания вообще требует результат-файл при сдаче (Настройки → приёмка)
+    const shots = req.attachment && task.shots_required !== false && notOwn;
+    return handoffGate(req, facts, strict, shots);
   }
 
   /** #4748: тот же круг, что у приёмки (сдаёт исполнитель чужую задачу), и снимки «было» без «после». */
@@ -1217,6 +1221,18 @@ export class TasksService {
     }
     const updated = await this.repo.setDirections(tenantId, id, [...new Set(directions)]);
     await this.activity.log(tenantId, id, actor.userId, 'directions', { directions });
+    this.realtime.emit(tenantId, task.project_id, 'task.updated', updated as any);
+    return updated;
+  }
+
+  /** #4763: «Не принимать без скриншотов результата» — решает постановщик или руководство. */
+  async setShotsRequired(tenantId: string, id: string, actor: { userId: string; role: string }, required: boolean) {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    const isSetter = task.created_by && String(task.created_by) === String(actor.userId);
+    if (!isSetter && actor.role !== 'owner' && actor.role !== 'manager') throw AppException.forbidden('Это решает постановщик задачи');
+    const updated = await this.repo.setShotsRequired(tenantId, id, required);
+    await this.activity.log(tenantId, id, actor.userId, 'shots_required', { required });
     this.realtime.emit(tenantId, task.project_id, 'task.updated', updated as any);
     return updated;
   }

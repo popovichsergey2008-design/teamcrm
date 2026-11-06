@@ -1327,6 +1327,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
             taskId={task.id}
             onRefresh={onRefresh}
             required={task.checklist_required !== false}
+            shotsRequired={task.shots_required !== false}
             canSetRequired={isManager || user?.role === 'manager'}
           />
         )}
@@ -1457,10 +1458,12 @@ function TaskDirections({ taskId, initial, onRefresh }: { taskId: string; initia
   );
 }
 
-function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
+function ChecklistTab({ taskId, onRefresh, required, shotsRequired, canSetRequired }: {
   taskId: string; onRefresh: () => void;
   /** Без выполненного чек-листа задачу не сдать (задача #1386). */
   required: boolean;
+  /** #4763: без скриншотов результата задачу не сдать. */
+  shotsRequired: boolean;
   /** Постановщик или руководство — им решать, обязателен ли чек-лист. */
   canSetRequired: boolean;
 }) {
@@ -1468,6 +1471,13 @@ function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
   const [text, setText] = useState('');
   const [strict, setStrict] = useState(required);
   useEffect(() => { setStrict(required); }, [required]);
+  const [shots, setShots] = useState(shotsRequired);
+  useEffect(() => { setShots(shotsRequired); }, [shotsRequired]);
+  const toggleShots = async (on: boolean) => {
+    setShots(on);
+    try { await api.setShotsRequired(taskId, on); onRefresh(); }
+    catch { setShots(!on); }
+  };
   const toggleStrict = async (on: boolean) => {
     setStrict(on);
     try { await api.setChecklistRequired(taskId, on); onRefresh(); }
@@ -1495,12 +1505,28 @@ function ChecklistTab({ taskId, onRefresh, required, canSetRequired }: {
               </span>
             )}
           />
+          <Checkbox
+            checked={shots}
+            onCheckedChange={(on) => void toggleShots(on)}
+            label={(
+              <span className="tv2-rule-text">
+                <b>Не принимать задачу без скриншотов результата</b>
+                <span>Нужен хотя бы один снимок в файлах или обсуждении — по нему ИИ и вы проверите результат. Включено по умолчанию.</span>
+              </span>
+            )}
+          />
         </div>
-      ) : strict && items.length > 0 && (
+      ) : (strict && items.length > 0) || shots ? (
         <div className="tv2-callout tv2-callout-info">
-          <Icon name="lock" size={14} /> Задачу не сдать, пока не отмечены все пункты: постановщик не принимает без чек-листа.
+          <Icon name="lock" size={14} /> {[
+            strict && items.length > 0 ? 'не отмечены все пункты чек-листа' : '',
+            shots ? 'нет скриншотов результата' : '',
+          ].filter(Boolean).length ? `Задачу не сдать, пока: ${[
+            strict && items.length > 0 ? 'не отмечены все пункты' : '',
+            shots ? 'не приложены скриншоты результата' : '',
+          ].filter(Boolean).join(' и ')} — так решил постановщик.` : ''}
         </div>
-      )}
+      ) : null}
       {items.length > 0 && (
         <div className="tv2-progress" aria-label={`Выполнено ${done} из ${items.length}`}>
           <span className="tv2-progress-bar"><span style={{ width: `${Math.round((done / items.length) * 100)}%` }} /></span>

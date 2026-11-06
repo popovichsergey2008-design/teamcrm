@@ -2346,6 +2346,8 @@ export const api = {
     request<{ directions: string[]; assigneeId: string | null; assigneeName: string | null; reason: string; items: number }>(
       'POST', '/nl/auto-assign', b),
   /** «Не принимать без выполненного чек-листа» — решает постановщик. */
+  /** #4763: не принимать без скриншотов результата */
+  setShotsRequired: (taskId: string, required: boolean) => request<any>('PATCH', `/tasks/${taskId}/shots-required`, { required }),
   setChecklistRequired: (taskId: string, required: boolean) =>
     request<import('../types').Task>('PATCH', `/tasks/${taskId}/checklist-required`, { required }),
   undoAiTask: (taskId: string) =>

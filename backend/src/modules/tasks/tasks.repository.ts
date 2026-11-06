@@ -38,6 +38,8 @@ export interface TaskRow {
   created_by_ai?: boolean;
   /** Без выполненного чек-листа задачу не сдать (0142, по умолчанию да). */
   checklist_required?: boolean;
+  /** #4763: не принимать без скриншотов результата */
+  shots_required?: boolean;
   /** Направления задачи (0143): бэкенд, фронтенд, контент… */
   directions?: string[];
   /** none | pending — работа сдана и ждёт ответа постановщика. */
@@ -196,6 +198,14 @@ export class TasksRepository {
       `UPDATE tasks SET directions = $3::text[], updated_at = now()
         WHERE tenant_id = $1 AND id = $2 RETURNING *`,
       [tenantId, id, directions],
+    );
+  }
+
+  /** #4763: «Не принимать без скриншотов результата» — решение постановщика в карточке. */
+  setShotsRequired(tenantId: string, id: string, required: boolean): Promise<TaskRow | null> {
+    return this.db.one<TaskRow>(
+      `UPDATE tasks SET shots_required = $3, updated_at = now() WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [tenantId, id, required],
     );
   }
 
@@ -803,8 +813,12 @@ export class TasksRepository {
    * отчётом о работе не является, а иначе гейт «есть комментарий» проходил бы сам собой.
    */
   async handoffFacts(tenantId: string, taskId: string, assigneeId: string): Promise<GateFacts> {
-    const row = await this.db.one<{ cl_total: string; cl_done: string; own_comments: string; attachments: string }>(
-      `SELECT (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.tenant_id=$1 AND ci.task_id=$2) AS cl_total,
+    const row = await this.db.one<{ cl_total: string; cl_done: string; own_comments: string; attachments: string; images: string }>(
+      `SELECT (SELECT COUNT(*) FROM task_attachments a JOIN files f ON f.id = a.file_id
+                WHERE a.tenant_id=$1 AND a.task_id=$2 AND f.content_type LIKE 'image/%')
+            + (SELECT COUNT(*) FROM task_comment_files cf JOIN task_comments c ON c.id = cf.comment_id JOIN files f ON f.id = cf.file_id
+                WHERE c.tenant_id=$1 AND c.task_id=$2 AND f.content_type LIKE 'image/%') AS images,
+              (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.tenant_id=$1 AND ci.task_id=$2) AS cl_total,
               (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.tenant_id=$1 AND ci.task_id=$2 AND ci.is_done) AS cl_done,
               (SELECT COUNT(*) FROM task_comments c WHERE c.tenant_id=$1 AND c.task_id=$2 AND c.author_id=$3) AS own_comments,
               (SELECT COUNT(*) FROM task_attachments a WHERE a.tenant_id=$1 AND a.task_id=$2) AS attachments`,
@@ -815,6 +829,7 @@ export class TasksRepository {
       checklistDone: Number(row?.cl_done ?? 0),
       ownComments: Number(row?.own_comments ?? 0),
       attachments: Number(row?.attachments ?? 0),
+      images: Number(row?.images ?? 0),
     };
   }
 

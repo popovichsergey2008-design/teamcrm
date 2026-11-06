@@ -50,3 +50,15 @@ describe('обязательный чек-лист (задача #1386)', () => 
     expect(miss[0].blocking).toBeUndefined();
   });
 });
+
+describe('#4763 — скриншоты результата обязательны', () => {
+  const req = { checklist: false, comment: false, attachment: true };
+  it('нет ни одного снимка — сдать нельзя', () => {
+    expect(handoffGate(req, { checklistTotal: 0, checklistDone: 0, ownComments: 1, attachments: 1, images: 0 }, false, true))
+      .toEqual([{ code: 'shots', text: 'Не приложены скриншоты результата', blocking: true }]);
+  });
+  it('снимок есть или требование снято — не держит', () => {
+    expect(handoffGate(req, { checklistTotal: 0, checklistDone: 0, ownComments: 1, attachments: 1, images: 2 }, false, true)).toEqual([]);
+    expect(handoffGate(req, { checklistTotal: 0, checklistDone: 0, ownComments: 1, attachments: 1, images: 0 }, false, false)).toEqual([]);
+  });
+});

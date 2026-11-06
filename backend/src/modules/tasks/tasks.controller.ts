@@ -321,6 +321,12 @@ export class TasksController {
   }
 
   /** «Не принимать без выполненного чек-листа» (задача #1386): решает постановщик. */
+  /** #4763: «Не принимать без скриншотов результата». */
+  @Patch(':id/shots-required')
+  setShotsRequired(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ChecklistRequiredDto) {
+    return this.tasks.setShotsRequired(user.tenantId, id, { userId: user.userId, role: user.role }, dto.required);
+  }
+
   @Patch(':id/checklist-required')
   setChecklistRequired(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ChecklistRequiredDto) {
     return this.tasks.setChecklistRequired(user.tenantId, id, { userId: user.userId, role: user.role }, dto.required);

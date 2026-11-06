@@ -151,6 +151,22 @@ export class TaskReviewService {
       ),
     ]);
 
+    /*
+      #4763: чек-листа нет — проверять не по чему. Модель в таком случае сочиняла критерии
+      сама и «проверяла» их; честнее сказать прямо и подсказать, что сделать.
+    */
+    if (!checklist.length) {
+      const result: ReviewResult = {
+        verdict: 'cannot_check',
+        summary: 'Чек-листа у задачи нет — проверить сделанное по пунктам не могу. Добавьте в чек-лист критерии приёмки, и я сверю с ними результат и скриншоты.',
+        checked: [], missing: ['Чек-лист с критериями приёмки'], askHuman: [], confidence: 1,
+      };
+      const body = formatReview(result);
+      await this.saveAiMessage(tenantId, taskId, userId, body);
+      await this.activity.log(tenantId, taskId, userId, 'ai_review', { verdict: result.verdict, reason: 'no_checklist' });
+      return { ...result, body };
+    }
+
     const { images, docs, skipped, shots } = await this.readAttachments(tenantId, attachments);
     /** Когда проверяли в прошлый раз: отчёт помощника — такое же сообщение в ленте. */
     const lastReview = messages

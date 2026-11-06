@@ -64,6 +64,8 @@ describe('ТЗ-30 — просрочка по ответственности (e2
     let mine = (await http.get('/api/tasks/my?scope=mine').set(S).expect(200)).body.data;
     expect(mine.find((t: any) => String(t.id) === String(task.id)).personal_overdue).toBe(true);
 
+    // #4763: здесь проверяется просрочка, а не снимки результата — постановщик их не требует
+    await http.patch(`/api/tasks/${task.id}/shots-required`).set(O).send({ required: false }).expect(200);
     // 3. Сдал на тестирование: задача просрочена для проекта, но не у него
     await http.post(`/api/tasks/${task.id}/move`).set(S).send({ columnId: String(col('На тестировании').id), position: 0, confirmGate: true }).expect(201);
     const marks = await db.one<{ submitted_at: Date | null; first_submitted_at: Date | null }>(`SELECT submitted_at, first_submitted_at FROM tasks WHERE id = $1`, [task.id]);

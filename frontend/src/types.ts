@@ -343,6 +343,8 @@ export interface Task {
   created_at?: string;
   /** Без выполненного чек-листа задачу не сдать (по умолчанию да, задача #1386). */
   checklist_required?: boolean;
+  /** #4763: не принимать без скриншотов результата */
+  shots_required?: boolean;
   /** Направления задачи: backend, frontend, content… (задача #1295). */
   directions?: string[];
   project_id: string;
