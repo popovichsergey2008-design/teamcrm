@@ -47,7 +47,7 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'onboarding_demo', title: 'Демо AI-созвона в онбординге', where: 'Онбординг → «Протестировать магию AI-созвона»', group: 'meetings' },
   { key: 'meeting_summary_quick', title: 'Итоги встречи: «Кратко»', where: 'Экран итогов после звонка', group: 'meetings' },
   { key: 'meeting_agenda', title: 'Повестка перед встречей', where: 'Секретарь, за 5 минут до начала', group: 'meetings' },
-  { key: 'standup_parse', title: 'Разбор дейлика из Telegram', where: 'Бот @teamsmrt_bot', group: 'meetings' },
+  { key: 'standup_parse', title: 'Разбор дейлика из Telegram', where: 'Бот QEVO в Telegram', group: 'meetings' },
 
   { key: 'brain', title: 'Ответы по базе знаний', where: 'Поиск по смыслу, вопросы к базе', group: 'knowledge' },
   { key: 'embedding', title: 'Индексация задач и документов', where: 'Фоном, при изменении данных', group: 'knowledge' },
