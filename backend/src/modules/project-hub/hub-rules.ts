@@ -16,7 +16,7 @@ export const KINDS: HubKind[] = ['link', 'file', 'contact', 'note'];
 /** Допустимые категории по разделам — одна проверка для людей и для модели. */
 export const CATEGORIES: Record<HubSection, string[]> = {
   passport: ['site', 'app', 'admin', 'social', 'bot', 'other'],
-  knowledge: ['spec', 'brand', 'design', 'repo', 'api', 'regulation', 'doc', 'other'],
+  knowledge: ['spec', 'brand', 'design', 'repo', 'api', 'regulation', 'doc', 'meeting', 'other'],
   team: ['contractor', 'client', 'other'],
 };
 

@@ -75,6 +75,99 @@ export class HubLibrarianService {
     return done;
   }
 
+  /** До какого момента быстрый проход уже посмотрел (в памяти процесса). */
+  private fastFrom: Date | null = null;
+
+  /**
+   * Быстрый проход (#4801), каждые пять минут: ТЗ из задач, которые поставили или
+   * поменяли, и итоги созвонов — в Инфоцентр сразу, без модели и без ожидания утра.
+   * Первый проход после запуска догоняет созвоны за месяц и перечитывает текст
+   * Google-документов, уже лежащих в Инфоцентре.
+   */
+  async fastTick(now = new Date()): Promise<number> {
+    const first = !this.fastFrom;
+    const from = this.fastFrom ?? new Date(now.getTime() - 15 * 60_000);
+    let n = 0;
+    for (const p of await this.repo.touchedProjects(from, now)) {
+      n += await this.fastTasks(p.tenant_id, p.project_id, from, now).catch((e) => {
+        this.log.warn(`быстрый проход, проект ${p.project_id}: ${(e as Error).message}`);
+        return 0;
+      });
+    }
+    const meetFrom = first ? new Date(now.getTime() - FIRST_DAYS * DAY_MS) : from;
+    for (const m of await this.repo.summarizedMeetings(meetFrom, now)) {
+      if (!m.project_id) continue;
+      n += await this.fastMeeting(m).catch((e) => {
+        this.log.warn(`быстрый проход, созвон ${m.id}: ${(e as Error).message}`);
+        return 0;
+      });
+    }
+    if (first) {
+      // текст ТЗ из Google-документов — в базу знаний: раньше там лежали только названия
+      for (const it of await this.repo.recentGoogleItems(90)) void this.knowledge.enqueue(it.tenant_id, 'hub', it.id);
+    }
+    this.fastFrom = now;
+    return n;
+  }
+
+  /** ТЗ из задачи: ссылка на документ в описании или документ во вложениях — раздел «ТЗ». */
+  private async fastTasks(tenantId: string, projectId: string, from: Date, to: Date): Promise<number> {
+    const [tasks, known, sites] = await Promise.all([
+      this.repo.tasks(tenantId, projectId, from, to),
+      this.repo.known(tenantId, projectId),
+      this.repo.projectSites(tenantId, projectId),
+    ]);
+    const finds: RawFind[] = tasks.map((t) => ({
+      text: `${t.title}\n${t.description ?? ''}`, files: t.files ?? [],
+      origin: { type: 'task', id: String(t.id), taskId: String(t.id) },
+    }));
+    const ctx: UrlContext = { projectDomains: sites.map(hostOf).filter(Boolean), appHost: hostOf(process.env.APP_BASE_URL || 'https://qevo.one') };
+    const knownUrls = new Set<string>();
+    for (const u of known.urls) { knownUrls.add(u); const nu = normalizeUrl(u); if (nu) knownUrls.add(nu); }
+    const cands = buildCandidates(finds, { urls: knownUrls, fileIds: known.fileIds }, ctx);
+    const { placed } = placeByRules(cands, ctx);
+    const titleOf = new Map(tasks.map((t) => [String(t.id), t.title]));
+    let n = 0;
+    for (const c of cands) {
+      const p = placed.get(c.ref);
+      if (!p || p.section !== 'knowledge') continue;
+      const gdoc = c.kind === 'link' && /^https:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\//.test(c.url ?? '');
+      const docFile = c.kind === 'file' && /\.(pdf|docx?|xlsx?|pptx?|odt|rtf|md|txt)$/i.test(c.fileName ?? '');
+      if (!gdoc && !docFile && p.category !== 'spec') continue;
+      const task = titleOf.get(String(c.origin.taskId)) ?? '';
+      const id = await this.repo.insertItem({
+        tenantId, projectId, section: 'knowledge', kind: c.kind, category: 'spec',
+        title: (gdoc ? `ТЗ: ${task}` : `${c.fileName} — ТЗ к задаче «${task}»`).slice(0, 200),
+        url: c.kind === 'link' ? c.url! : null, fileId: c.kind === 'file' ? c.fileId! : null,
+        body: null, contact: null, source: 'ai', origin: { ...c.origin }, runId: null, createdBy: null,
+      });
+      if (!id) continue;
+      n++;
+      void this.knowledge.enqueue(tenantId, 'hub', id);
+    }
+    if (n) this.hub.changed(tenantId, projectId);
+    return n;
+  }
+
+  /** Итоги и расшифровка созвона — в Инфоцентр его проекта; решения — в Хронику. */
+  private async fastMeeting(m: { tenant_id: string; id: string; title: string; at: Date; summary: string; decisions: unknown; project_id: string | null }): Promise<number> {
+    const projectId = m.project_id!;
+    const decided = Array.isArray(m.decisions) ? (m.decisions as unknown[]).filter((d) => typeof d === 'string') as string[] : [];
+    const day = new Date(m.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Moscow' });
+    const base = (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, '');
+    const body = [m.summary?.trim(), decided.length ? `Решения: ${decided.join('; ')}` : null].filter(Boolean).join('\n').slice(0, 4000);
+    const id = await this.repo.insertItem({
+      tenantId: m.tenant_id, projectId, section: 'knowledge', kind: 'link', category: 'meeting',
+      title: `Созвон «${m.title}» ${day} — итоги и расшифровка`.slice(0, 200),
+      url: `${base}/meetings/${m.id}`, fileId: null, body: body || null, contact: null,
+      source: 'ai', origin: { type: 'meeting', id: String(m.id), meetingId: String(m.id) }, runId: null, createdBy: null,
+    });
+    const linked = await this.repo.linkMeetingDecisions(m.tenant_id, m.id, projectId);
+    if (id) void this.knowledge.enqueue(m.tenant_id, 'hub', id);
+    if (id || linked) this.hub.changed(m.tenant_id, projectId);
+    return id ? 1 : 0;
+  }
+
   /** «Собрать сейчас»: за последние сутки, сразу, с ответом — что добавлено. */
   async runNow(u: HubUser, projectId: string) {
     const p = await this.hub.access(u, projectId);

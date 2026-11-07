@@ -354,7 +354,9 @@ export class ProjectHubRepository {
                OR EXISTS (SELECT 1 FROM meetings mt WHERE mt.tenant_id = p.tenant_id AND mt.project_id = p.id
                            AND COALESCE(mt.happened_at, mt.created_at) >= $1::timestamptz - interval '24 hours')
                OR EXISTS (SELECT 1 FROM tasks k WHERE k.tenant_id = p.tenant_id AND k.project_id = p.id
-                           AND k.closed_at >= $1::timestamptz - interval '24 hours')
+                           AND (k.closed_at >= $1::timestamptz - interval '24 hours'
+                                OR k.created_at >= $1::timestamptz - interval '24 hours'
+                                OR k.updated_at >= $1::timestamptz - interval '24 hours'))
                OR EXISTS (SELECT 1 FROM decisions d WHERE d.tenant_id = p.tenant_id AND d.project_id = p.id
                            AND d.created_at >= $1::timestamptz - interval '24 hours'))
         ORDER BY p.tenant_id, p.id
@@ -480,6 +482,64 @@ export class ProjectHubRepository {
         ORDER BY t.id DESC
         LIMIT 200`,
       [tenantId, projectId, from, to],
+    );
+  }
+
+  // ── быстрый проход (#4801): ТЗ и созвоны — в Инфоцентр сразу, а не утром ──
+
+  /** Проекты с задачами, которые завели или меняли за окно (библиотекарь включён). */
+  touchedProjects(from: Date, to: Date): Promise<{ tenant_id: string; project_id: string }[]> {
+    return this.db.many(
+      `SELECT DISTINCT t.tenant_id::text, t.project_id::text
+         FROM tasks t JOIN projects p ON p.id = t.project_id
+        WHERE p.hub_librarian AND p.status <> 'archived' AND t.deleted_at IS NULL
+          AND ((t.created_at >= $1 AND t.created_at < $2) OR (t.updated_at >= $1 AND t.updated_at < $2))
+        LIMIT 200`,
+      [from, to],
+    );
+  }
+
+  /**
+   * Созвоны с готовыми итогами за окно и их проект: указан у созвона, чат созвона —
+   * проектный, или задачи из созвона ставились в проект (большинством).
+   */
+  summarizedMeetings(from: Date, to: Date): Promise<{
+    tenant_id: string; id: string; title: string; at: Date; summary: string; decisions: unknown; project_id: string | null;
+  }[]> {
+    return this.db.many(
+      `SELECT m.tenant_id::text, m.id::text, m.title, COALESCE(m.happened_at, m.created_at) AS at, s.summary, s.decisions,
+              COALESCE(m.project_id,
+                       (SELECT CASE WHEN c.project_id IS NOT NULL THEN c.project_id
+                                    WHEN c.is_private = FALSE AND c.kind IN ('group', 'channel') THEN c.linked_project_id END
+                          FROM chats c WHERE c.id = m.chat_id),
+                       (SELECT COALESCE(t.project_id, d.project_id) FROM meeting_task_drafts d LEFT JOIN tasks t ON t.id = d.task_id
+                         WHERE d.meeting_id = m.id AND COALESCE(t.project_id, d.project_id) IS NOT NULL
+                         GROUP BY 1 ORDER BY count(*) DESC LIMIT 1))::text AS project_id
+         FROM meeting_summaries s JOIN meetings m ON m.id = s.meeting_id
+        WHERE s.created_at >= $1 AND s.created_at < $2 AND m.status = 'done'
+        ORDER BY s.created_at
+        LIMIT 200`,
+      [from, to],
+    );
+  }
+
+  /** Решения созвона без проекта — в проект созвона: тогда они видны в Хронике. */
+  async linkMeetingDecisions(tenantId: string, meetingId: string, projectId: string): Promise<number> {
+    const r = await this.db.query(
+      `UPDATE decisions SET project_id = $3 WHERE tenant_id = $1 AND meeting_id = $2 AND project_id IS NULL`,
+      [tenantId, meetingId, projectId],
+    );
+    return r.rowCount ?? 0;
+  }
+
+  /** Ссылки на Google-документы в Инфоцентре за последние дни — перечитать их текст. */
+  recentGoogleItems(days: number): Promise<{ tenant_id: string; id: string }[]> {
+    return this.db.many(
+      `SELECT i.tenant_id::text, i.id::text FROM project_hub_items i
+        WHERE i.removed_at IS NULL AND i.url LIKE 'https://docs.google.com/%'
+          AND i.created_at > now() - make_interval(days => $1)
+        ORDER BY i.id DESC LIMIT 500`,
+      [days],
     );
   }
 

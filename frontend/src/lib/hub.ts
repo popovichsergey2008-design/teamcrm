@@ -28,6 +28,7 @@ export const HUB_CATEGORIES: Record<HubSection, { value: string; label: string }
     { value: 'api', label: 'API' },
     { value: 'regulation', label: 'Регламенты' },
     { value: 'doc', label: 'Документы' },
+    { value: 'meeting', label: 'Созвоны и расшифровки' },
     { value: 'other', label: 'Другое' },
   ],
   team: [
@@ -43,7 +44,7 @@ export function categoryLabel(section: HubSection, category: string | null | und
 
 const CATEGORY_ICON: Record<string, IconName> = {
   site: 'monitor', app: 'zap', admin: 'lock', social: 'megaphone', bot: 'robot',
-  spec: 'file', brand: 'image', design: 'edit', repo: 'folder', api: 'plug', regulation: 'shield', doc: 'book',
+  spec: 'file', brand: 'image', design: 'edit', repo: 'folder', api: 'plug', regulation: 'shield', doc: 'book', meeting: 'video',
   contractor: 'handshake', client: 'building',
 };
 

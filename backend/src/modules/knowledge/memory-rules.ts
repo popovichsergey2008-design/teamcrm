@@ -18,7 +18,7 @@ const HUB_SECTION: Record<string, string> = { passport: 'паспорт', team: 
 const HUB_CATEGORY: Record<string, string> = {
   site: 'сайт', app: 'приложение', admin: 'админка', social: 'соцсети', bot: 'бот',
   spec: 'ТЗ и спецификации', brand: 'брендбук', design: 'дизайн', repo: 'репозиторий', api: 'API',
-  regulation: 'регламент', doc: 'документ', contractor: 'подрядчик', client: 'заказчик',
+  regulation: 'регламент', doc: 'документ', meeting: 'созвоны и расшифровки', contractor: 'подрядчик', client: 'заказчик',
 };
 export function hubSectionLabel(section: string, category: string | null): string {
   const s = HUB_SECTION[section] ?? section;

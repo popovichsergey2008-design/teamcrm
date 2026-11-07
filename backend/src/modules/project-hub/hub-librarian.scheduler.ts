@@ -35,6 +35,9 @@ export class HubLibrarianScheduler implements OnModuleInit, OnModuleDestroy {
     try {
       const n = await this.svc.tick(now);
       if (n) this.log.log(`Инфоцентр: собрано проектов ${n}`);
+      // #4801: ТЗ из задач и итоги созвонов — сразу, каждые пять минут
+      const fast = await this.svc.fastTick(now).catch((e) => { this.log.warn(`быстрый проход: ${(e as Error).message}`); return 0; });
+      if (fast) this.log.log(`Инфоцентр: быстрым проходом добавлено ${fast}`);
       return n;
     } catch (e) {
       this.log.error(`проход не удался: ${(e as Error).message}`);

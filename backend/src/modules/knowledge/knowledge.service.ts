@@ -2,6 +2,7 @@ import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { extractText, MAX_FILE_BYTES } from './file-text';
+import { extractGoogleLinks, fetchGoogleDocText } from '../gdocs/gdocs.util';
 import { DbService } from '../../database/db.service';
 import { RabbitMQService, Q_EMBEDDINGS } from '../../messaging/rabbitmq.service';
 import { AiService } from '../ai/ai.service';
@@ -283,9 +284,16 @@ ${extracted.text}`,
     );
     if (!r) return null;
     const c = r.contact ?? {};
+    // #4801: ТЗ в Google-документе — в память его ТЕКСТ (открытый по ссылке), иначе бот знает только название
+    let docText: string | null = null;
+    const g = r.url ? extractGoogleLinks(String(r.url))[0] : undefined;
+    if (g) {
+      const got = await fetchGoogleDocText(g.docType, g.docKey).catch(() => null);
+      if (got?.ok && got.text) docText = `Текст документа:\n${got.text}`;
+    }
     const text = [
       `Инфоцентр проекта «${r.project}», ${hubSectionLabel(r.section, r.category)}: ${r.title}`,
-      r.url, r.file_name ? `Файл: ${r.file_name}` : null, r.body,
+      r.url, r.file_name ? `Файл: ${r.file_name}` : null, r.body, docText,
       r.kind === 'contact' ? [c.name, c.role, c.phone, c.email, c.telegram].filter(Boolean).join(', ') : null,
     ].filter((x) => x && String(x).trim()).join('\n');
     return {
