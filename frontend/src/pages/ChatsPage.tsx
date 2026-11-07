@@ -1939,7 +1939,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const match = (s: string | null) => !query || (s ?? '').toLowerCase().includes(query.toLowerCase());
   // #4779, п. 10: вся команда — для блока «Команда» в «Личных»
   const dmByPeer = new Map(chats.filter((c) => c.kind === 'dm').map((c) => [String(c.peerId), c] as const));
-  const team = unreadOnly ? [] : users.filter((u) => String(u.id) !== String(user?.id) && (u as { isActive?: boolean }).isActive !== false && match(u.fullName));
+  // только те, с кем переписки ещё нет: начатые диалоги уже стоят выше — второй строкой не дублируем
+  const team = unreadOnly ? [] : users.filter((u) => String(u.id) !== String(user?.id) && (u as { isActive?: boolean }).isActive !== false
+    && !dmByPeer.has(String(u.id)) && match(u.fullName));
   const threadsUnread = threads.reduce((sum, t) => sum + (Number(t.unread) || 0), 0);
   /*
     Помощник стоит в том же списке, что и люди: его зовут через «@», как коллегу.
@@ -2035,7 +2037,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       rows: (
         <>
           {dms.filter((c) => match(c.title)).map((c) => rowOf(c, true))}
-          {team.length > 0 && <div className="chat-group-head">Команда</div>}
+          {team.length > 0 && <div className="chat-group-head">Ещё не переписывались</div>}
           {team.map((u) => {
             const dm = dmByPeer.get(String(u.id));
             return (
