@@ -6,6 +6,7 @@ import { api, ApiError } from '../../lib/api';
 import type { AnthillAction, AnthillAttachment, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
 import { shrinkImage } from '../../lib/image-shrink';
 import './anthill-attach.css';
+import { QuickStart } from './QuickStart';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
@@ -58,13 +59,6 @@ const ACTION_REASONS: { key: string; label: string }[] = [
   { key: 'should_not', label: 'не надо было выполнять' },
   { key: 'other', label: 'другое' },
 ];
-const HINTS = [
-  'Что мне сегодня нужно сделать?',
-  'Какие задачи просрочены?',
-  'Что я пропустил за вчера?',
-  'Что решили на последнем мите?',
-];
-
 type Live = { status: string; text: string; sources: AnthillSource[] };
 
 /**
@@ -128,6 +122,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
    */
   const [skill, setSkill] = useState<AnthillSkill | null>(null);
   const [err, setErr] = useState('');
+  /** #1326: быстрый старт поверх идущего разговора — по кнопке в шапке. */
+  const [quickShown, setQuickShown] = useState(false);
   const stopRef = useRef<(() => void) | null>(null);
   const busy = live !== null;
   const feedRef = useRef<HTMLDivElement>(null);
@@ -231,7 +227,8 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
   }, [loadSessions]);
 
   // Лента вниз на каждый кусок ответа: его читают с конца, пока он печатается.
-  useEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, [messages, live]);
+  // пустой разговор — быстрый старт читается сверху, ленту не мотаем
+  useEffect(() => { const el = feedRef.current; if (el && (messages.length || live)) el.scrollTop = el.scrollHeight; }, [messages, live]);
 
   // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
   const draftEnter = useEnterSend(() => { void send(draft); });
@@ -412,8 +409,24 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
           </span>
         </span>
         <span className="anthill-head-acts">
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void fresh(); }} title="Новый разговор — с чистого листа">
-            <Icon name="plus" size={14} /> Новый
+          {/* #1326: новый разговор — заметной кнопкой; прежние остаются в «Истории» */}
+          <button
+            className="ui-btn ui-btn-outline ui-btn-sm"
+            onClick={() => {
+              setTab('chat'); setQuickShown(false);
+              fresh().catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось начать новый разговор'));
+            }}
+            title="Начать новый разговор с чистого листа. Прежние разговоры — в «Истории»"
+          >
+            <Icon name="plus" size={14} /> Новый разговор
+          </button>
+          <button
+            className={`ui-btn ui-btn-ghost ui-btn-sm${quickShown ? ' active' : ''}`}
+            onClick={() => { setTab('chat'); setQuickShown((v) => !v); }}
+            aria-expanded={quickShown}
+            title="Быстрый старт: что бот умеет взять на себя"
+          >
+            <Icon name="sparkles" size={14} /> Что умею
           </button>
           <button
             className={`ui-btn ui-btn-ghost ui-btn-sm${historyOpen ? ' active' : ''}`}
@@ -493,14 +506,15 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
 
       {tab === 'chat' && (
       <div className="chat-feed anthill-feed" ref={feedRef}>
+        {quickShown && messages.length > 0 && (
+          <div className="anthill-empty">
+            <QuickStart onPick={(p) => { setQuickShown(false); void send(p); }} />
+          </div>
+        )}
         {messages.length === 0 && !live && (
           <div className="anthill-empty">
             <div className="anthill-empty-title">Спросите о задачах, чатах и митах — или попросите сделать</div>
-            <div className="anthill-hints">
-              {HINTS.map((h) => (
-                <button key={h} className="anthill-hint" onClick={() => { setDraft(h); inputRef.current?.focus(); }}>{h}</button>
-              ))}
-            </div>
+            <QuickStart onPick={(p) => { void send(p); }} />
             {context && <div className="dim">Под рукой {ctxLine} — можно спросить «что здесь осталось сделать?»</div>}
           </div>
         )}
