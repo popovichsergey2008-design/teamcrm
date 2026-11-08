@@ -131,13 +131,11 @@ export class HubLibrarianService {
     for (const c of cands) {
       const p = placed.get(c.ref);
       if (!p || p.section !== 'knowledge') continue;
-      const gdoc = c.kind === 'link' && /^https:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\//.test(c.url ?? '');
-      const docFile = c.kind === 'file' && /\.(pdf|docx?|xlsx?|pptx?|odt|rtf|md|txt)$/i.test(c.fileName ?? '');
-      if (!gdoc && !docFile && p.category !== 'spec') continue;
-      const task = titleOf.get(String(c.origin.taskId)) ?? '';
+      const spec = specOf(c, p, titleOf.get(String(c.origin.taskId)) ?? '');
+      if (spec.category !== 'spec') continue;
       const id = await this.repo.insertItem({
         tenantId, projectId, section: 'knowledge', kind: c.kind, category: 'spec',
-        title: (gdoc ? `ТЗ: ${task}` : `${c.fileName} — ТЗ к задаче «${task}»`).slice(0, 200),
+        title: spec.title,
         url: c.kind === 'link' ? c.url! : null, fileId: c.kind === 'file' ? c.fileId! : null,
         body: null, contact: null, source: 'ai', origin: { ...c.origin }, runId: null, createdBy: null,
       });
@@ -287,10 +285,13 @@ export class HubLibrarianService {
     }
 
     const byRef = new Map(cands.map((c) => [c.ref, c]));
+    const taskTitle = new Map(tasks.map((t) => [String(t.id), t.title]));
     const newIds: string[] = [];
-    for (const [ref, p] of placed) {
+    for (const [ref, placedAs] of placed) {
       const c = byRef.get(ref);
       if (!c) continue;
+      // #4801: ТЗ из задачи — «ТЗ и спецификации», как и при быстром проходе
+      const p = c.origin.type === 'task' ? specOf(c, placedAs, taskTitle.get(String(c.origin.taskId)) ?? '') : placedAs;
       const id = await this.insert(tenantId, projectId, runId, c, p);
       if (!id) continue;
       newIds.push(id);
@@ -364,4 +365,17 @@ export class HubLibrarianService {
     if (r.degraded) return null;
     return validateModelAnswer(parseJsonLoose(r.text), { refs: new Set(rest.map((c) => c.ref)) }, new Map(srcList.map((s) => [s.ref, sources.get(s.ref)!])));
   }
+}
+
+/**
+ * ТЗ из задачи (#4801): ссылка на Google-документ в описании или документ во вложении —
+ * раздел «ТЗ и спецификации» с подписью по задаче. Остальное — как разложили правила.
+ */
+function specOf(c: Candidate, p: Placement, task: string): Placement {
+  if (p.section !== 'knowledge') return p;
+  const gdoc = c.kind === 'link' && /^https:\/\/docs\.google\.com\/(document|spreadsheets|presentation)\//.test(c.url ?? '');
+  const docFile = c.kind === 'file' && /\.(pdf|docx?|xlsx?|pptx?|odt|rtf|md|txt)$/i.test(c.fileName ?? '');
+  if (!gdoc && !docFile && p.category !== 'spec') return p;
+  const title = gdoc ? `ТЗ: ${task || p.title}` : `${c.fileName} — ТЗ к задаче «${task}»`;
+  return { section: 'knowledge', category: 'spec', title: title.slice(0, 200) };
 }
