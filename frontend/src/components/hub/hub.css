@@ -84,7 +84,7 @@
 
 /* кнопка, которая выглядит ссылкой: название записи, «из созвона ▸» */
 .hub-linkish {
-  border: 0; padding: 0; background: none; font: inherit; color: var(--accent); cursor: pointer; min-width: 0; max-width: 100%;
+  border: 0; padding: 0; background: none; font: inherit; color: var(--accent); cursor: pointer; min-width: 0; max-width: 100%; text-align: left;
   border-radius: 3px;
 }
 .hub-linkish:hover { text-decoration: underline; }
