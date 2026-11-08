@@ -19,7 +19,7 @@ export interface CoffeeFacts {
   /** решения вчерашних созвонов, видимых ему; peer — с кем был созвон (не он сам) */
   decisions: { text: string; peer: string | null; meetingTitle: string | null }[];
   /** горящие сегодня задачи команды (срок сегодня, задача у исполнителя) */
-  hot: { title: string; who: string | null }[];
+  hot: { title: string; who: string | null; topic?: string | null }[];
   /** всего таких задач (hot — только первые) */
   hotTotal: number;
   /** просрочено у исполнителей (ТЗ-30: сданное на проверку — не просрочка) */
@@ -69,9 +69,17 @@ export function decisionLine(d: CoffeeFacts['decisions'][number]): string {
 
 export function hotLine(h: CoffeeFacts['hot'][number]): string {
   const who = h.who ? firstName(h.who) : '';
+  // #1525, 1 в 1 с документом: «у Глеба по верстке» — короткая тема, если её удалось получить
+  const about = h.topic && isTopic(h.topic) ? `по ${h.topic}` : `по задаче «${clean(h.title, 70)}»`;
   return who
-    ? `Сегодня горящий дедлайн у ${declineName(who, 'gen')} по задаче «${clean(h.title, 70)}».`
-    : `Сегодня горящий дедлайн по задаче «${clean(h.title, 70)}».`;
+    ? `Сегодня горящий дедлайн у ${declineName(who, 'gen')} ${about}.`
+    : `Сегодня горящий дедлайн ${about}.`;
+}
+
+/** Тема годится для «по …»: 1–3 слова кириллицей, без кавычек и цифр, не длиннее 40 знаков. */
+export function isTopic(t: string): boolean {
+  const s = t.trim();
+  return s.length > 0 && s.length <= 40 && /^[а-яё\- ]+$/iu.test(s) && s.split(/\s+/).length <= 3;
 }
 
 /** «В техподдержке закрыты все 100 процентов вопросов» / «… закрыты 80 процентов вопросов». */

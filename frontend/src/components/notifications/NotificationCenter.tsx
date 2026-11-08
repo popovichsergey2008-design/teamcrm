@@ -163,9 +163,12 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
         <div className="drawer-head">
           <h3><Icon name="bell" size={18} /> <span className="nc-title">Уведомления</span></h3>
           <span className="nc-head-actions">
-            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={readAll} disabled={unread === 0} title="Отметить всё прочитанным" aria-label="Прочитать все">
-              <Icon name="check-check" size={15} /> <span className="nc-read-label">Прочитать все</span>
-            </button>
+            {/* #4703: на телефоне «Прочитать все» — строкой под поиском, чтобы заголовок не обрезался */}
+            {!phone && (
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={readAll} disabled={unread === 0} title="Отметить всё прочитанным" aria-label="Прочитать все">
+                <Icon name="check-check" size={15} /> <span className="nc-read-label">Прочитать все</span>
+              </button>
+            )}
             <button className="drawer-close" onClick={onClose} aria-label="Закрыть" title="Закрыть"><Icon name="close" size={16} /></button>
           </span>
         </div>
@@ -190,6 +193,11 @@ export function NotificationCenter({ onClose }: { onClose: () => void }) {
             aria-label="Поиск по уведомлениям"
           />
         </label>
+        {phone && (
+          <button className="ui-btn ui-btn-ghost ui-btn-sm nc-read-phone" onClick={readAll} disabled={unread === 0} title="Отметить всё прочитанным">
+            <Icon name="check-check" size={15} /> Прочитать все
+          </button>
+        )}
         <div className="nc-filters" role="group" aria-label="Фильтр уведомлений">
           <button className={`nc-chip${!unreadOnly ? ' active' : ''}`} aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>Все</button>
           <button className={`nc-chip${unreadOnly ? ' active' : ''}`} aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>

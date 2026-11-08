@@ -61,6 +61,22 @@ export function periodOf(question: string, now: Date, tz: string): Period | null
     const [ny, nm] = nextMonth(y, m);
     return range(ymd(y, m, 1), ymd(ny, nm, 1), `${MONTH_NOM[m - 1]}${month[3] ? ` ${y}` : ''}`);
   }
+  /*
+    #1525, 1 в 1 с документом: «два месяца назад», «3 недели назад», «полгода назад».
+    Люди называют срок приблизительно — берём окно вокруг этой точки: для месяцев ±3 недели,
+    для недель ±5 дней, для дней ±1 день.
+  */
+  const NUM: Record<string, number> = { один: 1, одну: 1, два: 2, две: 2, три: 3, четыре: 4, пять: 5, шесть: 6, семь: 7, восемь: 8, девять: 9, десять: 10, пару: 2, несколько: 3 };
+  const ago = q.match(/(?<![\p{L}])(?:(\d{1,2})|(один|одну|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|пару|несколько))?\s*(месяц(?:а|ев)?|недел(?:ю|и|ь)|дн(?:я|ей)|день)\s+назад(?![\p{L}])/u)
+    ?? (/(?<![\p{L}])полгода\s+назад/u.test(q) ? ['', '6', '', 'месяцев'] as unknown as RegExpMatchArray : null);
+  if (ago) {
+    const n = ago[1] ? Number(ago[1]) : ago[2] ? NUM[ago[2]] : 1;
+    const unit = ago[3];
+    const back = unit.startsWith('месяц') ? n * 30 : unit.startsWith('недел') ? n * 7 : n;
+    const spread = unit.startsWith('месяц') ? 21 : unit.startsWith('недел') ? 5 : 1;
+    const center = addDays(today, -back);
+    return range(addDays(center, -spread), addDays(center, spread + 1), ago[0].trim() || 'полгода назад');
+  }
   if (/(?:в|за)\s+прошл(?:ом|ый)\s+месяц/u.test(q)) {
     const [py, pm] = cm === 1 ? [cy - 1, 12] : [cy, cm - 1];
     return range(ymd(py, pm, 1), ymd(cy, cm, 1), 'прошлый месяц');

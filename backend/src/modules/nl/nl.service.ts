@@ -748,6 +748,11 @@ export class NlService {
         const wide = decided([x.source, x.around].join('\n'));
         if (wide.source === 'role') c = wide;
       }
+      /*
+        #4788: направление не понять, а проект известен — предлагаем того, кто ведёт больше
+        половины задач этого проекта за три месяца («везде только ты»). Подпись честная.
+      */
+      if (t.projectId && !c.userId && c.source === 'none') c = await this.org.byProject(tenantId, org, canSee, c, String(t.projectId), userId);
       t.directions = (directions.length ? directions : c.directions).filter((d) => TASK_DIRECTIONS.includes(d)).slice(0, MAX_AUTO_DIRECTIONS);
       x.draft.routing = {
         department, skill: c.skill ?? skill, confidence,
@@ -782,6 +787,17 @@ export class NlService {
     */
     const byWords = directionsFromText([draft.task?.title ?? '', draft.task?.description ?? '', source].join('\n'));
     if (!skill && byWords.length) { skill = byWords[0]; confidence = 1; }
+    /*
+      #4788: направление, которое уже определила модель («программная» в форме), — тоже
+      в подбор. Без этого одиночная постановка (/nl/parse) искала исполнителя только по
+      словам, и «Исправить выбор исполнителя ИИ…» оставалась ничьей.
+    */
+    const fromModel = (draft.task?.directions ?? []).find((d) => isSkill(d) && TASK_DIRECTIONS.includes(d as Skill)) as Skill | undefined;
+    if (!skill && fromModel) { skill = fromModel; confidence = Math.max(confidence, SURE_CONFIDENCE); }
+    // #4788: модель назвала только отдел («Программирование») — подбираем по нему
+    if (!skill && isDepartment(item?.department) && skillOfDepartment(item.department)) {
+      skill = skillOfDepartment(item.department); confidence = Math.max(confidence, MIN_CONFIDENCE);
+    }
     const department: Department = isDepartment(item?.department) && item.department !== 'unknown'
       ? item.department
       : departmentOf(skill);
@@ -963,7 +979,8 @@ export class NlService {
     // #4615, 23.10: кому — одним правилом (структура компании, видимость проекта, загрузка)
     const c = await this.org.chooseFor(tenantId, {
       authorId, text, projectId: input.projectId ? String(input.projectId) : null,
-      directions: skill && confidence >= MIN_CONFIDENCE ? [skill] : [],
+      // #4788: направление не названо, а отдел понятен («Программирование») — подбор по отделу
+      directions: skill && confidence >= MIN_CONFIDENCE ? [skill] : skillOfDepartment(department) ? [skillOfDepartment(department)!] : [],
     });
     const unsure = !c.userId && (!skill || confidence < MIN_CONFIDENCE) && c.source === 'none';
     return {
@@ -1209,4 +1226,9 @@ function parseClientNow(value?: string): Date {
   if (!m) return new Date();
   const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
   return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+/** #4788: отдел без направления — направление для подбора: программирование ведёт в IT-отдел. */
+function skillOfDepartment(d: Department): Skill | null {
+  return d === 'development' ? 'fullstack' : d === 'content' ? 'content' : null;
 }

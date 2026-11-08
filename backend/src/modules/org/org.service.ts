@@ -155,7 +155,34 @@ export class OrgService {
       input.projectId ? this.seers(tenantId, [String(input.projectId)]) : Promise.resolve(new Map<string, Set<string>>()),
     ]);
     const see = input.projectId ? seers.get(String(input.projectId)) ?? new Set<string>() : null;
-    return this.decide(org, (u) => !see || see.has(String(u)), input);
+    const canSee = (u: string) => !see || see.has(String(u));
+    const c = this.decide(org, canSee, input);
+    return input.projectId ? this.byProject(tenantId, org, canSee, c, String(input.projectId), input.authorId ?? null) : c;
+  }
+
+  /**
+   * #4788: направление не понять, а проект известен — того, кто ведёт больше половины
+   * задач этого проекта за три месяца («везде только ты»). Подпись честная; явного
+   * лидера нет — задача остаётся без исполнителя, как и раньше.
+   */
+  async byProject(tenantId: string, org: Org, canSee: (u: string) => boolean, c: ChooseForResult, projectId: string, authorId: string | null): Promise<ChooseForResult> {
+    if (c.userId || c.source !== 'none') return c;
+    const r = await this.db.one<{ id: string; name: string; n: number; total: number }>(
+      `WITH a AS (
+         SELECT t.assignee_id, count(*)::int AS n FROM tasks t
+          WHERE t.tenant_id = $1 AND t.project_id = $2 AND t.assignee_id IS NOT NULL AND t.deleted_at IS NULL
+            AND t.created_at > now() - interval '90 days'
+          GROUP BY t.assignee_id)
+       SELECT a.assignee_id::text AS id, u.full_name AS name, a.n, (SELECT sum(n)::int FROM a) AS total
+         FROM a JOIN users u ON u.id = a.assignee_id
+        WHERE u.is_active AND ($3::bigint IS NULL OR a.assignee_id <> $3::bigint)
+        ORDER BY a.n DESC LIMIT 1`,
+      [tenantId, projectId, authorId],
+    ).catch(() => null);
+    if (!r || !r.total || r.n < 3) return c;
+    const share = Math.round((r.n / r.total) * 100);
+    if (share < 50 || !canSee(r.id) || !org.people.some((p) => p.id === r.id && p.canReceive)) return c;
+    return { ...c, userId: r.id, name: r.name, source: 'load', reason: `ведёт большинство задач этого проекта (${share}%)` };
   }
 
   // ───────────────────────── экран структуры ─────────────────────────

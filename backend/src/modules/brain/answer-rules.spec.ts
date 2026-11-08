@@ -65,3 +65,19 @@ describe('второй мозг: подпись и ссылка', () => {
     expect(shapeAnswer('По регламенту [1].', sources)).toEqual({ text: 'По регламенту.', play: null });
   });
 });
+
+describe('#1525: «два месяца назад» — период вокруг этой точки', () => {
+  const now = new Date('2026-10-20T09:00:00Z');
+  const TZ = 'Europe/Moscow';
+  it('«два месяца назад» — окно ±3 недели около 21 августа', () => {
+    const p = periodOf('Мы же два месяца назад на созвоне с клиентом обсуждали особые условия скидки?', now, TZ)!;
+    expect(p.label).toBe('два месяца назад');
+    expect(p.from.toISOString().slice(0, 10)).toBe('2026-07-30');
+    expect(p.to.toISOString().slice(0, 10)).toBe('2026-09-11');
+  });
+  it('«3 недели назад», «полгода назад»', () => {
+    expect(periodOf('что решили 3 недели назад', now, TZ)!.label).toBe('3 недели назад');
+    expect(periodOf('что обсуждали полгода назад', now, TZ)!.label).toBe('полгода назад');
+  });
+});
+

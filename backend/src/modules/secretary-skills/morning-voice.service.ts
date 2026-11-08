@@ -112,9 +112,25 @@ export class MorningVoiceService implements OnModuleInit {
     }
   }
 
+  /** Тема задачи в дательном падеже для «по …» (1–3 слова). Модель молчит — null. */
+  private async topicOf(tenantId: string, title: string): Promise<string | null> {
+    try {
+      const raw = await this.ai.generate(tenantId,
+        'Перескажи название задачи короткой темой для фразы «горящий дедлайн по …»: 1–3 слова, в дательном падеже, строчными, без кавычек и точки. '
+        + 'Примеры: «Вёрстка главной страницы» → вёрстке главной; «Подготовить смету для клиента» → смете; «Исправить баг в оплате» → оплате. Верни только тему.',
+        title.slice(0, 200), 'morning_voice', { fast: true, timeoutMs: 6000, maxTokens: 20 });
+      const t = String(raw ?? '').replace(/[«»"'.]/g, '').trim().toLowerCase();
+      return t || null;
+    } catch {
+      return null;
+    }
+  }
+
   private async compose(tenantId: string, userId: string, name: string | null, tz: string, now: Date, today: string, fp: string, voice: boolean) {
     const { facts, standup, firstMeeting } = await this.facts(tenantId, userId, tz, now);
     const drafts: StandupDraft[] = standupDrafts(standup);
+    // #1525: «дедлайн у Глеба по верстке» — коротко пересказать название; не вышло — «по задаче «…»»
+    for (const h of facts.hot.slice(0, 2)) h.topic = await this.topicOf(tenantId, h.title);
     const coffee = morningCoffee({ ...facts, name, drafts: drafts.length });
 
     let audioFileId: string | null = null;
