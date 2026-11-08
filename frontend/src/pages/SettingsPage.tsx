@@ -19,6 +19,8 @@ import { GuestBrandPanel } from '../components/GuestBrandPanel';
 import { lazyComponent } from '../lib/lazy';
 // оплата открывается редко — отдельным куском
 const BillingPanel = lazyComponent(() => import('../components/billing/BillingPanel').then((m) => m.default));
+// #4799 NAV01: личные настройки меню и начального экрана
+const NavSettingsPanel = lazyComponent(() => import('../components/NavSettingsPanel').then((m) => m.NavSettingsPanel));
 import { navigate, Route } from '../lib/router';
 import { useState } from 'react';
 import { useAuth } from '../state/auth';
@@ -180,6 +182,12 @@ const CARDS: Card[] = [
     roles: ['owner', 'manager'],
   },
   {
+    tab: 'navigation',
+    title: 'Настройки навигации',
+    hint: 'Порядок меню, главная страница, что открывать при входе и избранное — только для вас',
+    icon: 'list',
+  },
+  {
     tab: 'assistant',
     title: 'Напоминания ассистента',
     hint: 'О чём AI-агент напоминает сам, а о чём спрашивает разрешения',
@@ -253,6 +261,7 @@ export function SettingsPage({ route, role }: { route: Route; role: string }) {
       {route.tab === 'tags' && <TagsSettingsPanel canManage={canManage} onClose={close} />}
       {/* Центр безопасности: права, правила компании, журнал и просмотры контактов. */}
       {route.tab === 'security' && <SecurityPanel onClose={close} />}
+      {route.tab === 'navigation' && <NavSettingsPanel onClose={close} />}
 
       {/*
         Раздел есть, а прав нет.

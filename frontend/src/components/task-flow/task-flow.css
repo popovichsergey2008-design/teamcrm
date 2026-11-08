@@ -15,6 +15,7 @@
 .rq { width: min(1180px, 100%); height: min(860px, 100%); display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .rq-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
 .rq-head h2 { margin: 2px 0 0; font-size: 20px; }
+.rq-head-acts { display: inline-flex; align-items: center; gap: 8px; }
 .rq-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 300px 1fr; }
 .rq-list { border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 .rq-list-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }

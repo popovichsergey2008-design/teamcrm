@@ -27,8 +27,11 @@ const draftKey = (id: string) => `qevo.review.draft:${id}`;
  * ИИ объясняет, но не принимает. Пришла новая версия, пока читал старую, — просим
  * перечитать. Решение не прошло (права, сеть) — комментарий остаётся черновиком.
  */
-export function ReviewQueue({ onClose, onOpenTask }: {
+export function ReviewQueue({ onClose, onOpenTask, projectId, projectName }: {
   onClose: () => void;
+  /** Макет 05: «Все задачи на проверке» или только этот проект. */
+  projectId?: string;
+  projectName?: string;
   onOpenTask: (t: { id: string; project_id: string }) => void;
 }) {
   const [queue, setQueue] = useState<QueueItem[] | null>(null);
@@ -38,6 +41,7 @@ export function ReviewQueue({ onClose, onOpenTask }: {
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState<'' | 'accept' | 'return' | 'ask' | 'ai'>('');
+  const [scope, setScope] = useState<'all' | 'project'>('all');
   useEscape(onClose, !busy);
 
   const loadQueue = useCallback(async (keep?: string | null) => {
@@ -120,6 +124,7 @@ export function ReviewQueue({ onClose, onOpenTask }: {
     } catch { setErr(`Не удалось открыть «${f.name}»`); }
   };
 
+  const shownQueue = scope === 'project' && projectId ? queue?.filter((q) => String(q.project_id) === String(projectId)) : queue;
   const t = item?.task;
   const waiting = t?.submitted_at ? workDays(new Date(t.submitted_at), new Date()) : 0;
   const undone = item?.checklist.filter((c) => !c.is_done) ?? [];
@@ -130,16 +135,24 @@ export function ReviewQueue({ onClose, onOpenTask }: {
       <div className="rq">
         <header className="rq-head">
           <div>
-            <div className="dim">Проекты и задачи / Решения</div>
+            <div className="dim">Проекты и задачи{projectName ? ` / ${projectName}` : ''} / Решения</div>
             <h2>Проверка результата</h2>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={18} /></Button>
+          <span className="rq-head-acts">
+            {projectId && (
+              <select className="ui-input ui-input-sm" value={scope} onChange={(e) => setScope(e.target.value as 'all' | 'project')} aria-label="Какие задачи показывать">
+                <option value="all">Все задачи на проверке</option>
+                <option value="project">Только «{projectName}»</option>
+              </select>
+            )}
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={18} /></Button>
+          </span>
         </header>
         <div className="rq-body">
           <aside className="rq-list" aria-label="Решения ждут от вас">
-            <div className="rq-list-head">Решения ждут от вас <Badge tone="info">{queue?.length ?? '…'}</Badge></div>
-            {queue?.length === 0 && <p className="dim">Сейчас ничего не ждёт вашего решения.</p>}
-            {queue?.map((q) => (
+            <div className="rq-list-head">Решения ждут от вас <Badge tone="info">{shownQueue?.length ?? '…'}</Badge></div>
+            {shownQueue?.length === 0 && <p className="dim">Сейчас ничего не ждёт вашего решения.</p>}
+            {shownQueue?.map((q) => (
               <button key={q.id} className={`rq-row${q.id === pick ? ' is-on' : ''}`} onClick={() => setPick(q.id)} aria-current={q.id === pick}>
                 <span className="dim">{when(q.handoff?.at ?? q.submitted_at)}</span>
                 <b>#{q.id} · {q.title}</b>

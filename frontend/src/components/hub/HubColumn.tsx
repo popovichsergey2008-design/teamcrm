@@ -63,11 +63,14 @@ function Clamp({ className, children }: { className: string; children: ReactNode
 /** Пункт «Что сейчас важно» (#4798 §17): считается доской по фактам и открывает свой срез. */
 export interface HubSignal { key: string; text: string; onOpen: () => void }
 
-export function HubColumn({ projectId, ownerId, variant = 'column', signals }: {
+export function HubColumn({ projectId, ownerId, variant = 'column', signals, open, onClose }: {
   projectId: string;
   ownerId?: string | null;
   variant?: 'column' | 'button';
   signals?: HubSignal[];
+  /** #4799, макет 01: открывается кнопкой «Инфоцентр проекта»; «свернуть» — закрыть. */
+  open?: boolean;
+  onClose?: () => void;
 }) {
   const { user } = useAuth();
   const phone = useIsPhone();
@@ -75,8 +78,12 @@ export function HubColumn({ projectId, ownerId, variant = 'column', signals }: {
   const { view, error, loading, reload } = useHub(projectId);
   // выбор человека на компьютере; на телефоне всегда полоса — «развернуть» там открывает паспорт
   const [choice, setChoice] = useState<{ projectId: string; collapsed: boolean } | null>(null);
-  const collapsed = phone || (choice?.projectId === projectId ? choice.collapsed : readCollapsed(uid, projectId, true));
-  const setCollapsed = (v: boolean) => { setChoice({ projectId, collapsed: v }); writeCollapsed(uid, projectId, v); };
+  const controlled = open !== undefined;
+  const collapsed = controlled ? !open : phone || (choice?.projectId === projectId ? choice.collapsed : readCollapsed(uid, projectId, true));
+  const setCollapsed = (v: boolean) => {
+    if (controlled) { if (v) onClose?.(); return; }
+    setChoice({ projectId, collapsed: v }); writeCollapsed(uid, projectId, v);
+  };
   const [passport, setPassport] = useState<{ tab: HubTab; add?: boolean } | null>(null);
   // номер прогона запоминаем при открытии: окно гасит бейдж (seen), и unseen тут же становится пустым
   const [runId, setRunId] = useState<string | null>(null);

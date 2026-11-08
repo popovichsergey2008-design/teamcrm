@@ -132,6 +132,13 @@ export function FocusDialog({ at, onClose, onSaved, preselect }: {
         </div>
         {custom && (Number(custom) < 10 || Number(custom) > 120) && <div className="dim cal-small">От 10 до 120 минут</div>}
 
+        {/* #4799, макет 04: правила сессии видны до запуска — это не настройки, а то, что будет */}
+        <div className="cal-tt-label">Во время фокуса</div>
+        <ul className="cal-rules" aria-label="Правила фокус-сессии">
+          <li><Icon name="check" size={14} /> Обычные звонки не прерывают сессию — звонящий видит, до скольки вы в фокусе</li>
+          <li><Icon name="check" size={14} /> Уведомления без звука — копятся в ленте, сводка придёт после</li>
+          <li><Icon name="check" size={14} /> Срочные исключения — по правилу ниже</li>
+        </ul>
         <div className="cal-tt-label">Кто может обратиться по срочному вопросу</div>
         <div className="kv2-seg" role="group" aria-label="Срочные обращения">
           <button className="kv2-seg-btn" aria-pressed={urgent === 'all'} onClick={() => setUrgent('all')}>Все, кому разрешено</button>

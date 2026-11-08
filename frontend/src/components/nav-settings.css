@@ -1,0 +1,28 @@
+/* Настройки навигации (#4799 NAV01, макет 02): лениво, вместе со страницей. */
+.ns { display: flex; flex-direction: column; gap: 14px; }
+.ns-head { display: flex; align-items: flex-start; justify-content: space-between; }
+.ns-head h2 { margin: 2px 0 0; }
+.ns-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.ns-side { display: flex; flex-direction: column; gap: 14px; }
+.ns-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.ns-card h3 { margin: 0; font-size: var(--fs-md); }
+.ns-card p { margin: 0; font-size: var(--fs-sm); }
+.ns-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 6px 18px; }
+.ns-group { font-size: calc(11px * var(--fs-scale)); text-transform: uppercase; letter-spacing: .04em; color: var(--text-mut); margin: 6px 0 4px; }
+.ns-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; border-radius: 0; }
+.ns-row:hover { background: var(--hover); }
+.ns-row.is-on { background: var(--accent-soft); }
+.ns-row.is-hidden .ns-name { color: var(--text-mut); text-decoration: line-through; }
+.ns-row.is-fixed { cursor: default; color: var(--text-dim); }
+.ns-row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.ns-grip { color: var(--text-mut); }
+.ns-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ns-tag { font-size: calc(11px * var(--fs-scale)); color: var(--accent); }
+.ns-picked { margin-top: 6px; font-size: var(--fs-sm); }
+.ns-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ns-radio { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+.ns-radio.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.ns-radio > span { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
+.ns-fav { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+@media (max-width: 860px) { .ns-grid { grid-template-columns: 1fr; } }
+.ns-drawer { width: min(1080px, 100vw); max-width: 100vw; overflow-y: auto; }

@@ -14,13 +14,15 @@ import type { BoardQuery } from '../../lib/board-query';
  * одним нажатием. Личный видит только автор; общий — все, кто видит проект, но задачи
  * в нём всё равно отбираются по правам смотрящего: вид — это условия, а не доступ.
  */
-export function ViewsMenu({ projectId, userId, isBoss, query, onApply, activeViewId }: {
+export function ViewsMenu({ projectId, userId, isBoss, query, onApply, activeViewId, inline = false }: {
   projectId: string;
   userId: string;
   isBoss: boolean;
   query: BoardQuery;
   onApply: (v: BoardView) => void;
   activeViewId: string | null;
+  /** Внутри «Фильтров»: список и «Сохранить» сразу, без своей кнопки. */
+  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [views, setViews] = useState<BoardView[]>([]);
@@ -57,13 +59,8 @@ export function ViewsMenu({ projectId, userId, isBoss, query, onApply, activeVie
   const mayEdit = (v: BoardView) => String(v.owner_id) === String(userId) || (v.shared && isBoss);
   const active = views.find((v) => v.id === activeViewId);
 
-  return (
-    <span className="bb-pop-wrap">
-      <Button variant={active ? 'secondary' : 'outline'} size="sm" className="bb-views-btn" aria-label="Сохранённые виды" aria-expanded={open} onClick={() => setOpen((x) => !x)} title="Сохранённые подборки задач">
-        <Icon name="star" size={15} /> <span className="bb-lbl">{active ? active.name : 'Виды'}</span>
-      </Button>
-      {open && (
-        <div className="bb-pop bb-pop-right" data-pop role="dialog" aria-label="Сохранённые виды">
+  const content = (
+    <>
           {views.length === 0 && <p className="bb-note">Сохранённых видов пока нет. Настройте условия и сохраните их под понятным именем.</p>}
           {views.map((v) => (
             <div key={v.id} className="bb-views-row">
@@ -80,6 +77,17 @@ export function ViewsMenu({ projectId, userId, isBoss, query, onApply, activeVie
           <Button variant="outline" size="sm" onClick={() => void save()}><Icon name="plus" size={14} /> Сохранить текущий вид</Button>
           <p className="bb-note">Вид хранит условия, а не доступ: каждый увидит в нём только свои доступные задачи.</p>
           {err && <p className="bb-note" role="alert">{err}</p>}
+    </>
+  );
+  if (inline) return <div className="bb-views-inline">{content}</div>;
+  return (
+    <span className="bb-pop-wrap">
+      <Button variant={active ? 'secondary' : 'outline'} size="sm" className="bb-views-btn" aria-label="Сохранённые виды" aria-expanded={open} onClick={() => setOpen((x) => !x)} title="Сохранённые подборки задач">
+        <Icon name="star" size={15} /> <span className="bb-lbl">{active ? active.name : 'Виды'}</span>
+      </Button>
+      {open && (
+        <div className="bb-pop bb-pop-right" data-pop role="dialog" aria-label="Сохранённые виды">
+          {content}
         </div>
       )}
     </span>

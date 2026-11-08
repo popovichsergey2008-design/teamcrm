@@ -4,13 +4,11 @@ import { BottomSheet, SheetAction } from './BottomSheet';
 import { useIsPhone } from '../hooks/useMediaQuery';
 import type { BoardColumn, Task, User } from '../types';
 import { MONETIZATION_ENABLED } from '../config';
-import { deadlineBadge, priorityBadge } from '../lib/labels';
+import { priorityBadge } from '../lib/labels';
 import { COL_DND, TASK_DND } from '../lib/board-dnd';
-import { Avatar } from './ui/avatar';
-import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
-import { nextStep, splitDone, stageAge, staleDays, daysWord } from '../lib/board-card';
+import { dueText, nextStep, splitDone, stageAge, staleDays, daysWord } from '../lib/board-card';
 import { PAUSED_STAGES } from '../lib/board-filter';
 
 interface Props {
@@ -148,6 +146,7 @@ export function ColumnView({
     // Свёрнутая колонка — узкая полоса с названием и числом; принимает карточки как обычная.
     return (
       <div
+        data-col-id={column.id}
         className={`column is-collapsed ${over ? 'column-over' : ''}`}
         role="button"
         tabIndex={0}
@@ -167,6 +166,7 @@ export function ColumnView({
 
   return (
     <div
+      data-col-id={column.id}
       className={`column ${over ? 'column-over' : ''} ${colOver ? 'column-dnd-over' : ''} ${dragging ? 'column-dragging' : ''}`}
       onDragOver={(e) => {
         if (isColumnDrag(e)) {
@@ -341,7 +341,7 @@ function TaskCard({
 }) {
   const cost = task.cost_current !== undefined ? Number(task.cost_current) : null;
   const prio = priorityBadge(task.priority);
-  const due = deadlineBadge(task.deadline_at, !!task.closed_at, paused);
+  const due = dueText(task.deadline_at, !!task.closed_at, paused);
   /*
     «Переместить» — кнопка на карточке.
 
@@ -411,90 +411,58 @@ function TaskCard({
           {labels.map((l) => <span key={l.id} className="card-label" style={{ background: l.color }} title={`Тег: ${l.name}`} />)}
         </div>
       )}
+      {/* #4799, макет 01: первой строкой — номер, приоритет, файлы, сколько на этапе */}
+      <div className="kc-top">
+        <span title="Номер задачи">№{task.id}</span>
+        {prio && <span title="Приоритет">{prio.label} приоритет</span>}
+        {!!task.attachmentsCount && <span title="Вложения">{task.attachmentsCount} {fileWord(task.attachmentsCount)}</span>}
+        {!!task.audio_proof_sec && <span title="Есть фрагмент созвона с поручением">созвон {task.audio_proof_sec} сек</span>}
+        {task.recurrence_id && <span title="Регулярная задача — повторяется по расписанию">повтор</span>}
+        {stale > 0
+          ? <span className="kc-stale" title="Ни правок, ни сообщений, ни переносов. Это не значит, что работа не идёт — уточните состояние в карточке">нет обновления {daysWord(stale)}</span>
+          : age && <span title="Сколько рабочих дней задача на нынешнем этапе">{age.toLowerCase()}</span>}
+      </div>
       <div className="task-title">
-        {/* сданная на тестирование/проверку задача риска срыва не несёт (21.10) */}
         {task.risk_level && !paused && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
         {task.title}
-        {/* Сколько по задаче нового ЛИЧНО ДЛЯ МЕНЯ: чужие изменения после того, как
-            я последний раз открывал карточку. Стоит у заголовка, а не среди значков
-            внизу: это не свойство задачи, а повод её открыть. */}
         {!!task.unread && (
           <span className="task-unread" title={`Новое для вас: ${task.unread} изменений с вашего последнего просмотра (не просрочка)`}>
             {task.unread > 99 ? '99+' : task.unread}
           </span>
         )}
       </div>
-      <div className="task-meta">
-        {/* Номер — первым: по нему задачу называют в переписке, в отчёте боту и
-            в чужой ссылке. Раньше он был только внутри карточки, и чтобы ответить
-            «сделал 1264», её приходилось открывать. */}
-        <span className="task-card-num" title="Номер задачи">#{task.id}</span>
-        {assigneeName && (
-          <span className="assignee-chip" title={`Исполнитель: ${assigneeName}`}>
-            <Avatar name={assigneeName} size={18} />
-            {assigneeName}
-          </span>
-        )}
-        {/* Постановщик — второй чип, приглушённый: главный вопрос карточки «кто делает»,
-            а «кто поручил» нужен, когда с работой что-то не так. Показываем всегда,
-            когда он известен, даже если человек поставил задачу себе: два пустых
-            места в карточке хуже одного повтора имени. */}
-        {managerName && (
-          <span className="manager-chip" title={`Постановщик: ${managerName}`}>
-            <Icon name="send" size={11} /> от {managerName}
-          </span>
-        )}
-        {task.agent_assigned && <Badge tone="info" title="Исполнитель — ИИ-агент"><Icon name="robot" size={11} /> ИИ-агент</Badge>}
-        {/* Сдано и ждёт постановщика: по доске должно быть видно, что работа
-            сделана, но задача ещё не закрыта — иначе «Готово» врёт. */}
-        {task.approval_state === 'pending' && (
-          <Badge tone="warn" title="Работа сдана, ждёт решения постановщика">На согласовании</Badge>
-        )}
-        {/* Объединённая задача остаётся в списках, и без пометки её открывают как живую */}
-        {task.merged_into_id && (
-          <Badge tone="info" title={`Объединена с задачей #${task.merged_into_id}`}>
-            <Icon name="refresh" size={11} /> объединена
-          </Badge>
-        )}
-
-        {prio && (
-          <Badge tone={prio.tone} title="Приоритет">
-            <Icon name={prio.tone === 'danger' ? 'zap' : prio.tone === 'warn' ? 'arrow-up' : 'arrow-down'} size={11} />{prio.label}
-          </Badge>
-        )}
-        {due && <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>}
-        {/* Повтор — первым: он объясняет, ПОЧЕМУ задача снова на доске. Без значка
-            очередная копия выглядит дублем, и её удаляют «как лишнюю». */}
-        {task.recurrence_id && (
-          <Badge tone="neutral" title="Регулярная задача — повторяется по расписанию">
-            <Icon name="refresh" size={11} /> повтор
-          </Badge>
-        )}
-        {MONETIZATION_ENABLED && cost !== null && (
-          <Badge tone="neutral" title="Себестоимость в реальном времени">
-            ₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}
-          </Badge>
-        )}
+      <div className="kc-people">
+        <span className="kc-who" title={assigneeName ? `Исполнитель: ${assigneeName}` : 'Исполнитель не назначен'}>
+          <span className={`kc-dot${assigneeName ? '' : ' is-empty'}`} aria-hidden="true" />
+          {assigneeName ?? 'не назначен'}
+        </span>
+        {managerName && <span className="kc-from" title={`Постановщик: ${managerName}`}>от {managerName}</span>}
       </div>
-      {step && (
-        <div className={`kc-step t-${step.tone}`} title={step.title}>
-          <Icon name={step.tone === 'blocked' ? 'ban' : step.tone === 'mine' || step.tone === 'review' ? 'eye' : step.tone === 'wait' || step.tone === 'client' ? 'hourglass' : step.tone === 'returned' ? 'reply' : 'user'} size={13} />
-          <span>{step.text}</span>
+      {(step && step.tone !== 'work') || task.agent_assigned || task.merged_into_id ? (
+        <div className="kc-chips">
+          {step && step.tone !== 'work' && (
+            <span className={`kc-chip t-${step.tone}`} title={step.title}>
+              {step.text}{task.approval_state === 'pending' ? ' · На согласовании' : ''}
+            </span>
+          )}
+          {task.agent_assigned && <span className="kc-chip" title="Исполнитель — ИИ-агент">ИИ-агент</span>}
+          {task.merged_into_id && <span className="kc-chip" title={`Объединена с задачей #${task.merged_into_id}`}>объединена с #{task.merged_into_id}</span>}
         </div>
-      )}
+      ) : null}
       <div className="kc-foot">
-        {!!task.checklistTotal && (
-          <span className={`kv2-stat${task.checklistDone === task.checklistTotal ? ' is-done' : ''}`} title={`Чек-лист: выполнено ${task.checklistDone} из ${task.checklistTotal}`}>
-            <Icon name="check-circle" size={13} /> {task.checklistDone}/{task.checklistTotal}
-          </span>
-        )}
-        {!!task.commentsCount && <span className="kv2-stat" title={`Сообщений в обсуждении: ${task.commentsCount}`}><Icon name="chat" size={13} /> {task.commentsCount}</span>}
-        {!!task.attachmentsCount && <span className="kv2-stat" title={`Вложений: ${task.attachmentsCount}`}><Icon name="paperclip" size={13} /> {task.attachmentsCount}</span>}
-        {!!task.audio_proof_sec && <span className="kv2-stat" title="Есть фрагмент созвона с поручением"><Icon name="mic" size={13} /> {task.audio_proof_sec} сек</span>}
-        {stale > 0
-          ? <span className="kc-age kc-stale" title="Ни правок, ни сообщений, ни переносов. Это не значит, что работа не идёт — уточните состояние в карточке">Нет обновления {daysWord(stale)}</span>
-          : age && <span className="kc-age" title="Сколько рабочих дней задача на нынешнем этапе">{age}</span>}
+        {due ? <span className={`kc-due d-${due.tone}`} title={task.deadline_at ? `Срок: ${new Date(task.deadline_at).toLocaleString('ru-RU')}` : undefined}>{due.text}</span> : <span className="kc-due d-none">без срока</span>}
+        <span className="kc-counts">
+          {!!task.checklistTotal && <span className={task.checklistDone === task.checklistTotal ? 'is-done' : undefined} title="Чек-лист">Чек-лист {task.checklistDone}/{task.checklistTotal}</span>}
+          {!!task.commentsCount && <span title="Сообщений в обсуждении">Комментарии {task.commentsCount}</span>}
+          {MONETIZATION_ENABLED && cost !== null && <span title="Себестоимость в реальном времени">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>}
+        </span>
       </div>
     </div>
   );
+}
+
+/** «1 файл», «2 файла», «5 файлов». */
+function fileWord(n: number): string {
+  const m10 = n % 10; const m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? 'файл' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'файла' : 'файлов';
 }

@@ -22,6 +22,8 @@ const PRIORITY = [
 export interface BoardCounts {
   /** Итог после всех условий — «Показано N». */
   shown: number;
+  /** Сколько задач в режиме и ролях — число на кнопке «Мои задачи» (макет 01). */
+  mine: number;
   /** Каждое быстрое условие отдельно — в текущем режиме, ролях и фильтрах. */
   quick: Record<QuickKey, number>;
   active: number;
@@ -42,7 +44,7 @@ export interface BoardCounts {
  */
 export function BoardBar({
   query, onChange, counts, view, onView, onCreate, createHint, onVoice, onOpenSettings, onOpenReview,
-  users, columns, labels, creators, viewsSlot, extraActions,
+  users, columns, labels, creators, viewsSlot, extraActions, stages, onJump, onAllStages, hubSlot,
 }: {
   query: BoardQuery;
   onChange: (q: BoardQuery) => void;
@@ -59,8 +61,15 @@ export function BoardBar({
   columns: { id: string; name: string }[];
   labels: { id: string; name: string }[];
   creators: [string, string][];
+  /** Сохранённые виды — внутри «Фильтров» (BOARD06: «Фильтры → Сохранить вид»). */
   viewsSlot?: React.ReactNode;
   extraActions?: React.ReactNode;
+  /** Ряд этапов под условиями (макет 01): видимые колонки подсвечены, нажатие — к колонке. */
+  stages?: { id: string; name: string; visible: boolean; count: number }[];
+  onJump?: (columnId: string) => void;
+  onAllStages?: () => void;
+  /** Справа в строке «Показано N» — вход в Инфоцентр проекта. */
+  hubSlot?: React.ReactNode;
 }) {
   const [rolesOpen, setRolesOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -125,7 +134,6 @@ export function BoardBar({
             <button className="bb-x" onClick={() => set({ search: '' })} aria-label="Очистить поиск"><Icon name="close" size={12} /></button>
           )}
         </label>
-        <span className="bb-spacer" />
         <span className="kv2-seg" role="group" aria-label="Вид доски">
           <button className="kv2-seg-btn" aria-pressed={view === 'board'} onClick={() => onView('board')} title="Канбан-доска — тот же отбор задач" aria-label="Доска"><Icon name="board" size={15} /> <span className="bb-lbl">Доска</span></button>
           <button className="kv2-seg-btn" aria-pressed={view === 'list'} onClick={() => onView('list')} title="Список — тот же отбор задач" aria-label="Список"><Icon name="list" size={15} /> <span className="bb-lbl">Список</span></button>
@@ -155,10 +163,10 @@ export function BoardBar({
                 )}
               </div>
               <p className="bb-note">Исполнитель и «Кто поставил» — разные поля. Счётчики считают только задачи, которые вам видны.</p>
+              {viewsSlot && (<><div className="bb-pop-head">Сохранённые виды</div>{viewsSlot}</>)}
             </div>
           )}
         </span>
-        {viewsSlot}
         {onOpenSettings && (
           <Button variant="ghost" size="sm" onClick={onOpenSettings} title="Настройки этой доски">
             <Icon name="settings" size={15} /> Настройки
@@ -170,12 +178,12 @@ export function BoardBar({
       <div className="bb-row bb-quick" role="group" aria-label="Быстрые условия">
         <span className="bb-pop-wrap">
           <button
-            className={`bb-chip bb-roles-btn${query.scope === 'mine' ? ' is-on' : ''}`}
+            className={`bb-chip bb-roles-btn is-main${query.scope === 'mine' ? ' is-on' : ''}`}
             aria-expanded={rolesOpen}
             onClick={() => setRolesOpen((v) => !v)}
             title="Мои роли в задачах: можно выбрать несколько — подойдёт любая"
           >
-            <Icon name="user" size={14} /> {rolesLabel}
+            {rolesLabel} <span className="bb-n bb-n-big">{query.scope === 'all' ? counts.shown : counts.mine}</span>
             <Icon name="chevron-down" size={13} />
           </button>
           {rolesOpen && (
@@ -199,19 +207,14 @@ export function BoardBar({
           const on = query.quick.includes(k);
           return (
             <button key={k} className={`bb-chip${on ? ' is-on' : ''}${k === 'decide' && counts.quick[k] ? ' is-hot' : ''}`} aria-pressed={on} onClick={() => toggleQuick(k)} title={q.hint}>
-              {q.label} <span className="bb-n">{counts.quick[k]}</span>
+              {q.short ?? q.label} <span className="bb-n">{counts.quick[k]}</span>
             </button>
           );
         })}
-        {onOpenReview && counts.quick.decide > 0 && (
-          <Button variant="ghost" size="sm" onClick={onOpenReview} title="Открыть сданную работу по одной: принять, вернуть или задать вопрос">
-            Проверить по очереди <Icon name="arrow-right" size={14} />
-          </Button>
-        )}
       </div>
 
       <div className="bb-row bb-status" aria-live="polite">
-        <b>Показано {counts.shown}</b>
+        <b>Показано {counts.shown} {taskWord(counts.shown)}</b>
         <span className="bb-dim">· {query.scope === 'all' ? 'Все задачи на доске' : allRoles ? 'Мои задачи' : rolesLabel}</span>
         {query.hideDone && <span className="bb-dim">· Завершённые скрыты</span>}
         <span className="bb-dim bb-totals">· Активные: {counts.active} · Завершённые: {counts.done}</span>
@@ -226,7 +229,31 @@ export function BoardBar({
             Сбросить условия
           </button>
         )}
+        <span className="bb-spacer" />
+        {onOpenReview && counts.quick.decide > 0 && (
+          <button className="bb-link" onClick={onOpenReview} title="Открыть сданную работу по одной: принять, вернуть или задать вопрос">
+            Проверить по очереди →
+          </button>
+        )}
+        {hubSlot}
       </div>
+      {!!stages?.length && (
+        <div className="bb-row bb-stages" role="group" aria-label="Этапы доски">
+          {stages.map((s) => (
+            <button key={s.id} className={`bb-stage${s.visible ? ' is-vis' : ''}`} onClick={() => onJump?.(s.id)} title={`Перейти к колонке «${s.name}» · задач: ${s.count}`}>
+              {s.name}
+            </button>
+          ))}
+          <span className="bb-spacer" />
+          {onAllStages && <button className="bb-link" onClick={onAllStages} title="Развернуть свёрнутые колонки и показать доску с начала">Все этапы ↗</button>}
+        </div>
+      )}
     </div>
   );
+}
+
+/** «1 задача», «2 задачи», «5 задач». */
+function taskWord(n: number): string {
+  const m10 = n % 10; const m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? 'задача' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'задачи' : 'задач';
 }

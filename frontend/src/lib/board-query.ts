@@ -31,8 +31,8 @@ export const DEFAULT_QUERY: BoardQuery = {
 };
 
 /** Три быстрых условия на панели доски и ещё два — в «Фильтрах» (#4798 §12). */
-export const QUICK: { key: QuickKey; label: string; hint: string }[] = [
-  { key: 'decide', label: 'Ждут моего решения', hint: 'Работа сдана, решение — за вами: вы проверяющий или постановщик' },
+export const QUICK: { key: QuickKey; label: string; hint: string; short?: string }[] = [
+  { key: 'decide', label: 'Ждут моего решения', short: 'Ждут решения', hint: 'Работа сдана, решение — за вами: вы проверяющий или постановщик' },
   { key: 'today', label: 'Срок сегодня', hint: 'Срок — на сегодняшнюю дату. Просроченные сюда не входят' },
   { key: 'blocked', label: 'Есть препятствия', hint: 'Отмечено «Есть препятствие». Просрочка сама по себе препятствием не считается' },
   { key: 'overdue', label: 'Просроченные', hint: 'Срок прошёл, а работа у исполнителя' },

@@ -69,6 +69,31 @@ export function nextStep(t: CardTask, stage: string | undefined, me: string): Ne
     : { text: `${t.assignee_name ?? 'Исполнитель'} выполняет`, tone: 'work', title: 'Следующий шаг — за исполнителем' };
 }
 
+/**
+ * Срок на карточке словами (#4799, макет 01): «Сегодня, 17:00», «Завтра», «Пятница»,
+ * дальше — дата. Красный — только просрочка исполнителя; сданное на проверку — нейтрально.
+ */
+export function dueText(deadline: string | null | undefined, closed: boolean, paused: boolean, now = new Date()): { text: string; tone: 'over' | 'soon' | 'plain' | 'done' } | null {
+  if (!deadline) return null;
+  const d = new Date(deadline);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((day(d) - day(now)) / 86_400_000);
+  const hm = d.getHours() || d.getMinutes() ? d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
+  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+  if (closed) return { text: date, tone: 'done' };
+  if (days < 0 || (days === 0 && d < now)) {
+    return paused ? { text: `${date} · на проверке`, tone: 'plain' } : { text: `Просрочено: ${days === 0 ? `сегодня${hm ? `, ${hm}` : ''}` : date}`, tone: 'over' };
+  }
+  if (days === 0) return { text: `Сегодня${hm ? `, ${hm}` : ''}`, tone: 'soon' };
+  if (days === 1) return { text: `Завтра${hm ? `, ${hm}` : ''}`, tone: 'soon' };
+  if (days < 7) {
+    const wd = d.toLocaleDateString('ru-RU', { weekday: 'long' });
+    return { text: wd[0].toUpperCase() + wd.slice(1), tone: 'plain' };
+  }
+  return { text: date, tone: 'plain' };
+}
+
 /** Рабочие дни между двумя моментами (без выходных). */
 export function workDays(from: Date, to: Date): number {
   if (Number.isNaN(from.getTime()) || to <= from) return 0;

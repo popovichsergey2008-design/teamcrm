@@ -1,8 +1,8 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
-import { NotificationBell } from './NotificationBell';
-import { applyHidden, applyOrder, isHidden, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
+import { applyHidden, applyOrder, isHidden, MENU_PREFS_CHANGED, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
+import { badgeText, openNotificationCenter, useCenterUnread } from '../lib/notification-center';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { setQuietSource, setStatusQuiet } from '../lib/quiet';
 import { Avatar } from './Avatar';
@@ -28,6 +28,7 @@ import { getSocket } from '../lib/socket';
 import { api } from '../lib/api';
 import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
+import './sidebar-v3.css';
 import { OptionSelect } from './ui/option-select';
 import { initialsOf } from '../lib/initials';
 import { restartTour, restartWelcome } from '../lib/tour';
@@ -276,6 +277,12 @@ export function Sidebar({
   /** Отпустили после перетаскивания — следующий клик по ссылке не переход. */
   const noClickUntil = useRef(0);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
+  useEffect(() => {
+    const on = (e: Event) => setPrefs((cur) => ({ ...cur, ...((e as CustomEvent<MenuPrefs>).detail ?? {}) }));
+    window.addEventListener(MENU_PREFS_CHANGED, on);
+    return () => window.removeEventListener(MENU_PREFS_CHANGED, on);
+  }, []);
+  const centerUnread = useCenterUnread();
 
   const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
     && (!i.devOnly || CLIENTS_ENABLED));
@@ -295,6 +302,7 @@ export function Sidebar({
     // Только своё — порядок, скрытые, главная: остальные ключи настроек пишут другие
     // места (обучение, Chat Bar), и устаревшая копия отсюда затирала бы их.
     void api.saveUiPrefs({ order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '' }).catch(() => undefined);
+    window.dispatchEvent(new CustomEvent(MENU_PREFS_CHANGED, { detail: { order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '' } }));
   };
 
   /** Новый порядок: видимые как расставлены, скрытые — следом, их место неважно. */
@@ -371,7 +379,17 @@ export function Sidebar({
   };
   // Вход на «/» — открываем выбранную главную, а не всегда «Фокус дня».
   useEffect(() => {
-    if (home !== 'focus' && window.location.pathname === '/') navigate({ section: home as Section }, { replace: true });
+    if (window.location.pathname !== '/') return;
+    const goHome = () => { if (home !== 'focus') navigate({ section: home as Section }, { replace: true }); };
+    if (prefs.startup === 'project' && prefs.startProject) {
+      navigate({ section: 'projects', projectId: String(prefs.startProject) }, { replace: true });
+    } else if (prefs.startup === 'focus_session') {
+      api.focusSessionCurrent().then((s) => {
+        const t = s && !s.finished ? s.task ?? s.tasks?.[0] : null;
+        if (t && window.location.pathname === '/') navigate({ section: 'projects', projectId: String(t.projectId), taskId: String(t.id) }, { replace: true });
+        else goHome();
+      }).catch(goHome);
+    } else goHome();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Свой статус присутствия: читается из сводки при входе, ставится из меню профиля. */
@@ -568,6 +586,10 @@ export function Sidebar({
       >
         {/* ── верхний блок ── */}
         <div className="nav-top">
+          <button className="nav-brand" onClick={() => go({ section: home as Section })} title="QEVO · на главную" aria-label="На главную">
+            <Logo size={24} />
+            <span className="nav-label nav-brand-text"><b>QEVO</b><span>ONE WORKSPACE</span></span>
+          </button>
           <div className="nav-org">
             {/*
               Верхнего меню больше нет (#4717, 02.11): наверху — сквозной поиск, он открывается
@@ -577,7 +599,7 @@ export function Sidebar({
             <div className="nav-search-row nav-search-top">
               <button className="nav-search" onClick={() => { setOpen(false); onSearch(); }} title="Поиск и команды (Ctrl+K)">
                 <Icon name="search" size={16} />
-                <span className="nav-label">Поиск…</span>
+                <span className="nav-label">Поиск приложения</span>
                 <kbd className="nav-kbd">Ctrl K</kbd>
               </button>
               <button
@@ -589,17 +611,52 @@ export function Sidebar({
                 <Icon name="mic" size={16} />
               </button>
             </div>
-            {/* Центр уведомлений (#4655) — на виду, рядом с аккаунтом: как колокольчик в шапке Битрикса */}
-            <NotificationBell className="nav-bell" />
-            <button
-              className="nav-collapse"
-              onClick={toggleCollapsed}
-              title={collapsed ? 'Развернуть панель' : 'Свернуть панель'}
-              aria-label={collapsed ? 'Развернуть панель' : 'Свернуть панель'}
-            >
-              <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
-            </button>
           </div>
+          {/* #4799, макет 01: под поиском — команды самого меню текстом */}
+          <button className="nav-cmd" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
+            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} />
+            <span className="nav-label">Свернуть меню</span>
+          </button>
+          <button className="nav-cmd" onClick={() => go({ section: 'settings', tab: 'navigation' })} title="Порядок меню, главная страница, что открывать при входе">
+            <Icon name="settings" size={14} />
+            <span className="nav-label">Настроить меню</span>
+          </button>
+          {hiddenItems.length > 0 && (
+            <div className="nav-archive nav-archive-top">
+              <button className="nav-cmd" onClick={() => setArchiveOpen((v) => !v)} aria-expanded={archiveOpen} title="Скрытые пункты меню">
+                <Icon name={archiveOpen ? 'chevron-down' : 'more'} size={14} />
+                <span className="nav-label">Ещё разделы · {hiddenItems.length}</span>
+              </button>
+              {archiveOpen && !collapsed && (
+                <>
+                  {hiddenItems.map((item) => (
+                    <div key={item.section} className="nav-archive-row">
+                      {isBlock(item.section) ? (
+                        <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
+                      ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
+                        <>
+                          <Icon name={item.icon} size={16} />
+                          <span className="nav-label">{item.label}</span>
+                        </>
+                      ))}
+                      <button className="nav-archive-back" onClick={() => unhide(item.section)} title="Вернуть в меню" aria-label={`Вернуть «${item.label}» в меню`}>
+                        <Icon name="eye" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <button className="nav-archive-all" onClick={() => savePrefs({ ...prefs, hidden: [] })}>
+                    <Icon name="refresh" size={13} /> Восстановить все пункты
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {/* Центр уведомлений (#4655) — карточкой «Уведомления · N непрочитано», как на макете */}
+          <button className={`nav-notif${centerUnread ? ' has-new' : ''}`} onClick={openNotificationCenter} title={centerUnread ? `Уведомления: непрочитанных ${centerUnread}` : 'Уведомления'} aria-label={centerUnread ? `Уведомления: непрочитанных ${centerUnread}` : 'Уведомления'}>
+            <Icon name="bell" size={16} />
+            <span className="nav-label">Уведомления</span>
+            {centerUnread > 0 && <span className="nav-notif-n">{badgeText(centerUnread)}<span className="nav-label"> непрочитано</span></span>}
+          </button>
 
           {/*
             Кнопок «Новая задача», «Созвон» и «Гость» здесь больше нет.
@@ -615,6 +672,7 @@ export function Sidebar({
         <nav ref={navRef} className={`nav-main${drag ? ' nav-editing' : ''}`} aria-label="Разделы">
           {/* #4764: появляется только при незавершённых действиях */}
           {!collapsed && <ContinueWork onGo={() => setOpen(false)} />}
+          {!collapsed && <div className="nav-section-title">Рабочее пространство</div>}
           {menuItems.map((item) => {
             if (isBlock(item.section) && collapsed) return null;
             // реестр задач живёт внутри «Проектов» — там и подсветка
@@ -734,41 +792,6 @@ export function Sidebar({
           {!menuItems.some((i) => i.section === 'chat') && callWidget}
 
           {/*
-            Скрытые пункты — архивом внизу, как в Битриксе (#4601): свёрнуты, видны
-            только когда что-то скрыто. Отсюда же открыть скрытый раздел или вернуть.
-          */}
-          {!collapsed && hiddenItems.length > 0 && (
-            <div className="nav-archive">
-              <button className="nav-archive-head" onClick={() => setArchiveOpen((v) => !v)} aria-expanded={archiveOpen}>
-                <Icon name={archiveOpen ? 'chevron-down' : 'chevron-right'} size={13} />
-                Скрытые пункты · {hiddenItems.length}
-              </button>
-              {archiveOpen && (
-                <>
-                  {hiddenItems.map((item) => (
-                    <div key={item.section} className="nav-archive-row">
-                      {/* у «Избранного» и «Черновиков» страницы нет — только вернуть в меню */}
-                      {isBlock(item.section) ? (
-                        <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
-                      ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
-                        <>
-                          <Icon name={item.icon} size={16} />
-                          <span className="nav-label">{item.label}</span>
-                        </>
-                      ))}
-                      <button className="nav-archive-back" onClick={() => unhide(item.section)} title="Вернуть в меню" aria-label={`Вернуть «${item.label}» в меню`}>
-                        <Icon name="eye" size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  <button className="nav-archive-all" onClick={() => savePrefs({ ...prefs, hidden: [] })}>
-                    <Icon name="refresh" size={13} /> Восстановить все пункты
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-          {/*
             #4727: AI-агент и личный кабинет — в конце прокрутки, ниже всех пунктов меню
             (раньше стояли над прокруткой и отнимали у неё место). Внизу остаётся аккаунт.
           */}
@@ -818,32 +841,41 @@ export function Sidebar({
             его не находили («его там в чатах никто не найдёт в жизни», заказчик 08.10).
             Кружок открывает бота на весь экран; виден из любого раздела.
           */}
-          <div className="nav-support-wrap">
+          <div className="nav-botrow">
             <button
-              className="nav-support-fab nav-bot-fab"
+              className="nav-bot-line"
               onClick={() => { setOpen(false); navigate({ section: 'chat', chatId: 'anthill' }); }}
               title="QEVO Bot — ваш секретарь: напоминания, сводки, встречи, почта"
               aria-label="Открыть QEVO Bot — секретаря"
             >
-              <BotBadgeArt />
+              <span className="nav-bot-ico"><BotBadgeArt /></span>
+              <span className="nav-label nav-bot-text"><b>QEVO Bot</b><span>Секретарь</span></span>
             </button>
             {/* удержание 1 с — шторка «голосом, созвон или написать» (ТЗ-34, п. 2.1) */}
-            <button className="nav-support-fab nav-care-fab" data-care-hold="" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
+            <button className="nav-care-mini" data-care-hold="" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
               <SupportArt />
             </button>
           </div>
+          {/* Компания — своей строкой: переключить пространство или создать новое */}
+          <DropdownMenu
+            align="start"
+            trigger={(
+              <button className="nav-org-line" title={`Компания: ${orgName}`}>
+                {orgLogo ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-org-logo" /> : <Icon name="building" size={15} />}
+                <span className="nav-label">{orgName}</span>
+                <Icon name="chevron-down" size={13} />
+              </button>
+            )}
+          >
+            {organizations.map((o) => (
+              <MenuItem key={o.tenantId} onSelect={() => { if (String(o.tenantId) !== String(user.tenantId)) onSwitchOrg(o.tenantId); }} icon={<Icon name={String(o.tenantId) === String(user.tenantId) ? 'check' : 'building'} size={15} />}>
+                {o.name} · {roleLabel(o.role)}
+              </MenuItem>
+            ))}
+            <MenuSeparator />
+            <MenuItem onSelect={() => onSwitchOrg('__new__')} icon={<Icon name="plus" size={15} />}>Создать пространство…</MenuItem>
+          </DropdownMenu>
           <div className="nav-profile" ref={menuRef} style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 6 }}>
-            {/* Знак компании (её логотип, если загружен) — здесь, у аккаунта; щелчок — на главную */}
-            <button
-              className="nav-org-mark"
-              onClick={() => go({ section: home as Section })}
-              title={`${orgName} · на главную`}
-              aria-label="На главную"
-            >
-              {orgLogo
-                ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-org-logo" />
-                : <Logo size={30} />}
-            </button>
             {/*
               Аккаунт — внизу (#4716, 02.11; до того — наверху по #1348).
 

@@ -23,6 +23,7 @@ import { ViewsMenu } from '../components/board/ViewsMenu';
 import { DropdownMenu, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
 import { flowApi } from '../lib/flow-api';
 import { showToast } from '../lib/notifications';
+import { useIsPhone } from '../hooks/useMediaQuery';
 import { ImportedFeedPanel } from '../components/ImportedFeedPanel';
 import { EmptyState } from '../components/EmptyState';
 import { CareEmpty } from '../components/care';
@@ -254,6 +255,14 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Сообщение о том, что часть условий снята: доступ или состав доски изменились. */
   const [accessNote, setAccessNote] = useState('');
   const [reviewOpen, setReviewOpen] = useState(false);
+  const phone = useIsPhone();
+  /** Инфоцентр — по кнопке «Инфоцентр проекта» (макет 01), открыт ли — помним на проект. */
+  const hubKey = selected ? `qevo.board.hub:${uid}:${selected}` : '';
+  const [hubOpenState, setHubOpenState] = useState<{ key: string; open: boolean } | null>(null);
+  const hubOpen = hubOpenState?.key === hubKey ? hubOpenState.open : (() => { try { return localStorage.getItem(hubKey) === '1'; } catch { return false; } })();
+  const setHubOpen = (v: boolean) => { setHubOpenState({ key: hubKey, open: v }); try { localStorage.setItem(hubKey, v ? '1' : '0'); } catch { /* без хранилища */ } };
+  /** Какие колонки сейчас видны — подсветка в ряду этапов. */
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(new Set());
   const [rulesOpen, setRulesOpen] = useState(false);
   /** Сдача результата при переносе в колонку проверки (#4799 BOARD03). */
   const [handoff, setHandoff] = useState<{ task: Task; columnId: string; columnName: string; position: number } | null>(null);
@@ -661,7 +670,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     const all = board?.columns.flatMap((c) => c.tasks) ?? [];
     const quick = {} as Record<QuickKey, number>;
     for (const q of QUICK) quick[q.key] = board ? countMatching(board.columns, { ...filterOpts, quick: [q.key] }) : 0;
-    return { shown: shownCount, quick, active: all.filter((t) => !t.closed_at).length, done: all.filter((t) => !!t.closed_at).length };
+    const mine = board ? countMatching(board.columns, { ...filterOpts, quick: [], assigneeId: null, creatorId: null, columnId: null, priority: null, labelId: null, search: '' }) : 0;
+    return { shown: shownCount, mine, quick, active: all.filter((t) => !t.closed_at).length, done: all.filter((t) => !!t.closed_at).length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board, query, uid, shownCount]);
   const hiddenLabels = useMemo(() => commonLabels(board?.columns.flatMap((c) => c.tasks) ?? []), [board]);
@@ -726,6 +736,30 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   }, [board, selected]);
 
   // Положение доски: вернулись в проект — колонки прокручены туда же, где их оставили.
+  // Ряд этапов (макет 01): какие колонки видны — подсвечены; нажатие — прокрутка к колонке
+  const measureCols = useCallback(() => {
+    const box = columnsRef.current;
+    if (!box) return;
+    const r = box.getBoundingClientRect();
+    const vis = new Set<string>();
+    box.querySelectorAll<HTMLElement>('[data-col-id]').forEach((el) => {
+      const c = el.getBoundingClientRect();
+      if (c.right > r.left + 24 && c.left < r.right - 24) vis.add(String(el.dataset.colId));
+    });
+    setVisibleCols((prev) => (prev.size === vis.size && [...vis].every((x) => prev.has(x)) ? prev : vis));
+  }, []);
+  useEffect(() => {
+    const box = columnsRef.current;
+    if (!box) return;
+    measureCols();
+    box.addEventListener('scroll', measureCols, { passive: true });
+    window.addEventListener('resize', measureCols);
+    return () => { box.removeEventListener('scroll', measureCols); window.removeEventListener('resize', measureCols); };
+  }, [measureCols, board, view, hubOpen, ui.w]);
+  const jumpTo = (id: string) => {
+    const el = columnsRef.current?.querySelector<HTMLElement>(`[data-col-id="${CSS.escape(id)}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+  };
   const scrollKey = selected ? `qevo.board.scroll:${selected}` : '';
   const hasBoard = !!board;
   useEffect(() => {
@@ -806,16 +840,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               <div className="bp-crumbs">
                 {organizations.find((o) => String(o.tenantId) === String(user?.tenantId))?.name ?? 'Компания'} / Проекты и задачи
               </div>
+                <h1 className="bp-name">{board.project.name}</h1>
+                {/* #4713: проект — в избранное, он появится в сайдбаре */}
+                <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
+              <span className="bp-ctx">
+                {/* «Все проекты ⌄» — переход к другому проекту и реестр; «Общие задачи» — задачи из нескольких проектов */}
                 <span className="board-switch">
-                  <button
-                    className="board-switch-btn"
-                    onClick={() => setSwitchOpen((v) => !v)}
-                    aria-expanded={switchOpen}
-                    title="Перейти к другому проекту"
-                  >
-                    {board.project.name}
-                    <Icon name="chevron-down" size={14} />
-                  </button>
+                  <Button variant="outline" size="sm" className="board-switch-btn bp-all-btn" onClick={() => setSwitchOpen((v) => !v)} aria-expanded={switchOpen} title="Перейти к другому проекту или открыть реестр проектов">
+                    Все проекты <Icon name="chevron-down" size={14} />
+                  </Button>
                   {switchOpen && (
                     <span className="chat-pop board-switch-pop" data-pop>
                       <input
@@ -844,20 +877,13 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                         className="chat-pop-row board-switch-all"
                         onClick={() => { setSwitchOpen(false); forgetProject(); navigate({ section: 'projects' }); }}
                       >
-                        <Icon name="list" size={13} /> Все проекты
+                        <Icon name="list" size={13} /> Реестр всех проектов
                       </button>
                     </span>
                   )}
                 </span>
-                {/* #4713: проект — в избранное, он появится в сайдбаре */}
-                <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
-              <span className="bp-ctx">
-                {/* «Все проекты» — реестр проектов; «Общие задачи» — задачи из нескольких проектов */}
-                <Button variant="ghost" size="sm" onClick={() => { forgetProject(); navigate({ section: 'projects' }); }} title="Реестр всех проектов">
-                  <Icon name="list" size={15} /> Все проекты
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
-                  <Icon name="check-circle" size={15} /> Общие задачи <Icon name="arrow-right" size={13} />
+                <Button variant="outline" size="sm" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
+                  Общие задачи ↗
                 </Button>
                 {board.project.origin === 'bitrix' && (
                   <Button variant="ghost" size="sm" onClick={() => setShowFeed(true)} title="Живая лента импортированного проекта"><Icon name="list" size={15} /> Лента</Button>
@@ -888,11 +914,21 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     query={query}
                     activeViewId={activeView}
                     onApply={(v) => { setQuery({ ...query, ...(v.query as Partial<BoardQuery>) } as BoardQuery); setActiveView(v.id); }}
+                    inline
                   />
                 )}
+                stages={view === 'board' ? board.columns.map((c) => ({ id: String(c.id), name: c.name, visible: visibleCols.has(String(c.id)), count: c.tasks.length })) : undefined}
+                onJump={jumpTo}
+                onAllStages={() => { setUi({ col: { ...ui.col, [String(board.project.id)]: [] } }); if (query.columnId) setQuery({ ...query, columnId: '' }); columnsRef.current?.scrollTo({ left: 0, behavior: 'smooth' }); }}
+                hubSlot={phone || view === 'list'
+                  ? <HubColumn key={`hb${board.project.id}`} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} variant="button" />
+                  : (
+                    <button className="bb-link bb-hub-toggle" onClick={() => setHubOpen(!hubOpen)} aria-expanded={hubOpen} title="Паспорт проекта, база знаний, решения и «Что сейчас важно»">
+                      {hubOpen ? 'Скрыть Инфоцентр' : '← Инфоцентр проекта'}{!hubOpen && signals.length ? ` · ${signals.length}` : ''}
+                    </button>
+                  )}
                 extraActions={(
                   <>
-                    {view === 'list' && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} variant="button" />}
                     <DropdownMenu
                       trigger={(
                         <Button variant="ghost" size="sm" title="Настройки этой доски и вашего вида" aria-label="Настройки доски">
@@ -970,7 +1006,9 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               <div className={`board-columns w-${ui.w}${ui.dense ? ' board-dense' : ''}`} ref={columnsRef}>
                 {/* Инфоцентр — перед колонками, но НЕ среди board.columns: «первая колонка»,
                     порядок и перенос карточек его не видят. Клиенту не показываем. */}
-                {!isClient && <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} signals={signals} />}
+                {!isClient && hubOpen && !phone && (
+                  <HubColumn key={board.project.id} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} signals={signals} open onClose={() => setHubOpen(false)} />
+                )}
                 {(shownBoard ?? board).columns.map((col, idx) => (
                   <ColumnView
                     key={col.id}
@@ -1054,6 +1092,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       {showFeed && selected && <ImportedFeedPanel projectId={selected} onClose={() => setShowFeed(false)} />}
       {reviewOpen && (
         <ReviewQueue
+          projectId={selected ?? undefined}
+          projectName={board?.project.name}
           onClose={() => { setReviewOpen(false); reloadBoard(); }}
           onOpenTask={(t) => { setReviewOpen(false); if (String(t.project_id) === String(selected)) setOpenTaskId(String(t.id)); else navigate({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) }); }}
         />
