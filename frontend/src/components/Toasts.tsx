@@ -13,6 +13,14 @@ const AFTER_HOVER_MS = 3000;
 const MAX_VISIBLE = 4;
 const MAX_MISSED = 20;
 
+/** Человек печатает: поле ввода, многострочное поле или редактируемый блок. */
+function isTyping(el: Element | null): boolean {
+  if (!el) return false;
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly;
+  if (el instanceof HTMLInputElement) return !el.readOnly && /^(text|search|email|url|tel|password|number|)$/.test(el.type);
+  return (el as HTMLElement).isContentEditable === true;
+}
+
 /**
  * Всплывающие уведомления о новых сообщениях.
  *
@@ -37,6 +45,20 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
   const [items, setItems] = useState<Toast[]>([]);
   const [missed, setMissed] = useState<Toast[]>([]);
   const [missedOpen, setMissedOpen] = useState(false);
+  /*
+    #4830: пока человек пишет сообщение или комментарий, всплывашки уходят с глаз —
+    они стояли поверх поля ввода (особенно на ноутбуке). Ничего не теряется: погасшее
+    само уходит в «Пропущенные», а стопка возвращается, как только фокус ушёл из поля.
+  */
+  const [typing, setTyping] = useState(() => isTyping(document.activeElement));
+  useEffect(() => {
+    const sync = () => setTyping(isTyping(document.activeElement));
+    // focusout срабатывает до того, как фокус переехал, — сверяемся на следующем такте
+    const onOut = () => window.setTimeout(sync, 0);
+    document.addEventListener('focusin', sync);
+    document.addEventListener('focusout', onOut);
+    return () => { document.removeEventListener('focusin', sync); document.removeEventListener('focusout', onOut); };
+  }, []);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
   /** Погасла сама — не прочитана: новость уходит в «Пропущенные», «Сохранено» — просто исчезает. */
@@ -165,7 +187,11 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
   if (!items.length && !missed.length) return null;
   const shownCards = [...(missedOpen ? missed : []), ...items].filter((t) => t.kind !== 'saved');
   return (
-    <div className="toasts" style={missedOpen ? { maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' } : undefined}>
+    <div
+      className={`toasts${typing && !missedOpen ? ' toasts-typing' : ''}`}
+      aria-hidden={typing && !missedOpen ? true : undefined}
+      style={missedOpen ? { maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' } : undefined}
+    >
       {shownCards.length >= 2 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
           <button className="ui-btn ui-btn-secondary ui-btn-sm" onClick={() => markRead(shownCards)}>
@@ -178,12 +204,15 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       )}
       {missedOpen && missed.map((t) => card(t, false))}
       {missed.length > 0 && (
-        <button className="toast" onClick={() => setMissedOpen((v) => !v)} aria-expanded={missedOpen} title={missedOpen ? 'Свернуть' : 'Показать, что пришло, пока вас не было'}>
+        // #4830: свёрнутые «Пропущенные» — маленький значок с числом, а не карточка во всю ширину над полем ввода
+        <button className={`toast${missedOpen ? '' : ' toast-missed'}`} onClick={() => setMissedOpen((v) => !v)} aria-expanded={missedOpen} aria-label={`Пропущенные уведомления: ${missed.length}`} title={missedOpen ? 'Свернуть' : 'Пропущенные уведомления — показать, что пришло, пока вас не было'}>
           <Icon name="bell" size={16} />
-          <span className="toast-text">
-            <span className="toast-title">Пропущенные уведомления · {missed.length}</span>
-            <span className="toast-body">{missedOpen ? 'Свернуть' : 'Нажмите, чтобы посмотреть'}</span>
-          </span>
+          {missedOpen ? (
+            <span className="toast-text">
+              <span className="toast-title">Пропущенные уведомления · {missed.length}</span>
+              <span className="toast-body">Свернуть</span>
+            </span>
+          ) : <span className="toast-missed-n">{missed.length}</span>}
           <span
             className="toast-close"
             role="button"

@@ -24,6 +24,11 @@ export interface MenuPrefs {
    */
   startup?: 'focus_session' | 'project' | 'home';
   startProject?: string;
+  /**
+   * #4826: пункты под «Ещё» в том порядке, в каком их расставил человек.
+   * Нет или null — состав «Ещё» по умолчанию.
+   */
+  more?: string[] | null;
 }
 
 /** Настройки навигации сохранили на странице — меню слева подхватывает без перезагрузки. */
@@ -83,4 +88,17 @@ export function moveItem(order: string[], section: string, toIndex: number): str
 export function toggleHidden(hidden: string[], section: string): string[] {
   if (PROTECTED.includes(section)) return hidden;
   return hidden.includes(section) ? hidden.filter((s) => s !== section) : [...hidden, section];
+}
+
+/**
+ * Что лежит под «Ещё» (#4826), по порядку.
+ *
+ * Свой список, если человек его менял, иначе — состав по умолчанию. Незнакомые ключи
+ * отбрасываем (раздел могли убрать или закрыть по роли), а пункты, спрятанные прежней
+ * «Скрыть пункт», дописываем в конец: раньше они и показывались в «Ещё».
+ */
+export function moreSections(prefs: MenuPrefs | undefined, defaults: string[], known: string[]): string[] {
+  const base = (prefs?.more ?? defaults).filter((k) => known.includes(k));
+  const hidden = (prefs?.hidden ?? []).filter((k) => known.includes(k) && !base.includes(k));
+  return [...new Set([...base, ...hidden])];
 }

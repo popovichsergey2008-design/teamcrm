@@ -48,7 +48,7 @@ import { orderedSel, rangeSel, toggleSel } from '../lib/chat-select';
 import { QUICK_REACTIONS } from '../lib/emoji';
 import { ChannelModal } from '../components/ChannelModal';
 import { stillMentioned } from '../lib/mentions';
-import { plural, stampLabel } from '../lib/chat-text';
+import { plural, sameGroup, stampLabel } from '../lib/chat-text';
 import { applyOrder, moveItem } from '../lib/menu-order';
 import { firstUnreadId } from '../lib/unread-line';
 import { showToast, toastSaved } from '../lib/notifications';
@@ -184,6 +184,21 @@ function rememberFeed(chatId: string, list: Message[]): void {
   if (feedCache.size > 20) feedCache.delete(feedCache.keys().next().value as string);
 }
 
+
+/**
+ * Можно ли приклеить сообщение `b` к предыдущему `a` (#4825): тот же автор (или тот же
+ * внешний участник), тот же день, не дальше 10 минут. Итоги созвонов и системные строки
+ * («кого добавили») блок не продолжают.
+ */
+function joinsChat(
+  a: { author_id?: unknown; guest_name?: string | null; is_ai?: boolean; meeting_id?: unknown; created_at: string } | undefined,
+  b: { author_id?: unknown; guest_name?: string | null; is_ai?: boolean; meeting_id?: unknown; created_at: string },
+): boolean {
+  if (!a || a.meeting_id || b.meeting_id) return false;
+  if (!a.author_id && !a.guest_name) return false;
+  if ((a.guest_name ?? '') !== (b.guest_name ?? '')) return false;
+  return sameGroup(a, b);
+}
 export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId, inCall, mode = 'page', onClose, context }: {
   onCall: (chat: { id: string; title: string; memberIds: string[]; projectId?: string | null; withAi?: boolean }) => void;
   /** Уже идёт созвон — второй начинать нельзя, кнопка гасится. */
@@ -2945,6 +2960,19 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   );
                 }
                 const isNew = unreadIndex >= 0 && i >= unreadIndex && !mine;
+                /*
+                  #4825: подряд идущие сообщения одного автора — одним блоком, как в
+                  Telegram. Время и галочки под каждой репликой разрывали «облако» на
+                  куски: «Если» / «писать» / «по одному» — четыре отдельных пузыря.
+                  Теперь имя — у первой реплики блока, время — у последней, пузыри
+                  стоят вплотную. Черта «Непрочитанные» и смена дня блок разрывают.
+                */
+                const grouped = !newDay && unreadFrom !== String(m.id) && joinsChat(messages[i - 1], m);
+                const next = messages[i + 1];
+                const groupGoesOn = !!next && unreadFrom !== String(next.id) && joinsChat(m, next);
+                // строку под пузырём прячем, только если в ней одно время: «изменено», задача, ветка — остаются
+                const underQuiet = groupGoesOn && !m.edited_at && !m.reply_count && !m.task_id
+                  && !taskDrafts[String(m.id)] && !m.pinned_at && remindFor !== String(m.id);
                 return (
                   <div key={m.id} data-msg={String(m.id)}>
                     {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
@@ -2952,7 +2980,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     {unreadFrom === String(m.id) && <div className="chat-unread-line">Непрочитанные сообщения</div>}
                     {/* Время — ПОД плашкой, а не внутри неё: серая строчка на цветном
                         пузыре не читалась вовсе, а место в углу отъедала. */}
-                    <div onClickCapture={selClick(m)} className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${sel ? ` msg-selmode${sel.includes(String(m.id)) ? ' msg-sel-on' : ''}` : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === String(m.id)) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === String(m.id) ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
+                    <div onClickCapture={selClick(m)} className={`chat-line ${mine && !m.is_ai ? 'mine' : ''}${grouped ? ' chat-grouped' : ''}${groupGoesOn ? ' chat-group-on' : ''}${sel ? ` msg-selmode${sel.includes(String(m.id)) ? ' msg-sel-on' : ''}` : ''}${highlight === String(m.id) ? ' chat-found' : ''}${inChatHits.some((h) => h.id === String(m.id)) ? ' chat-match' : ''}${inChatHits[inChatPos]?.id === String(m.id) ? ' chat-match-current' : ''}${isNew ? ' chat-new' : ''}`}>
                       {sel && (
                         <button className="msg-sel" aria-pressed={sel.includes(String(m.id))} aria-label="Выбрать сообщение">
                           <Icon name="check" size={14} />
@@ -2992,16 +3020,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             <Icon name="wand" size={14} />
                           </button>
                         )}
-                        {m.is_ai && <div className="chat-author"><Icon name="robot" size={11} /> QEVO Bot</div>}
+                        {m.is_ai && !grouped && <div className="chat-author"><Icon name="robot" size={11} /> QEVO Bot</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
-                        {m.guest_name && (
+                        {m.guest_name && !grouped && (
                           <div className="chat-author chat-author-guest">
                             <Icon name="user" size={11} /> {m.guest_name} · внешний участник
                           </div>
                         )}
                         {m.pinned_at && <span className="chat-pin-mark" title="Закреплено в шапке чата"><Icon name="flag" size={11} /></span>}
-                        {!mine && !m.is_ai && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
+                        {!mine && !m.is_ai && !grouped && active.kind !== 'dm' && <div className="chat-author">{m.author_name}</div>}
                         {/* Шапка ответа: кому отвечают и что именно сказали. Нажатие
                             ведёт к исходной реплике — иначе цитата обрывается ни на чём. */}
                         {/*
@@ -3132,7 +3160,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         </div>
                       )}
 
-                      <div className="chat-under">
+                      <div className={`chat-under${underQuiet ? ' chat-under-quiet' : ''}`}>
                         <span className="chat-time" title={new Date(m.created_at).toLocaleString('ru-RU')}>{stampLabel(m.created_at)}</span>
                         {m.edited_at && <span className="dim chat-under-mark" title="Сообщение изменено">изменено</span>}
                         {/*

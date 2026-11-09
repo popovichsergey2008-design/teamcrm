@@ -2340,6 +2340,19 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .toast-close { color: var(--text-mut); flex-shrink: 0; }
 .toast-close:hover { color: var(--text); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* #4830: пока пишут сообщение или комментарий — стопка не стоит поверх поля ввода */
+.toasts { transition: opacity .15s, transform .15s; }
+.toasts-typing { opacity: 0; transform: translateY(8px); pointer-events: none; }
+/* свёрнутые «Пропущенные» — круглый значок с числом справа, а не карточка над полем ввода */
+.toast.toast-missed { align-self: flex-end; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; }
+.toast-missed-n { font-size: var(--fs-sm); font-weight: 600; }
+.toast-missed .toast-close { display: none; }
+/* ноутбуки: карточки уже и ниже, чтобы закрывать меньше рабочей области */
+@media (min-width: 721px) and (max-width: 1440px), (min-width: 721px) and (max-height: 820px) {
+  .toasts { max-width: min(300px, calc(100vw - 32px)); right: 12px; bottom: 12px; gap: 6px; }
+  .toast { padding: 8px 10px; }
+  .toast-body { -webkit-line-clamp: 2; }
+}
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
 
 /* подразделение рядом с именем собеседника — подпись, а не акцент */
@@ -2649,6 +2662,13 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 /* Строка под сообщением: время и вход в ветку. */
 .chat-under { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; }
 .chat-line.mine .chat-under { flex-direction: row-reverse; }
+/* #4825: подряд от одного автора — одним блоком: пузыри вплотную, время — у последнего */
+.chat-under.chat-under-quiet { display: none; }
+.chat-line.chat-group-on { margin-bottom: 2px; }
+.chat-line.chat-group-on .chat-msg { border-bottom-left-radius: 6px; }
+.chat-line.chat-grouped .chat-msg { border-top-left-radius: 6px; }
+.chat-line.mine.chat-group-on .chat-msg { border-bottom-left-radius: 14px; border-bottom-right-radius: 6px; }
+.chat-line.mine.chat-grouped .chat-msg { border-top-left-radius: 14px; border-top-right-radius: 6px; }
 .chat-thread-link {
   display: inline-flex; align-items: center; gap: 4px;
   border: none; background: none; padding: 0; cursor: pointer;

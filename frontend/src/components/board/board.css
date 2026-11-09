@@ -94,7 +94,8 @@
 /* #4799, макет 01: шапка проекта, «Мои задачи N», ряд этапов, карточка */
 .bp-name { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; line-height: 1.2; }
 .bp-head .board-switch { position: relative; }
-.bp-head .board-switch-pop { left: auto; right: 0; }
+/* #4829: список — по левому краю вызвавшей кнопки; у края экрана его сдвигает BoardPage */
+.bp-head .board-switch-pop { left: 0; right: auto; }
 .board-v2 .bp-head .bp-all-btn { font-size: var(--fs-sm); font-weight: 500; margin-right: 0; letter-spacing: 0; }
 .bb-chip.is-main { font-weight: 600; padding: 0 12px; }
 .bb-n-big { font-size: var(--fs-sm); }

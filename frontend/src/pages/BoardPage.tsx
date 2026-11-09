@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { api, ApiError } from '../lib/api';
 import { forgetProject, lastProject, rememberProject } from '../lib/last-project';
@@ -293,9 +293,24 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Переключатель досок в названии проекта: открыт ли и что набрали в поиске. */
   const [switchOpen, setSwitchOpen] = useState(false);
   const [switchQuery, setSwitchQuery] = useState('');
+  /** #4829: список открывается под той кнопкой, которой его вызвали, — по её левому краю. */
+  const [switchFrom, setSwitchFrom] = useState<'name' | 'all'>('all');
+  const toggleSwitch = (from: 'name' | 'all') => {
+    setSwitchFrom(from);
+    setSwitchOpen((v) => !(v && from === switchFrom));
+  };
+  const switchPopRef = useRef<HTMLSpanElement | null>(null);
+  // У правого края экрана список, выровненный влево, ушёл бы за край — сдвигаем ровно на вылет.
+  useLayoutEffect(() => {
+    const el = switchPopRef.current;
+    if (!switchOpen || !el) return;
+    el.style.left = '0px';
+    const over = el.getBoundingClientRect().right - (window.innerWidth - 8);
+    if (over > 0) el.style.left = `${-over}px`;
+  }, [switchOpen, switchFrom]);
   // Щелчок мимо списка досок и Esc закрывают его: без этого он висел до перезагрузки.
   const closeSwitch = useCallback(() => setSwitchOpen(false), []);
-  useDismiss(switchOpen, closeSwitch, '.board-switch-btn');
+  useDismiss(switchOpen, closeSwitch, '.board-switch-btn, .bp-name-btn');
   const [showFeed, setShowFeed] = useState(false);
   const subscribedRef = useRef<string | null>(null);
   // поле создания проекта живёт внизу сайдбара — с пустого экрана до него ведёт кнопка
@@ -795,6 +810,40 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     : filtered;
 
 
+  /** Список проектов — один, место зависит от кнопки, которой его открыли (#4829). */
+  const switchPop = (
+    <span className="chat-pop board-switch-pop" data-pop ref={switchPopRef}>
+      <input
+        className="ui-input ui-input-sm"
+        value={switchQuery}
+        onChange={(e) => setSwitchQuery(e.target.value)}
+        placeholder="Поиск проекта"
+        aria-label="Поиск проекта"
+        autoFocus
+      />
+      {projects
+        .filter((p) => p.status !== 'archived')
+        .filter((p) => p.name.toLowerCase().includes(switchQuery.trim().toLowerCase()))
+        .slice(0, 12)
+        .map((p) => (
+          <button
+            key={p.id}
+            className={`chat-pop-row${String(p.id) === String(selected) ? ' active' : ''}`}
+            onClick={() => { setSwitchOpen(false); setSwitchQuery(''); setSelected(String(p.id)); setOpenTaskId(null); }}
+          >
+            <Icon name="board" size={13} /> {p.name}
+            {!!p.unread && <span className="ui-badge ui-badge-info">{p.unread}</span>}
+          </button>
+        ))}
+      <button
+        className="chat-pop-row board-switch-all"
+        onClick={() => { setSwitchOpen(false); forgetProject(); navigate({ section: 'projects' }); }}
+      >
+        <Icon name="list" size={13} /> Реестр всех проектов
+      </button>
+    </span>
+  );
+
   return (
     <div className="board-layout">
 
@@ -845,51 +894,23 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
             <div className="bp-head">
               <span className="bp-crumbs">{organizations.find((o) => String(o.tenantId) === String(user?.tenantId))?.name ?? 'Компания'} /</span>
               <span className="bp-ico" aria-hidden="true">{board.project.name.trim().charAt(0).toUpperCase()}</span>
-              <h1 className="bp-name">
-                <button className="bp-name-btn" onClick={() => setSwitchOpen((v) => !v)} aria-expanded={switchOpen} title="Открыть список проектов">
-                  {board.project.name} <Icon name="chevron-down" size={14} />
-                </button>
-              </h1>
+              <span className="board-switch">
+                <h1 className="bp-name">
+                  <button className="bp-name-btn" onClick={() => toggleSwitch('name')} aria-expanded={switchOpen && switchFrom === 'name'} title="Открыть список проектов">
+                    {board.project.name} <Icon name="chevron-down" size={14} />
+                  </button>
+                </h1>
+                {switchOpen && switchFrom === 'name' && switchPop}
+              </span>
               {/* #4713: проект — в избранное, он появится в сайдбаре */}
               <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
               <span className="bp-ctx">
                 {/* «Все проекты ⌄» — переход к другому проекту и реестр; «Общие задачи» — задачи из нескольких проектов */}
                 <span className="board-switch">
-                  <Button variant="ghost" size="sm" className="board-switch-btn bp-all-btn" onClick={() => setSwitchOpen((v) => !v)} aria-expanded={switchOpen} title="Перейти к другому проекту или открыть реестр проектов">
+                  <Button variant="ghost" size="sm" className="board-switch-btn bp-all-btn" onClick={() => toggleSwitch('all')} aria-expanded={switchOpen && switchFrom === 'all'} title="Перейти к другому проекту или открыть реестр проектов">
                     Все проекты <Icon name="chevron-down" size={14} />
                   </Button>
-                  {switchOpen && (
-                    <span className="chat-pop board-switch-pop" data-pop>
-                      <input
-                        className="ui-input ui-input-sm"
-                        value={switchQuery}
-                        onChange={(e) => setSwitchQuery(e.target.value)}
-                        placeholder="Поиск проекта"
-                        aria-label="Поиск проекта"
-                        autoFocus
-                      />
-                      {projects
-                        .filter((p) => p.status !== 'archived')
-                        .filter((p) => p.name.toLowerCase().includes(switchQuery.trim().toLowerCase()))
-                        .slice(0, 12)
-                        .map((p) => (
-                          <button
-                            key={p.id}
-                            className={`chat-pop-row${String(p.id) === String(selected) ? ' active' : ''}`}
-                            onClick={() => { setSwitchOpen(false); setSwitchQuery(''); setSelected(String(p.id)); setOpenTaskId(null); }}
-                          >
-                            <Icon name="board" size={13} /> {p.name}
-                            {!!p.unread && <span className="ui-badge ui-badge-info">{p.unread}</span>}
-                          </button>
-                        ))}
-                      <button
-                        className="chat-pop-row board-switch-all"
-                        onClick={() => { setSwitchOpen(false); forgetProject(); navigate({ section: 'projects' }); }}
-                      >
-                        <Icon name="list" size={13} /> Реестр всех проектов
-                      </button>
-                    </span>
-                  )}
+                  {switchOpen && switchFrom === 'all' && switchPop}
                 </span>
                 <Button variant="ghost" size="sm" className="bp-quiet" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
                   Общие задачи ↗

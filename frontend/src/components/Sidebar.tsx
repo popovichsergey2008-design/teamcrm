@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
-import { applyHidden, applyOrder, isHidden, MENU_PREFS_CHANGED, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
+import { applyOrder, MENU_PREFS_CHANGED, MenuPrefs, moreSections, moveItem } from '../lib/menu-order';
 import { INBOX_CHANGED, inboxApi } from '../lib/inbox-api';
 import { flowApi } from '../lib/flow-api';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
@@ -81,6 +81,14 @@ const AGENT_ITEM: Item = { section: AGENT, label: 'AI-агент', icon: 'sparkl
 const isBlock = (s: Section) => s === FAV || s === DRAFTS || s === AGENT;
 /** #4807 §5, п. 11: в «⋯ Ещё» — Черновики, Новости, Пульс команды, Личный кабинет. */
 const MORE: Section[] = ['news', 'radar'];
+/*
+  #4826: пункты «Ещё» — такие же пункты меню: шестерёнка, порядок, перенос в основное
+  меню и обратно. Раньше Черновики и Личный кабинет были вписаны в «Ещё» намертво.
+*/
+const DRAFTS_ITEM: Item = { section: DRAFTS, label: 'Черновики', icon: 'edit', hint: 'Недописанные задачи и сообщения' };
+const SETTINGS_ITEM: Item = { section: 'settings' as Section, label: 'Личный кабинет', icon: 'settings', hint: 'Профиль, команда, интеграции и настройки' };
+/** Что лежит в «Ещё», пока человек не трогал меню. */
+const MORE_DEFAULT: string[] = [DRAFTS, 'news', 'radar', 'settings'];
 
 const MENU: Item[] = [
   {
@@ -254,8 +262,9 @@ export function Sidebar({
     меню целиком подсвечивается (режим правки), соседи расступаются, отпустил —
     порядок сохранён. Без отдельного режима «Настроить меню».
   */
-  const [drag, setDrag] = useState<{ section: string; from: number; to: number; dy: number; h: number } | null>(null);
+  const [drag, setDrag] = useState<{ section: string; from: number; to: number; dy: number; h: number; zone: 'main' | 'more' } | null>(null);
   const navRef = useRef<HTMLElement | null>(null);
+  const moreRef = useRef<HTMLDivElement | null>(null);
   /** Отпустили после перетаскивания — следующий клик по ссылке не переход. */
   const noClickUntil = useRef(0);
   useEffect(() => { setPrefs(user.uiPrefs ?? {}); }, [user.uiPrefs]);
@@ -307,13 +316,18 @@ export function Sidebar({
     && (!i.devOnly || CLIENTS_ENABLED));
   // #4807: «Входящие» — первыми и у тех, кто уже расставил меню по-своему
   const menuPrefs: MenuPrefs = prefs.order?.length && !prefs.order.includes('inbox') ? { ...prefs, order: ['inbox', ...prefs.order] } : prefs;
-  // AI-агент и «Избранное» — под разделами; Новости, Пульс и Черновики — в «Ещё»
-  const ordered = applyOrder([...allowed.filter((i) => !MORE.includes(i.section)), AGENT_ITEM, FAV_ITEM], menuPrefs);
-  const menuItems = applyHidden(ordered, menuPrefs);
-  const hiddenItems = ordered.filter((i) => isHidden(i.section, menuPrefs));
-  const moreItems = allowed.filter((i) => MORE.includes(i.section));
+  // AI-агент и «Избранное» — под разделами; Черновики, Новости, Пульс и Личный кабинет — в «Ещё»
+  const universe: Item[] = [
+    ...allowed.filter((i) => !MORE.includes(i.section)), AGENT_ITEM, FAV_ITEM,
+    DRAFTS_ITEM, ...allowed.filter((i) => MORE.includes(i.section)), SETTINGS_ITEM,
+  ];
+  // #4826: «Ещё» — свой порядок (prefs.more); спрятанные прежде пункты тоже здесь
+  const moreKeys = moreSections(prefs, MORE_DEFAULT, universe.map((i) => String(i.section)));
+  const ordered = applyOrder(universe.filter((i) => !moreKeys.includes(i.section)), menuPrefs);
+  const menuItems = ordered;
+  const moreItems = moreKeys.map((k) => universe.find((i) => i.section === k)!).filter(Boolean);
   // Меню уже трогали: только тогда «Вернуть по умолчанию» вообще имеет смысл.
-  const hasPrefs = !!(prefs.order?.length || prefs.hidden?.length || prefs.home);
+  const hasPrefs = !!(prefs.order?.length || prefs.hidden?.length || prefs.home || prefs.more);
   /** Главная страница: открывается при входе и по логотипу (#4601). */
   const home = prefs.home && allowed.some((i) => i.section === prefs.home) ? prefs.home : 'focus';
 
@@ -323,8 +337,10 @@ export function Sidebar({
     // хуже всего лечится замиранием интерфейса.
     // Только своё — порядок, скрытые, главная: остальные ключи настроек пишут другие
     // места (обучение, Chat Bar), и устаревшая копия отсюда затирала бы их.
-    void api.saveUiPrefs({ order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '' }).catch(() => undefined);
-    window.dispatchEvent(new CustomEvent(MENU_PREFS_CHANGED, { detail: { order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '' } }));
+    // «Ещё» шлём, только когда его меняли: null — «как по умолчанию»
+    const more = next.more !== undefined ? { more: next.more } : {};
+    void api.saveUiPrefs({ order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '', ...more }).catch(() => undefined);
+    window.dispatchEvent(new CustomEvent(MENU_PREFS_CHANGED, { detail: { order: next.order ?? [], hidden: next.hidden ?? [], home: next.home ?? '', ...more } }));
   };
 
   /** Новый порядок: видимые как расставлены, скрытые — следом, их место неважно. */
@@ -335,14 +351,18 @@ export function Sidebar({
     savePrefs({ ...prefs, order: [...shown, ...rest] });
   };
 
-  const startDrag = (e: { button: number; pointerType: string; clientY: number; target: EventTarget }, section: string) => {
+  const startDrag = (e: { button: number; pointerType: string; clientY: number; target: EventTarget }, section: string, zone: 'main' | 'more' = 'main') => {
     if (e.button !== 0 || e.pointerType !== 'mouse' || collapsed) return;
     if ((e.target as HTMLElement).closest('.nav-gear')) return;
     // у «Избранного» тянут за заголовок: строки внутри — ссылки, клик по ним не должен стать переносом
     if ((e.target as HTMLElement).closest('.sbl-body')) return;
-    const groups = Array.from(navRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? []);
-    const from = menuItems.findIndex((i) => i.section === section);
-    if (from < 0 || groups.length !== menuItems.length) return;
+    // #4826: в «Ещё» переставляют так же, мышью, — внутри своего списка
+    const keys = zone === 'main' ? menuItems.map((i) => String(i.section)) : moreKeys;
+    const groups = zone === 'main'
+      ? Array.from(navRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? [])
+      : Array.from(moreRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? []);
+    const from = keys.indexOf(section);
+    if (from < 0 || groups.length !== keys.length) return;
     const rects = groups.map((g) => g.getBoundingClientRect());
     const h = rects[from].height + 2;
     const startY = e.clientY;
@@ -354,7 +374,7 @@ export function Sidebar({
       started = true;
       // место среди остальных пунктов: сколько их центров выше указателя
       to = rects.filter((r, k) => k !== from && ev.clientY > r.top + r.height / 2).length;
-      setDrag({ section, from, to, dy, h });
+      setDrag({ section, from, to, dy, h, zone });
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -363,7 +383,10 @@ export function Sidebar({
       document.body.classList.remove('nav-dragging-body');
       if (started) {
         noClickUntil.current = Date.now() + 300;
-        if (to !== from) placeAt(section, to);
+        if (to !== from) {
+          if (zone === 'main') placeAt(section, to);
+          else saveMore(moveItem(moreKeys, section, to));
+        }
       }
       setDrag(null);
     };
@@ -373,8 +396,8 @@ export function Sidebar({
     document.body.classList.add('nav-dragging-body');
   };
   /** Сдвиг соседа, пока тянут: место освобождается там, куда пункт встанет. */
-  const dragShift = (k: number): number => {
-    if (!drag || k === drag.from) return 0;
+  const dragShift = (k: number, zone: 'main' | 'more' = 'main'): number => {
+    if (!drag || drag.zone !== zone || k === drag.from) return 0;
     const other = k < drag.from ? k : k - 1;
     const pos = other < drag.to ? other : other + 1;
     return (pos - k) * drag.h;
@@ -388,17 +411,35 @@ export function Sidebar({
     if (!neighbour) return;
     savePrefs({ ...prefs, order: moveItem(current, section, current.indexOf(neighbour)) });
   };
-  const hide = (section: string) => savePrefs({ ...prefs, hidden: toggleHidden(prefs.hidden ?? [], section) });
-  const unhide = (section: string) => savePrefs({ ...prefs, hidden: (prefs.hidden ?? []).filter((x) => x !== section) });
+  /*
+    #4826: «Ещё» — второй список меню. Записываем его целиком; прежние «скрытые» при
+    этом переезжают в него насовсем (hidden пустеет), чтобы правда была одна.
+  */
+  const saveMore = (more: string[], patch: MenuPrefs = {}) => savePrefs({ ...prefs, ...patch, more, hidden: [] });
+  /** «Скрыть пункт» — убрать в «Ещё», в конец. */
+  const hide = (section: string) => saveMore([...moreKeys.filter((x) => x !== section), section]);
+  /** Вернуть из «Ещё» в основное меню — последним. */
+  const toMain = (section: string) => saveMore(moreKeys.filter((x) => x !== section), {
+    order: [...menuItems.map((i) => String(i.section)), section],
+  });
+  const moreShift = (section: string, dir: -1 | 1) => {
+    const at = moreKeys.indexOf(section);
+    if (at + dir < 0 || at + dir >= moreKeys.length) return;
+    saveMore(moveItem(moreKeys, section, at + dir));
+  };
   /*
     «Сделать главной страницей»: пункт встаёт первым и возвращается в меню, если был
     скрыт, — главная страница не может прятаться (#4601, как в Битриксе).
   */
   const makeHome = (section: string) => {
     const current = ordered.map((i) => String(i.section));
-    savePrefs({ ...prefs, home: section, order: moveItem(current, section, 0), hidden: (prefs.hidden ?? []).filter((x) => x !== section) });
+    const order = current.includes(section) ? moveItem(current, section, 0) : [section, ...current];
+    // из «Ещё» главная тоже уходит в основное меню: главная страница не прячется
+    if (moreKeys.includes(section)) saveMore(moreKeys.filter((x) => x !== section), { home: section, order });
+    else savePrefs({ ...prefs, home: section, order, hidden: (prefs.hidden ?? []).filter((x) => x !== section) });
     go({ section: section as Section });
   };
+  const resetMenu = () => savePrefs({ order: [], hidden: [], home: '', more: null });
   // Вход на «/» — открываем выбранную главную, а не всегда «Фокус дня».
   useEffect(() => {
     if (window.location.pathname !== '/') return;
@@ -701,7 +742,7 @@ export function Sidebar({
                 data-tour={`nav-${item.section}`}
                 onMouseEnter={() => { if (!isBlock(item.section)) onHoverSection(item.section); }}
                 onPointerDown={(e) => startDrag(e, item.section)}
-                style={drag ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(idx)}px)` } : undefined}
+                style={drag?.zone === 'main' ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(idx)}px)` } : undefined}
               >
                 {/* #4713, #4715, #4725: избранное и черновики; модуль грузится после первого экрана */}
                 {item.section === AGENT ? (
@@ -756,13 +797,13 @@ export function Sidebar({
                       : <MenuItem icon={<Icon name="home" size={15} />} onSelect={() => makeHome(item.section)}>Сделать главной страницей</MenuItem>}
                     {idx > 0 && <MenuItem icon={<Icon name="arrow-up" size={15} />} onSelect={() => shift(item.section, -1)}>Переместить выше</MenuItem>}
                     {idx < menuItems.length - 1 && <MenuItem icon={<Icon name="arrow-down" size={15} />} onSelect={() => shift(item.section, 1)}>Переместить ниже</MenuItem>}
-                    {home !== item.section && !PROTECTED.includes(item.section) && (
-                      <MenuItem icon={<Icon name="eye-off" size={15} />} onSelect={() => hide(item.section)}>Скрыть пункт</MenuItem>
+                    {home !== item.section && (
+                      <MenuItem icon={<Icon name="eye-off" size={15} />} onSelect={() => hide(item.section)}>Убрать в «Ещё»</MenuItem>
                     )}
                     {hasPrefs && (
                       <>
                         <MenuSeparator />
-                        <MenuItem icon={<Icon name="refresh" size={15} />} onSelect={() => savePrefs({ order: [], hidden: [], home: '' })}>Вернуть меню по умолчанию</MenuItem>
+                        <MenuItem icon={<Icon name="refresh" size={15} />} onSelect={resetMenu}>Вернуть меню по умолчанию</MenuItem>
                       </>
                     )}
                   </DropdownMenu>
@@ -797,30 +838,51 @@ export function Sidebar({
                 <Icon name={moreOpen ? 'chevron-down' : 'chevron-right'} size={14} />
               </button>
               {moreOpen && (
-                <div className="nav-more-body">
-                  <SidebarLists onGo={() => setOpen(false)} part="drafts" />
-                  {moreItems.map((item) => (
-                    <span key={item.section}>
-                      {link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
-                        <><Icon name={item.icon} size={18} /><span className="nav-label">{item.label}</span></>
-                      ))}
-                    </span>
-                  ))}
-                  {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Личный кабинет', (
-                    <><Icon name="settings" size={18} /><span className="nav-label">Личный кабинет</span></>
-                  ))}
-                  {hiddenItems.map((item) => (
-                    <div key={item.section} className="nav-archive-row">
-                      {isBlock(item.section) ? (
-                        <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
+                <div className="nav-more-body" ref={moreRef}>
+                  {moreItems.map((item, k) => (
+                    <div
+                      key={item.section}
+                      className={`nav-group nav-more-row${drag?.section === item.section ? ' nav-group-dragged' : ''}`}
+                      onPointerDown={(e) => startDrag(e, item.section, 'more')}
+                      style={drag?.zone === 'more' ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(k, 'more')}px)` } : undefined}
+                    >
+                      {item.section === AGENT ? (
+                        <button className="nav-item nav-agent" onClick={() => { setOpen(false); onOpenSecretary(!!aiLine?.line); }}>
+                          <Icon name="sparkles" size={18} /><span className="nav-label">AI-агент</span>
+                        </button>
+                      ) : isBlock(item.section) ? (
+                        <SidebarLists onGo={() => setOpen(false)} part={item.section === DRAFTS ? 'drafts' : 'fav'} />
                       ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
-                        <><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></>
+                        <>
+                          <Icon name={item.icon} size={18} /><span className="nav-label">{item.label}</span>
+                          {home === item.section && <span className="nav-home" title="Главная страница — открывается при входе"><Icon name="home" size={13} /></span>}
+                        </>
                       ))}
-                      <button className="nav-archive-back" onClick={() => unhide(item.section)} title="Вернуть в меню" aria-label={`Вернуть «${item.label}» в меню`}>
-                        <Icon name="eye" size={14} />
-                      </button>
+                      {/* #4826: шестерёнка — как у пунктов основного меню */}
+                      <DropdownMenu
+                        align="start"
+                        trigger={(
+                          <button className="nav-gear" title="Настроить пункт меню" aria-label={`Настроить пункт «${item.label}»`}>
+                            <Icon name="settings" size={14} />
+                          </button>
+                        )}
+                      >
+                        {!isBlock(item.section) && (
+                          <MenuItem icon={<Icon name="home" size={15} />} onSelect={() => makeHome(item.section)}>Сделать главной страницей</MenuItem>
+                        )}
+                        <MenuItem icon={<Icon name="arrow-left" size={15} />} onSelect={() => toMain(item.section)}>Вернуть в основное меню</MenuItem>
+                        {k > 0 && <MenuItem icon={<Icon name="arrow-up" size={15} />} onSelect={() => moreShift(item.section, -1)}>Переместить выше</MenuItem>}
+                        {k < moreItems.length - 1 && <MenuItem icon={<Icon name="arrow-down" size={15} />} onSelect={() => moreShift(item.section, 1)}>Переместить ниже</MenuItem>}
+                        {hasPrefs && (
+                          <>
+                            <MenuSeparator />
+                            <MenuItem icon={<Icon name="refresh" size={15} />} onSelect={resetMenu}>Вернуть меню по умолчанию</MenuItem>
+                          </>
+                        )}
+                      </DropdownMenu>
                     </div>
                   ))}
+                  {!moreItems.length && <p className="sbl-empty">Здесь пусто: все пункты в основном меню. Уберите сюда редкие — шестерёнка у пункта → «Убрать в «Ещё»».</p>}
                 </div>
               )}
             </div>
