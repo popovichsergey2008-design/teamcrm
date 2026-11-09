@@ -60,7 +60,6 @@ import { useStickyCheck } from '../lib/sticky-checks';
 import { confirmAction, promptText } from '../components/ui/dialog';
 import { DropdownMenu, MenuGroup, MenuItem, MenuSeparator } from '../components/ui/dropdown-menu';
 import { initialsOf } from '../lib/initials';
-import { useEnterSend } from '../hooks/useEnterSend';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
 import { useTitleHint } from '../lib/page-title';
 import { splitMessage } from '../lib/split-message';
@@ -466,7 +465,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     уйти в её поле: раньше он оставался где был, человек начинал печатать, и текст
     уходил в никуда (жалоба заказчика «при ответе фокус из поля ввода пропадает»).
   */
-  const threadInputRef = useRef<HTMLInputElement>(null);
+  /*
+    #4835: поле ветки — то же, что в ленте (MentionField): «@» зовёт человека,
+    Shift+Enter переносит строку. Раньше здесь стоял однострочный input без подсказки.
+  */
+  const [threadFocusKey, setThreadFocusKey] = useState(0);
+  const [threadMentioned, setThreadMentioned] = useState<string[]>([]);
   const [threadFocus, setThreadFocus] = useState(0);
   /*
     Что уже отправлено, но сервер ещё не ответил. Поле очищается сразу, а сообщение
@@ -1864,7 +1868,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     finally { setNavBusy((n) => n - 1); }
   };
   useEffect(() => {
-    if (threadFocus) requestAnimationFrame(() => threadInputRef.current?.focus());
+    if (threadFocus) setThreadFocusKey((k) => k + 1);
   }, [threadFocus]);
 
   /**
@@ -1894,13 +1898,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     return prev.filter((_, i) => i !== idx);
   });
 
-  // Enter — отправить, Shift/Ctrl+Enter — новая строка, после диктовки тоже (useEnterSend)
-  const threadEnter = useEnterSend(() => { void sendToThread(); });
   const sendToThread = async () => {
     const text = threadBody.trim();
     if ((!text && !threadPending.length) || !thread || !activeId) return;
     const files = threadPending.map((p) => p.file);
+    // имя могли стереть после вставки — звать человека после этого не за что
+    const calls = stillMentioned(threadMentioned, text, mentionUsers);
     setThreadBody('');
+    setThreadMentioned([]);
     clearThreadPending();
     try {
       // Вложения и подпись уходят ОДНИМ сообщением — как в ленте чата.
@@ -1910,7 +1915,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         void loadThreads();
         return;
       }
-      await api.sendChatMessage(activeId, text, { rootId: thread.rootId, alsoInChannel });
+      await api.sendChatMessage(activeId, text, { rootId: thread.rootId, alsoInChannel }, calls);
       /*
         Своё не ждём от сокета.
 
@@ -3802,14 +3807,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 }}
               />
             </label>
-            <input
-              ref={threadInputRef}
-              className="input"
-              placeholder="Ответить в ветке… Ctrl+V вставит картинку"
+            <MentionField
+              className="chat-mention-input"
+              focusKey={threadFocusKey}
               value={threadBody}
-              onChange={(e) => setThreadBody(e.target.value)}
-              onKeyDown={threadEnter.onKeyDown}
-              onCompositionEnd={threadEnter.onCompositionEnd}
+              users={mentionUsers}
+              everyone={!!active && active.kind !== 'dm' && active.kind !== 'self'}
+              onChange={setThreadBody}
+              onMention={(userId) => {
+                if (userId === 'ai') return; // помощник участником чата не становится
+                setThreadMentioned((prev) => (prev.includes(userId) ? prev : [...prev, userId]));
+              }}
+              placeholder="Ответить в ветке… «@» — позвать, Ctrl+V — картинка"
+              onEnter={() => { void sendToThread(); }}
+              // Enter отправляет, Shift+Enter или Ctrl+Enter переносит строку — как в ленте чата.
+              autoGrow
             />
             <button
               className="ui-btn ui-btn-primary ui-btn-sm"
