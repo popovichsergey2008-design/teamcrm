@@ -480,15 +480,11 @@ export function App() {
     return () => { window.clearTimeout(late); socket.off('followup.ready', show); window.removeEventListener('qevo:followup', show); };
   }, [user?.id]);
 
-  // #1525: пункты утренней планерки из брифа — в «Черновики» руководителя (лениво, после входа)
+  // #4839: пункты планерки больше не кладём в «Черновики» — убираем разложенные прежней версией
   useEffect(() => {
     if (!user?.id || user.role === 'client') return;
-    const run = () => { void import('./lib/brief-drafts').then((m) => m.importBriefDrafts(String(user.id))).catch(() => undefined); };
-    const t = window.setTimeout(run, 6000);
-    const socket = getSocket();
-    const onProposal = () => run();
-    socket.on('assistant.proposal', onProposal);
-    return () => { window.clearTimeout(t); socket.off('assistant.proposal', onProposal); };
+    const t = window.setTimeout(() => { void import('./lib/brief-drafts').then((m) => m.dropBriefDrafts(String(user.id))).catch(() => undefined); }, 3000);
+    return () => window.clearTimeout(t);
   }, [user?.id, user?.role]);
 
   // Адрес сменился извне доски (клик по разделу, «назад», уведомление) — пересобираем доску.
