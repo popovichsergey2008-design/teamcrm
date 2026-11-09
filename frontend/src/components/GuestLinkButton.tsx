@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { OptionSelect } from './ui/option-select';
-import { DateInput } from './DateInput';
+import { DateInput } from './DateInputLazy';
 
 interface ChatOption {
   id: string;

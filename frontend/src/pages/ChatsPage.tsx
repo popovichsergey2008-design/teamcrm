@@ -22,6 +22,7 @@ import { GroupChatModal } from '../components/GroupChatModal';
 import { CallStarter } from '../components/CallStarter';
 import { GuestLinkButton } from '../components/GuestLinkButton';
 import { lazyComponent } from '../lib/lazy';
+import { DateInput } from '../components/DateInputLazy';
 // сведения о чате и QEVO Bot — по первому открытию (бюджет первого экрана, 02.11)
 const ChatInfoPanel = lazyComponent(() => import('../components/chat/ChatInfoPanel').then((m) => m.ChatInfoPanel));
 const AnthillPanel = lazyComponent(() => import('../components/anthill/AnthillPanel').then((m) => m.AnthillPanel));
@@ -63,7 +64,6 @@ import { initialsOf } from '../lib/initials';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
 import { useTitleHint } from '../lib/page-title';
 import { splitMessage } from '../lib/split-message';
-import { DateInput } from '../components/DateInput';
 
 /** Сенсорный экран: подсказки «Tab — вставить» там не работают. */
 
