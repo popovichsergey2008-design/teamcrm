@@ -10,7 +10,7 @@
 .nav-ws-fold:hover { background: var(--hover); color: var(--text); }
 .nav-collapsed .nav-ws-row { flex-direction: column; }
 .nav-count.nav-count-info { background: var(--fill-info); }
-.nav-count.nav-count-warn { background: var(--warn); color: var(--text); }
+.nav-count.nav-count-warn { background: var(--attn); color: var(--on-attn); }
 .nav-count.nav-count-mute { background: transparent; color: var(--text-mut); font-weight: 500; }
 .nav-agent { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .nav-agent-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }

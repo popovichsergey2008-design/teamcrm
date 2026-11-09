@@ -14,7 +14,7 @@
 .ib-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .ib-pad { padding: 12px 16px; }
 .ib-group { padding: 10px 16px 4px; font-size: calc(11px * var(--fs-scale)); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-mut); }
-.ib-group.is-warn { color: var(--warn-text, var(--text)); }
+.ib-group.is-warn { color: var(--warn); }
 .ib-row { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px 10px 18px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .ib-row:hover { background: var(--hover); }
 .ib-row.is-sel { background: var(--accent-soft); }
