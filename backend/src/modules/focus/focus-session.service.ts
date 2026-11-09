@@ -327,6 +327,20 @@ export class FocusSessionService {
         lines.push(url ? `- [${it.text}](${url})` : `- ${it.text}`);
       }
     }
+    /*
+      #4807 §6.5, п. 4: во время фокуса «Входящие» копились без звука — после одна строка
+      со ссылкой туда (сообщения чатов во «Входящие» не входят, они уже перечислены выше).
+    */
+    const box = await this.db.one<{ n: number; decide: number }>(
+      `SELECT count(*)::int AS n, count(*) FILTER (WHERE n.event_key IN ('task.approval', 'task.shift_asked'))::int AS decide
+         FROM notification_inbox n JOIN focus_sessions s ON s.id = $3 AND s.tenant_id = n.tenant_id AND s.user_id = n.user_id
+        WHERE n.tenant_id = $1 AND n.user_id = $2 AND n.event_key <> 'chat.message' AND n.done_at IS NULL
+          AND n.created_at BETWEEN s.started_at AND COALESCE(s.ended_at, now())`,
+      [me.tenantId, me.userId, id],
+    ).catch(() => null);
+    if (box?.n) {
+      lines.push('', `Во «Входящих» за это время: ${box.n}${box.decide ? `, из них ждут вашего решения: ${box.decide}` : ''} — [открыть](${base}/inbox)`);
+    }
     const session = await this.db.one<{ id: string }>(
       `SELECT id::text FROM ai_sessions WHERE tenant_id=$1 AND user_id=$2 AND title=$3 AND context_entity_type IS NULL ORDER BY id LIMIT 1`,
       [me.tenantId, me.userId, RECAP_THREAD],

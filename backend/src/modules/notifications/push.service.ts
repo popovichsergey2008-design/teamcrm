@@ -110,8 +110,8 @@ export class PushService {
         });
         if (!item || !this.fcm.enabled) continue;
         if (!(await this.allowChatPush(userId, m.chatId))) continue;
-        // глубокая работа: сообщение лежит в ящике, телефон молчит (ТЗ-16)
-        if (await this.inbox.isQuiet(m.tenantId, userId)) continue;
+        // глубокая работа или «упоминания — только во Входящие»: сообщение лежит в ящике, телефон молчит
+        if (await this.inbox.silent(m.tenantId, userId, mentioned.has(userId) ? 'chat.mention' : 'chat.message')) continue;
 
         /*
           Куда слать.
@@ -300,7 +300,7 @@ export class PushService {
         ? { id: String(item.id), eventKey: item.event_key, title: item.title, body: item.body, path: item.path, toast: true }
         : { id: String(item.id), eventKey: item.event_key });
       if (!this.fcm.enabled || m.push === false) return true;
-      if (await this.inbox.isQuiet(m.tenantId, m.userId).catch(() => false)) return true;
+      if (await this.inbox.silent(m.tenantId, m.userId, m.eventKey).catch(() => false)) return true;
       const targets = (await this.inbox.pushTargets(m.userId)).filter((t) => !t.active);
       if (!targets.length) return true;
       const privacy = await this.inbox.pushPrivacyOf(m.tenantId);
@@ -373,7 +373,7 @@ export class PushService {
     // Живому приложению (сокет открыт, пусть и в фоне) — сигнал без push: оно само догонит ящик (волна 12).
     if (item && !fromCenter) this.realtime.emitToUsers(row.tenant_id, [row.user_id], 'inbox.item', { id: String(item.id), eventKey: item.event_key });
     if (!item || row.push_sent_at || !this.fcm.enabled) return;
-    if (await this.inbox.isQuiet(row.tenant_id, row.user_id).catch(() => false)) return;
+    if (await this.inbox.silent(row.tenant_id, row.user_id, row.event_key).catch(() => false)) return;
 
     try {
       const targets = (await this.inbox.pushTargets(row.user_id)).filter((t) => !t.active);

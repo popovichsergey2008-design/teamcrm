@@ -169,7 +169,9 @@ export function parsePath(pathname: string): Route {
       return seg[1] ? { section, meetId: seg[1] } : { section: 'calendar' };
     case 'clients':
       return seg[1] ? { section, clientId: seg[1] } : { section };
+    // #4807: вкладка «Входящих»; «Профиль → Уведомления» прямой ссылкой — /profile/notify
     case 'inbox':
+    case 'profile':
       return seg[1] ? { section, tab: seg[1] } : { section };
     default:
       return { section };
@@ -213,6 +215,8 @@ export function buildPath(r: Route): string {
       return r.clientId ? `/clients/${enc(r.clientId)}` : '/clients';
     case 'news':
       return r.postId ? `/news/${enc(r.postId)}` : '/news';
+    case 'profile':
+      return r.tab ? `/profile/${enc(r.tab)}` : '/profile';
     default:
       return `/${r.section}`;
   }

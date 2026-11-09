@@ -914,7 +914,7 @@ export function App() {
         {route.section === 'console' && user.platformStaff && <Suspense fallback={pageFallback}><ConsolePage route={route} /></Suspense>}
         {route.section === 'settings' && <Suspense fallback={pageFallback}><SettingsPage route={route} role={user.role} /></Suspense>}
         {route.section === 'profile' && (
-          <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} />
+          <ProfilePanel onClose={() => navigate({ section: 'settings' })} onAvatar={setAvatarPath} initialTab={route.tab === 'notify' ? 'notify' : undefined} />
         )}
       </main>
 

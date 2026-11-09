@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { IMPORTANT_KINDS, InboxRowLite, InboxTab, keysOfKinds, NOT_IN_INBOX } from './inbox-rules';
+import { IMPORTANT_KINDS, InboxKind, InboxRowLite, InboxTab, keysOfKinds, NOT_IN_INBOX, offWhere } from './inbox-rules';
 
 /** Задача и её люди — от них центр считает адресатов события. */
 export interface CenterTaskRow {
@@ -215,9 +215,9 @@ export class CenterRepository {
     return live;
   }
 
-  inboxList(v: CenterViewer, tab: InboxTab, before: string | null, limit: number): Promise<InboxRowLite[]> {
+  inboxList(v: CenterViewer, tab: InboxTab, before: string | null, limit: number, off: InboxKind[] = []): Promise<InboxRowLite[]> {
     const params: unknown[] = [v.tenantId, v.userId, boss(v), NOT_IN_INBOX];
-    const where = [VISIBLE, 'n.event_key <> ALL($4::text[])', this.tabWhere(tab, params)];
+    const where = [VISIBLE, 'n.event_key <> ALL($4::text[])', this.tabWhere(tab, params), offWhere(off, params)];
     if (before) { params.push(before); where.push(`n.id < $${params.length}::bigint`); }
     params.push(limit);
     return this.db.many<InboxRowLite>(
@@ -233,8 +233,9 @@ export class CenterRepository {
   }
 
   /** Непрочитанное «Важное» и его состав — для счётчика и подсказки (6.4). */
-  async inboxCounts(v: CenterViewer): Promise<{ important: number; mentions: number; assigned: number; decisions: number; meetings: number; ai: number }> {
+  async inboxCounts(v: CenterViewer, off: InboxKind[] = []): Promise<{ important: number; mentions: number; assigned: number; decisions: number; meetings: number; ai: number }> {
     const params: unknown[] = [v.tenantId, v.userId, boss(v), keysOfKinds(['mention']), keysOfKinds(['assigned']), keysOfKinds(['decision']), keysOfKinds(['ai'])];
+    const offSql = offWhere(off, params);
     const row = await this.db.one<Record<string, string>>(
       `SELECT count(*) FILTER (WHERE n.event_key = ANY($4::text[]))::text AS mentions,
               count(*) FILTER (WHERE n.event_key = ANY($5::text[]))::text AS assigned,
@@ -242,7 +243,7 @@ export class CenterRepository {
               count(*) FILTER (WHERE n.event_key LIKE 'meeting.%')::text AS meetings,
               count(*) FILTER (WHERE n.event_key = ANY($7::text[]))::text AS ai
          ${FROM}
-        WHERE ${VISIBLE} AND n.read_at IS NULL AND n.done_at IS NULL
+        WHERE ${VISIBLE} AND n.read_at IS NULL AND n.done_at IS NULL AND ${offSql}
           AND (n.snoozed_until IS NULL OR n.snoozed_until <= now())`,
       params,
     );
@@ -276,5 +277,15 @@ export class CenterRepository {
       [v.tenantId, v.userId, taskId],
     );
     return r.rowCount ?? 0;
+  }
+
+  /** #4807 §6.5, п. 6: сохранить режим типа «Входящих». */
+  async setInboxMode(v: CenterViewer, key: string, mode: string): Promise<void> {
+    await this.db.query(
+      `INSERT INTO notification_prefs (tenant_id, user_id, event_key, enabled, mode)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (tenant_id, user_id, event_key) DO UPDATE SET enabled=$4, mode=$5, updated_at=now()`,
+      [v.tenantId, v.userId, key, mode !== 'off', mode],
+    );
   }
 }

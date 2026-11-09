@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { pushAllowed } from './inbox-rules';
 
 export interface InboxRow {
   id: string;
@@ -168,6 +169,21 @@ export class InboxRepository {
       [tenantId, userId],
     );
     return !!row?.quiet;
+  }
+
+  /** #4807 §6.5, п. 6: режимы «Входящих» по типам — тип → push / inbox / off. */
+  async inboxModes(tenantId: string, userId: string): Promise<Map<string, string>> {
+    const rows = await this.db.many<{ event_key: string; mode: string | null }>(
+      `SELECT event_key, mode FROM notification_prefs WHERE tenant_id=$1 AND user_id=$2 AND event_key LIKE 'inbox.%'`,
+      [tenantId, userId],
+    );
+    return new Map(rows.filter((r) => r.mode).map((r) => [r.event_key.slice(6), r.mode as string]));
+  }
+
+  /** Не слать push и Telegram: глубокая работа или тип в режиме «Только входящие» / «Не показывать». */
+  async silent(tenantId: string, userId: string, eventKey: string): Promise<boolean> {
+    if (await this.isQuiet(tenantId, userId)) return true;
+    return !pushAllowed(eventKey, await this.inboxModes(tenantId, userId));
   }
 
   /** Оболочка сообщает, открыта она сейчас или свёрнута. */

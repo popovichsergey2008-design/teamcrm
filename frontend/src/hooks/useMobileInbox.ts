@@ -6,6 +6,7 @@ import { navigate, parsePath } from '../lib/router';
 import { playMessageChime } from '../lib/sound';
 import { platform, isNativeShell } from '../platform';
 import { setCenterUnread } from '../lib/notification-center';
+import { quietFor } from '../lib/quiet';
 
 const CURSOR_KEY = 'teamcrm.inbox-cursor';
 /** Оболочка сообщает о push, пришедшем при открытом приложении. */
@@ -36,7 +37,8 @@ export function useMobileInbox(signedIn: boolean): void {
         // шторка — только о непрочитанном: прочитанное в любом месте исчезает и оттуда (#1531)
         platform.notifications.prune(r.unread > 0 ? (r.unreadItems ?? []) : null);
         // без курсора это первый запуск: не заваливать человека всей историей
-        const fresh = cursor ? r.items : [];
+        // #4807 §6.5, п. 4: в глубоком фокусе — без всплывашек и звука, только значок
+        const fresh = cursor && !quietFor() ? r.items : [];
         for (const it of fresh.slice(-3)) {
           // приложение свёрнуто — всплывашку никто не увидит: в центр уведомлений ОС (волна 12)
           if (document.hidden) showNotification(it.title, it.body, () => openInboxItem(it.id, it.path ?? undefined), { key: it.path ?? undefined });

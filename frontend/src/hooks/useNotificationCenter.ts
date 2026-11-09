@@ -6,6 +6,8 @@ import { playMessageChime } from '../lib/sound';
 import { openInboxItem } from './useMobileInbox';
 import { setCenterUnread } from '../lib/notification-center';
 import { isNativeShell } from '../platform';
+import { quietFor } from '../lib/quiet';
+import { inboxToastAllowed, loadInboxModes } from '../lib/inbox-api';
 
 /**
  * Центр уведомлений (#4655): счётчик на значке живьём и всплывашка о событии по задаче.
@@ -39,11 +41,18 @@ export function useNotificationCenter(signedIn: boolean): void {
       }, 150);
     };
     load();
+    loadInboxModes();
     const socket = getSocket();
     let lastChime = 0;
     const onItem = (p: { id?: string; eventKey?: string; title?: string; body?: string; path?: string; toast?: boolean }) => {
       load();
       if (!p?.toast || !p.title || isNativeShell()) return;
+      /*
+        #4807 §6.5, п. 4 и 6: в глубоком фокусе «Входящие» копятся без звука и без
+        всплывашек (после — одна сводка); тип в режиме «Только входящие» — тоже тихо.
+      */
+      const key = p.eventKey ?? '';
+      if (quietFor({ personal: key.endsWith('.mention') }) || !inboxToastAllowed(key)) return;
       if (document.hidden) showNotification(p.title, p.body ?? '', () => openInboxItem(p.id, p.path), { key: p.path });
       // не гаснут сами, пока не прочитают: «Задача поставлена от вас» ждёт «Ок/Править» (#4742),
       // приглашение на встречу — в том числе поставленную агентом из переписки (#4749)

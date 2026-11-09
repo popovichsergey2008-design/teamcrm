@@ -155,7 +155,7 @@ export class TelegramMirror {
     if (!this.sender.enabled || !row.user_id || row.tg_sent_at) return;
     try {
       if (!(await this.repo.prefEnabled(row.tenant_id, row.user_id, MIRROR_EVENT_KEY))) return;
-      if (await this.inbox.isQuiet(row.tenant_id, row.user_id)) return;
+      if (await this.inbox.silent(row.tenant_id, row.user_id, row.event_key)) return;
       const chatId = await this.telegram.chatIdOf(row.tenant_id, row.user_id);
       if (!chatId) return; // Telegram не привязан — это норма, а не ошибка
 

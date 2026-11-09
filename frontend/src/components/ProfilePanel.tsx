@@ -18,6 +18,7 @@ import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { initialsOf } from '../lib/initials';
 import { lazyComponent } from '../lib/lazy';
+import { InboxPrefs } from './InboxPrefs';
 // второй фактор открывают редко — его код (и генератор QR) грузится по первому показу
 const MfaSettings = lazyComponent(() => import('./auth/MfaSettings').then((m) => m.default));
 
@@ -33,8 +34,8 @@ const TG_FOCUS = 'telegram.focus';
 /** Поводы, которые живут в разделе Telegram, а не в списке писем. */
 const TG_KEYS: readonly string[] = [TG_MIRROR, TG_DIRECT, TG_FOCUS];
 
-export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAvatar: (url: string | null) => void }) {
-  const [tab, setTab] = useState<Tab>('profile');
+export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () => void; onAvatar: (url: string | null) => void; initialTab?: 'notify' }) {
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'profile');
   const [sound, setSound] = useState(soundPrefs);
   const toggleSound = (kind: 'messages' | 'calls') => {
     const next = { ...sound, [kind]: !sound[kind] };
@@ -444,6 +445,8 @@ export function ProfilePanel({ onClose, onAvatar }: { onClose: () => void; onAva
 
         {tab === 'notify' && (
           <>
+            {/* #4807 §6.5, п. 6 */}
+            <InboxPrefs />
             <div className="drawer-section-title">Письма</div>
             {NOTIFY_KEYS.map(([k, label]) => (
               <label key={k} className="notify-row">

@@ -257,6 +257,9 @@ export function InboxPage({ tab: tabFromRoute }: { tab?: string }) {
         <header className="ib-head">
           <h1>Входящие</h1>
           {wide && <span className="ib-keys">J/K — вверх/вниз · E — готово · R — ответить · S — отложить</span>}
+          <button className="bb-link ib-prefs" onClick={() => navigate({ section: 'profile', tab: 'notify' })} title="Что показывать во «Входящих» и что присылать push-уведомлением">
+            <Icon name="settings" size={13} /> Настроить
+          </button>
         </header>
         <nav className="ib-tabs" aria-label="Вкладки «Входящих»">
           {TABS.map((t) => (

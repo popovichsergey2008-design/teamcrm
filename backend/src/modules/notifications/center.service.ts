@@ -6,7 +6,9 @@ import {
   centerKey, mentionedUsers, RecipientOpts, TASK_EVENT_KEY, TaskEventDetails, TaskEventKind,
   taskEventPhrase, taskEventText, taskRecipients,
 } from './center-rules';
-import { groupInbox, InboxTab } from './inbox-rules';
+import { groupInbox, INBOX_KIND_TITLES, InboxKind, InboxMode, InboxTab, LOCKED_KINDS, modeAllowed, prefKey } from './inbox-rules';
+import { InboxRepository } from './inbox.repository';
+import { AppException } from '../../common/http/app-exception';
 
 /** Событие по задаче для истории. */
 export interface CenterTaskEvent extends RecipientOpts {
@@ -42,7 +44,29 @@ export class NotificationCenter {
     private readonly repo: CenterRepository,
     private readonly notifications: NotificationsRepository,
     private readonly realtime: RealtimeService,
+    private readonly box: InboxRepository,
   ) {}
+
+  /** Выключенные человеком типы «Входящих» — их нет ни в списке, ни на счётчике. */
+  private async offKinds(v: CenterViewer): Promise<InboxKind[]> {
+    const modes = await this.box.inboxModes(v.tenantId, v.userId);
+    return [...modes.entries()].filter(([k, m]) => m === 'off' && !LOCKED_KINDS.includes(k as InboxKind)).map(([k]) => k as InboxKind);
+  }
+
+  /** Настройки «Входящих» по типам (6.5, п. 6): пусто — «Входящие и push». */
+  async inboxPrefs(v: CenterViewer) {
+    const modes = await this.box.inboxModes(v.tenantId, v.userId);
+    return (Object.keys(INBOX_KIND_TITLES) as InboxKind[]).map((kind) => ({
+      kind, title: INBOX_KIND_TITLES[kind], mode: (modes.get(kind) ?? 'push') as InboxMode, locked: LOCKED_KINDS.includes(kind),
+    }));
+  }
+
+  async setInboxPref(v: CenterViewer, kind: InboxKind, mode: InboxMode) {
+    if (!modeAllowed(kind, mode)) throw AppException.validation('Решения и упоминания отключить нельзя — можно только убрать push');
+    await this.repo.setInboxMode(v, prefKey(kind), mode);
+    this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.read', { prefs: true });
+    return this.inboxPrefs(v);
+  }
 
   /** Записать событие по задаче всем, кому оно адресовано. Возвращает, кому записали. */
   async task(e: CenterTaskEvent): Promise<string[]> {
@@ -176,19 +200,19 @@ export class NotificationCenter {
   /** Вкладка по 50 строк; однотипное по задаче за сутки — одной строкой. */
   async inbox(v: CenterViewer, tab: InboxTab, before: string | null) {
     const limit = 50;
-    const rows = await this.repo.inboxList(v, tab, before, limit);
+    const rows = await this.repo.inboxList(v, tab, before, limit, await this.offKinds(v));
     return { items: groupInbox(rows), next: rows.length === limit ? rows[rows.length - 1].id : null };
   }
 
-  inboxCounters(v: CenterViewer) {
-    return this.repo.inboxCounts(v);
+  async inboxCounters(v: CenterViewer) {
+    return this.repo.inboxCounts(v, await this.offKinds(v));
   }
 
   async inboxMark(v: CenterViewer, ids: string[], action: 'read' | 'unread' | 'done' | 'undone' | 'snooze', until?: Date) {
     const n = await this.repo.inboxMark(v, ids, action, until);
     // прочитано на одном устройстве — прочитано везде (6.5, п. 1)
     if (n) this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.read', { ids, action });
-    return { changed: n, counters: await this.repo.inboxCounts(v) };
+    return { changed: n, counters: await this.inboxCounters(v) };
   }
 
   async inboxReadTask(v: CenterViewer, taskId: string) {

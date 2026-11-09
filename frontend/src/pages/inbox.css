@@ -51,3 +51,4 @@
 .ib-pv-note { font-size: calc(12px * var(--fs-scale)); }
 .ib-date { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 @media (max-width: 979px) { .ib-list { width: 100%; border-right: 0; } }
+.ib-prefs { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: calc(12px * var(--fs-scale)); }

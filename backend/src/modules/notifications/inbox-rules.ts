@@ -139,3 +139,53 @@ export function validSnooze(until: Date, now = new Date()): boolean {
   const t = until.getTime();
   return Number.isFinite(t) && t > now.getTime() && t - now.getTime() <= 366 * DAY_MS;
 }
+
+// ── настройки по типам (6.5, п. 6) ──
+
+export const INBOX_MODES = ['push', 'inbox', 'off'] as const;
+export type InboxMode = (typeof INBOX_MODES)[number];
+
+/** Типы из таблицы 6.2 — подписи для настроек. */
+export const INBOX_KIND_TITLES: Record<InboxKind, string> = {
+  decision: 'Ждёт моего решения',
+  mention: 'Упоминания @я',
+  assigned: 'Назначено мне, сменился срок моей задачи',
+  ai: 'ИИ предлагает: черновики задач, поручения из протокола',
+  meeting: 'Созвоны: пропущенный, приглашение, протокол готов',
+  comment: 'Ответы в моих обсуждениях и задачах',
+  change: 'Изменения в задачах, где я участник или наблюдатель',
+  system: 'Системные: доступ, решение гостя, пробный период, сводка ИИ',
+};
+
+/** Решения и упоминания отключить нельзя — только push (6.5, п. 6). */
+export const LOCKED_KINDS: InboxKind[] = ['decision', 'mention'];
+
+export const prefKey = (kind: InboxKind) => `inbox.${kind}`;
+
+/** Можно ли поставить такой режим этому типу. */
+export function modeAllowed(kind: InboxKind, mode: InboxMode): boolean {
+  return mode !== 'off' || !LOCKED_KINDS.includes(kind);
+}
+
+/** Слать ли push/Telegram о событии: тип в режиме «Только входящие» или «Не показывать» — нет. */
+export function pushAllowed(eventKey: string, modes: Map<string, string>): boolean {
+  if (NOT_IN_INBOX.includes(eventKey)) return true;
+  const m = modes.get(inboxKind(eventKey));
+  return !m || m === 'push';
+}
+
+/**
+ * Условие SQL «тип не выключен»: ключи выключенных типов — параметром, созвоны — по
+ * приставке, «системные» — всё, что не попало ни в один известный тип.
+ */
+export function offWhere(off: InboxKind[], params: unknown[]): string {
+  const parts: string[] = [];
+  const keyed = keysOfKinds(off.filter((k) => k !== 'meeting' && k !== 'system'));
+  if (keyed.length) { params.push(keyed); parts.push(`n.event_key <> ALL($${params.length}::text[])`); }
+  if (off.includes('meeting')) parts.push("n.event_key NOT LIKE 'meeting.%'");
+  if (off.includes('system')) {
+    params.push(Object.keys(KIND_BY_KEY));
+    parts.push(`(n.event_key = ANY($${params.length}::text[]) OR n.event_key LIKE 'meeting.%' OR n.event_key LIKE 'call.%')`);
+  }
+  return parts.length ? parts.join(' AND ') : 'TRUE';
+}

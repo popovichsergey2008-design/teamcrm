@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsIn, IsISO8601, IsOptional, Matches } from 'class-validator';
 import { AppException } from '../../common/http/app-exception';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { NotificationCenter } from './center.service';
-import { INBOX_TABS, InboxTab, validSnooze } from './inbox-rules';
+import { INBOX_KIND_TITLES, INBOX_MODES, INBOX_TABS, InboxKind, InboxMode, InboxTab, validSnooze } from './inbox-rules';
 
 class InboxQuery {
   @IsOptional() @IsIn(INBOX_TABS as unknown as string[]) tab?: InboxTab;
@@ -24,6 +24,11 @@ class BulkDto {
   /** Массово — прочитать, «Готово» и «Отложить»; массового «Принять всё» нет (6.3). */
   @IsIn(BULK as unknown as string[]) action!: (typeof BULK)[number];
   @IsOptional() @IsISO8601() until?: string;
+}
+
+class PrefDto {
+  @IsIn(Object.keys(INBOX_KIND_TITLES)) kind!: InboxKind;
+  @IsIn(INBOX_MODES as unknown as string[]) mode!: InboxMode;
 }
 
 class TaskReadDto {
@@ -54,6 +59,17 @@ export class InboxBoxController {
   @Get('counters')
   counters(@CurrentUser() u: AuthUser) {
     return this.center.inboxCounters(u);
+  }
+
+  /** #4807 §6.5, п. 6: по каждому типу — «Входящие и push» / «Только входящие» / «Не показывать». */
+  @Get('prefs')
+  prefs(@CurrentUser() u: AuthUser) {
+    return this.center.inboxPrefs(u);
+  }
+
+  @Put('prefs')
+  setPref(@CurrentUser() u: AuthUser, @Body() dto: PrefDto) {
+    return this.center.setInboxPref(u, dto.kind, dto.mode);
   }
 
   @Post('bulk')

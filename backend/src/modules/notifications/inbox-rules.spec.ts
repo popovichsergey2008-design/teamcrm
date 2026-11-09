@@ -48,3 +48,29 @@ describe('#4807 §6 — «Входящие»', () => {
     expect(validSnooze(new Date('nope'), now)).toBe(false);
   });
 });
+
+describe('#4807 §6.5 — тишина и настройки по типам', () => {
+  const { modeAllowed, pushAllowed, offWhere } = jest.requireActual('./inbox-rules');
+  it('решения и упоминания отключить нельзя — только убрать push', () => {
+    expect(modeAllowed('decision', 'off')).toBe(false);
+    expect(modeAllowed('mention', 'off')).toBe(false);
+    expect(modeAllowed('mention', 'inbox')).toBe(true);
+    expect(modeAllowed('comment', 'off')).toBe(true);
+  });
+  it('push — только если тип в режиме «Входящие и push»', () => {
+    const modes = new Map([['comment', 'inbox'], ['change', 'off'], ['mention', 'push']]);
+    expect(pushAllowed('task.commented', modes)).toBe(false);
+    expect(pushAllowed('task.status', modes)).toBe(false);
+    expect(pushAllowed('task.mention', modes)).toBe(true);
+    expect(pushAllowed('task.assignee', modes)).toBe(true);
+    expect(pushAllowed('chat.message', modes)).toBe(true);
+  });
+  it('выключенные типы — условием SQL; ничего не выключено — TRUE', () => {
+    const p: unknown[] = [];
+    expect(offWhere([], p)).toBe('TRUE');
+    const sql = offWhere(['comment', 'meeting', 'system'], p);
+    expect(sql).toContain("NOT LIKE 'meeting.%'");
+    expect(p[0]).toEqual(['task.commented']);
+    expect(sql).toContain('$2::text[]');
+  });
+});
