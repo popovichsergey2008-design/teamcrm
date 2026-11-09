@@ -9,7 +9,7 @@ interface AuthState {
   organizations: OrgRef[];
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string> }) => Promise<void>;
+  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string>; referrerHost?: string }) => Promise<void>;
   /** Перечитать себя с сервера — после знакомства (#4779) имя и настройки новые. */
   reloadUser: () => Promise<void>;
   /** Принять ответ входа: так заходят через Google и Telegram — пароля там нет. */
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await take(await api.loginMfa(mfaToken, code));
   };
 
-  const register = async (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string> }) => {
+  const register = async (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string>; referrerHost?: string }) => {
     const r = await api.register(b);
     tokens.set(r.accessToken, r.refreshToken);
     reconnectSocket();

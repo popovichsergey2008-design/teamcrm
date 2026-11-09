@@ -163,10 +163,14 @@ describe('Рабочий Telegram-бот (e2e)', () => {
   });
 
   it('/task — поручение текстом становится задачей; /daily — дейлик', async () => {
+    // ответ на дейлик из прошлого шага приходит с задержкой и мог стать «последним»
+    // сообщением — ищем нужный ответ среди новых, а не берём последний
+    const mark = sent(ownerTg).length;
+    const said = (s: string) => waitFor(() => sent(ownerTg).slice(mark).find((m) => String(m.text ?? '').includes(s)));
     await text(ownerTg, '/task');
-    expect(last(ownerTg).text).toContain('Жду поручения');
+    expect((await said('Жду поручения')).text).toContain('Жду поручения');
     await text(ownerTg, 'Подготовить коммерческое предложение для клиента');
-    expect(last(ownerTg).text).toContain('✅ Задача поставлена от вас');
+    expect((await said('✅ Задача поставлена от вас')).text).toContain('✅ Задача поставлена от вас');
     expect(await db.one(`SELECT id FROM tasks WHERE tenant_id = $1 AND created_by = $2 AND title ILIKE '%коммерческое предложение%'`, [tenantId, ownerId])).toBeTruthy();
 
     const before = await submissions();

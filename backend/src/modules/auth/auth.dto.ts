@@ -45,6 +45,12 @@ export class RegisterDto {
   @IsObject({ message: 'Метки перехода — объект' })
   utm?: Record<string, unknown>;
 
+  /** #4804: домен, с которого пришли на сайт (только домен). Чистит сервис. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  referrerHost?: string;
+
   /**
    * #4675: галочка «Я принимаю Политику конфиденциальности». Необязательна для
    * валидатора, чтобы отказ был понятным текстом из сервиса, а не «must be a boolean».

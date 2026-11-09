@@ -1,3 +1,4 @@
+import { attributionParams, SIGNUP_ATTRIBUTION_SQL, signupAttribution } from './signup-attribution';
 import { Injectable, Optional } from '@nestjs/common';
 import { OrgService } from '../org/org.service';
 import { ConfigService } from '@nestjs/config';
@@ -126,6 +127,8 @@ export class AuthService {
          RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
         [tenant.id, dto.email, passwordHash, fullName, account.id, JSON.stringify(prefs)],
       );
+      // #4804: источник первой регистрации — для недельного отчёта по площадкам
+      await client.query(SIGNUP_ATTRIBUTION_SQL, attributionParams(account.id, tenant.id, res.rows[0].id, signupAttribution(utm, dto.referrerHost)));
       // согласие — в той же транзакции: аккаунта без записи о нём быть не должно
       await this.consents.record(
         { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: { flow: 'register' } },
@@ -283,6 +286,8 @@ export class AuthService {
          RETURNING *, (SELECT code FROM roles WHERE code='owner') AS role_code`,
         [tenant.id, email, passwordHash, fullName, account.id],
       );
+      // #4804: из Telegram-бота меток нет — «direct», источник — Telegram
+      await client.query(SIGNUP_ATTRIBUTION_SQL, attributionParams(account.id, tenant.id, res.rows[0].id, signupAttribution(null, 't.me')));
       await this.consents.record(
         { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: consentContext },
         meta, client,

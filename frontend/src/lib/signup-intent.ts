@@ -5,7 +5,7 @@
  * регистрации: метки уходят с ней на сервер, задача создаётся после знакомства.
  */
 const KEY = 'qevo.signup';
-type Intent = { utm?: Record<string, string>; task?: string; at: number };
+type Intent = { utm?: Record<string, string>; task?: string; ref?: string; at: number };
 
 function read(): Intent | null {
   try {
@@ -31,13 +31,26 @@ export const signupMode: 'register' | 'login' | null = (() => {
   const utm: Record<string, string> = {};
   q.forEach((v, k) => { if (/^utm_[a-z_]{1,20}$/.test(k) && v.trim()) utm[k] = v.trim().slice(0, 200); });
   const task = (q.get('task') ?? q.get('demo_task') ?? '').trim().slice(0, 500);
-  if (!Object.keys(utm).length && !task) return;
+  /*
+    #4804: домен, откуда пришли. Сайт передаёт его в ?qevo_ref= (сам он видит
+    исходный переход с Дзена или VK); без него — чужой referrer этой страницы.
+    Только домен, путь чужой страницы не храним.
+  */
+  let ref = (q.get('qevo_ref') ?? '').trim().toLowerCase().slice(0, 253);
+  if (!ref) {
+    try {
+      const h = document.referrer ? new URL(document.referrer).hostname.toLowerCase() : '';
+      if (h && !/(^|\.)qevo\.one$/.test(h)) ref = h;
+    } catch { /* без источника */ }
+  }
+  if (!Object.keys(utm).length && !task && !ref) return;
   const prev = read();
-  const next: Intent = { utm: Object.keys(utm).length ? utm : prev?.utm, task: task || prev?.task, at: Date.now() };
+  const next: Intent = { utm: Object.keys(utm).length ? utm : prev?.utm, task: task || prev?.task, ref: ref || prev?.ref, at: Date.now() };
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* без хранилища — без меток */ }
 })();
 
 export function signupUtm(): Record<string, string> | undefined { return read()?.utm; }
+export function signupReferrer(): string | undefined { return read()?.ref; }
 export function signupTask(): string | null { return read()?.task ?? null; }
 export function clearSignupTask(): void {
   const v = read();

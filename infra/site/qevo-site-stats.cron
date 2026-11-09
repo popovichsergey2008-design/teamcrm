@@ -1,0 +1,9 @@
+# #4804: учёт переходов и регистраций по UTM. Ставится один раз:
+#   sudo install -m 644 infra/site/qevo-site-stats.cron /etc/cron.d/qevo-site-stats
+# Время — по часам сервера (Europe/Moscow).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# журнал сайта за прошедшие сутки — из контейнера nginx на хост архивом .gz
+5 0 * * * root sh /opt/teamcrm/scripts/site-log-rotate.sh >> /var/log/qevo-site-stats.log 2>&1
+# понедельник 06:00 — CSV за прошедшую неделю (переходы и регистрации)
+0 6 * * 1 root python3 /opt/teamcrm/scripts/utm_weekly.py >> /var/log/qevo-site-stats.log 2>&1

@@ -893,7 +893,7 @@ export const api = {
   mobileSync: (cursor: string | null, limit = 200) =>
     request<SyncPage>('GET', `/mobile/sync?limit=${limit}${cursor ? `&cursor=${cursor}` : ''}`),
   // auth
-  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; dataRegion?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string> }) =>
+  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; dataRegion?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string>; referrerHost?: string }) =>
     rawRequest<AuthResult>('POST', '/auth/register', b, false),
   /** Пароль верный — сессия, а при включённом втором факторе — просьба ввести код. */
   login: (b: { email: string; password: string }) =>
