@@ -208,7 +208,8 @@
 .nav-group:hover > .nav-gear { opacity: 1; pointer-events: auto; transition: opacity .25s ease .9s; }
 .nav-gear[data-popup-open], .nav-gear:focus-visible { opacity: 1; pointer-events: auto; transition-delay: 0s; }
 .nav-gear:hover { color: var(--text); }
-@media (hover: none) { .nav-gear { opacity: .6; pointer-events: auto; } }
+/* касание: шестерёнка закрывала счётчик пункта — настройка меню на телефоне в «Настроить меню» */
+@media (hover: none) { .nav-gear { display: none; } }
 .nav-home { display: inline-flex; color: var(--text-mut); }
 /*
   Перетаскивание пунктов (#4601, как в Битриксе): пока тянут, всё меню — на общей
