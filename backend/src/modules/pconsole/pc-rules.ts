@@ -113,3 +113,25 @@ export function deltaPct(cur: number, prev: number): number | null {
   if (!prev) return null;
   return Math.round(((cur - prev) / prev) * 1000) / 10;
 }
+
+// ── метрики ТЗ #4807, раздел 10: «до» и «после» выкладки ──
+
+/** Окна сравнения: две недели до выкладки и до двух недель после (не дальше «сейчас»). */
+export function productWindows(release: string, now = new Date()): { before: { from: Date; to: Date }; after: { from: Date; to: Date }; afterDays: number } {
+  const r = new Date(`${release}T00:00:00Z`);
+  if (Number.isNaN(r.getTime())) throw new Error('bad release');
+  const DAY = 86_400_000;
+  const afterTo = new Date(Math.max(r.getTime(), Math.min(r.getTime() + 14 * DAY, now.getTime())));
+  return {
+    before: { from: new Date(r.getTime() - 14 * DAY), to: r },
+    after: { from: r, to: afterTo },
+    afterDays: Math.round(((afterTo.getTime() - r.getTime()) / DAY) * 10) / 10,
+  };
+}
+
+/** Изменение «после» к «до» в процентах; нет базы — null. Для «меньше — лучше» знак развёрнут. */
+export function liftPct(before: number | null, after: number | null, lowerIsBetter = false): number | null {
+  if (before == null || after == null || before === 0) return null;
+  const d = ((after - before) / Math.abs(before)) * 100;
+  return Math.round((lowerIsBetter ? -d : d) * 10) / 10;
+}

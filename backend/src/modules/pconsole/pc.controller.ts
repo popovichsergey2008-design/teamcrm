@@ -154,6 +154,13 @@ export class PcController {
     return this.stats.overview(p, zone);
   }
 
+  /** Метрики ТЗ #4807, раздел 10: «до» и «после» выкладки доски и меню (по умолчанию 09.11.2026). */
+  @Get('owner/product') @PcNeed('owner.view')
+  product(@Query('release') release?: string) {
+    const r = release && /^\d{4}-\d{2}-\d{2}$/.test(release) ? release : '2026-11-09';
+    return this.stats.productMetrics(r);
+  }
+
   @Get('owner/tenants') @PcNeed('owner.view')
   tenants() { return this.stats.tenants(); }
 

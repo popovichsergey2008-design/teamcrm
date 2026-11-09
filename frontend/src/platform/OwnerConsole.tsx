@@ -146,10 +146,68 @@ function OverviewTab() {
           <h3>Регистрации {data.series.unit === 'day' ? 'по дням' : 'по месяцам'}</h3>
           <Bars points={data.series.points} />
           <p className="dim pc-meta">Активность: {data.activityRule}. Установки: {data.sources.installs}. Поступления: {data.sources.revenue}. ИИ: {data.sources.aiCost}.</p>
+          <ProductMetrics />
         </>
       )}
       {!data && !err && ready && <p className="dim">Считаю…</p>}
     </section>
+  );
+}
+
+interface ProductRow { key: string; label: string; unit: string; how: string; before: number | null; after: number | null; liftPct: number | null; lowerIsBetter: boolean }
+interface Product {
+  release: string; generatedAt: string; targetPct: number;
+  windows: { before: { from: string; to: string }; after: { from: string; to: string }; afterDays: number };
+  rows: ProductRow[];
+  sample: Record<'before' | 'after', { newUsers: number; decisions: number; trials: number; d7Cohort: number }>;
+}
+
+/**
+ * Метрики ТЗ #4807, раздел 10: «до» — две недели перед выкладкой доски и меню (09.11),
+ * «после» — до двух недель после. Цель +30% — гипотеза, её здесь и проверяют.
+ */
+function ProductMetrics() {
+  const [release, setRelease] = useState('2026-11-09');
+  const { data, err } = useLoad<Product>(() => pc<Product>('GET', `/pc/owner/product?release=${release}`), [release]);
+  const day = (iso: string) => new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  const val = (v: number | null, unit: string) => (v == null ? 'нет данных' : unit === 'с' && v >= 120 ? `${Math.round(v / 60)} мин` : `${fmtNum(v)}${unit === '%' ? '%' : ` ${unit}`}`);
+  return (
+    <>
+      <h3>Эффект доски и меню (ТЗ #4807, раздел 10)</h3>
+      <div className="pc-row pc-wrap">
+        <label className="pc-row">Выкладка <input type="date" value={release} onChange={(e) => e.target.value && setRelease(e.target.value)} aria-label="Дата выкладки" /></label>
+      </div>
+      {err && <p className="pc-err">{err}</p>}
+      {data && (
+        <>
+          <p className="dim pc-meta">
+            До: {day(data.windows.before.from)} — {day(data.windows.before.to)}. После: {day(data.windows.after.from)} — {day(data.windows.after.to)} ({data.windows.afterDays} дн. из 14).
+            {' '}Цель — +{data.targetPct}% (гипотеза). Только настоящие компании.
+          </p>
+          <div className="pc-table-wrap"><table className="pc-table">
+            <thead><tr><th>Метрика</th><th>До</th><th>После</th><th>Изменение</th></tr></thead>
+            <tbody>
+              {data.rows.map((r) => (
+                <tr key={r.key}>
+                  <td><b>{r.label}</b><div className="dim">{r.how}</div></td>
+                  <td>{val(r.before, r.unit)}</td>
+                  <td>{val(r.after, r.unit)}</td>
+                  <td className={r.liftPct == null ? 'dim' : r.liftPct >= data.targetPct ? 'pc-up' : r.liftPct < 0 ? 'pc-down' : ''}>
+                    {r.liftPct == null ? 'нет базы' : `${r.liftPct > 0 ? '+' : ''}${r.liftPct}%${r.lowerIsBetter ? ' (быстрее)' : ''}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+          <p className="dim pc-meta">
+            Выборка до/после: регистраций {data.sample.before.newUsers}/{data.sample.after.newUsers}, решений {data.sample.before.decisions}/{data.sample.after.decisions},
+            {' '}закончили пробный {data.sample.before.trials}/{data.sample.after.trials}, когорта D7 {data.sample.before.d7Cohort}/{data.sample.after.d7Cohort}.
+            {' '}На малой выборке проценты прыгают — смотрите и на числа.
+          </p>
+        </>
+      )}
+      {!data && !err && <p className="dim">Считаю…</p>}
+    </>
   );
 }
 

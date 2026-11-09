@@ -1,4 +1,4 @@
-import { canEnter, deltaPct, periodOf, permsFor, safeTz } from './pc-rules';
+import { canEnter, deltaPct, liftPct, periodOf, permsFor, productWindows, safeTz } from './pc-rules';
 
 describe('консоли платформы: права', () => {
   it('доступ в одну консоль не даёт другие', () => {
@@ -31,5 +31,20 @@ describe('консоли платформы: период', () => {
     expect(safeTz('Asia/Novosibirsk')).toBe('Asia/Novosibirsk');
     expect(deltaPct(15, 10)).toBe(50);
     expect(deltaPct(5, 0)).toBeNull();
+  });
+});
+
+describe('#4807 §10 — «до» и «после» выкладки', () => {
+  it('две недели до, после — не дальше «сейчас»', () => {
+    const w = productWindows('2026-11-09', new Date('2026-11-12T00:00:00Z'));
+    expect(w.before.from.toISOString()).toBe('2026-10-26T00:00:00.000Z');
+    expect(w.after.to.toISOString()).toBe('2026-11-12T00:00:00.000Z');
+    expect(w.afterDays).toBe(3);
+  });
+  it('изменение в процентах; «меньше — лучше» — со знаком улучшения', () => {
+    expect(liftPct(10, 13)).toBe(30);
+    expect(liftPct(100, 70, true)).toBe(30);
+    expect(liftPct(0, 5)).toBeNull();
+    expect(liftPct(null, 5)).toBeNull();
   });
 });

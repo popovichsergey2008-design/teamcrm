@@ -3,7 +3,7 @@ import { AppInstallsService } from '../app-installs/app-installs.service';
 import { DbService } from '../../database/db.service';
 import { effective, SubRow } from '../billing/billing-rules';
 import { estimateCost } from '../ai/usage-catalog';
-import { deltaPct, Period } from './pc-rules';
+import { deltaPct, liftPct, Period, productWindows } from './pc-rules';
 
 /**
  * Активность v1 (§5.2): человек что-то сделал сам — написал в чат или в задачу, поставил
@@ -159,6 +159,89 @@ export class PcStatsService {
         installs: 'устройства Android по входу в аккаунт (mobile_devices); запуски экземпляров и скачивания APK — с 02.11',
         revenue: 'ЮKassa: подтверждённые платежи',
         aiCost: 'оценка по прайсу моделей, USD',
+      },
+    };
+  }
+
+  /**
+   * Метрики ТЗ #4807, раздел 10 (цель +30% — гипотеза): «до» — две недели перед выкладкой,
+   * «после» — до двух недель после. Только настоящие компании; клиенты не в счёт.
+   */
+  private async product(from: Date, to: Date) {
+    const r = await this.db.one<Record<string, number | null>>(
+      `WITH rt AS (${REAL}),
+            nu AS (SELECT u.id, u.created_at,
+                          (SELECT min(t.created_at) FROM tasks t WHERE t.created_by = u.id AND t.created_at >= u.created_at) AS first_task
+                     FROM users u JOIN rt ON rt.id = u.tenant_id JOIN roles r ON r.id = u.role_id
+                    WHERE r.code <> 'client' AND u.created_at >= $1::timestamptz AND u.created_at < $2::timestamptz),
+            act AS (
+              SELECT m.author_id AS uid, (m.created_at AT TIME ZONE 'UTC')::date AS d FROM chat_messages m JOIN rt ON rt.id = m.tenant_id
+               WHERE NOT m.is_ai AND m.created_at >= $1::timestamptz - interval '7 days' AND m.created_at < $2::timestamptz + interval '8 days'
+              UNION SELECT c.author_id, (c.created_at AT TIME ZONE 'UTC')::date FROM task_comments c JOIN rt ON rt.id = c.tenant_id
+               WHERE NOT c.is_ai AND c.created_at >= $1::timestamptz - interval '7 days' AND c.created_at < $2::timestamptz + interval '8 days'
+              UNION SELECT k.created_by, (k.created_at AT TIME ZONE 'UTC')::date FROM tasks k JOIN rt ON rt.id = k.tenant_id
+               WHERE k.created_at >= $1::timestamptz - interval '7 days' AND k.created_at < $2::timestamptz + interval '8 days'),
+            ai AS (SELECT DISTINCT a.user_id AS uid, (a.created_at AT TIME ZONE 'UTC')::date AS d FROM ai_actions a JOIN rt ON rt.id = a.tenant_id
+                    WHERE a.kind IN ('nl_task', 'meeting_task') AND a.created_at >= $1::timestamptz AND a.created_at < $2::timestamptz),
+            cohort AS (SELECT u.id, (u.created_at AT TIME ZONE 'UTC')::date AS d FROM users u JOIN rt ON rt.id = u.tenant_id JOIN roles r ON r.id = u.role_id
+                        WHERE r.code <> 'client' AND u.created_at >= $1::timestamptz - interval '7 days' AND u.created_at < $2::timestamptz - interval '7 days')
+       SELECT
+         (SELECT count(*) FROM nu)::int AS new_users,
+         (SELECT count(*) FROM nu WHERE first_task <= created_at + interval '10 minutes')::int AS task10,
+         (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM first_task - created_at)) FROM nu WHERE first_task IS NOT NULL)::float8 AS ttft_sec,
+         (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM h.decided_at - h.created_at) / 3600)
+            FROM task_handoffs h JOIN rt ON rt.id = h.tenant_id WHERE h.decided_at >= $1::timestamptz AND h.decided_at < $2::timestamptz)::float8 AS decision_h,
+         (SELECT count(*) FROM task_handoffs h JOIN rt ON rt.id = h.tenant_id WHERE h.decided_at >= $1::timestamptz AND h.decided_at < $2::timestamptz)::int AS decisions,
+         (SELECT count(*) FROM (SELECT DISTINCT uid, d FROM act
+            WHERE uid IS NOT NULL AND d >= ($1::timestamptz AT TIME ZONE 'UTC')::date AND d < ($2::timestamptz AT TIME ZONE 'UTC')::date) x)::int AS active_days,
+         (SELECT count(*) FROM ai)::int AS ai_days,
+         (SELECT count(*) FROM tenant_subscriptions s JOIN rt ON rt.id = s.tenant_id
+           WHERE NOT s.complimentary AND s.trial_ends_at >= $1::timestamptz AND s.trial_ends_at < $2::timestamptz)::int AS trials_ended,
+         (SELECT count(*) FROM tenant_subscriptions s JOIN rt ON rt.id = s.tenant_id
+           WHERE NOT s.complimentary AND s.trial_ends_at >= $1::timestamptz AND s.trial_ends_at < $2::timestamptz
+             AND EXISTS (SELECT 1 FROM billing_payments p WHERE p.tenant_id = s.tenant_id AND p.status = 'succeeded' AND NOT p.is_test))::int AS trials_paid,
+         (SELECT count(*) FROM cohort)::int AS d7_cohort,
+         (SELECT count(*) FROM cohort c WHERE EXISTS (SELECT 1 FROM act WHERE act.uid = c.id AND act.d = c.d + 7))::int AS d7_back`,
+      [from, to],
+    );
+    const n = (k: string) => Number(r?.[k] ?? 0);
+    const share = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : null);
+    return {
+      newUsers: n('new_users'),
+      firstTask10mPct: share(n('task10'), n('new_users')),
+      timeToFirstTaskSec: r?.ttft_sec == null ? null : Math.round(Number(r.ttft_sec)),
+      decisionMedianH: r?.decision_h == null ? null : Math.round(Number(r.decision_h) * 10) / 10,
+      decisions: n('decisions'),
+      aiDaysPct: share(n('ai_days'), n('active_days')),
+      trialsEnded: n('trials_ended'),
+      trialToPaidPct: share(n('trials_paid'), n('trials_ended')),
+      d7Cohort: n('d7_cohort'),
+      d7Pct: share(n('d7_back'), n('d7_cohort')),
+    };
+  }
+
+  async productMetrics(release: string) {
+    const w = productWindows(release);
+    const [before, after] = await Promise.all([this.product(w.before.from, w.before.to), this.product(w.after.from, w.after.to)]);
+    type K = 'firstTask10mPct' | 'timeToFirstTaskSec' | 'decisionMedianH' | 'aiDaysPct' | 'trialToPaidPct' | 'd7Pct';
+    const row = (key: K, label: string, unit: string, how: string, lowerIsBetter = false) => ({
+      key, label, unit, how, before: before[key], after: after[key], liftPct: liftPct(before[key], after[key], lowerIsBetter), lowerIsBetter,
+    });
+    return {
+      release, generatedAt: new Date().toISOString(),
+      windows: { before: w.before, after: w.after, afterDays: w.afterDays },
+      targetPct: 30,
+      rows: [
+        row('firstTask10mPct', 'Новые, создавшие задачу в первые 10 минут', '%', 'создание задачи в первые 10 минут / регистрации'),
+        row('timeToFirstTaskSec', 'Время до первой задачи', 'с', 'медиана: от регистрации до первой своей задачи', true),
+        row('decisionMedianH', 'От «Ждёт решения» до решения', 'ч', 'медиана: сдача результата → принято или возвращено', true),
+        row('aiDaysPct', 'Дни с принятым действием ИИ', '%', 'дни человека с подтверждённым действием ИИ / его активные дни'),
+        row('trialToPaidPct', 'Переход из пробного периода в оплату', '%', 'оплатившие / закончившие пробный период'),
+        row('d7Pct', 'Возврат на 7-й день (D7)', '%', 'активны ровно через 7 дней после регистрации / зарегистрированные'),
+      ],
+      sample: {
+        before: { newUsers: before.newUsers, decisions: before.decisions, trials: before.trialsEnded, d7Cohort: before.d7Cohort },
+        after: { newUsers: after.newUsers, decisions: after.decisions, trials: after.trialsEnded, d7Cohort: after.d7Cohort },
       },
     };
   }
