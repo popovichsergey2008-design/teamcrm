@@ -406,12 +406,18 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           на стороне базы это исключает. Заодно это и граница доступа: у регламента
           нет проекта, всё остальное сюда просто не попадает.
         */
-        const docs = (await knowledge.search(ctx.tenantId, q, 8, undefined, ['regulation']))
+        /*
+          Гибридный поиск (слова + смысл), а не только по вектору: у большинства
+          организаций нет ключа эмбеддингов, и «поиск по смыслу» на заглушке отдавал
+          случайные разделы. По словам справочник находится и без ключа.
+        */
+        const docs = (await knowledge.memory(ctx.tenantId, q, ctx.user, { types: ['regulation'] }, 8))
           .filter((h) => h.sourceType === 'regulation');
         if (!docs.length) {
           return { text: `В справочнике и регламентах про «${q}» ничего не нашлось.`, sources: [] };
         }
-        const lines = docs.map((d) => `— ${d.title}:\n${d.snippet}`);
+        // кусок целиком (раздел справочника, до 1200 знаков): по 400-знаковому началу шаги инструкции терялись
+        const lines = docs.map((d) => `— ${d.title}:\n${d.content}`);
         // #4776: куски документации — опора для рассуждения, а не готовый ответ
         return { text: `Из справочника и регламентов (опора: рассуждай по ним своими словами, не переписывай):\n${lines.join('\n')}`, sources: [] };
       },

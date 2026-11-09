@@ -8,6 +8,7 @@ import { RabbitMQService, Q_EMBEDDINGS } from '../../messaging/rabbitmq.service'
 import { AiService } from '../ai/ai.service';
 import { maskPII } from '../ai/pii';
 import { KnowledgeRepository } from './knowledge.repository';
+import { chunkDoc } from './doc-chunks';
 import { FilesService } from '../files/files.service';
 import { Anchor, clock, ftsQuery, groupLines, hubSectionLabel, Line, memoryLink, MemoryType, Part, TYPE_LABEL } from './memory-rules';
 import { MemoryFilters } from './knowledge.repository';
@@ -371,7 +372,9 @@ ${extracted.text}`,
 
     const chunks: { content: string; embedding: number[]; anchor: Anchor | null; sourceAt: Date | string | null; authorId: string | null }[] = [];
     for (const part of parts) {
-      for (const raw of this.chunk(part.text)) {
+      // документы режем по разделам: кусок знает, к какому разделу он относится (doc-chunks)
+      const pieces = msg.sourceType === 'regulation' ? chunkDoc(part.text, CHUNK, OVERLAP) : this.chunk(part.text);
+      for (const raw of pieces) {
         const masked = maskPII(raw).masked;
         const embedding = await this.ai.embed(msg.tenantId, masked, 'embedding');
         chunks.push({
@@ -464,7 +467,7 @@ ${extracted.text}`,
       const anchor = (h.anchor ?? null) as Anchor | null;
       return {
         sourceType: h.source_type, typeLabel: TYPE_LABEL[h.source_type as MemoryType] ?? h.source_type,
-        sourceId: String(h.source_id), title: h.title, snippet: h.content.slice(0, 400),
+        sourceId: String(h.source_id), title: h.title, snippet: h.content.slice(0, 400), content: h.content,
         link: memoryLink(h.source_type, String(h.source_id), h.access_scope ? String(h.access_scope) : null, anchor),
         sec: anchor?.sec ?? null, at: h.source_at ?? null,
         author: h.author_id ? un.get(String(h.author_id)) ?? null : null,
