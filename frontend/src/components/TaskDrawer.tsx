@@ -27,7 +27,7 @@ import { TaskTagsField } from './TaskTagsField';
 import { EMPTY_TAGS, TagsValue } from '../lib/tags';
 import { followServer } from '../lib/local-edits';
 import { overlayProps } from '../lib/overlay';
-import { showToast, toastSaved } from '../lib/notifications';
+import { notifySeen, showToast, toastSaved } from '../lib/notifications';
 import { AiFeedback } from './AiFeedback';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -147,6 +147,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   useEffect(() => { setShiftDecided(false); }, [task.id, task.deadline_shift_to]);
   // #4807 §6.5, п. 2: открыл задачу — её строки во «Входящих» прочитаны (не «Готово»)
   useEffect(() => {
+    notifySeen({ taskId: String(task.id) }); // #4832: всплывашки об этой задаче — прочь
     void inboxApi.readTask(String(task.id)).then((r) => { if (r.changed) window.dispatchEvent(new Event(INBOX_CHANGED)); }).catch(() => undefined);
   }, [task.id]);
   /** Куда переехала задача — строкой под полем: перенос не должен проходить молча. */

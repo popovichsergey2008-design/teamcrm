@@ -11,6 +11,9 @@ import type { MobileConfig } from './mobile-config';
 import { enqueue, newChangeId, type QueuedChange } from './offline-queue';
 import { noteFailedRequest, noteRequestId, noteSupportError } from './support-context';
 import { apiUrl } from './origin';
+
+/** #4832: увиденный чат или ветка — их всплывашки гаснут (Toasts слушает 'qevo:seen'). */
+const seen = (detail: Record<string, string>) => window.dispatchEvent(new CustomEvent('qevo:seen', { detail }));
 import { splitMessage } from './split-message';
 
 const ACCESS_KEY = 'teamcrm.access';
@@ -1936,7 +1939,8 @@ export const api = {
     if (parts.length === 1) return send(body, true);
     return parts.reduce<Promise<any>>((prev, part, i) => prev.then(() => send(part, i === 0)), Promise.resolve(null));
   },
-  markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`),
+  // #4832: прочитанный чат гасит и свои всплывашки (Toasts слушает SEEN_EVENT)
+  markChatRead: (chatId: string) => request<any>('POST', `/chats/${chatId}/read`).then((r) => (seen({ chatId: String(chatId) }), r)),
   markAllChatsRead: () => request<{ read: number }>('POST', '/chats/read-all'),
   chatMembers: (chatId: string) => request<{
     canManage: boolean; createdBy: string | null; members: { userId: string; fullName: string }[];
@@ -2499,7 +2503,8 @@ export const api = {
 
   /** Ветка обсуждения: корневое сообщение и ответы. Открытие помечает её прочитанной. */
   chatThread: (chatId: string, rootId: string) =>
-    request<any[]>('GET', `/chats/${chatId}/threads/${rootId}`),
+    // #4832: открытая ветка прочитана — её всплывашки уходят
+    request<any[]>('GET', `/chats/${chatId}/threads/${rootId}`).then((r) => (seen({ threadId: String(rootId) }), r)),
   /** Мои ветки: где я начал разговор или отвечал, с числом новых ответов. */
   myThreads: () => request<any[]>('GET', '/chats/threads'),
 

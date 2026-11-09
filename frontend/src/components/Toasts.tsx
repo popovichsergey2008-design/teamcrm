@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { notifyChatsChanged, TOAST_EVENT, ToastPayload } from '../lib/notifications';
+import { notifyChatsChanged, SEEN_EVENT, TOAST_EVENT, ToastPayload } from '../lib/notifications';
 import { api } from '../lib/api';
 
 interface Toast extends ToastPayload { id: number }
@@ -106,6 +106,25 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       for (const t of all.values()) clearTimeout(t);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /*
+    #4832: чат прочитан или задача открыта (где угодно — в разделе, в карточке, с другого
+    места) — их всплывашки и «Пропущенные» уходят сами. Раньше висело уведомление о
+    сообщении, на которое уже ответили.
+  */
+  useEffect(() => {
+    const onSeen = (e: Event) => {
+      const d = (e as CustomEvent<{ chatId?: string; threadId?: string; taskId?: string }>).detail ?? {};
+      const task = d.taskId ? `/task/${d.taskId}` : '';
+      const hit = (t: Toast) => (!!d.chatId && t.chatId === d.chatId && !t.threadId && (!t.section || t.section === 'chat'))
+        || (!!d.threadId && t.threadId === d.threadId)
+        || (!!task && !!t.inboxPath && (t.inboxPath + '/').startsWith(task + '/'));
+      setItems((prev) => prev.filter((t) => !hit(t) || (clearTimeout(timers.current.get(t.id)), false)));
+      setMissed((prev) => prev.filter((t) => !hit(t)));
+    };
+    window.addEventListener(SEEN_EVENT, onSeen);
+    return () => window.removeEventListener(SEEN_EVENT, onSeen);
+  }, []);
 
   /** Сообщение прочитано: чат отмечаем на сервере, его всплывашки убираем отовсюду. */
   const markRead = (list: Toast[]) => {

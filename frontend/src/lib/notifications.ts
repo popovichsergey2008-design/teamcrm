@@ -45,6 +45,14 @@ export function showNotification(title: string, body: string, onClick?: () => vo
  * пока вкладка открыта. Слушатель живёт в App.
  */
 export const TOAST_EVENT = 'teamcrm:toast';
+/**
+ * #4832: человек увидел чат, ветку или задачу — их всплывашки и «Пропущенные» больше
+ * не нужны: открыл уведомления и видит то, на что уже ответил.
+ */
+export const SEEN_EVENT = 'qevo:seen';
+export function notifySeen(d: { chatId?: string; threadId?: string; taskId?: string }): void {
+  window.dispatchEvent(new CustomEvent(SEEN_EVENT, { detail: d }));
+}
 export interface ToastPayload {
   title: string;
   body: string;

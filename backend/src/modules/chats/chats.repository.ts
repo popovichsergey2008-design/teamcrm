@@ -413,6 +413,14 @@ export class ChatsRepository {
           AND m.id = n.message_id AND (m.id = $3::bigint OR m.thread_root_id = $3::bigint)`,
       [tenantId, userId, rootId],
     );
+    // #4832: строки «Входящих» об этой ветке — тоже прочитаны
+    await this.db.query(
+      `UPDATE notification_inbox SET read_at = now()
+        WHERE tenant_id=$1 AND user_id=$2 AND read_at IS NULL
+          AND event_key IN ('chat.message', 'chat.mention')
+          AND path ~ ('/thread/' || $3::text || '([/?#]|$)')`,
+      [tenantId, userId, String(rootId)],
+    );
   }
 
   /** Сообщение по id: нужно, чтобы проверить, что отвечают в том же чате. */
@@ -1252,6 +1260,17 @@ export class ChatsRepository {
         WHERE n.tenant_id=$1 AND n.user_id=$2 AND n.seen_at IS NULL
           AND m.id = n.message_id AND m.chat_id = $3 AND m.thread_root_id IS NULL`,
       [tenantId, userId, chatId],
+    );
+    /*
+      #4832: и строки «Входящих» об этом чате. Прочитал и ответил — а открыл
+      уведомления и видит то, на что уже ответил. Ветки — своим путём (markThreadRead).
+    */
+    await this.db.query(
+      `UPDATE notification_inbox SET read_at = now()
+        WHERE tenant_id=$1 AND user_id=$2 AND read_at IS NULL
+          AND event_key IN ('chat.message', 'chat.mention')
+          AND path ~ ('^/chat/' || $3::text || '([?#]|$)')`,
+      [tenantId, userId, String(chatId)],
     );
   }
 

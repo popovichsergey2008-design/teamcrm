@@ -13,7 +13,7 @@ import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
 import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { notificationPermission, notifyChatsChanged, requestNotificationPermission } from '../lib/notifications';
+import { notificationPermission, notifyChatsChanged, notifySeen, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
 import { CareEmpty } from '../components/care';
@@ -302,6 +302,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   useEffect(() => { warmPalette(); }, []);
   const [users, setUsers] = useState<User[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // #4832: открыли чат на виду — его всплывашки и «Пропущенные» больше не нужны
+  useEffect(() => { if (activeId && !document.hidden) notifySeen({ chatId: activeId }); }, [activeId]);
   const [messages, setMessages] = useState<Message[]>([]);
   // #4794: лента открытого чата — в память, чтобы при возврате показать её сразу
   const activeIdRef = useRef<string | null>(null);
@@ -622,6 +624,21 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const feedRef = useRef<HTMLDivElement | null>(null);
   /** Вся область переписки: по ней отличаем свою вставку от вставки в чужое поле. */
   const chatPaneRef = useRef<HTMLElement | null>(null);
+  /*
+    #4833: колонка чата узкая (открыта ветка или сведения справа, окно ноутбука) —
+    поле ввода встаёт своей строкой во всю ширину. Раньше перенос включался только
+    по ширине экрана, и рядом с веткой поле сжимали семь кнопок: не видно, что пишешь.
+    Меряем саму колонку, а не экран; container query не годится — он ломает
+    всплывающие меню с position: fixed внутри.
+  */
+  const [paneNarrow, setPaneNarrow] = useState(false);
+  useEffect(() => {
+    const el = chatPaneRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(([e]) => setPaneNarrow(e.contentRect.width < 640));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [activeId]);
   /** Панель ветки — рядом с перепиской, а не внутри неё: вставка в её поле тоже «наша». */
   const threadPaneRef = useRef<HTMLElement | null>(null);
   /*
@@ -2383,7 +2400,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       </aside>
       )}
 
-      <section className="chat-view" ref={chatPaneRef}>
+      <section className={`chat-view${paneNarrow ? ' chat-view-narrow' : ''}`} ref={chatPaneRef}>
         {/*
           Созвон и внешняя ссылка — постоянно, а не только при открытом чате.
           Человек заходит в раздел, чтобы поговорить; заставлять его сначала выбрать

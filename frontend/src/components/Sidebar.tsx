@@ -14,7 +14,7 @@ import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
 import { PRESENCE_CHANGED } from './MyStatusBar';
-import { FocusMenu, focusLine, focusSessionLine } from './FocusMenu';
+import { FocusDialog, FocusMenu, focusLine, focusSessionLine } from './FocusMenu';
 import { useFocusSession } from '../hooks/useFocusSession';
 import { lazyComponent } from '../lib/lazy';
 
@@ -248,6 +248,8 @@ export function Sidebar({
   const inSession = !!focusSession && !focusSession.finished;
   const statusLine = inSession ? focusSessionLine(focusSession, focusAt) : focusLine(focus);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** #4831: окно глубокого фокуса — вне меню аккаунта, иначе оно закрывалось вместе с меню. */
+  const [deepOpen, setDeepOpen] = useState(false);
 
   /**
    * Личное меню: порядок пунктов и скрытые разделы.
@@ -889,6 +891,12 @@ export function Sidebar({
           )}
           {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
           {!collapsed && <AppUpdateRow />}
+          {deepOpen && (
+            <FocusDialog
+              onClose={() => setDeepOpen(false)}
+              onSaved={() => { setDeepOpen(false); window.dispatchEvent(new Event('teamcrm:focus-changed')); }}
+            />
+          )}
 
         </nav>
 
@@ -951,7 +959,7 @@ export function Sidebar({
                     ))}
                   </span>
                 </div>
-                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
+                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} onDeep={() => { setMenuOpen(false); setDeepOpen(true); }} />
                 <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}>
                   <Icon name="user" size={15} /> Профиль
                 </button>
