@@ -8,6 +8,7 @@ import { setFocusSession } from '../../hooks/useFocusSession';
 import { toastSaved } from '../../lib/notifications';
 import './calendar.css';
 import { dayLabel, warnConflicts } from './TaskTimeDialog';
+import { DateInput } from '../../components/DateInput';
 
 /** Быстрый выбор времени фокуса (#4787, п. 12). */
 export const FOCUS_MINUTES = [10, 25, 50, 90, 120];
@@ -178,7 +179,7 @@ export function FocusDialog({ at, onClose, onSaved, preselect }: {
             <div className="cal-tt-actions">
               <Button variant="primary" onClick={() => void find()} disabled={busy}><Icon name="search" size={15} /> Найти время</Button>
               <span className="cal-tt-or">или</span>
-              <input className="ui-input cal-tt-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Время начала фокуса" />
+              <DateInput className="ui-input cal-tt-when" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} aria-label="Время начала фокуса" />
               <Button variant="outline" onClick={planManual} disabled={busy || !when}>Запланировать</Button>
             </div>
             {options && options.length > 0 && (

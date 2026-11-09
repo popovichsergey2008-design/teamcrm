@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/input';
 import { api, ApiError, type BookingRules, type BookingType, type BookingTypeInput, type WeeklyHours } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import type { User } from '../../types';
+import { DateInput } from '../../components/DateInput';
 
 const DAYS: [string, string][] = [['1', 'Пн'], ['2', 'Вт'], ['3', 'Ср'], ['4', 'Чт'], ['5', 'Пт'], ['6', 'Сб'], ['0', 'Вс']];
 const REMINDERS = [5, 10, 15, 30, 60, 1440];
@@ -162,9 +163,9 @@ function TypeEditor({ value, onDone }: { value: BookingType | null; onDone: () =
                 <div key={d} className="cal-week-row">
                   <label className="cal-check"><input type="checkbox" checked={!!r} onChange={(e) => setDay(d, e.target.checked ? ['11:00', '16:00'] : null)} /> {label}</label>
                   {r && <>
-                    <input className="ui-input cal-time" type="time" value={r[0]} onChange={(e) => setDay(d, [e.target.value, r[1]])} aria-label={`${label}, с`} />
+                    <DateInput className="ui-input cal-time" type="time" value={r[0]} onChange={(e) => setDay(d, [e.target.value, r[1]])} aria-label={`${label}, с`} />
                     <span>—</span>
-                    <input className="ui-input cal-time" type="time" value={r[1]} onChange={(e) => setDay(d, [r[0], e.target.value])} aria-label={`${label}, до`} />
+                    <DateInput className="ui-input cal-time" type="time" value={r[1]} onChange={(e) => setDay(d, [r[0], e.target.value])} aria-label={`${label}, до`} />
                   </>}
                 </div>
               );
@@ -252,9 +253,9 @@ function RulesEditor() {
                 <label className="cal-check"><input type="checkbox" checked={list.length > 0} onChange={(e) => setRanges(d, e.target.checked ? [['09:00', '18:00']] : [])} /> {label}</label>
                 {list.map((x, i) => (
                   <span key={i} className="cal-range">
-                    <input className="ui-input cal-time" type="time" value={x[0]} onChange={(e) => setRanges(d, list.map((y, j) => (j === i ? [e.target.value, y[1]] : y)))} aria-label={`${label}, с`} />
+                    <DateInput className="ui-input cal-time" type="time" value={x[0]} onChange={(e) => setRanges(d, list.map((y, j) => (j === i ? [e.target.value, y[1]] : y)))} aria-label={`${label}, с`} />
                     <span>—</span>
-                    <input className="ui-input cal-time" type="time" value={x[1]} onChange={(e) => setRanges(d, list.map((y, j) => (j === i ? [y[0], e.target.value] : y)))} aria-label={`${label}, до`} />
+                    <DateInput className="ui-input cal-time" type="time" value={x[1]} onChange={(e) => setRanges(d, list.map((y, j) => (j === i ? [y[0], e.target.value] : y)))} aria-label={`${label}, до`} />
                     {list.length > 1 && <button className="ui-btn ui-btn-ghost ui-btn-icon-sm" onClick={() => setRanges(d, list.filter((_, j) => j !== i))} aria-label="Убрать промежуток"><Icon name="close" size={12} /></button>}
                   </span>
                 ))}
@@ -280,7 +281,7 @@ function RulesEditor() {
             <span key={d} className="cal-pill on">{new Date(`${d}T12:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
               <button className="cal-pill-x" onClick={() => set({ blockedDates: r.blockedDates.filter((x) => x !== d) })} aria-label="Открыть дату">×</button></span>
           ))}
-          <input className="ui-input cal-time" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} aria-label="Дата" />
+          <DateInput className="ui-input cal-time" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} aria-label="Дата" />
           <Button size="sm" variant="ghost" disabled={!newDate} onClick={() => { set({ blockedDates: [...new Set([...r.blockedDates, newDate])].sort() }); setNewDate(''); }}>Закрыть дату</Button>
         </div>
       </div>
@@ -290,8 +291,8 @@ function RulesEditor() {
             <span key={i} className="cal-pill on">{v.from} — {v.to}
               <button className="cal-pill-x" onClick={() => set({ vacations: r.vacations.filter((_, j) => j !== i) })} aria-label="Убрать отпуск">×</button></span>
           ))}
-          <input className="ui-input cal-time" type="date" value={vac.from} onChange={(e) => setVac({ ...vac, from: e.target.value })} aria-label="Отпуск с" />
-          <input className="ui-input cal-time" type="date" value={vac.to} onChange={(e) => setVac({ ...vac, to: e.target.value })} aria-label="Отпуск по" />
+          <DateInput className="ui-input cal-time" type="date" value={vac.from} onChange={(e) => setVac({ ...vac, from: e.target.value })} aria-label="Отпуск с" />
+          <DateInput className="ui-input cal-time" type="date" value={vac.to} onChange={(e) => setVac({ ...vac, to: e.target.value })} aria-label="Отпуск по" />
           <Button size="sm" variant="ghost" disabled={!vac.from || !vac.to || vac.from > vac.to} onClick={() => { set({ vacations: [...r.vacations, vac] }); setVac({ from: '', to: '' }); }}>Добавить</Button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { Input } from '../../components/ui/input';
 import { api, ApiError, type BlockConflict, type CalBlock, type FindTimeResult, type PlanTask } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import './calendar.css';
+import { DateInput } from '../../components/DateInput';
 
 export const DURATIONS = [25, 30, 50, 60, 90, 120];
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -141,7 +142,7 @@ export function TaskTimeDialog({ taskId, block, at, onClose, onSaved }: {
                 <Icon name="search" size={15} /> Найти время
               </Button>
               <span className="cal-tt-or">или</span>
-              <input className="ui-input cal-tt-when" type="datetime-local" value={manual} onChange={(e) => setManual(e.target.value)} aria-label="Своё время начала" />
+              <DateInput className="ui-input cal-tt-when" type="datetime-local" value={manual} onChange={(e) => setManual(e.target.value)} aria-label="Своё время начала" />
               <Button variant="outline" onClick={saveManual} disabled={busy || !manual || !minutes}>Поставить</Button>
             </div>
           </>

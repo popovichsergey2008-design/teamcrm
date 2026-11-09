@@ -8,6 +8,7 @@ import { feedback } from '../../lib/feedback';
 import { useAuth } from '../../state/auth';
 import { careHeadline } from '../../lib/care-rules';
 import type { SupportConversation, Project } from '../../types';
+import { DateInput } from '../DateInput';
 
 const DOT: Record<string, string> = { available: 'cg-ok', busy: 'cg-busy', in_huddle: 'cg-busy', away: 'cg-off', offline: 'cg-off' };
 const initials = (n: string) => n.split(/\s+/).map((x) => x[0] ?? '').join('').slice(0, 2).toUpperCase();
@@ -389,9 +390,9 @@ export function ConciergeConsole({ staff, canManage }: { staff: { userId: string
             <option value="">Кто?</option>
             {staff.map((s) => <option key={s.userId} value={s.userId}>{s.name}</option>)}
           </select>
-          <input className="input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} aria-label="День" />
-          <input className="input" type="time" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} aria-label="С" />
-          <input className="input" type="time" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} aria-label="До" />
+          <DateInput className="input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} aria-label="День" />
+          <DateInput className="input" type="time" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} aria-label="С" />
+          <DateInput className="input" type="time" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} aria-label="До" />
           <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" disabled={!form.userId}
             onClick={() => void run(() => api.supportAddShift(form.userId, new Date(`${form.date}T${form.from}:00`).toISOString(), new Date(`${form.date}T${form.to}:00`).toISOString()))}>
             Добавить смену

@@ -44,6 +44,7 @@ import { EventCardPanel } from './calendar/EventCardPanel';
 import { CommonTimeDialog, PollDialog } from './calendar/MeetingTimeDialogs';
 import { askScope } from './calendar/askScope';
 import './calendar/calendar.css';
+import { DateInput } from '../components/DateInput';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -1375,7 +1376,7 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
                 <option value="monthly">Каждый месяц</option>
               </select>
               {repeat.freq && (
-                <label className="cal-check">до <input className="ui-input" type="date" value={repeat.until} onChange={(e) => setRepeat((r) => ({ ...r, until: e.target.value }))} aria-label="Повторять до" /></label>
+                <label className="cal-check">до <DateInput className="ui-input" type="date" value={repeat.until} onChange={(e) => setRepeat((r) => ({ ...r, until: e.target.value }))} aria-label="Повторять до" /></label>
               )}
             </div>
           </div>

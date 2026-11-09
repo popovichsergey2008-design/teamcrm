@@ -15,6 +15,7 @@ import { useAuth } from '../../state/auth';
 import type { Task, TaskBlocker, User } from '../../types';
 import { HandoffDialog } from './HandoffDialog';
 import './task-flow.css';
+import { DateInput } from '../DateInput';
 
 const FocusDialog = lazyComponent(() => import('../../pages/calendar/FocusDialog').then((m) => m.FocusDialog));
 
@@ -270,7 +271,7 @@ function BlockerDialog({ task, users, onClose, onSaved }: { task: Task; users: U
           <input className="ui-input" value={nextStepText} onChange={(e) => setNext(e.target.value)} placeholder="Например: написать в поддержку сервиса" />
         </label>
         <label className="tf-field"><span>Когда снять (необязательно)</span>
-          <input className="ui-input" type="date" value={dueOn} onChange={(e) => setDue(e.target.value)} />
+          <DateInput className="ui-input" type="date" value={dueOn} onChange={(e) => setDue(e.target.value)} />
         </label>
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
       </div>

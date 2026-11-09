@@ -9,6 +9,7 @@ import type { IconName } from './Icon';
 import type { ChatAnalysisAction, ChatAnalysisRun, ChatAnalysisSettings, ChatAnalysisStats, Decision } from '../types';
 import { OptionSelect } from './ui/option-select';
 import { promptText } from './ui/dialog';
+import { DateInput } from './DateInput';
 
 /**
  * «Разбор переписки» в настройках (ТЗ-12, этапы 1–5).
@@ -638,7 +639,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                   {a.action_type === 'meeting' && openAction(a) && (
                     <>
                       {!a.meeting_at && (
-                        <input
+                        <DateInput
                           className="input ca-when"
                           type="datetime-local"
                           aria-label="Когда встреча"

@@ -3,6 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import type { SecretaryPrefs } from '../../lib/api';
 import { RichText } from '../RichText';
 import { Select } from '../ui/select';
+import { DateInput } from '../DateInput';
 
 /**
  * Личные сводки секретаря (ТЗ-18): утром — что сегодня, вечером — что сделано и что
@@ -37,7 +38,7 @@ export function SecretaryBriefs() {
           <span className="dim">{value ? hint : 'выключено — укажите время, чтобы включить'}</span>
         </span>
         <span className="anthill-form-acts">
-          <input
+          <DateInput
             className="input anthill-adm-num"
             type="time"
             value={value ?? ''}

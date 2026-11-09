@@ -8,6 +8,7 @@ import { OptionSelect } from '../../components/ui/option-select';
 import { api, ApiError, ClientRow } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import { useAuth } from '../../state/auth';
+import { DateInput } from '../../components/DateInput';
 
 const errText = (e: unknown, f: string) => (e instanceof ApiError ? e.message : f);
 
@@ -140,8 +141,8 @@ export function QuickMeetingDialog({ clientId, clientName, ownerId, users, onClo
       <div className="cl-form">
         <Field label="Тема"><input className="input" autoFocus value={v.title} onChange={(e) => setV({ ...v, title: e.target.value })} /></Field>
         <div className="cl-form-row">
-          <Field label="Дата"><input className="input" type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /></Field>
-          <Field label="Время"><input className="input" type="time" value={v.time} onChange={(e) => setV({ ...v, time: e.target.value })} /></Field>
+          <Field label="Дата"><DateInput className="input" type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} /></Field>
+          <Field label="Время"><DateInput className="input" type="time" value={v.time} onChange={(e) => setV({ ...v, time: e.target.value })} /></Field>
           <Field label="Длится">
             <OptionSelect className="input" value={v.minutes} onChange={(e) => setV({ ...v, minutes: e.target.value })} aria-label="Длительность">
               {['15', '30', '45', '60', '90', '120'].map((m) => <option key={m} value={m}>{m} мин</option>)}

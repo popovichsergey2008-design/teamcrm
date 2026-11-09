@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
+import { TimeField } from './TimeField';
 import { useIsPhone } from '../hooks/useMediaQuery';
 
 interface Props {
@@ -17,6 +18,12 @@ interface Props {
 }
 
 const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+/** Годы в выпадашке: с 1930-го до +10 лет от текущего (и выбранный, если он вне этого). */
+const YEARS = (cur: number) => {
+  const last = Math.max(new Date().getFullYear() + 10, cur);
+  const first = Math.min(1930, cur);
+  return Array.from({ length: last - first + 1 }, (_, i) => last - i);
+};
 const pad = (n: number) => String(n).padStart(2, '0');
 
 /** Локальная дата → значение поля. Через toISOString нельзя: он уводит в UTC и сдвигает день. */
@@ -141,7 +148,18 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
     >
       <div className="dp-head">
         <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))} aria-label="Предыдущий месяц">‹</button>
-        <span className="dp-month">{view.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}</span>
+        {/* #4840: год — выпадашкой: до дня рождения в 1990-м листать по месяцу — сотни щелчков */}
+        <span className="dp-month">
+          {view.toLocaleDateString('ru-RU', { month: 'long' })}{' '}
+          <select
+            className="dp-year"
+            value={view.getFullYear()}
+            aria-label="Год"
+            onChange={(e) => setView(new Date(Number(e.target.value), view.getMonth(), 1))}
+          >
+            {YEARS(view.getFullYear()).map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </span>
         <button type="button" className="dp-nav" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))} aria-label="Следующий месяц">›</button>
       </div>
 
@@ -174,11 +192,11 @@ export function DatePicker({ value, onChange, withTime = false, placeholder = '�
       {withTime && (
         <div className="dp-time">
           <span className="status-label">Время</span>
-          <input
-            className="input dp-time-input"
-            type="time"
+          {/* #4840: 24 часа у всех — нативное время у английского браузера было с AM/PM */}
+          <TimeField
             value={selected ? `${pad(selected.getHours())}:${pad(selected.getMinutes())}` : '18:00'}
-            onChange={(e) => setTime(e.target.value)}
+            onChange={setTime}
+            ariaLabel="Время"
           />
         </div>
       )}

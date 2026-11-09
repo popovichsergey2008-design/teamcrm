@@ -19,6 +19,7 @@ import { confirmAction } from './ui/dialog';
 import { initialsOf } from '../lib/initials';
 import { lazyComponent } from '../lib/lazy';
 import { InboxPrefs } from './InboxPrefs';
+import { DateInput } from './DateInput';
 // второй фактор открывают редко — его код (и генератор QR) грузится по первому показу
 const MfaSettings = lazyComponent(() => import('./auth/MfaSettings').then((m) => m.default));
 
@@ -258,7 +259,7 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
                 Поле необязательное: не заполнил — в списке тебя нет. */}
             <div className="field">
               <label>День рождения</label>
-              <input
+              <DateInput
                 className="input"
                 type="date"
                 value={me.birthDate ?? ''}

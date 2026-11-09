@@ -6,6 +6,7 @@ import { AudioClip } from './meetings/AudioClip';
 import { api, ApiError, FocusBrief, FocusBriefEvent, FocusBriefSettings } from '../lib/api';
 import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
+import { DateInput } from './DateInput';
 
 type Ready = Extract<FocusBrief, { status: 'ready' }>;
 
@@ -265,7 +266,7 @@ export default function FocusBriefCard({ initial }: { initial: FocusBrief }) {
           </label>
           <label>
             Собирать в{' '}
-            <input type="time" value={settings.generateAt} onChange={(e) => e.target.value && void save({ generateAt: e.target.value })} />
+            <DateInput type="time" value={settings.generateAt} onChange={(e) => e.target.value && void save({ generateAt: e.target.value })} />
           </label>
           {settings.boss && (
             <label><input type="checkbox" checked={settings.effective.teamSignals} onChange={(e) => void save({ teamSignals: e.target.checked })} /> Сигналы команды</label>

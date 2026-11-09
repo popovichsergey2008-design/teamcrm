@@ -4,6 +4,7 @@ import { api, ApiError, TaskRecurrence as Recurrence } from '../lib/api';
 import { toastSaved } from '../lib/notifications';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
+import { DateInput } from './DateInput';
 
 /**
  * Повтор задачи.
@@ -145,7 +146,7 @@ export function TaskRecurrenceBlock({ taskId, onRefresh }: { taskId: string; onR
               </OptionSelect>
             </div>
             <div className="field"><label title="Время срока новой задачи в вашем часовом поясе">Во сколько</label>
-              <input className="input" type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} />
+              <DateInput className="input" type="time" value={atTime} onChange={(e) => setAtTime(e.target.value)} />
             </div>
           </div>
 

@@ -16,6 +16,7 @@ import { toastSaved } from '../../lib/notifications';
 import { useAuth } from '../../state/auth';
 import { CURRENCIES, dateRu, dateTimeRu, FILE_CATEGORY, MEMBER_ROLE, money, SOURCE, STAGE, STAGE_KEYS } from './labels';
 import { Linkify } from '../../components/Linkify';
+import { DateInput } from '../../components/DateInput';
 
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
@@ -233,7 +234,7 @@ function DealForm({ initial, users, onSave, onCancel }: { initial: ClientDeal | 
             {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </OptionSelect>
         </Field>
-        <Field label="Дата закрытия"><input className="input" type="date" value={v.closeDate} onChange={(e) => set('closeDate', e.target.value)} /></Field>
+        <Field label="Дата закрытия"><DateInput className="input" type="date" value={v.closeDate} onChange={(e) => set('closeDate', e.target.value)} /></Field>
       </div>
       <Field label="Следующий шаг"><input className="input" value={v.nextAction} onChange={(e) => set('nextAction', e.target.value)} placeholder="Например: созвон с финдиректором" /></Field>
       <div className="cl-form-acts">

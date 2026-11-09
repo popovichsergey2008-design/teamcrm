@@ -12,6 +12,7 @@ import { diag } from '../lib/diag';
 import { toastSaved } from '../lib/notifications';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import './inbox.css';
+import { DateInput } from '../components/DateInput';
 
 const TABS: { key: InboxTab; label: string }[] = [
   { key: 'important', label: 'Важное' },
@@ -331,7 +332,7 @@ export function InboxPage({ tab: tabFromRoute }: { tab?: string }) {
               {current.it.actors.length > 1 && <p className="dim">От: {current.it.actors.join(', ')}</p>}
               {dateFor === current.it.id && (
                 <form className="ib-date" onSubmit={(e) => { e.preventDefault(); const v = (e.currentTarget.elements.namedItem('until') as HTMLInputElement).value; if (v) { setDateFor(null); void act(current.it.ids, 'snooze', new Date(v)); } }}>
-                  <input name="until" type="datetime-local" className="ui-input ui-input-sm" aria-label="Отложить до" required />
+                  <DateInput name="until" type="datetime-local" className="ui-input ui-input-sm" aria-label="Отложить до" required />
                   <Button size="sm" type="submit">Отложить</Button>
                   <Button size="sm" variant="ghost" type="button" onClick={() => setDateFor(null)}>Отмена</Button>
                 </form>

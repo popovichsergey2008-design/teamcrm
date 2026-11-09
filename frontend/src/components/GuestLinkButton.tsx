@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { api, ApiError } from '../lib/api';
 import { OptionSelect } from './ui/option-select';
+import { DateInput } from './DateInput';
 
 interface ChatOption {
   id: string;
@@ -123,7 +124,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption, o
               )}
               <label className="guest-link-when">
                 <span className="dim">Когда встреча (необязательно)</span>
-                <input
+                <DateInput
                   className="input"
                   type="datetime-local"
                   value={startsAt}

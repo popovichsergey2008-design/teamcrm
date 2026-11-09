@@ -18,6 +18,7 @@ import { ago, HEALTH, money, SOURCE, STATUS, STATUS_KEYS, TYPE } from './labels'
 import { NewClientDialog } from './NewClientDialog';
 import { ImportDialog } from './ImportDialog';
 import { ClientCardPage } from './ClientCardPage';
+import { DateInput } from '../../components/DateInput';
 
 type View = 'all' | 'mine' | 'attention' | 'no_owner' | 'archive';
 type Filters = Record<string, string>;
@@ -206,8 +207,8 @@ function ClientsList() {
             <Checkbox checked={filters.hasDeals === '1'} onCheckedChange={(v) => setFilter('hasDeals', v ? '1' : '')} label="Есть открытые сделки" />
             <Checkbox checked={filters.hasOverdue === '1'} onCheckedChange={(v) => setFilter('hasOverdue', v ? '1' : '')} label="Есть просрочки" />
             <Checkbox checked={filters.hasOpenTasks === '1'} onCheckedChange={(v) => setFilter('hasOpenTasks', v ? '1' : '')} label="Есть открытые задачи" />
-            <label className="cl-date">Создан с <input className="input" type="date" value={filters.createdFrom ?? ''} onChange={(e) => setFilter('createdFrom', e.target.value)} /></label>
-            <label className="cl-date">по <input className="input" type="date" value={filters.createdTo ?? ''} onChange={(e) => setFilter('createdTo', e.target.value)} /></label>
+            <label className="cl-date">Создан с <DateInput className="input" type="date" value={filters.createdFrom ?? ''} onChange={(e) => setFilter('createdFrom', e.target.value)} /></label>
+            <label className="cl-date">по <DateInput className="input" type="date" value={filters.createdTo ?? ''} onChange={(e) => setFilter('createdTo', e.target.value)} /></label>
             {activeFilters > 0 && <Button variant="ghost" size="sm" onClick={() => { setFilters(EMPTY); setPage(1); }}>Сбросить</Button>}
           </div>
         )}

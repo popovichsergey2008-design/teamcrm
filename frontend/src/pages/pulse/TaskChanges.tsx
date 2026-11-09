@@ -6,6 +6,7 @@ import { Select } from '../../components/ui/select';
 import { api, ApiError } from '../../lib/api';
 import type { ChangeEvent, ChangeKindKey, ChangeSummary } from '../../lib/api';
 import { navigate } from '../../lib/router';
+import { DateInput } from '../../components/DateInput';
 
 /**
  * Изменения по задачам (ТЗ-32) — блок «Пульса команды».
@@ -108,8 +109,8 @@ export function TaskChanges() {
         </span>
         {preset === 'custom' && (
           <span className="tch-range">
-            <input type="date" className="input" aria-label="С" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} />
-            <input type="date" className="input" aria-label="По" value={custom.to} onChange={(e) => setCustom({ ...custom, to: e.target.value })} />
+            <DateInput type="date" className="input" aria-label="С" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} />
+            <DateInput type="date" className="input" aria-label="По" value={custom.to} onChange={(e) => setCustom({ ...custom, to: e.target.value })} />
           </span>
         )}
         <Select size="sm" ariaLabel="Проект" value={projectId} onValueChange={setProjectId}

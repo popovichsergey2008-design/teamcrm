@@ -3637,6 +3637,11 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 
 .dp-time { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .dp-time-input { width: auto; padding: 4px 7px; font-size: calc(12px * var(--fs-scale)); }
+.dp-year { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 0 2px; }
+/* #4840: время 24 часа двумя выпадашками и обёртка поля даты вместо нативного input */
+.time-field { display: inline-flex; align-items: center; gap: 4px; }
+.time-field .time-field-part { width: auto; min-width: 0; padding: 4px 6px; }
+.date-input { display: inline-flex; align-items: center; min-width: 0; }
 .dp-quick { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border); }
 .dp-chip {
   font-size: calc(11px * var(--fs-scale)); padding: 3px 8px; border-radius: 999px; cursor: pointer;
@@ -4203,7 +4208,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .voice-fab:focus-visible, .call-pill-btn:focus-visible, .call-pill-back:focus-visible,
 .project-item:focus-visible, .menu-item:focus-visible,
 .add-column:focus-visible, .chat-ai-toggle:focus-visible, .chat-row:focus-visible,
-.col-btn:focus-visible, .call-ai-status:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-trigger:focus-visible,
+.col-btn:focus-visible, .call-ai-status:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-year:focus-visible, .dp-trigger:focus-visible,
 .file-link:focus-visible, .group-chip:focus-visible, .label-chip:focus-visible,
 .list-row:focus-visible, .member-chip:focus-visible, .notify-row:focus-visible,
 .profile-nav button:focus-visible, .project-del:focus-visible, .sidebar-tab:focus-visible,

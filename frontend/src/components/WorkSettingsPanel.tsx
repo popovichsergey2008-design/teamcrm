@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { useEscape } from '../hooks/useEscape';
 import { humanDate, mergeHolidays, ruHolidays, WEEK_DAYS } from '../lib/holidays';
 import { overlayProps } from '../lib/overlay';
+import { DateInput } from './DateInput';
 
 /**
  * Рабочее время компании: часы, выходные и праздники.
@@ -117,7 +118,7 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
         <div className="work-hours">
           <label>
             <span className="dim">с</span>
-            <input
+            <DateInput
               className="input"
               type="time"
               value={work.workStart}
@@ -130,7 +131,7 @@ export function WorkSettingsPanel({ canManage, onClose }: { canManage: boolean; 
           </label>
           <label>
             <span className="dim">до</span>
-            <input
+            <DateInput
               className="input"
               type="time"
               value={work.workEnd}

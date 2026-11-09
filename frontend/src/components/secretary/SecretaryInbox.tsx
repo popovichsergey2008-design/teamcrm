@@ -15,6 +15,7 @@ import { Select } from '../ui/select';
 import { OptionSelect } from '../ui/option-select';
 import './secretary.css';
 import { feedback } from '../../lib/feedback';
+import { DateInput } from '../DateInput';
 
 /**
  * Ящик проактивного секретаря (ТЗ-21, §10): не журнал сделанного, а то, что ждёт
@@ -533,7 +534,7 @@ function Settings() {
           {prefs.briefAt && (
             <label className="sp-field sp-inline">
               <span>Присылать в</span>
-              <input className="input sp-num" type="time" value={prefs.briefAt}
+              <DateInput className="input sp-num" type="time" value={prefs.briefAt}
                      onChange={(e) => setPrefs({ ...prefs, briefAt: e.target.value })}
                      onBlur={(e) => { if (e.target.value) void savePrefs({ briefAt: e.target.value }); }} />
             </label>

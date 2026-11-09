@@ -13,6 +13,7 @@ import { getSocket } from '../lib/socket';
 import { showToast } from '../lib/notifications';
 import { feedback } from '../lib/feedback';
 import { TaskChanges } from './pulse/TaskChanges';
+import { DateInput } from '../components/DateInput';
 
 /**
  * «Пульс команды» как командный центр руководителя (ТЗ-19).
@@ -402,7 +403,7 @@ function ForecastRow({ p, onSaved }: { p: PulseSummary['allProjects'][number]; o
       </div>
       <div className="pulse-fc-grid">
         <label className="pulse-fc-cell"><span className="dim">План</span>
-          <input type="date" className="input" value={plan} aria-label={`Срок проекта ${p.name}`}
+          <DateInput type="date" className="input" value={plan} aria-label={`Срок проекта ${p.name}`}
             onChange={(e) => { setPlan(e.target.value); void api.pulseTarget(p.id, e.target.value || null).then(onSaved).catch(() => undefined); }} />
         </label>
         <div className="pulse-fc-cell"><span className="dim">Прогноз</span><b>{f.date ? dateRu(f.date) : 'не назвать'}</b></div>
@@ -476,7 +477,7 @@ function ActionDialog({ action, people, onClose, onDone }: {
         <Select ariaLabel="Кому передать" value={toUserId} onValueChange={setTo} placeholder="Кому передать"
           options={sorted.filter((p) => p.available).map((p) => ({ value: p.id, label: `${p.name} — загрузка ${p.pct}%` }))} />
       )}
-      {needsDate && !pv && <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Новый срок" />}
+      {needsDate && !pv && <DateInput type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Новый срок" />}
       {needsText && !pv && <textarea className="input pulse-text" rows={4} value={text} onChange={(e) => setText(e.target.value)} aria-label="Текст поста" />}
       {pv && <div className="pulse-preview">{pv.preview}</div>}
       {busy && !pv && <div className="dim">Готовлю…</div>}

@@ -8,6 +8,7 @@ import { toastSaved } from '../../lib/notifications';
 import type { User } from '../../types';
 import { dayLabel } from './TaskTimeDialog';
 import './calendar.css';
+import { DateInput } from '../../components/DateInput';
 
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 type Role = 'req' | 'opt';
@@ -139,7 +140,7 @@ export function PollDialog({ onClose, onDecided }: { onClose: () => void; onDeci
             <div className="cal-field">Варианты
               {options.map((v, i) => (
                 <div key={i} className="cal-q-row">
-                  <input className="ui-input" type="datetime-local" value={v} onChange={(e) => setOptions((o) => o.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Вариант ${i + 1}`} />
+                  <DateInput className="ui-input" type="datetime-local" value={v} onChange={(e) => setOptions((o) => o.map((x, j) => (j === i ? e.target.value : x)))} aria-label={`Вариант ${i + 1}`} />
                   {options.length > 2 && <Button size="icon-sm" variant="ghost" onClick={() => setOptions((o) => o.filter((_, j) => j !== i))} aria-label="Убрать вариант"><Icon name="close" size={14} /></Button>}
                 </div>
               ))}

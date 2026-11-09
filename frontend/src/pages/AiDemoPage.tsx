@@ -7,6 +7,7 @@ import { feedback } from '../lib/feedback';
 import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
 import { openSupport } from '../components/support/SupportDock';
+import { DateInput } from '../components/DateInput';
 
 /**
  * «Протестировать магию ИИ-созвона за 30 секунд» (ТЗ-24).
@@ -462,7 +463,7 @@ function DraftLine({ draft, picked, onPick, edit, onEdit }: {
         />
         <div className="aid-draft-meta">
           {draft.kind === 'meeting' && <span className="ui-badge ui-badge-info">встреча</span>}
-          <label>Срок <input type="date" className="input aid-date" value={deadline} onChange={(e) => onEdit({ deadline: e.target.value })} /></label>
+          <label>Срок <DateInput type="date" className="input aid-date" value={deadline} onChange={(e) => onEdit({ deadline: e.target.value })} /></label>
           {draft.assigneeHint && toMe === undefined ? (
             <span className="aid-unsure">
               Исполнитель: {draft.assigneeHint} — сотрудник не найден{' '}

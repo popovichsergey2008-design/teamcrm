@@ -7,6 +7,7 @@ import { confirmAction } from '../ui/dialog';
 import { api, ApiError, GuestAgreement, GuestSummaryHost } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import { Linkify } from '../Linkify';
+import { DateInput } from '../DateInput';
 
 const SIDE_LABEL: Record<string, string> = { ours: 'Мы', client: 'Клиент', both: 'Вместе', unassigned: 'Не указано' };
 const KIND_LABEL: Record<string, string> = { confirmed: 'подтвердил(а)', question: 'вопрос', correction: 'уточнение', comment: 'комментарий' };
@@ -151,7 +152,7 @@ export default function GuestSummaryPanel({ meetingId }: { meetingId: string }) 
             <span>Следующая встреча</span>
             <div className="gsp-agreement">
               <input className="input" placeholder="Название" value={draft.next?.title ?? ''} onChange={(e) => edit({ next: { title: e.target.value, at: draft.next?.at ?? '', url: draft.next?.url ?? null } })} aria-label="Название следующей встречи" />
-              <input className="input" type="datetime-local" value={toLocal(draft.next?.at || null)} aria-label="Когда"
+              <DateInput className="input" type="datetime-local" value={toLocal(draft.next?.at || null)} aria-label="Когда"
                 onChange={(e) => edit({ next: { title: draft.next?.title ?? '', at: fromLocal(e.target.value) ?? '', url: draft.next?.url ?? null } })} />
               {draft.next && <Button variant="ghost" size="icon-sm" aria-label="Без следующей встречи" onClick={() => edit({ next: null })}><Icon name="close" size={13} /></Button>}
             </div>

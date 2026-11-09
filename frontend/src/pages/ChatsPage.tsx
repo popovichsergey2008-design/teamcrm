@@ -63,6 +63,7 @@ import { initialsOf } from '../lib/initials';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
 import { useTitleHint } from '../lib/page-title';
 import { splitMessage } from '../lib/split-message';
+import { DateInput } from '../components/DateInput';
 
 /** Сенсорный экран: подсказки «Tab — вставить» там не работают. */
 
@@ -3598,7 +3599,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     {laterRepeat === 'none' ? (
                       <label className="chat-later-own">
                         <span className="dim">Дата и время</span>
-                        <input
+                        <DateInput
                           type="datetime-local"
                           className="input"
                           value={laterAt}
@@ -3608,7 +3609,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     ) : (
                       <label className="chat-later-own">
                         <span className="dim">Время — каждый день</span>
-                        <input
+                        <DateInput
                           type="time"
                           className="input"
                           value={laterTime}
@@ -3934,7 +3935,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   </button>
                   <label className="ui-btn ui-btn-ghost ui-btn-sm later-time" title="Перенести на другое время">
                     <Icon name="calendar" size={13} /> Перенести
-                    <input
+                    <DateInput
                       type="datetime-local"
                       onChange={(e) => {
                         const at = new Date(e.target.value);
