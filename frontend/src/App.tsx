@@ -517,6 +517,7 @@ export function App() {
 
   useShortcuts(crmAlive, {
     newTask: () => setNl({}),
+    voice: () => setNl({ voice: true }),
     palette: () => setPaletteOpen({}),
     help: () => setHelpOpen((v) => !v),
     toggleSidebar: () => window.dispatchEvent(new Event('teamcrm:toggle-sidebar')),

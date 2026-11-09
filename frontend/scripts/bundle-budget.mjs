@@ -25,7 +25,8 @@ import { gzipSync } from 'node:zlib';
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 // 29.10: 299 → 300 — шаг второго фактора и «Забыли пароль?» в состоянии входа (сами экраны ленивые)
 // 06.11: css 47 → 49 — панель доски и строка «чей ход» на карточке (#4798/#4799) — на первом экране
-const BUDGET_KB = { js: 300, css: 49 };
+// 09.11: css 49 → 50 — шапка доски в 4 строки и компактная карточка (#4807 §2–4) — это и есть первый экран
+const BUDGET_KB = { js: 300, css: 50 };
 
 const html = readFileSync(join(DIST, 'index.html'), 'utf8');
 const files = [...new Set([...html.matchAll(/(?:src|href)="\/(assets\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]))];

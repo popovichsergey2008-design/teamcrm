@@ -45,13 +45,13 @@ export function careTooltip(medianSec: number | null | undefined): string {
   return `Qevo: Помощь быстрее мысли. Живой инженер ответит за ${careLong(medianSec)} и решит любой вопрос по задачам, проектам и команде`;
 }
 
-/** Строка шапки (п. 2.1): «Отдел заботы Qevo на связи 24/7 • Среднее время ответа сейчас: 24 сек». */
+/** Строка шапки (п. 2.1): «Отдел заботы Qevo на связи • Среднее время ответа сейчас: 24 сек». */
 export function careHeadline(estimate: CareEstimate | null, medianSec: number | null | undefined): string {
-  if (estimate?.kind === 'offline') return 'Отдел заботы Qevo на связи 24/7 • Сейчас инженеров нет на связи — ответим, как только подключатся';
+  if (estimate?.kind === 'offline') return 'Отдел заботы Qevo на связи • Сейчас инженеров нет на связи — ответим, как только подключатся';
   if (estimate?.kind === 'queue' && estimate.minutes) {
-    return `Отдел заботы Qevo на связи 24/7 • Среднее время ответа сейчас: ${estimate.minutes[0]}–${estimate.minutes[1]} мин`;
+    return `Отдел заботы Qevo на связи • Среднее время ответа сейчас: ${estimate.minutes[0]}–${estimate.minutes[1]} мин`;
   }
-  return `Отдел заботы Qevo на связи 24/7 • Среднее время ответа сейчас: ${careShort({ kind: 'now', minutes: null }, medianSec)}`;
+  return `Отдел заботы Qevo на связи • Среднее время ответа сейчас: ${careShort({ kind: 'now', minutes: null }, medianSec)}`;
 }
 
 /** Прогресс инженера — то, что уходит в шапку, на кружок и в уведомление Android. */

@@ -36,7 +36,18 @@
 .sbl-num { flex: none; font-size: var(--fs-xs); color: var(--text-mut); font-variant-numeric: tabular-nums; }
 
 /* #4764: «Продолжить работу» — над меню, только при незавершённом */
-.sbl-continue { margin: 0 0 6px; padding: 6px 8px; border-radius: 10px; background: var(--accent-soft); min-width: 0; overflow: hidden; }
+/* #4807 §5, п. 3: блок сжимался в прокручиваемом меню до 20 px — теперь не сжимается */
+.sbl-continue { flex: none; margin: 0 0 6px; padding: 4px 6px; border-radius: 10px; background: var(--accent-soft); min-width: 0; overflow: hidden; }
+.sbl-continue li { align-items: center; gap: 6px; }
+.sbl-cw-card { min-height: 44px; }
+.sbl-cw-pause, .sbl-cw-ico { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--accent); color: var(--on-fill); }
+.sbl-cw-pause { cursor: pointer; }
+.sbl-cw-ico { background: var(--bg-elev); color: var(--accent); }
+.sbl-cw-go { flex: 1; min-width: 0; }
+.sbl-cw-go .sbl-text { font-weight: 600; }
+.sbl-cw-go .sbl-why { color: var(--accent); }
+.sbl-cw-dot { color: var(--ok); }
+.sbl-cw-more { border: 0; background: transparent; color: var(--text-mut); font: inherit; font-size: calc(11px * var(--fs-scale)); cursor: pointer; padding: 0 4px 2px; }
 /* длинное название задачи — многоточием, а не шире меню */
 .sbl-continue li { display: flex; min-width: 0; }
 .sbl-continue .sbl-item { padding: 5px 4px; }

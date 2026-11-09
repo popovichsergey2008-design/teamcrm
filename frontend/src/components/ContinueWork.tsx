@@ -7,86 +7,102 @@ import { draftLabel, listDrafts, openDraft, TASK_DRAFT_CHANGED } from '../lib/ta
 import { CHAT_DRAFT_CHANGED, listChatDrafts } from '../lib/chat-drafts';
 import './sidebar-lists.css';
 
-/** Последняя открытая задача — чтобы вернуть к ней, если ушли, не закончив (#4764). */
-const LAST_KEY = 'qevo.continue.task';
-const FRESH_MS = 12 * 3600_000;
+interface Item { key: string; icon: 'clock' | 'edit' | 'chat'; text: string; hint: string; go: () => void; timer?: { taskId: string; startedAt: string } }
 
-interface Item { key: string; icon: 'clock' | 'edit' | 'chat' | 'check-circle'; text: string; hint: string; go: () => void }
+/** 00:42:15 — сколько идёт таймер. */
+function clock(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+}
 
 /**
- * «Продолжить работу» (#4764): блок вверху сайдбара — только когда есть незавершённое:
- * идёт таймер по задаче, начата и не поставлена задача, не дописано сообщение, открыта и
- * не закончена своя задача. Каждый пункт возвращает ровно туда, где человек был. Пусто —
- * блока нет: никаких «случайных предложений».
+ * «Продолжить работу» (#4764; #4807 §5, п. 3): карточка 44 px вверху меню — только при
+ * идущем таймере или начатом черновике. Таймер идёт в реальном времени, ⏸ — пауза;
+ * до трёх записей, вторая и третья — по раскрытию. Пусто — блока нет.
  */
 export default function ContinueWork({ onGo }: { onGo: () => void }) {
   const { user } = useAuth();
   const route = useRoute();
   const [items, setItems] = useState<Item[]>([]);
-
-  // запоминаем открытую задачу: вернуться к ней — первый смысл блока
-  useEffect(() => {
-    if (route.section !== 'projects' || !route.taskId || !route.projectId) return;
-    try { localStorage.setItem(LAST_KEY, JSON.stringify({ taskId: route.taskId, projectId: route.projectId, at: Date.now() })); } catch { /* без хранилища — без пункта */ }
-  }, [route.section, route.taskId, route.projectId]);
+  const [more, setMore] = useState(false);
+  const [now, setNow] = useState(Date.now());
+  const [rev, setRev] = useState(0);
 
   useEffect(() => {
     let alive = true;
     const build = async () => {
       const out: Item[] = [];
-      const here = route.taskId ? String(route.taskId) : null;
       // 1. таймер идёт — работа над задачей не закончена
       const timer = await api.myTimer().catch(() => null);
-      if (timer?.taskId && timer.taskId !== here) {
+      if (timer?.taskId && !timer.stoppedAt) {
         const t = await api.taskBrief(timer.taskId).catch(() => null);
-        if (t) out.push({ key: `timer${t.id}`, icon: 'clock', text: `#${t.id} ${t.title}`, hint: 'Таймер идёт', go: () => navigate({ section: 'projects', projectId: t.projectId, taskId: t.id }) });
+        if (t) out.push({ key: `timer${t.id}`, icon: 'clock', text: `#${t.id} ${t.title}`, hint: 'Таймер идёт', timer: { taskId: String(t.id), startedAt: timer.startedAt }, go: () => navigate({ section: 'projects', projectId: t.projectId, taskId: t.id }) });
       }
       // 2. начатая и не поставленная задача — открыть с тем же текстом
       const draft = listDrafts(user?.id)[0];
-      if (draft) out.push({ key: `draft${draft.id}`, icon: 'edit', text: draftLabel(draft), hint: 'Задача не поставлена', go: () => openDraft(draft, (projectId) => navigate({ section: 'projects', projectId })) });
+      if (draft) out.push({ key: `draft${draft.id}`, icon: 'edit', text: draftLabel(draft), hint: 'Черновик задачи', go: () => openDraft(draft, (projectId) => navigate({ section: 'projects', projectId })) });
       // 3. недописанное сообщение — в тот же чат, текст уже в поле
       const chat = listChatDrafts().find((c) => c.key.startsWith('chat:') && c.key !== `chat:${route.chatId}` && c.text.replace(/[^\p{L}\p{N}]+/gu, '').length >= 3);
       if (chat) {
         const id = chat.key.slice(5);
         out.push({ key: chat.key, icon: 'chat', text: chat.text.trim().slice(0, 60), hint: id === 'anthill' ? 'Вопрос QEVO Bot не отправлен' : 'Сообщение не отправлено', go: () => navigate({ section: 'chat', chatId: id }) });
       }
-      // 4. своя открытая задача, к которой не вернулись
-      try {
-        const last = JSON.parse(localStorage.getItem(LAST_KEY) ?? 'null') as { taskId: string; projectId: string; at: number } | null;
-        if (last && Date.now() - last.at < FRESH_MS && last.taskId !== here && !out.some((o) => o.key === `timer${last.taskId}`)) {
-          const t = await api.taskBrief(last.taskId).catch(() => null);
-          if (t && !t.closed && String(t.assigneeId ?? '') === String(user?.id ?? '')) {
-            out.push({ key: `task${t.id}`, icon: 'check-circle', text: `#${t.id} ${t.title}`, hint: 'Вы работали над задачей', go: () => navigate({ section: 'projects', projectId: t.projectId, taskId: t.id }) });
-          }
-        }
-      } catch { /* нет записи — нет пункта */ }
       if (alive) setItems(out.slice(0, 3));
     };
     void build();
     const re = () => { void build(); };
     window.addEventListener(TASK_DRAFT_CHANGED, re);
     window.addEventListener(CHAT_DRAFT_CHANGED, re);
-    return () => { alive = false; window.removeEventListener(TASK_DRAFT_CHANGED, re); window.removeEventListener(CHAT_DRAFT_CHANGED, re); };
-  }, [user?.id, route.taskId, route.chatId]);
+    window.addEventListener('teamcrm:tasks-changed', re);
+    return () => {
+      alive = false;
+      window.removeEventListener(TASK_DRAFT_CHANGED, re);
+      window.removeEventListener(CHAT_DRAFT_CHANGED, re);
+      window.removeEventListener('teamcrm:tasks-changed', re);
+    };
+  }, [user?.id, route.taskId, route.chatId, rev]);
+
+  // живой таймер — раз в секунду, только пока он есть
+  const running = items.some((i) => i.timer);
+  useEffect(() => {
+    if (!running) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [running]);
 
   if (!items.length) return null;
+  const pause = async (taskId: string) => {
+    await api.stopTimer(taskId).catch(() => undefined);
+    window.dispatchEvent(new Event('teamcrm:tasks-changed'));
+    setRev((r) => r + 1);
+  };
+  const row = (it: Item, first: boolean) => (
+    <li key={it.key} className={first ? 'sbl-cw-card' : undefined}>
+      {it.timer
+        ? <button type="button" className="sbl-cw-pause" onClick={() => void pause(it.timer!.taskId)} title="Пауза — остановить таймер" aria-label="Остановить таймер"><Icon name="pause" size={14} /></button>
+        : <span className="sbl-cw-ico" aria-hidden="true"><Icon name={it.icon} size={14} /></span>}
+      <button type="button" className="sbl-item sbl-cw-go" title={`${it.hint}: ${it.text}`} onClick={() => { onGo(); it.go(); }}>
+        <span className="sbl-two">
+          <span className="sbl-text">{it.text}</span>
+          <span className="sbl-why">
+            {it.timer ? <><span className="sbl-cw-dot" aria-hidden="true">●</span> {clock(now - new Date(it.timer.startedAt).getTime())} · продолжить</> : `${it.hint} · продолжить`}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
   return (
     <div className="sbl-continue" aria-label="Продолжить работу">
-      <div className="sbl-continue-head"><Icon name="arrow-right" size={14} /> Продолжить работу</div>
       <ul className="sbl-list">
-        {items.map((it) => (
-          <li key={it.key}>
-            <button type="button" className="sbl-item" title={`${it.hint}: ${it.text}`} onClick={() => { onGo(); it.go(); }}>
-              <Icon name={it.icon} size={15} />
-              {/* #4799 NAV02: у каждой строки — почему она здесь: таймер, черновик, недавняя задача */}
-              <span className="sbl-two">
-                <span className="sbl-text">{it.text}</span>
-                <span className="sbl-why">{it.hint}</span>
-              </span>
-            </button>
-          </li>
-        ))}
+        {row(items[0], true)}
+        {more && items.slice(1).map((it) => row(it, false))}
       </ul>
+      {items.length > 1 && (
+        <button type="button" className="sbl-cw-more" onClick={() => setMore((v) => !v)} aria-expanded={more}>
+          {more ? 'Свернуть' : `Ещё ${items.length - 1}`}
+        </button>
+      )}
     </div>
   );
 }

@@ -30,6 +30,8 @@ const isTyping = (el: EventTarget | null) => {
 
 export function useShortcuts(enabled: boolean, actions: {
   newTask: () => void;
+  /** #4807 §2: V — поставить задачу голосом. */
+  voice?: () => void;
   palette: () => void;
   help: () => void;
   toggleSidebar: () => void;
@@ -64,6 +66,14 @@ export function useShortcuts(enabled: boolean, actions: {
 
       if (key === 'g' || key === 'п') { chordAt = Date.now(); return; }
       if (key === 'c' || key === 'с') { e.preventDefault(); a.newTask(); return; }
+      if ((key === 'v' || key === 'м') && a.voice) { e.preventDefault(); a.voice(); return; }
+      // #4807 §2: на доске «/» — поиск по этой доске, F — фильтры; в остальных разделах — как раньше
+      const boardSearch = shown<HTMLInputElement>('.bb-search-input');
+      if ((key === '/' || key === '.') && boardSearch) { e.preventDefault(); boardSearch.focus(); return; }
+      if (key === 'f' || key === 'а') {
+        const filters = shown<HTMLButtonElement>('.bb-filters-btn');
+        if (filters) { e.preventDefault(); filters.click(); return; }
+      }
       if (key === '/' || key === '.') { e.preventDefault(); a.palette(); return; }
       if (key === '?' || (e.shiftKey && key === '7')) { e.preventDefault(); a.help(); return; }
       if (key === '[' || key === 'х') { e.preventDefault(); a.toggleSidebar(); }
@@ -72,4 +82,10 @@ export function useShortcuts(enabled: boolean, actions: {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [enabled]);
+}
+
+/** Элемент на экране (не в скрытом разделе): доска живёт в фоне под другими разделами. */
+function shown<T extends HTMLElement>(selector: string): T | null {
+  const el = document.querySelector<T>(selector);
+  return el && el.offsetParent !== null ? el : null;
 }

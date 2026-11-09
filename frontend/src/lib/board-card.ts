@@ -172,3 +172,26 @@ export function splitDone<T extends { closed_at?: string | null }>(tasks: T[], n
   }
   return { recent, older };
 }
+
+/**
+ * Один статус на компактной карточке (#4807 §4) — вместо срока, по важности:
+ * «Ждёт вашего решения» → «Просрочено» → «Ждёт проверки» → «Есть препятствие».
+ * Ничего из этого — null, и в строке остаётся срок.
+ */
+export function cardStatus(
+  step: { text: string; tone: StepTone } | null,
+  due: { text: string; tone: string } | null,
+): { text: string; tone: 'mine' | 'over' | 'review' | 'blocked' } | null {
+  if (step?.tone === 'mine') return { text: step.text, tone: 'mine' };
+  if (due?.tone === 'over') return { text: due.text.replace('Просрочено: ', 'Просрочено ').replace(/^Просрочено сегодня.*/, 'Просрочено сегодня'), tone: 'over' };
+  if (step?.tone === 'review') return { text: step.text.replace(/: .*/, ''), tone: 'review' };
+  if (step?.tone === 'blocked') return { text: 'Есть препятствие', tone: 'blocked' };
+  return null;
+}
+
+/** Инициалы для аватара 17 px: «Сергей Попович» → «СП», «Глеб» → «ГЛ». */
+export function initials(name: string | null | undefined): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2)).toUpperCase();
+}

@@ -11,6 +11,9 @@ import type { SupportOpen } from './SupportDock';
 import type { PanelInfo } from './SupportPanel';
 import { useCareDrag } from './useCareDrag';
 
+/** #4807 §8 (решение владельца 08.11.2026): плавающей кнопки «Забота» на экране нет. */
+const SHOW_FLOATING_PILL = false;
+
 const SupportPanel = lazy(() => import('./SupportPanel'));
 
 /**
@@ -261,8 +264,9 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
 
   return (
     <div className="care-root">
-      {/* Островок заботы (п. 2.2, 4.1) */}
-      {!open && !quick && (
+      {/* Островок заботы (п. 2.2, 4.1). #4807 §8: плавающую кнопку убрали — вход в поддержку
+          в левом меню («Помощь и бот»); окно, кружок и шторка работают как раньше */}
+      {SHOW_FLOATING_PILL && !open && !quick && (
         <button
           type="button"
           ref={pillDrag.ref}
@@ -274,7 +278,7 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
           onKeyDown={pillDrag.onKeyDown}
           onPointerEnter={(e) => fitTip(e.currentTarget)}
           onFocus={(e) => fitTip(e.currentTarget)}
-          aria-label={`Забота 24/7${time ? ` • ${time}` : ''}. ${tipText}`}
+          aria-label={`Забота${time ? ` • ${time}` : ''}. ${tipText}`}
           aria-describedby="care-tip"
           aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home"
         >
@@ -285,7 +289,7 @@ export default function CareHub({ request }: { request: SupportOpen | null }) {
           </span>
           <span className="care-pill-shield" aria-hidden="true"><Icon name="shield" size={15} /></span>
           <span className={`care-dot${live ? ' live' : ''}`} aria-hidden="true" />
-          <span className="care-pill-text">Забота 24/7{time ? ` • ${time}` : ''}</span>
+          <span className="care-pill-text">Забота{time ? ` • ${time}` : ''}</span>
           {unread > 0 && <span className="care-badge">{unread > 9 ? '9+' : unread}</span>}
           <span id="care-tip" role="tooltip" className="care-tip">{tipText}</span>
         </button>

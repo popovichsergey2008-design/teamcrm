@@ -130,17 +130,18 @@ export function BoardBar({
             placeholder="Поиск по этой доске"
             aria-label="Поиск по этой доске"
           />
-          {query.search && (
-            <button className="bb-x" onClick={() => set({ search: '' })} aria-label="Очистить поиск"><Icon name="close" size={12} /></button>
-          )}
+          {query.search
+            ? <button className="bb-x" onClick={() => set({ search: '' })} aria-label="Очистить поиск"><Icon name="close" size={12} /></button>
+            : <kbd className="bb-kbd" title="Клавиша / — поиск по доске">/</kbd>}
         </label>
+        <span className="bb-spacer" />
         <span className="kv2-seg" role="group" aria-label="Вид доски">
           <button className="kv2-seg-btn" aria-pressed={view === 'board'} onClick={() => onView('board')} title="Канбан-доска — тот же отбор задач" aria-label="Доска"><Icon name="board" size={15} /> <span className="bb-lbl">Доска</span></button>
           <button className="kv2-seg-btn" aria-pressed={view === 'list'} onClick={() => onView('list')} title="Список — тот же отбор задач" aria-label="Список"><Icon name="list" size={15} /> <span className="bb-lbl">Список</span></button>
         </span>
         <span className="bb-pop-wrap">
           <Button variant={filtersCount ? 'secondary' : 'outline'} size="sm" className="bb-filters-btn" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
-            <Icon name="filter" size={15} /> Фильтры{filtersCount ? ` · ${filtersCount}` : ''}
+            <Icon name="filter" size={15} /> <span className="bb-lbl">Фильтры</span>{filtersCount ? <span className="bb-fcount">{filtersCount}</span> : null}
           </Button>
           {filtersOpen && (
             <div className="bb-pop bb-pop-right" data-pop role="dialog" aria-label="Фильтры доски">
@@ -206,18 +207,24 @@ export function BoardBar({
           const q = QUICK.find((x) => x.key === k)!;
           const on = query.quick.includes(k);
           return (
-            <button key={k} className={`bb-chip${on ? ' is-on' : ''}${k === 'decide' && counts.quick[k] ? ' is-hot' : ''}`} aria-pressed={on} onClick={() => toggleQuick(k)} title={q.hint}>
+            <button key={k} className={`bb-chip${on ? ' is-on' : ''}${k === 'decide' && counts.quick[k] ? ' is-hot' : ''}${counts.quick[k] ? '' : ' is-zero'}`} aria-pressed={on} onClick={() => toggleQuick(k)} title={q.hint}>
               {q.short ?? q.label} <span className="bb-n">{counts.quick[k]}</span>
             </button>
           );
         })}
+        <span className="bb-spacer" />
+        {onOpenReview && (
+          <button className="bb-link" onClick={onOpenReview} disabled={!counts.quick.decide} title={counts.quick.decide ? 'Открыть сданную работу по одной: принять, вернуть или задать вопрос' : 'Сейчас ваших решений не ждут'}>
+            Проверить по очереди →
+          </button>
+        )}
       </div>
 
+      {/* #4807 §2, строка 4: итог, условия и этапы — одной строкой, Инфоцентр справа */}
       <div className="bb-row bb-status" aria-live="polite">
-        <b>Показано {counts.shown} {taskWord(counts.shown)}</b>
-        <span className="bb-dim">· {query.scope === 'all' ? 'Все задачи на доске' : allRoles ? 'Мои задачи' : rolesLabel}</span>
-        {query.hideDone && <span className="bb-dim">· Завершённые скрыты</span>}
-        <span className="bb-dim bb-totals">· Активные: {counts.active} · Завершённые: {counts.done}</span>
+        <span className="bb-sum" title={query.scope === 'all' ? 'Все задачи на доске' : allRoles ? 'Мои задачи' : rolesLabel}>
+          Показано {counts.shown}<span className="bb-totals"> · Активные {counts.active} · Завершённые {counts.done}</span>{query.hideDone ? ' · завершённые скрыты' : ''}
+        </span>
         {chips.map((c) => (
           <span key={c.key} className="bb-tag">
             {c.label}
@@ -229,31 +236,19 @@ export function BoardBar({
             Сбросить условия
           </button>
         )}
-        <span className="bb-spacer" />
-        {onOpenReview && counts.quick.decide > 0 && (
-          <button className="bb-link" onClick={onOpenReview} title="Открыть сданную работу по одной: принять, вернуть или задать вопрос">
-            Проверить по очереди →
-          </button>
+        {!!stages?.length && (
+          <span className="bb-stages" role="group" aria-label="Этапы доски">
+            {stages.map((s) => (
+              <button key={s.id} className={`bb-stage${s.visible ? ' is-vis' : ''}`} onClick={() => onJump?.(s.id)} title={`Перейти к колонке «${s.name}» · задач: ${s.count}`}>
+                {s.name}
+              </button>
+            ))}
+            {onAllStages && <button className="bb-link" onClick={onAllStages} title="Развернуть свёрнутые колонки и показать доску с начала">Все этапы ↗</button>}
+          </span>
         )}
+        <span className="bb-spacer" />
         {hubSlot}
       </div>
-      {!!stages?.length && (
-        <div className="bb-row bb-stages" role="group" aria-label="Этапы доски">
-          {stages.map((s) => (
-            <button key={s.id} className={`bb-stage${s.visible ? ' is-vis' : ''}`} onClick={() => onJump?.(s.id)} title={`Перейти к колонке «${s.name}» · задач: ${s.count}`}>
-              {s.name}
-            </button>
-          ))}
-          <span className="bb-spacer" />
-          {onAllStages && <button className="bb-link" onClick={onAllStages} title="Развернуть свёрнутые колонки и показать доску с начала">Все этапы ↗</button>}
-        </div>
-      )}
     </div>
   );
-}
-
-/** «1 задача», «2 задачи», «5 задач». */
-function taskWord(n: number): string {
-  const m10 = n % 10; const m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? 'задача' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'задачи' : 'задач';
 }

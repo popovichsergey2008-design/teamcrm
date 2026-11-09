@@ -8,7 +8,7 @@ import { priorityBadge } from '../lib/labels';
 import { COL_DND, TASK_DND } from '../lib/board-dnd';
 import { Button } from './ui/button';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
-import { dueText, nextStep, splitDone, stageAge, staleDays, daysWord } from '../lib/board-card';
+import { cardStatus, dueText, initials, nextStep, splitDone, stageAge, staleDays, daysWord } from '../lib/board-card';
 import { PAUSED_STAGES } from '../lib/board-filter';
 
 interface Props {
@@ -45,6 +45,10 @@ interface Props {
   onToggleCollapse?: (columnId: string) => void;
   /** Мягкий порог «в работе на человека» (#4798 §14). */
   wipLimit?: number | null;
+  /** #4807 §4: «Подробно» — все поля карточки, как раньше; по умолчанию компактно. */
+  detail?: boolean;
+  /** #4807 §3, §9.3: «+» в шапке — поле сверху колонки, Enter создаёт задачу. */
+  onQuickAdd?: (columnId: string, title: string) => Promise<void>;
 }
 
 /** Тип этапа колонки (ТЗ-30) — что значит «задача стоит здесь» для сроков. */
@@ -80,7 +84,17 @@ export function ColumnView({
   collapsed = false,
   onToggleCollapse,
   wipLimit,
+  detail = false,
+  onQuickAdd,
 }: Props) {
+  const [quick, setQuick] = useState<string | null>(null);
+  const [quickBusy, setQuickBusy] = useState(false);
+  const submitQuick = async () => {
+    const title = (quick ?? '').trim();
+    if (!title || !onQuickAdd) { setQuick(null); return; }
+    setQuickBusy(true);
+    try { await onQuickAdd(column.id, title); setQuick(''); } finally { setQuickBusy(false); }
+  };
   const [over, setOver] = useState(false);
   const [colOver, setColOver] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -214,6 +228,13 @@ export function ColumnView({
         )}
         <span className="col-head-right">
           <span className="kv2-count">{column.tasks.length}</span>
+          {!!overWip.length && <span className="col-many" title={`Больше ${wipLimit} у человека: ${overWip.join(', ')}. Проверьте, что сейчас важнее.`}>· много</span>}
+          {canEdit && (
+            <Button variant="ghost" size="icon-sm" className="kv2-col-menu col-add" aria-label={`Новая задача в «${column.name}»`} title="Новая задача в этой колонке (Enter — создать, Esc — отмена)"
+              onClick={() => (onQuickAdd ? setQuick((v) => (v === null ? '' : null)) : onRequestAddTask(column.id))}>
+              <Icon name="plus" size={14} />
+            </Button>
+          )}
           {/* свернуть — всем, кто смотрит доску: это вид, а не управление колонкой */}
           {!canManage && onToggleCollapse && (
             <Button variant="ghost" size="icon-sm" className="kv2-col-menu" onClick={() => onToggleCollapse(column.id)} aria-label={`Свернуть «${column.name}»`} title="Свернуть колонку">
@@ -264,12 +285,31 @@ export function ColumnView({
         </span>
       </div>
 
-      {!!overWip.length && (
+      {detail && !!overWip.length && (
         <div className="col-wip is-over" title={`Желательно держать в работе не больше ${wipLimit} задач на человека. Количество задач — не оценка занятости: задачи бывают разной сложности.`}>
           Больше {wipLimit} у человека: {overWip.join(', ')}. Проверьте, что сейчас важнее.
         </div>
       )}
       <div className="column-tasks">
+        {quick !== null && (
+          <div className="col-quick">
+            <input
+              className="ui-input ui-input-sm"
+              autoFocus
+              value={quick}
+              disabled={quickBusy}
+              placeholder="Название задачи — Enter"
+              aria-label={`Новая задача в «${column.name}»`}
+              onChange={(e) => setQuick(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void submitQuick(); }
+                if (e.key === 'Escape') setQuick(null);
+              }}
+              onBlur={() => { if (!(quick ?? '').trim()) setQuick(null); }}
+            />
+            <button className="bb-link" onMouseDown={(e) => e.preventDefault()} onClick={() => { setQuick(null); onRequestAddTask(column.id); }}>Подробнее…</button>
+          </div>
+        )}
         {shown.map((t, i) => (
           <TaskCard
             key={t.id}
@@ -287,6 +327,7 @@ export function ColumnView({
             paused={PAUSED_STAGES.includes(stageNow) || t.approval_state === 'pending'}
             moveTargets={columns?.filter((c) => c.id !== column.id)}
             onMoveTo={(columnId) => onMoveTask(t.id, columnId, columns?.find((c) => c.id === columnId)?.count ?? 0)}
+            detail={detail}
           />
         ))}
         {isDoneCol && split.older.length > 0 && (
@@ -296,7 +337,7 @@ export function ColumnView({
         )}
       </div>
 
-      {canEdit && (
+      {canEdit && detail && (
         <Button variant="ghost" size="sm" className="add-task-btn" onClick={() => onRequestAddTask(column.id)}>
           <Icon name="plus" size={15} /> Задача
         </Button>
@@ -320,7 +361,9 @@ function TaskCard({
   paused = false,
   moveTargets,
   onMoveTo,
+  detail = false,
 }: {
+  detail?: boolean;
   task: Task;
   me: string;
   stage: string;
@@ -355,9 +398,27 @@ function TaskCard({
   const age = stageAge(task, stage, columnName);
   const stale = staleDays(task);
   const labels = (task.labels ?? []).filter((l) => !hiddenLabels?.has(String(l.id)));
+  /*
+    #4807 §4: компактно — 3 строки (№ и приоритет · заголовок до 2 строк · аватар,
+    срок или ОДИН статус, счётчики). Что убрали с карточки — в подсказке при наведении.
+  */
+  const status = detail ? null : cardStatus(step, due);
+  const tip = detail ? undefined : [
+    task.title,
+    `Исполнитель: ${assigneeName ?? 'не назначен'}${managerName ? ` · от ${managerName}` : ''}`,
+    `Срок: ${due?.text ?? 'без срока'}${age ? ` · ${age.toLowerCase()}` : ''}`,
+    step && step.tone !== 'work' ? step.text : '',
+    task.audio_proof_sec ? `Фрагмент созвона ${task.audio_proof_sec} сек` : '',
+    task.checklistTotal ? `Чек-лист ${task.checklistDone}/${task.checklistTotal}` : '',
+    stale > 0 ? `Нет обновления ${daysWord(stale)}` : '',
+    task.agent_assigned ? 'Исполнитель — ИИ-агент' : '',
+    task.merged_into_id ? `Объединена с #${task.merged_into_id}` : '',
+  ].filter(Boolean).join('\n');
   return (
     <div
-      className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}`}
+      className={`task-card ${timerActive ? 'task-tracking' : ''}${task.unread ? ' task-card-new' : ''}${detail ? '' : ' kc-compact'}${!detail && stale >= 7 ? ' is-stale' : ''}`}
+      title={tip}
+      style={!detail && labels[0] ? { ['--kc-tag' as string]: labels[0].color } : undefined}
       data-task-id={task.id}
       draggable={canEdit}
       onClick={onOpen}
@@ -396,6 +457,24 @@ function TaskCard({
               ))}
             </DropdownMenu>
           )}
+          {/* #4807 §4: при наведении — «Переместить» и «⋯» */}
+          {!phone && !detail && (
+            <DropdownMenu
+              trigger={(
+                <button className="task-card-move-btn" title="Ещё" aria-label="Действия с задачей">
+                  <Icon name="more" size={13} />
+                </button>
+              )}
+            >
+              <MenuItem onSelect={onOpen} icon={<Icon name="maximize" size={15} />}>Открыть задачу</MenuItem>
+              <MenuItem
+                onSelect={() => { void navigator.clipboard?.writeText(`${window.location.origin}/projects/${task.project_id}/task/${task.id}`).catch(() => undefined); }}
+                icon={<Icon name="link" size={15} />}
+              >
+                Скопировать ссылку
+              </MenuItem>
+            </DropdownMenu>
+          )}
           {/* На телефоне — нижний лист с крупными строками; на компьютере — выпадашка у кнопки. */}
           {moveOpen && phone && (
             <BottomSheet title={`Переместить: ${task.title}`} onClose={() => setMoveOpen(false)}>
@@ -406,6 +485,26 @@ function TaskCard({
           )}
         </div>
       )}
+      {!detail ? (<>
+        <div className="kc-line1">
+          <span>№{task.id}</span>
+          {prio && (task.priority === 'high' || task.priority === 'urgent') && <span className={`kc-prio p-${task.priority}`}>{prio.label}</span>}
+          {task.risk_level && !paused && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
+          {!!task.unread && <span className="kc-unread" aria-label={`Новое для вас: ${task.unread}`} />}
+        </div>
+        <div className="task-title kc-title">{task.title}</div>
+        <div className="kc-line3">
+          <span className="kc-ava" style={{ background: avatarColor(task.assignee_id) }} aria-label={assigneeName ? `Исполнитель: ${assigneeName}` : 'Исполнитель не назначен'}>{assigneeName ? initials(assigneeName) : '—'}</span>
+          {status
+            ? <span className={`kc-st t-${status.tone}`}>{status.text}</span>
+            : <span className={`kc-due d-${due?.tone ?? 'none'}`}>{due?.text ?? '—'}</span>}
+          <span className="kc-icons">
+            {!!task.commentsCount && <span><Icon name="chat" size={12} />{task.commentsCount}</span>}
+            {!!task.attachmentsCount && <span><Icon name="paperclip" size={12} />{task.attachmentsCount}</span>}
+            {!!task.checklistTotal && <span className={task.checklistDone === task.checklistTotal ? 'is-done' : undefined}><Icon name="check" size={12} />{task.checklistDone}/{task.checklistTotal}</span>}
+          </span>
+        </div>
+      </>) : (<>
       {labels.length > 0 && (
         <div className="card-labels">
           {labels.map((l) => <span key={l.id} className="card-label" style={{ background: l.color }} title={`Тег: ${l.name}`} />)}
@@ -457,8 +556,17 @@ function TaskCard({
           {MONETIZATION_ENABLED && cost !== null && <span title="Себестоимость в реальном времени">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>}
         </span>
       </div>
+      </>)}
     </div>
   );
+}
+
+/** Цвет аватара по человеку — один и тот же на всей доске. */
+function avatarColor(id: string | null | undefined): string {
+  if (!id) return 'var(--border-2)';
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 55% 45%)`;
 }
 
 /** «1 файл», «2 файла», «5 файлов». */

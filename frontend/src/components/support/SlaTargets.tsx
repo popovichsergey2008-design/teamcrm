@@ -29,7 +29,7 @@ export function slaRows(s: SupportSla): Row[] {
       note: s.userScreenshots ? `в ${s.conversationsWithScreenshots} из ${s.conversations} обращений` : `обращений: ${s.conversations}`,
     },
     { target: '4. Ответ умного AI-ассистента с кнопкой готового действия: до 1 секунды.', ...upTo(s.aiFirstSeconds, 1, sec, 'медиана первого ответа помощника') },
-    { target: '5. Ответ живого продуктового инженера (Support Hero): 25–45 секунд 24/7/365.', ...upTo(s.humanFirstSeconds, 45, sec, 'медиана первого ответа человека') },
+    { target: '5. Ответ живого продуктового инженера (Support Hero): 25–45 секунд, круглосуточно.', ...upTo(s.humanFirstSeconds, 45, sec, 'медиана первого ответа человека') },
     {
       target: '6. Подключение к голосовому/экранному Huddle внутри приложения: 20–30 секунд.',
       ...upTo(s.huddleConnectSeconds, 30, sec, s.huddleCount ? `медиана от просьбы до «принял», созвонов: ${s.huddleCount}` : undefined),

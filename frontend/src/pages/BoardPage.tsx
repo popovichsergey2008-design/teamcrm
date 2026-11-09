@@ -54,7 +54,7 @@ const HandoffDialog = lazyComponent(() => import('../components/task-flow/Handof
 const RulesDialog = lazyComponent(() => import('../components/board/RulesDialog').then((m) => m.RulesDialog));
 
 /** Личный вид доски: ширина колонок, плотность карточек, свёрнутые колонки (#4798 §14, §20). */
-interface BoardUi { w: 'narrow' | 'normal' | 'wide'; dense: boolean; col: Record<string, string[]>; sort: BoardSort }
+interface BoardUi { w: 'narrow' | 'normal' | 'wide'; detail: boolean; col: Record<string, string[]>; sort: BoardSort }
 /** Порядок карточек в колонке (#4798 §14): вручную (как перетащили) или по признаку — только показ. */
 type BoardSort = 'manual' | 'deadline' | 'priority' | 'updated';
 const SORTS: { key: BoardSort; label: string }[] = [
@@ -80,8 +80,13 @@ function readUi(uid: string): BoardUi {
   try {
     const s = JSON.parse(localStorage.getItem(uiKey(uid)) ?? '{}') as Partial<BoardUi>;
     const sort = SORTS.some((x) => x.key === s.sort) ? s.sort! : 'manual';
-    return { w: s.w === 'narrow' || s.w === 'wide' ? s.w : 'normal', dense: !!s.dense, col: s.col ?? {}, sort };
-  } catch { return { w: 'normal', dense: false, col: {}, sort: 'manual' }; }
+    // #4807 §4: по умолчанию компактные карточки; «Подробно» — выбор человека
+    return { w: s.w === 'narrow' || s.w === 'wide' ? s.w : 'normal', detail: !!s.detail, col: s.col ?? {}, sort };
+  } catch { return { w: 'normal', detail: false, col: {}, sort: 'manual' }; }
+}
+/** #4807 §3: «Готово» и «В планах» свёрнуты, пока человек сам не развернёт (выбор запоминается). */
+function defaultCollapsed(columns: { id: string; name: string; stage_type?: string | null }[]): string[] {
+  return columns.filter((c) => c.stage_type === 'done' || /^в планах/i.test(c.name.trim())).map((c) => String(c.id));
 }
 function writeUi(uid: string, ui: BoardUi) {
   try { localStorage.setItem(uiKey(uid), JSON.stringify(ui)); } catch { /* без хранилища — до перезагрузки */ }
@@ -836,17 +841,21 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               Три уровня (#4799 §1, TOP01): где я (компания → раздел → проект), куда можно
               уйти из проекта («Все проекты», «Общие задачи») и команды ЭТОЙ доски ниже.
             */}
+            {/* #4807 §2, строка 1 (30 px): «Компания /» · значок проекта · «Проект ▾» · ★ | «Все проекты ▾» · «Общие задачи ↗» */}
             <div className="bp-head">
-              <div className="bp-crumbs">
-                {organizations.find((o) => String(o.tenantId) === String(user?.tenantId))?.name ?? 'Компания'} / Проекты и задачи
-              </div>
-                <h1 className="bp-name">{board.project.name}</h1>
-                {/* #4713: проект — в избранное, он появится в сайдбаре */}
-                <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
+              <span className="bp-crumbs">{organizations.find((o) => String(o.tenantId) === String(user?.tenantId))?.name ?? 'Компания'} /</span>
+              <span className="bp-ico" aria-hidden="true">{board.project.name.trim().charAt(0).toUpperCase()}</span>
+              <h1 className="bp-name">
+                <button className="bp-name-btn" onClick={() => setSwitchOpen((v) => !v)} aria-expanded={switchOpen} title="Открыть список проектов">
+                  {board.project.name} <Icon name="chevron-down" size={14} />
+                </button>
+              </h1>
+              {/* #4713: проект — в избранное, он появится в сайдбаре */}
+              <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
               <span className="bp-ctx">
                 {/* «Все проекты ⌄» — переход к другому проекту и реестр; «Общие задачи» — задачи из нескольких проектов */}
                 <span className="board-switch">
-                  <Button variant="outline" size="sm" className="board-switch-btn bp-all-btn" onClick={() => setSwitchOpen((v) => !v)} aria-expanded={switchOpen} title="Перейти к другому проекту или открыть реестр проектов">
+                  <Button variant="ghost" size="sm" className="board-switch-btn bp-all-btn" onClick={() => setSwitchOpen((v) => !v)} aria-expanded={switchOpen} title="Перейти к другому проекту или открыть реестр проектов">
                     Все проекты <Icon name="chevron-down" size={14} />
                   </Button>
                   {switchOpen && (
@@ -882,7 +891,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     </span>
                   )}
                 </span>
-                <Button variant="outline" size="sm" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
+                <Button variant="ghost" size="sm" className="bp-quiet" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
                   Общие задачи ↗
                 </Button>
                 {board.project.origin === 'bitrix' && (
@@ -923,8 +932,10 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 hubSlot={phone || view === 'list'
                   ? <HubColumn key={`hb${board.project.id}`} projectId={String(board.project.id)} ownerId={board.project.owner_user_id} variant="button" />
                   : (
-                    <button className="bb-link bb-hub-toggle" onClick={() => setHubOpen(!hubOpen)} aria-expanded={hubOpen} title="Паспорт проекта, база знаний, решения и «Что сейчас важно»">
-                      {hubOpen ? 'Скрыть Инфоцентр' : '← Инфоцентр проекта'}{!hubOpen && signals.length ? ` · ${signals.length}` : ''}
+                    <button className={`bb-hub-toggle${hubOpen ? ' is-on' : ''}`} onClick={() => setHubOpen(!hubOpen)} aria-expanded={hubOpen} title="Паспорт проекта, база знаний, решения и «Что сейчас важно»">
+                      <Icon name="info" size={13} /> {hubOpen ? 'Скрыть Инфоцентр' : 'Инфоцентр проекта'}
+                      {!hubOpen && signals.length > 0 && <span className="bb-n">{signals.length}</span>}
+                      {!hubOpen && ' →'}
                     </button>
                   )}
                 extraActions={(
@@ -961,8 +972,11 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                         </MenuItem>
                       ))}
                       <MenuSeparator />
-                      <MenuItem onSelect={() => setUi({ dense: !ui.dense })} icon={<Icon name={ui.dense ? 'check' : 'list'} size={15} />}>
-                        Компактные карточки
+                      <MenuItem onSelect={() => setUi({ detail: false })} icon={<Icon name={ui.detail ? 'list' : 'check'} size={15} />}>
+                        Плотность карточек: компактно
+                      </MenuItem>
+                      <MenuItem onSelect={() => setUi({ detail: true })} icon={<Icon name={ui.detail ? 'check' : 'list'} size={15} />}>
+                        Плотность карточек: подробно
                       </MenuItem>
                       {!!(ui.col[String(board.project.id)] ?? []).length && (
                         <MenuItem onSelect={() => setUi({ col: { ...ui.col, [String(board.project.id)]: [] } })} icon={<Icon name="maximize" size={15} />}>
@@ -1003,7 +1017,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 onOpenTask={(t) => setOpenTaskId(t.id)}
               />
             ) : (
-              <div className={`board-columns w-${ui.w}${ui.dense ? ' board-dense' : ''}`} ref={columnsRef}>
+              <div className={`board-columns w-${ui.w}${ui.detail ? '' : ' board-compact'}`} ref={columnsRef}>
                 {/* Инфоцентр — перед колонками, но НЕ среди board.columns: «первая колонка»,
                     порядок и перенос карточек его не видят. Клиенту не показываем. */}
                 {!isClient && hubOpen && !phone && (
@@ -1032,10 +1046,20 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     me={uid}
                     hiddenLabels={hiddenLabels}
                     wipLimit={board.project.wip_limit ?? null}
-                    collapsed={(ui.col[String(board.project.id)] ?? []).includes(String(col.id))}
+                    detail={ui.detail}
+                    onQuickAdd={async (columnId, title) => {
+                      try {
+                        await api.createTask({ projectId: String(board.project.id), title, columnId: String(columnId), confirmedWithoutTags: true });
+                        void reloadBoard();
+                      } catch (e) {
+                        setError(e instanceof ApiError ? e.message : 'Не удалось создать задачу');
+                        throw e;
+                      }
+                    }}
+                    collapsed={(ui.col[String(board.project.id)] ?? defaultCollapsed(board.columns)).includes(String(col.id))}
                     onToggleCollapse={(id) => {
                       const pid = String(board.project.id);
-                      const cur = ui.col[pid] ?? [];
+                      const cur = ui.col[pid] ?? defaultCollapsed(board.columns);
                       setUi({ col: { ...ui.col, [pid]: cur.includes(String(id)) ? cur.filter((x) => x !== String(id)) : [...cur, String(id)] } });
                     }}
                   />
