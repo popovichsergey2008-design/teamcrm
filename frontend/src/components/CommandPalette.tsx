@@ -6,7 +6,8 @@ import { api, type RecentTask } from '../lib/api';
 import { TaskStateDot } from './TaskStateDot';
 import { navigate, Route } from '../lib/router';
 import { norm, score } from '../lib/palette-match';
-import { Command, findCommands } from '../lib/commands';
+import { callTarget, Command, findCommands, looksLikeTask } from '../lib/commands';
+import { START_CALL_EVENT, type StartCallRequest } from '../lib/notifications';
 import { setThemeChoice } from '../lib/theme';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { lazyComponent } from '../lib/lazy';
@@ -52,7 +53,10 @@ const RECENT_KEY = 'teamcrm.recent';
 const RECENT_MAX = 5;
 
 const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] }[] = [
+  { title: 'Входящие', icon: 'inbox', route: { section: 'inbox' } },
   { title: 'Фокус дня', icon: 'target', route: { section: 'focus' } },
+  { title: 'Календарь', icon: 'calendar', route: { section: 'calendar' } },
+  { title: 'Новости', icon: 'megaphone', route: { section: 'news' } },
   { title: 'Задачи: мои по всем проектам', icon: 'check-circle', route: { section: 'tasks' } },
   { title: 'Задачи: все задачи компании', icon: 'building', route: { section: 'tasks', view: 'all' } },
   { title: 'Задачи: что я поручил', icon: 'send', route: { section: 'tasks', view: 'delegated' } },
@@ -246,6 +250,22 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoVoice]);
 
+  /** #4807 §5, п. 2: позвонить из строки — созвон поднимает App, как из карточки задачи. */
+  const call = (userId: string) => {
+    window.dispatchEvent(new CustomEvent<StartCallRequest>(START_CALL_EVENT, { detail: { memberIds: [userId] } }));
+    onClose();
+  };
+  const [people, setPeople] = useState<{ id: string; name: string }[] | null>(null);
+  const loadPeople = async () => {
+    if (people) return people;
+    const list = ((await api.listUsers().catch(() => [])) as any[])
+      .filter((u) => u.role !== 'client' && u.isActive !== false)
+      .map((u) => ({ id: String(u.id), name: String(u.fullName ?? u.full_name ?? u.email ?? '') }));
+    setPeople(list);
+    return list;
+  };
+  useEffect(() => { if (callTarget(q)) void loadPeople(); }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const go = (to: Route | string, remember?: Recent) => {
     if (remember) rememberVisit(remember);
     navigate(to);
@@ -268,6 +288,24 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     };
 
     switch (cmd.kind) {
+      case 'new-task': onClose(); onCreate({}); return;
+      case 'voice-task': onClose(); onCreate({ voice: true }); return;
+      case 'open-inbox': go({ section: 'inbox' }); return;
+      case 'open-calendar': go({ section: 'calendar' }); return;
+      case 'new-chat': go({ section: 'chat' }); return;
+      case 'start-call': {
+        setThinking('search');
+        const list = await loadPeople();
+        setInline({
+          group: 'Позвонить',
+          items: list.slice(0, 12).map((u) => ({
+            key: `call:${u.id}`, group: 'Позвонить', title: u.name, hint: 'созвон начнётся сразу', icon: 'phone' as IconName,
+            run: () => call(u.id),
+          })),
+        });
+        setThinking(null);
+        return;
+      }
       case 'focus-deep-hour':
       case 'focus-deep-day':
       case 'focus-call':
@@ -433,6 +471,23 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
       run: () => { openSupport(); onClose(); },
     });
 
+    // #4807 §5, п. 2: «поставь задачу Сергею до пятницы» — первой строкой постановка
+    if (looksLikeTask(q)) {
+      add({
+        key: 'act:task-phrase', group: 'Команды', title: `Поставить задачу: «${q.trim()}»`,
+        hint: 'исполнитель, срок и проект подставятся сами — проверите перед созданием', icon: 'plus',
+        run: () => { onClose(); onCreate({ text: q.trim() }); },
+      });
+    }
+    // «позвони Сергею» — сразу кнопки звонка подходящим людям
+    const who = callTarget(q);
+    if (who && people) {
+      const stem = who.replace(/(у|ю|е|ой|ей|а|я)$/i, '');
+      for (const u of people.filter((p) => score(p.name, stem) !== null).slice(0, 5)) {
+        add({ key: `call:${u.id}`, group: 'Позвонить', title: `Позвонить: ${u.name}`, hint: 'созвон начнётся сразу', icon: 'phone', run: () => call(u.id) });
+      }
+    }
+
     if (inline) for (const it of inline.items) add(it);
 
     // Команды — сразу после результата: «не беспокоить», «кто свободен», «тёмная тема».
@@ -533,6 +588,8 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
         hint: [p.position, p.email].filter(Boolean).join(' · '), icon: 'user',
         run: () => go({ section: 'settings', tab: 'team' }),
       });
+      // #4807 §5, п. 2: человек нашёлся — позвонить ему одной строкой
+      add({ key: `call:${p.id}`, group: 'Люди', title: `Позвонить: ${p.full_name}`, icon: 'phone', run: () => call(String(p.id)) });
     }
 
     for (const d of remote?.docs ?? []) {
@@ -592,7 +649,8 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   }, [q, local, remote, role, semantic, question, thinking, inline, recentTasks, pastQueries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setActive(0);
+    // #4807: набрали запрос — Enter запускает первую находку, а не закреплённую «Заботу»
+    setActive(q.trim() ? 1 : 0);
     // Смысловой слой относится к конкретной формулировке: при правке строки его
     // результаты устаревают, и оставлять их под новым запросом — обман.
     setSemantic(null);
@@ -619,7 +677,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     if (e.key === ' ' && !q && !voice.recording) { e.preventDefault(); voice.start(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((i) => (i + 1) % items.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => (i - 1 + items.length) % items.length); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (items[active]) runItem(items[active]); }
+    else if (e.key === 'Enter') { e.preventDefault(); const it = items[active] ?? items[0]; if (it) runItem(it); }
     // Escape — общим обработчиком окна выше: он работает и когда фокус не в поле.
   };
 

@@ -132,6 +132,24 @@ test('команда находится по обрывку фразы и по �
   }
 });
 
+test('строка Ctrl K: фраза-задача и «позвони …» (#4807 §5, п. 2)', async () => {
+  const { findCommands, looksLikeTask, callTarget } = await load('lib/commands.ts');
+  const kinds = (q) => findCommands(q, false).map((c) => c.kind);
+  assert.ok(looksLikeTask('поставь задачу Сергею до пятницы'));
+  assert.ok(looksLikeTask('напомни Глебу про смету'));
+  assert.ok(looksLikeTask('Задача: сверстать главную'));
+  assert.ok(!looksLikeTask('задача'), 'одно слово — ещё не постановка');
+  assert.ok(!looksLikeTask('отчёт по продажам'), 'поиск не становится задачей');
+  assert.equal(callTarget('позвони Сергею'), 'Сергею');
+  assert.equal(callTarget('созвон с Анной'), 'Анной');
+  assert.equal(callTarget('отчёт'), null);
+  assert.ok(kinds('позвон').includes('start-call'));
+  assert.ok(kinds('входящ').includes('open-inbox'));
+  assert.ok(kinds('новая зад').includes('new-task'));
+  assert.ok(kinds('голосом').includes('voice-task'));
+  assert.ok(kinds('созвон').includes('focus-call'), 'статус «на созвоне» по-прежнему находится');
+});
+
 // ── часовые пояса ─────────────────────────────────────────────────────────────
 test('пояса считаются и подписываются как в системных настройках', async () => {
   const { offsetMinutes, formatOffset, listTimezones, browserTimezone } = await load('lib/timezones.ts');

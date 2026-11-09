@@ -16,7 +16,9 @@ import { norm } from './palette-match';
 export type CommandKind =
   | 'focus-deep-hour' | 'focus-deep-day' | 'focus-call' | 'focus-break' | 'focus-clear'
   | 'theme-dark' | 'theme-light' | 'theme-system'
-  | 'my-overdue' | 'who-free' | 'at-risk' | 'day-summary';
+  | 'my-overdue' | 'who-free' | 'at-risk' | 'day-summary'
+  /** #4807 §5, п. 2: поиск — это и команды: создать задачу, позвонить, перейти */
+  | 'new-task' | 'voice-task' | 'start-call' | 'open-inbox' | 'new-chat' | 'open-calendar';
 
 export type Command = {
   kind: CommandKind;
@@ -29,6 +31,48 @@ export type Command = {
 };
 
 export const COMMANDS: Command[] = [
+  {
+    kind: 'new-task',
+    title: 'Новая задача',
+    hint: 'клавиша C — или напишите задачу прямо здесь',
+    icon: 'plus',
+    words: ['новая задача', 'создать задачу', 'поставить задачу', 'задача', 'добавить задачу'],
+  },
+  {
+    kind: 'voice-task',
+    title: 'Задача голосом',
+    hint: 'клавиша V — скажите, что сделать',
+    icon: 'mic',
+    words: ['задача голосом', 'голосом', 'надиктовать', 'сказать голосом', 'голос'],
+  },
+  {
+    kind: 'start-call',
+    title: 'Позвонить',
+    hint: 'выберите, кому — созвон начнётся сразу',
+    icon: 'phone',
+    words: ['позвонить', 'созвон', 'звонок', 'набрать', 'созвониться', 'видеозвонок'],
+  },
+  {
+    kind: 'open-inbox',
+    title: 'Входящие',
+    hint: 'всё, что ждёт вашей реакции',
+    icon: 'inbox',
+    words: ['входящие', 'уведомления', 'ждут решения', 'упоминания', 'inbox'],
+  },
+  {
+    kind: 'new-chat',
+    title: 'Новый чат',
+    hint: 'написать коллеге или создать группу',
+    icon: 'chat',
+    words: ['новый чат', 'написать', 'сообщение', 'группа', 'канал'],
+  },
+  {
+    kind: 'open-calendar',
+    title: 'Календарь',
+    hint: 'встречи, блоки времени, «Найти время»',
+    icon: 'calendar',
+    words: ['календарь', 'встречи', 'расписание', 'найти время', 'запланировать'],
+  },
   {
     kind: 'focus-deep-hour',
     title: 'Не беспокоить час',
@@ -132,4 +176,19 @@ export function findCommands(query: string, isManager: boolean): Command[] {
   return COMMANDS
     .filter((c) => (!c.managerOnly || isManager) && matchCommand(c, query))
     .slice(0, 5);
+}
+
+/**
+ * Фраза — это постановка задачи, а не поиск: «поставь задачу Сергею до пятницы»,
+ * «напомни Глебу про смету». Тогда первой строкой — «Поставить задачу: …» (#4807 §5, п. 2).
+ */
+export function looksLikeTask(raw: string): boolean {
+  const t = raw.trim();
+  return t.split(/\s+/).length >= 2 && /^(постав|созда[йт]|сделай задач|задач|напомн|поруч|назнач|добав\S* задач)/i.test(t);
+}
+
+/** «позвони Сергею», «созвон с Анной» — кому звонить; иначе null. */
+export function callTarget(raw: string): string | null {
+  const m = raw.trim().match(/^(?:позвон\S*|набери|набрать|созвон\S*(?:\s+с)?|звонок)\s+(.+)$/i);
+  return m ? m[1].trim() : null;
 }
