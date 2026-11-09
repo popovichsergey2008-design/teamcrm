@@ -100,3 +100,20 @@ export function stripHallucinationEdges(text: string): string {
   if (from === 0 && to === parts.length) return text;
   return parts.slice(from, to).join(' ').replace(/\s+/g, ' ').trim();
 }
+
+/*
+  #4808: на тишине модель распознавания возвращает не выдумку из роликов, а наш же
+  словарь-подсказку — «Рабочая команда в QEVO. Сотрудники: … Проекты: …». 08.11 так
+  ушли три записи подряд с молчащего микрофона: разбор получал список проектов вместо
+  поручения и отвечал «задачи нет», а человек решил, что голосом поставить нельзя.
+*/
+const words = (t: string) => norm(t).split(/[^a-zа-я0-9]+/).filter((w) => w.length >= 3);
+
+/** Текст — пересказ подсказки, а не речь: почти все его слова взяты из словаря. */
+export function isPromptEcho(text: string, hint?: string | null): boolean {
+  if (!hint) return false;
+  const said = words(text);
+  if (said.length < 6) return false;
+  const dict = new Set(words(hint));
+  return said.filter((w) => dict.has(w)).length / said.length >= 0.7;
+}

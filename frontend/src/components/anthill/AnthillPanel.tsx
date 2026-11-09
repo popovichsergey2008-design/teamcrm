@@ -656,7 +656,7 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
         >
           <Icon name="search" size={13} /> Глубокий анализ
         </Toggle>
-        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} hint="нажмите «стоп», когда закончите" />
+        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="нажмите «стоп», когда закончите" />
         {att.length > 0 && (
           <div className="anthill-att-list">
             {att.map((a) => (

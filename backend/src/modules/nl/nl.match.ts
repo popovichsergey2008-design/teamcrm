@@ -177,3 +177,45 @@ export function usersNamedInText(text: string, users: NamedUser[]): string[] {
   }
   return out;
 }
+
+/*
+  #4808: «Поставить задачу на Глеба… приложение будет делать Сергей» — названы двое,
+  и прежнее правило «имя одно» сдавалось: задача уходила руководителю отдела. Кому
+  поручают, в речи видно по обороту: «на Глеба», «для Глеба», «поручи Глебу»,
+  «назначь Глеба» рядом со словами постановки.
+*/
+const ASSIGN_VERB = /^(постав|назнач|поруч|повес|кин|закин|отда|дай|дать|задач|задан)/;
+
+/** Кому поручают по обороту речи; ровно один такой человек — его id, иначе null. */
+export function addresseeInText(text: string, users: NamedUser[]): string | null {
+  const words = normalize(text).split(/[^a-zа-я-]+/).filter(Boolean);
+  const hits = new Set<string>();
+  for (const u of users) {
+    const stems = nameStems(u.name ?? '');
+    if (!stems.length) continue;
+    words.forEach((w, i) => {
+      if (!stems.includes(stem(w)) && !stems.includes(`=${w}`)) return;
+      const prev = words[i - 1] ?? '';
+      const before = words.slice(Math.max(0, i - 5), i);
+      const verbNear = before.some((x) => ASSIGN_VERB.test(x));
+      // «на Глеба», «для Глеба» после слов постановки — или «поручи Глебу», «назначь Глеба»
+      if (((prev === 'на' || prev === 'для') && verbNear) || ASSIGN_VERB.test(prev)) hits.add(String(u.id));
+    });
+  }
+  return hits.size === 1 ? [...hits][0] : null;
+}
+
+/**
+ * Исполнитель, названный в тексте (#4808): одно имя — оно; несколько — тот, кому
+ * поручают оборотом речи, иначе тот из названных, кого выбрала модель. Модель
+ * выбрала не из названных — не верим ей, решит общее правило подбора.
+ */
+export function namedAssignee(text: string, users: NamedUser[], modelId?: string | null): string | null {
+  const one = matchUserInText(text, users);
+  if (one) return one;
+  const mentioned = usersNamedInText(text, users);
+  if (mentioned.length < 2) return null;
+  const said = addresseeInText(text, users);
+  if (said) return said;
+  return modelId && mentioned.includes(String(modelId)) ? String(modelId) : null;
+}

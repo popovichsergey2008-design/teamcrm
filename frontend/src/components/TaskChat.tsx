@@ -1667,7 +1667,7 @@ export function TaskChat({
         заказчика «не сразу бросается в глаза». Теперь они там же, где показываются
         прикреплённые файлы: между перепиской и полем, куда и смотрят.
       */}
-      <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="nl-voice" />
+      <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} className="nl-voice" />
       {/* Записанное — сначала послушать. Отправлять вслепую то, что человек только что
           наговорил, значит слать в задачу кашель и «эээ» без возможности передумать. */}
       {note && (

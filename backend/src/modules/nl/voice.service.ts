@@ -145,7 +145,8 @@ export class VoiceService {
       Object.assign(timing, { sttMs: Date.now() - tStt, sttModel: model, chars: text.length, words: wordCount(text) });
       if (!text.trim()) {
         timing.result = 'no_speech';
-        await this.repo.setStatus(job.id, 'error', 'Речь не распознана. Проверьте ключ OpenAI в «Интеграции → ИИ».');
+        // #4808: чаще всего это молчащий микрофон (выключен или выбран не тот), а не ключ
+        await this.repo.setStatus(job.id, 'error', 'В записи не слышно речи — похоже, микрофон молчит. Проверьте, какой микрофон выбран в браузере (значок микрофона в адресной строке), и скажите ещё раз.');
         return;
       }
       // на тишине Whisper сочиняет «Продолжение следует…» — это не поручение

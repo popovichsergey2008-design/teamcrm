@@ -76,24 +76,35 @@ describe('RealAiProvider.generate({ fast }) — #4666', () => {
   const realFetch = global.fetch;
   afterEach(() => { global.fetch = realFetch; });
 
-  it('Kimi основной: сначала Kimi без рассуждения (K2.6), задумался — отвечает gpt-4o-mini', async () => {
+  it('#4808: первым gpt-5.4-mini с коротким рассуждением; задумался — внахлёст Kimi K2.6', async () => {
     const calls: { url: string; body: any }[] = [];
     global.fetch = jest.fn((url: any, init: any) => {
       calls.push({ url: String(url), body: JSON.parse(init.body) });
-      const slow = String(url).includes('moonshot');
+      const slow = String(url).includes('openai');
       return new Promise((resolve, reject) => {
-        const t = setTimeout(() => resolve(new Response(JSON.stringify({ choices: [{ message: { content: slow ? 'kimi' : 'gpt' } }] }), { status: 200 })), slow ? 2000 : 5);
+        const t = setTimeout(() => resolve(new Response(JSON.stringify({ choices: [{ message: { content: slow ? 'gpt' : 'kimi' } }] }), { status: 200 })), slow ? 2000 : 5);
         init.signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')); });
       });
     }) as any;
     process.env.AI_FAST_HEDGE_MS = '20';
     const p = new RealAiProvider('sk-openai', undefined, 'x', 'kimi-k3', undefined, 'sk-kimi');
-    expect(await p.generate('с', 'в', { fast: true, maxTokens: 300 })).toBe('gpt');
+    expect(await p.generate('с', 'в', { fast: true, maxTokens: 300 })).toBe('kimi');
     delete process.env.AI_FAST_HEDGE_MS;
-    expect(calls[0].url).toContain('moonshot');
-    expect(calls[0].body).toMatchObject({ model: 'kimi-k2.6', thinking: { type: 'disabled' }, max_completion_tokens: 300 });
-    expect(calls[1].body).toMatchObject({ model: 'gpt-4o-mini', max_tokens: 300 });
-    expect(p.lastModel).toBe('gpt-4o-mini');
+    expect(calls[0].url).toContain('openai');
+    expect(calls[0].body).toMatchObject({ model: 'gpt-5.4-mini', reasoning_effort: 'low', max_completion_tokens: 2000 });
+    expect(calls[0].body.max_tokens).toBeUndefined();
+    expect(calls[1].body).toMatchObject({ model: 'kimi-k2.6', thinking: { type: 'disabled' }, max_completion_tokens: 300 });
+    expect(p.lastModel).toBe('kimi-k2.6');
+  });
+
+  it('AI_FAST_PREFER=kimi — прежний порядок: Kimi первым', async () => {
+    const calls: string[] = [];
+    global.fetch = jest.fn((url: any) => { calls.push(String(url)); return Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 })); }) as any;
+    process.env.AI_FAST_PREFER = 'kimi';
+    const p = new RealAiProvider('sk-openai', undefined, 'x', 'kimi-k3', undefined, 'sk-kimi');
+    await p.generate('с', 'в', { fast: true });
+    delete process.env.AI_FAST_PREFER;
+    expect(calls[0]).toContain('moonshot');
   });
 
   it('потолок вышел — отказ «timeout», а не заглушка: дальше работают правила', async () => {

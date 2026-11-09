@@ -215,6 +215,11 @@ export class MockAiProvider implements AiProvider {
 export const KIMI_BASE_URL = 'https://api.moonshot.ai/v1';
 // #4779, п. 6.4: по умолчанию kimi-k2.6 — быстрый и дешёвый (команда из 15 человек — $2–5 в месяц)
 export const KIMI_DEFAULT_MODEL = 'kimi-k2.6';
+
+/** #4808: модель с рассуждением (gpt-5.x, gpt-6, o-серия) — свой формат лимита токенов. */
+export function isReasoningModel(model: string): boolean {
+  return /^(?:openai\/)?(?:gpt-5|gpt-6|o\d)/i.test(model) && !/chat-latest|search-api/i.test(model);
+}
 export const KIMI_FALLBACK_MODELS = ['kimi-k3', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed'];
 export const isKimiModel = (m?: string | null) => /^kimi/i.test(m ?? '');
 
@@ -351,11 +356,17 @@ export class RealAiProvider implements AiProvider {
         ...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })),
       ]
       : user;
+    /*
+      #4808: модели с рассуждением (gpt-5.x, o-серия) не принимают max_tokens, а их лимит
+      включает и само рассуждение — даём запас и просим думать коротко: здесь ждёт человек.
+    */
+    const reasoning = isReasoningModel(model);
     const res = await fetch(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
       body: JSON.stringify({
-        model, max_tokens: maxTokens,
+        model,
+        ...(reasoning ? { max_completion_tokens: Math.max(maxTokens * 4, 2000), reasoning_effort: 'low' } : { max_tokens: maxTokens }),
         messages: [{ role: 'system', content: system }, { role: 'user', content }],
       }),
       ...(signal ? { signal } : {}),
@@ -584,13 +595,24 @@ export class RealAiProvider implements AiProvider {
     const kimi: HedgeRun | null = this.kimiKey
       ? { name: `kimi(${kimiFast})`, usedModel: kimiFast, run: (s) => this.kimiChat(kimiFast, system, user, maxTokens, [], s) }
       : null;
+    const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
     const others: HedgeRun[] = [];
-    if (this.openaiKey) others.push({ name: 'openai(gpt-4o-mini)', usedModel: 'gpt-4o-mini', run: (s) => this.chatCompletion('https://api.openai.com/v1/chat/completions', this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, [], s) });
+    /*
+      #4808, заказчик: «поменять нейроагента на более высокий». Постановка голосом и текстом,
+      ответы бота — первым gpt-5.4-mini (заметно умнее gpt-4o-mini при той же скорости);
+      ключ его не знает — тут же следующий по списку, человек ничего не замечает.
+    */
+    const openaiFast = process.env.AI_FAST_OPENAI_MODEL || 'gpt-5.4-mini';
+    if (this.openaiKey) others.push({ name: `openai(${openaiFast})`, usedModel: openaiFast, run: (s) => this.chatCompletion(OPENAI_URL, this.openaiKey!, openaiFast, system, user, maxTokens, {}, [], s) });
     if (this.anthropicKey) others.push({ name: 'anthropic(haiku)', usedModel: 'claude-3-5-haiku-latest', run: (s) => this.anthropicChat('claude-3-5-haiku-latest', system, user, maxTokens, [], s) });
     if (this.openrouterKey && !this.openaiKey) others.push({ name: 'openrouter(gpt-4o-mini)', usedModel: 'openai/gpt-4o-mini', run: (s) => this.chatCompletion('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey!, 'openai/gpt-4o-mini', system, user, maxTokens, { 'HTTP-Referer': 'https://qevo.one', 'X-Title': 'QEVO' }, [], s) });
-    if (kimi && this.kimiFirst(opts.model || this.brainModel || '')) runs.push(kimi, ...others);
+    const openaiFirst = !!this.openaiKey && process.env.AI_FAST_PREFER !== 'kimi';
+    if (kimi && !openaiFirst && this.kimiFirst(opts.model || this.brainModel || '')) runs.push(kimi, ...others);
     else runs.push(...others, ...(kimi ? [kimi] : []));
-    const r = await hedge(runs, Number(process.env.AI_FAST_HEDGE_MS ?? 700), opts.signal);
+    // старая быстрая модель — последней страховкой
+    if (this.openaiKey && openaiFast !== 'gpt-4o-mini') runs.push({ name: 'openai(gpt-4o-mini)', usedModel: 'gpt-4o-mini', run: (s) => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, [], s) });
+    // модель с рассуждением отвечает за 1,5–3 с — внахлёст зовём следующую позже
+    const r = await hedge(runs, Number(process.env.AI_FAST_HEDGE_MS ?? (openaiFirst && isReasoningModel(openaiFast) ? 2500 : 700)), opts.signal);
     this.lastModel = r.usedModel;
     return r.text;
   }

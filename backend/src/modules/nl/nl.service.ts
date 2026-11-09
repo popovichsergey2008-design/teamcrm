@@ -12,7 +12,7 @@ import { SecurityService } from '../security/security.service';
 import { DealsService } from '../deals/deals.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { UsersRepository } from '../users/users.repository';
-import { matchUserInText, namesakesInText, normalizeDeadline } from './nl.match';
+import { matchUserInText, namedAssignee, namesakesInText, normalizeDeadline } from './nl.match';
 import { splitCommand } from './split-command';
 import { MIN_CONFIDENCE, SURE_CONFIDENCE } from './assignee-pick';
 import { Department, departmentOf, isDepartment, isSkill, Skill, skillsCatalog } from '../team/skills';
@@ -443,7 +443,9 @@ export class NlService {
       else if (!projectId) warnings.push('Проект не определён — выберите проект');
       // Модель часто не возвращает исполнителя, хотя он назван прямым текстом,
       // — тогда ищем имя в команде сами.
-      const namedId = matchUserInText(clean, users) ?? (around ? matchUserInText(around, users) : null);
+      // #4808: названы двое («на Глеба… приложение будет делать Сергей») — кому поручают
+      const modelPick = idIn(t.assigneeId, userSet);
+      const namedId = namedAssignee(clean, users, modelPick) ?? (around ? matchUserInText(around, users) : null);
       // #4798 §15: «Анне» при двух Аннах — не угадываем, а спрашиваем, какую
       const namesakes = namedId ? [] : namesakesInText(clean, users);
       const assigneeId = namesakes.length ? null : namedId ?? idIn(t.assigneeId, userSet);
@@ -647,7 +649,7 @@ export class NlService {
       }
       return {
         draft, item, source: String(item?.source ?? ''), around: clean,
-        named: matchUserInText(source, users) ?? matchUserInText(clean, users),
+        named: namedAssignee(source, users, draft.task.modelAssigneeId) ?? matchUserInText(clean, users),
       };
     }));
     const routed = parsedItems.filter((x): x is NonNullable<typeof x> => !!x);
@@ -708,7 +710,7 @@ export class NlService {
         const fromModel = matchUserInText(String(item.assignee), users);
         if (fromModel) draft.task.modelAssigneeId = fromModel;
       }
-      return { draft, item, source: p.part, around: clean, named: matchUserInText(p.part, users) ?? matchUserInText(clean, users) };
+      return { draft, item, source: p.part, around: clean, named: namedAssignee(p.part, users, draft.task.modelAssigneeId) ?? matchUserInText(clean, users) };
     }));
     const routed = parsedParts.filter((x): x is NonNullable<typeof x> => !!x);
     if (routed.length < 2) return alone();

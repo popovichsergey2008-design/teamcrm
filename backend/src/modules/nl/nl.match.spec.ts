@@ -1,4 +1,4 @@
-import { matchUserInText, namesakesInText, normalizeDeadline, usersNamedInText } from './nl.match';
+import { addresseeInText, matchUserInText, namedAssignee, namesakesInText, normalizeDeadline, usersNamedInText } from './nl.match';
 
 const USERS = [
   { id: '2', name: 'Сергей Попович' },
@@ -99,5 +99,22 @@ describe('тёзки в команде (#4798 §15)', () => {
   it('по фамилии или единственному имени — неоднозначности нет', () => {
     expect(namesakesInText('Петровой подготовить макет', TEAM)).toEqual([]);
     expect(namesakesInText('Борису проверить', TEAM)).toEqual([]);
+  });
+});
+
+describe('#4808 — названы двое: кому поручают', () => {
+  const said = 'Так, поставить задачу на Глеба. Дедлайн завтра. Значит, необходимо внедрить задачу в прикрепленном файле, то, чего касается сайта. Приложение будет делать Сергей.';
+  it('«на Глеба» при упоминании Сергея — Глеб', () => {
+    expect(namedAssignee(said, USERS)).toBe('96');
+  });
+  it('«поручи Константину», Алина упомянута — Константин', () => {
+    expect(addresseeInText('Поручи Константину проверить тексты, которые написала Алина', USERS)).toBe('118');
+  });
+  it('оборота нет — выбор модели, если она выбрала из названных', () => {
+    expect(namedAssignee('Глеб и Сергей, посмотрите макет', USERS, '2')).toBe('2');
+    expect(namedAssignee('Глеб и Сергей, посмотрите макет', USERS, '118')).toBeNull();
+  });
+  it('одно имя — как раньше', () => {
+    expect(namedAssignee('задача на Сергея по приложению', USERS)).toBe('2');
   });
 });

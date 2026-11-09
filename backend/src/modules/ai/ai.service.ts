@@ -1,6 +1,6 @@
 import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { Injectable, Logger } from '@nestjs/common';
-import { stripHallucinationEdges } from './stt-hallucinations';
+import { isPromptEcho, stripHallucinationEdges } from './stt-hallucinations';
 import { AiGuardService } from './ai-guard.service';
 import { AiGateway, AiPriority } from './ai-gateway';
 import { deadlineSignal, rejectAfter } from './hedge';
@@ -208,7 +208,9 @@ export class AiService {
   /** Веб-запись голоса (аудио-буфер) → текст через Whisper (mock → '' при отсутствии ключа). */
   transcribeAudio(tenantId: string, audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts): Promise<string> {
     // выдумка Whisper на тишине в конце записи («С вами был …») — не речь человека
-    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint, opts)).then(stripHallucinationEdges);
+    return this.providerFor(tenantId).then((p) => p.provider.transcribeAudio(audio, filename, hint, opts))
+      // #4808: на тишине модель возвращает сам словарь-подсказку — это не речь
+      .then((t) => { const text = stripHallucinationEdges(t); return isPromptEcho(text, hint) ? '' : text; });
   }
 
   /**
@@ -218,7 +220,8 @@ export class AiService {
     tenantId: string, audio: Buffer, filename: string, hint?: string, opts?: TranscribeOpts,
   ): Promise<{ text: string; model: string }> {
     const { provider } = await this.providerFor(tenantId);
-    const text = stripHallucinationEdges(await provider.transcribeAudio(audio, filename, hint, opts));
+    const said = stripHallucinationEdges(await provider.transcribeAudio(audio, filename, hint, opts));
+    const text = isPromptEcho(said, hint) ? '' : said;
     return { text, model: (provider as { lastSttModel?: string }).lastSttModel ?? (provider.name === 'mock' ? 'mock-stt' : 'whisper-1') };
   }
 

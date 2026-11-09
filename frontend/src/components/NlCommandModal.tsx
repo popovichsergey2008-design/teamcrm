@@ -847,7 +847,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submitAuto(); }}
           />
-          <VoiceStatus recording={recording} transcribing={false} error={voice.error} hint="нажмите «Остановить», когда закончите" className="nl-voice" />
+          <VoiceStatus recording={recording} transcribing={false} error={voice.error} quiet={voice.quiet} hint="нажмите «Остановить», когда закончите" className="nl-voice" />
           {job && job.status !== 'ready' && (
             <div className={`nl-job${job.status === 'error' ? ' error' : ''}`} role="status">
               {working && <span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span>}
@@ -951,7 +951,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         <VoiceStatus
           recording={recording}
           transcribing={false}
-          error={voice.error}
+          error={voice.error} quiet={voice.quiet}
           hint="нажмите «Остановить», когда закончите"
           className="nl-voice"
         />

@@ -1316,7 +1316,7 @@ export default function SupportPanel({ embedded = false, request, open: openProp
                   </button>
                 </div>
               )}
-              <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} className="support-voice" />
+              <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} className="support-voice" />
               <div className="support-compose">
                 {/* Голос первым (п. 2.3, 3.2): крупная кнопка; зажал — говоришь, отпустил — ушло */}
                 <button

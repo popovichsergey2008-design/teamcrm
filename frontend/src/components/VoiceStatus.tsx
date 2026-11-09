@@ -11,10 +11,12 @@ import { useEffect, useState } from 'react';
  * Один компонент на все места диктовки: в командной строке и в быстрой команде
  * состояние микрофона обязано выглядеть одинаково.
  */
-export function VoiceStatus({ recording, transcribing, error, hint, className }: {
+export function VoiceStatus({ recording, transcribing, error, quiet, hint, className }: {
   recording: boolean;
   transcribing: boolean;
   error?: string;
+  /** #4808: идёт запись, а с микрофона тишина. */
+  quiet?: boolean;
   /** Чем остановить запись — зависит от места: в палитре это ещё и пробел. */
   hint?: string;
   className?: string;
@@ -33,11 +35,11 @@ export function VoiceStatus({ recording, transcribing, error, hint, className }:
   const mmss = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   return (
     // role=status: экранный диктор сам объявит начало записи и распознавание
-    <div className={`voice-status${error ? ' error' : ''}${className ? ` ${className}` : ''}`} role="status">
+    <div className={`voice-status${error ? ' error' : ''}${recording && quiet ? ' quiet' : ''}${className ? ` ${className}` : ''}`} role="status">
       {recording && (
         <>
           <span className="voice-wave" aria-hidden="true"><i /><i /><i /><i /></span>
-          <span className="voice-status-main">Говорите…</span>
+          <span className="voice-status-main">{quiet ? 'Не слышу вас — проверьте микрофон (значок в адресной строке)' : 'Говорите…'}</span>
           <span className="voice-status-time">{mmss}</span>
           {hint && <span className="voice-status-hint">{hint}</span>}
         </>

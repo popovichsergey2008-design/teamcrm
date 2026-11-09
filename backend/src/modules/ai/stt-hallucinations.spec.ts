@@ -1,4 +1,4 @@
-import { dropHallucinations, isHallucination, stripHallucinationEdges } from './stt-hallucinations';
+import { dropHallucinations, isHallucination, isPromptEcho, stripHallucinationEdges } from './stt-hallucinations';
 
 const seg = (text: string, noSpeechProb = 0.1, avgLogprob = -0.3, start = 0) => ({ start, end: start + 2, text, noSpeechProb, avgLogprob });
 
@@ -46,5 +46,19 @@ describe('stripHallucinationEdges', () => {
 
   it('целиком выдумка — пусто', () => {
     expect(stripHallucinationEdges('Продолжение следует...')).toBe('');
+  });
+});
+
+describe('#4808 — эхо словаря-подсказки на тишине', () => {
+  const hint = 'Рабочая команда в QEVO. Сотрудники: Boris Chest, qa test, Алина, Глеб, Константин, Сергей Попович, Юрий Про. Проекты: Демо Qevo — ролики, Текущие задачи команды, QEVO, КРИПТА, Аудиты сайтов. Термины: задача, созвон, встреча, планёрка, проект, доска, срок, доработка, функционал.';
+  it('расшифровка = подсказка — не речь', () => {
+    expect(isPromptEcho('Рабочая команда в QEVO. Сотрудники: Boris Chest, qa test, Алина, Глеб, Константин, Сергей Попович, Юрий Про. Проекты: Демо Qevo — ролики, Текущие задачи команды.', hint)).toBe(true);
+  });
+  it('живая речь с именами и проектом — речь', () => {
+    expect(isPromptEcho('Так, поставить задачу на Глеба, дедлайн завтра, внедрить ТЗ из файла по сайту, проект QEVO', hint)).toBe(false);
+  });
+  it('без подсказки и на короткой фразе — не трогаем', () => {
+    expect(isPromptEcho('Глеб Константин Алина Сергей Юрий Борис', undefined)).toBe(false);
+    expect(isPromptEcho('Глеб, созвон', hint)).toBe(false);
   });
 });

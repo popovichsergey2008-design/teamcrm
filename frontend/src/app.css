@@ -4220,6 +4220,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   font-size: var(--fs-sm); color: var(--text-dim);
 }
 .voice-status.error { color: var(--danger); }
+.voice-status.quiet .voice-status-main { color: var(--danger); }
+.voice-status.quiet .voice-wave i { animation-play-state: paused; }
 .voice-status-main { font-weight: 600; color: var(--text); }
 /* Счётчик моноширинными цифрами: иначе строка дёргается на каждой секунде. */
 .voice-status-time { font-variant-numeric: tabular-nums; }

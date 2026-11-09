@@ -660,7 +660,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
         <VoiceStatus
           recording={voice.recording}
           transcribing={voice.transcribing}
-          error={voice.error}
+          error={voice.error} quiet={voice.quiet}
           hint="отпустите пробел или нажмите «стоп»"
           className="palette-voice"
         />

@@ -112,7 +112,7 @@ export function CareStart({ onClose, onSent }: { onClose: () => void; onSent: ()
             <Icon name={voice.recording ? 'stop' : 'mic'} size={18} /> {VOICE}
           </button>
         </div>
-        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} hint="нажмите ещё раз, чтобы отправить" />
+        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="нажмите ещё раз, чтобы отправить" />
         <div className="wl-care-extra">
           <input
             className="input"
