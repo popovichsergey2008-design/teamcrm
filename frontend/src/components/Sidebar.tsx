@@ -370,7 +370,9 @@ export function Sidebar({
     const startY = e.clientY;
     let to = from;
     let started = false;
+    let lastY = startY;
     const move = (ev: PointerEvent) => {
+      lastY = ev.clientY;
       const dy = ev.clientY - startY;
       if (!started && Math.abs(dy) < 5) return;
       started = true;
@@ -385,7 +387,24 @@ export function Sidebar({
       document.body.classList.remove('nav-dragging-body');
       if (started) {
         noClickUntil.current = Date.now() + 300;
-        if (to !== from) {
+        /*
+          Из «Ещё» — вверх, в основное меню, и обратно (просьба заказчика к #4826):
+          отпустили выше кнопки «Ещё» — пункт встаёт в основное меню на то место, где
+          отпустили; пункт основного меню, опущенный в раскрытое «Ещё», уходит туда.
+        */
+        const moreBtn = navRef.current?.querySelector<HTMLElement>('.nav-more-btn')?.getBoundingClientRect();
+        const mainRects = Array.from(navRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? []).map((g) => g.getBoundingClientRect());
+        const moreRects = Array.from(moreRef.current?.querySelectorAll<HTMLElement>(':scope > .nav-group') ?? []).map((g) => g.getBoundingClientRect());
+        const above = (rs: DOMRect[], skip = -1) => rs.filter((r, k) => k !== skip && lastY > r.top + r.height / 2).length;
+        if (zone === 'more' && moreBtn && lastY < moreBtn.top) {
+          const order = menuItems.map((i) => String(i.section));
+          order.splice(above(mainRects), 0, section);
+          saveMore(moreKeys.filter((x) => x !== section), { order });
+        } else if (zone === 'main' && moreBtn && lastY > moreBtn.bottom && home !== section) {
+          const more = moreKeys.filter((x) => x !== section);
+          more.splice(moreOpen ? above(moreRects) : more.length, 0, section);
+          saveMore(more);
+        } else if (to !== from) {
           if (zone === 'main') placeAt(section, to);
           else saveMore(moveItem(moreKeys, section, to));
         }

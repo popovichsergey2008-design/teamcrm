@@ -26,7 +26,7 @@ import { lazyComponent } from '../lib/lazy';
 const ChatInfoPanel = lazyComponent(() => import('../components/chat/ChatInfoPanel').then((m) => m.ChatInfoPanel));
 const AnthillPanel = lazyComponent(() => import('../components/anthill/AnthillPanel').then((m) => m.AnthillPanel));
 import { ChatAttachment } from '../components/ChatAttachment';
-import { Lightbox, LightboxItem } from '../components/Lightbox';
+import { Lightbox, type LightboxItem } from '../components/LightboxLazy';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { remindLabel, remindOptions } from '../lib/remind-times';
 import { MentionField } from '../components/MentionField';

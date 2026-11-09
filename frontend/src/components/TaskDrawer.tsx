@@ -11,7 +11,7 @@ import { enqueueConflict, newChangeId, type QueuedChange } from '../lib/offline-
 import { flushOffline } from '../hooks/useOfflineQueue';
 import { ConflictSheet } from './OfflineBar';
 import type { Task, User } from '../types';
-import { Lightbox } from './Lightbox';
+import { Lightbox } from './LightboxLazy';
 import { DatePicker } from './DatePicker';
 import { TaskChat } from './TaskChat';
 import { FavoriteStar } from './FavoriteStar';

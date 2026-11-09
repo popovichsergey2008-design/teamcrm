@@ -6,7 +6,7 @@ import { buildPath } from '../../lib/router';
 import { showToast, toastSaved } from '../../lib/notifications';
 import { platform } from '../../platform';
 import { AuthedMedia } from '../AuthedMedia';
-import { Lightbox, type LightboxItem } from '../Lightbox';
+import { Lightbox, type LightboxItem } from '../LightboxLazy';
 import { Badge, type BadgeTone } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';

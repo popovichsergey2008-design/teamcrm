@@ -4,7 +4,7 @@ import { Icon } from './Icon';
 import { MentionField } from './MentionField';
 import { VoiceStatus } from './VoiceStatus';
 import { ChatAttachment } from './ChatAttachment';
-import { Lightbox, LightboxItem } from './Lightbox';
+import { Lightbox, type LightboxItem } from './LightboxLazy';
 import { api, ApiError, QUEUED } from '../lib/api';
 import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
 import { SYNC_EVENT, syncTouches, type SyncDetail } from '../hooks/useDeltaSync';

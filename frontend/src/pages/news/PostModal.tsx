@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Avatar } from '../../components/Avatar';
 import { Icon } from '../../components/Icon';
-import { Lightbox } from '../../components/Lightbox';
+import { Lightbox } from '../../components/LightboxLazy';
 import { MentionField } from '../../components/MentionField';
 import { confirmAction } from '../../components/ui/dialog';
 import { useEscape } from '../../hooks/useEscape';

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
@@ -134,6 +134,60 @@ export function Lightbox({ items, index = 0, onClose }: {
 
   const toggleZoom = () => setZoom((z) => (z.s > 1 ? { s: 1, x: 0, y: 0 } : { s: 2.5, x: 0, y: 0 }));
 
+  /*
+    #4834: мышь. Один щелчок увеличивает — к той точке, по которой щёлкнули (раньше
+    увеличивал только двойной, хотя курсор-лупа обещал одинарный); второй щелчок —
+    как было. Увеличенный снимок таскают зажатой кнопкой, щелчком считается только
+    нажатие без сдвига — иначе каждое перетаскивание заканчивалось бы «как было».
+  */
+  const mouse = useRef<{ x: number; y: number; zx: number; zy: number; moved: boolean } | null>(null);
+  const onImgPointerDown = (e: ReactPointerEvent<HTMLImageElement>) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    e.preventDefault();
+    const z = zoomRef.current;
+    mouse.current = { x: e.clientX, y: e.clientY, zx: z.x, zy: z.y, moved: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setGesture(true);
+  };
+  const onImgPointerMove = (e: ReactPointerEvent<HTMLImageElement>) => {
+    const m = mouse.current;
+    if (!m) return;
+    const dx = e.clientX - m.x;
+    const dy = e.clientY - m.y;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) m.moved = true;
+    if (m.moved && zoomRef.current.s > 1) setZoom((z) => ({ ...z, x: m.zx + dx, y: m.zy + dy }));
+  };
+  const onImgPointerUp = (e: ReactPointerEvent<HTMLImageElement>) => {
+    const m = mouse.current;
+    mouse.current = null;
+    setGesture(false);
+    if (!m || m.moved) return;
+    if (zoomRef.current.s > 1) { setZoom({ s: 1, x: 0, y: 0 }); return; }
+    // точка под курсором остаётся на месте: translate + scale от центра снимка
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - (r.left + r.width / 2);
+    const py = e.clientY - (r.top + r.height / 2);
+    const s = 2.5;
+    setZoom({ s, x: px * (1 - s), y: py * (1 - s) });
+  };
+
+  /* #4834: «На весь экран» — снимок во весь монитор (Fullscreen API браузера). */
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const canFull = typeof document !== 'undefined' && !!document.fullscreenEnabled;
+  useEffect(() => {
+    const on = () => setFull(document.fullscreenElement === overlayRef.current && !!overlayRef.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => {
+      document.removeEventListener('fullscreenchange', on);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, []);
+  const toggleFull = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void overlayRef.current?.requestFullscreen().catch(() => undefined);
+  };
+
   const onTouchStart = (e: ReactTouchEvent) => {
     const [a, b] = [e.touches[0], e.touches[1]];
     if (!a) return;
@@ -200,7 +254,8 @@ export function Lightbox({ items, index = 0, onClose }: {
 
   return createPortal(
     <div
-      className="lightbox-overlay"
+      ref={overlayRef}
+      className={`lightbox-overlay${full ? ' lightbox-full' : ''}`}
       style={fade < 1 ? { opacity: fade } : undefined}
       onClick={(e) => { e.stopPropagation(); onClose(); }}
       // события из портала всплывают по дереву React — до карточки задачи и ленты чата
@@ -219,6 +274,11 @@ export function Lightbox({ items, index = 0, onClose }: {
             {!isVideo && src && (
               <button className="ui-btn ui-btn-ghost ui-btn-sm lightbox-zoom" onClick={toggleZoom} title={zoom.s > 1 ? 'Как было' : 'Увеличить (или щипком, двойным касанием, колесом мыши)'}>
                 {zoom.s > 1 ? 'Как было' : 'Увеличить'}
+              </button>
+            )}
+            {canFull && (
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={toggleFull} title={full ? 'Выйти из полноэкранного режима' : 'На весь экран'} aria-label={full ? 'Выйти из полноэкранного режима' : 'На весь экран'}>
+                <Icon name={full ? 'minimize' : 'maximize'} size={16} /><span className="lightbox-btn-label">{full ? 'Свернуть' : 'На весь экран'}</span>
               </button>
             )}
             {src && (
@@ -256,11 +316,14 @@ export function Lightbox({ items, index = 0, onClose }: {
                 src={src}
                 alt={item.name}
                 draggable={false}
-                onDoubleClick={toggleZoom}
+                onPointerDown={onImgPointerDown}
+                onPointerMove={onImgPointerMove}
+                onPointerUp={onImgPointerUp}
+                onPointerCancel={() => { mouse.current = null; setGesture(false); }}
                 style={{
                   transform: `translate(${zoom.x}px, ${zoom.y + drop}px) scale(${zoom.s})`,
                   transition: gesture ? 'none' : 'transform .18s ease',
-                  cursor: zoom.s > 1 ? 'zoom-out' : 'zoom-in',
+                  cursor: zoom.s > 1 ? (gesture ? 'grabbing' : 'grab') : 'zoom-in',
                 }}
               />
             ))}
