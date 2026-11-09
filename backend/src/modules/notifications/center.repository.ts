@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { IMPORTANT_KINDS, InboxRowLite, InboxTab, keysOfKinds, NOT_IN_INBOX } from './inbox-rules';
 
 /** Задача и её люди — от них центр считает адресатов события. */
 export interface CenterTaskRow {
@@ -193,6 +194,86 @@ export class CenterRepository {
       `UPDATE notification_inbox SET read_at = now()
         WHERE tenant_id = $1 AND user_id = $2 AND read_at IS NULL AND ($3::text IS NULL OR category = $3)`,
       [v.tenantId, v.userId, category],
+    );
+    return r.rowCount ?? 0;
+  }
+
+  // ── «Входящие» (#4807 §6) ──
+
+  /** Условие вкладки; ключи событий — параметрами, «созвоны» — по приставке. */
+  private tabWhere(tab: InboxTab, params: unknown[]): string {
+    const live = "n.done_at IS NULL AND (n.snoozed_until IS NULL OR n.snoozed_until <= now())";
+    const keys = (list: string[], meetings = false) => {
+      params.push(list);
+      return `(n.event_key = ANY($${params.length}::text[])${meetings ? " OR n.event_key LIKE 'meeting.%'" : ''})`;
+    };
+    if (tab === 'important') return `${live} AND ${keys(keysOfKinds(IMPORTANT_KINDS), true)}`;
+    if (tab === 'ai') return `${live} AND ${keys(keysOfKinds(['ai']))}`;
+    if (tab === 'snoozed') return 'n.done_at IS NULL AND n.snoozed_until > now()';
+    // «Готово» хранится 90 дней (6.5, п. 7)
+    if (tab === 'done') return "n.done_at > now() - interval '90 days'";
+    return live;
+  }
+
+  inboxList(v: CenterViewer, tab: InboxTab, before: string | null, limit: number): Promise<InboxRowLite[]> {
+    const params: unknown[] = [v.tenantId, v.userId, boss(v), NOT_IN_INBOX];
+    const where = [VISIBLE, 'n.event_key <> ALL($4::text[])', this.tabWhere(tab, params)];
+    if (before) { params.push(before); where.push(`n.id < $${params.length}::bigint`); }
+    params.push(limit);
+    return this.db.many<InboxRowLite>(
+      `SELECT n.id::text, n.event_key, n.title, n.body, n.path, n.created_at, n.read_at, n.done_at, n.snoozed_until,
+              n.details, au.full_name AS actor_name, n.task_id::text, t.title AS task_title, t.project_id::text
+         ${FROM}
+    LEFT JOIN users au ON au.id = n.actor_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY n.id DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+  }
+
+  /** Непрочитанное «Важное» и его состав — для счётчика и подсказки (6.4). */
+  async inboxCounts(v: CenterViewer): Promise<{ important: number; mentions: number; assigned: number; decisions: number; meetings: number; ai: number }> {
+    const params: unknown[] = [v.tenantId, v.userId, boss(v), keysOfKinds(['mention']), keysOfKinds(['assigned']), keysOfKinds(['decision']), keysOfKinds(['ai'])];
+    const row = await this.db.one<Record<string, string>>(
+      `SELECT count(*) FILTER (WHERE n.event_key = ANY($4::text[]))::text AS mentions,
+              count(*) FILTER (WHERE n.event_key = ANY($5::text[]))::text AS assigned,
+              count(*) FILTER (WHERE n.event_key = ANY($6::text[]))::text AS decisions,
+              count(*) FILTER (WHERE n.event_key LIKE 'meeting.%')::text AS meetings,
+              count(*) FILTER (WHERE n.event_key = ANY($7::text[]))::text AS ai
+         ${FROM}
+        WHERE ${VISIBLE} AND n.read_at IS NULL AND n.done_at IS NULL
+          AND (n.snoozed_until IS NULL OR n.snoozed_until <= now())`,
+      params,
+    );
+    const n = (k: string) => Number(row?.[k] ?? 0);
+    return { important: n('mentions') + n('assigned') + n('decisions') + n('meetings'), mentions: n('mentions'), assigned: n('assigned'), decisions: n('decisions'), meetings: n('meetings'), ai: n('ai') };
+  }
+
+  /** Прочитано / не прочитано / готово / вернуть / отложить — только свои строки. */
+  async inboxMark(v: CenterViewer, ids: string[], action: 'read' | 'unread' | 'done' | 'undone' | 'snooze', until?: Date): Promise<number> {
+    if (!ids.length) return 0;
+    const set = action === 'read' ? 'read_at = COALESCE(read_at, now())'
+      : action === 'unread' ? 'read_at = NULL'
+      // «Готово» — ещё и прочитано: разобрал, значит, видел
+      : action === 'done' ? 'done_at = now(), read_at = COALESCE(read_at, now()), snoozed_until = NULL'
+      : action === 'undone' ? 'done_at = NULL'
+      : 'snoozed_until = $4';
+    const params: unknown[] = [v.tenantId, v.userId, ids];
+    if (action === 'snooze') params.push(until);
+    const r = await this.db.query(
+      `UPDATE notification_inbox SET ${set} WHERE tenant_id = $1 AND user_id = $2 AND id = ANY($3::bigint[])`,
+      params,
+    );
+    return r.rowCount ?? 0;
+  }
+
+  /** Открыл объект — его строки прочитаны, но не «Готово» (6.5, п. 2). */
+  async inboxReadTask(v: CenterViewer, taskId: string): Promise<number> {
+    const r = await this.db.query(
+      `UPDATE notification_inbox SET read_at = now()
+        WHERE tenant_id = $1 AND user_id = $2 AND task_id = $3::bigint AND read_at IS NULL AND event_key <> 'chat.message'`,
+      [v.tenantId, v.userId, taskId],
     );
     return r.rowCount ?? 0;
   }

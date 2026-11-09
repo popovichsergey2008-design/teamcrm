@@ -164,14 +164,40 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
   const total = favs.length;
   const empty = <p className="sbl-empty">Отметьте звёздочкой проект, задачу или «Мои задачи» — они будут здесь.</p>;
 
+  /*
+    #4807 §5, п. 10: заголовок «ИЗБРАННОЕ +» и 2–5 избранных проектов списком —
+    переход в один клик. Задачи, виды, файлы и последние задачи — по «Ещё избранное».
+  */
+  const favProjects = favs.filter((f) => f.kind === 'project').slice(0, 5);
+  const rest = total - favProjects.length;
   return (
     <div className="sbl">
-      <button type="button" className="nav-item" aria-expanded={isOpen('fav')} onClick={() => flip('fav')}>
-        <Icon name="star" size={18} />
-        <span className="nav-label">Избранное</span>
-        {total > 0 && <span className="sbl-count">{total}</span>}
-        <Icon name={isOpen('fav') ? 'chevron-down' : 'chevron-right'} size={14} />
-      </button>
+      <div className="sbl-favhead">
+        <span>Избранное</span>
+        <button type="button" className="sbl-favadd" onClick={() => { onGo(); navigate({ section: 'projects' }); }} title="Отметить проект звёздочкой — он появится здесь" aria-label="Добавить в избранное">
+          <Icon name="plus" size={13} />
+        </button>
+      </div>
+      {favProjects.length > 0 && (
+        <ul className="sbl-list sbl-favprojects">
+          {favProjects.map((f) => (
+            <li key={f.id} className="sbl-row">
+              <button type="button" className="sbl-item" onClick={() => goFav(f)} title={f.title}>
+                <span className="sbl-mark" style={{ background: markColor(f.id) }} aria-hidden="true" />
+                <span className="sbl-text">{f.title}</span>
+                <Icon name="star" size={13} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(rest > 0 || recent.length > 0 || !favProjects.length) && (
+        <button type="button" className="sbl-sub sbl-fold" aria-expanded={isOpen('fav')} onClick={() => flip('fav')}>
+          <Icon name={isOpen('fav') ? 'chevron-down' : 'chevron-right'} size={12} />
+          {favProjects.length ? 'Ещё избранное' : 'Избранное и последние задачи'}
+          {rest > 0 && <span className="sbl-count">{rest}</span>}
+        </button>
+      )}
       {isOpen('fav') && (total === 0 && !recent.length ? empty : (
         <div className="sbl-body">
           {/* #4720: «Последние задачи» — первым пунктом; #4733 — кнопкой, свёрнуты */}
@@ -195,11 +221,11 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
                 );
               })}
             </ul>}
-            {favs.length > 0 && <div className="sbl-sub">Отмеченные</div>}
+            {rest > 0 && <div className="sbl-sub">Отмеченные</div>}
           </>)}
-          {favs.length > 0 && (
+          {rest > 0 && (
             <ul className="sbl-list">
-              {favs.map((f) => (
+              {favs.filter((f) => !favProjects.includes(f)).map((f) => (
                 <li key={`${f.kind}:${f.id}`} className="sbl-row">
                   <button type="button" className="sbl-item" onClick={() => goFav(f)} title={f.title}>
                     <Icon name={f.kind === 'project' ? 'folder' : f.kind === 'view' ? 'user' : f.kind === 'file' ? (f.url ? 'link' : 'file') : 'check-circle'} size={15} />
@@ -216,4 +242,11 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
       ))}
     </div>
   );
+}
+
+/** Цветная метка проекта — одна и та же для проекта везде. */
+function markColor(id: string): string {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 37 + ch.charCodeAt(0)) % 360;
+  return `hsl(${h} 60% 50%)`;
 }

@@ -90,11 +90,11 @@
    Структура из ТЗ: верхний блок (команда, поиск, «Новая задача»), ровно четыре
    раздела, нижний блок (настройки и профиль). Ширина запоминается. */
 .nav-sidebar {
-  width: 258px; flex-shrink: 0; display: flex; flex-direction: column;
+  width: 244px; flex-shrink: 0; display: flex; flex-direction: column;
   background: var(--bg-elev); border-right: 1px solid var(--border);
   padding: var(--sp-3) 10px var(--sp-2);
 }
-.nav-sidebar.nav-collapsed { width: 68px; padding-left: 8px; padding-right: 8px; }
+.nav-sidebar.nav-collapsed { width: 60px; padding-left: 6px; padding-right: 6px; }
 .nav-collapsed .nav-label, .nav-collapsed .nav-kbd, .nav-collapsed .nav-user-text { display: none; }
 /* В свёрнутой панели верхняя строка складывается: знак и стрелка, ниже — только аватар. */
 .nav-collapsed .nav-org { flex-wrap: wrap; height: auto; justify-content: center; row-gap: var(--sp-1); }
@@ -430,7 +430,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .nav-count {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--fill-danger); color: var(--on-fill); font-size: calc(11px * var(--fs-scale)); font-weight: 600;
+  background: var(--fill-info); color: #fff; font-size: calc(11px * var(--fs-scale)); font-weight: 600;
 }
 .nav-sub {
   display: flex; align-items: center; gap: 8px; margin-left: 26px;
@@ -4587,7 +4587,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   поверх страницы (.chat-overlay), а не внутри панели: панель — список, окно — чат.
 */
 .chat-bar {
-  width: 56px; flex-shrink: 0; display: flex; flex-direction: column;
+  width: 52px; flex-shrink: 0; display: flex; flex-direction: column;
   border-left: 1px solid var(--border); background: var(--bg-elev);
   transition: width .15s ease;
 }

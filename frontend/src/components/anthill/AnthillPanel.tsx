@@ -33,6 +33,7 @@ import { Toggle } from '../ui/toggle';
 import { useEnterSend } from '../../hooks/useEnterSend';
 import { feedback } from '../../lib/feedback';
 import { readDraft, writeDraft } from '../../lib/chat-drafts';
+import { openSupport } from '../support/SupportDock';
 
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
@@ -427,6 +428,10 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
             title="Быстрый старт: что бот умеет взять на себя"
           >
             <Icon name="sparkles" size={14} /> Что умею
+          </button>
+          {/* #4807 §5, п. 14: «Помощь и бот» — одна точка помощи: живой инженер отсюда же */}
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => openSupport()} title="Позвать живого инженера службы заботы — ответит за 30 секунд">
+            <Icon name="support" size={14} /> Позвать инженера
           </button>
           <button
             className={`ui-btn ui-btn-ghost ui-btn-sm${historyOpen ? ' active' : ''}`}

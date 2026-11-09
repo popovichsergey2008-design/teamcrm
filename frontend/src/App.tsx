@@ -85,6 +85,8 @@ const ClientsPage = lazy(() => import('./pages/clients/ClientsPage').then((m) =>
 // окно обновления — только телефону и только при новой версии: из стартовой сборки вон
 const UpdateSheet = lazy(() => import('./components/UpdateSheet').then((m) => ({ default: m.UpdateSheet })));
 const PulsePage = lazy(() => import('./pages/PulsePage').then((m) => ({ default: m.PulsePage })));
+// #4807 §6: «Входящие» — лениво: первый экран их не грузит
+const InboxPage = lazy(() => import('./pages/InboxPage').then((m) => ({ default: m.InboxPage })));
 const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.prefetchPulse()); };
 const CalendarPage = lazy(() => import('./pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const FeedPage = lazy(() => import('./pages/FeedPage').then((m) => ({ default: m.FeedPage })));
@@ -285,7 +287,7 @@ export function App() {
   const taskInRoute = route.taskId;
   useEffect(() => { if (taskInRoute) setNl(null); }, [taskInRoute]);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
-  const [secretaryOpen, setSecretaryOpen] = useState(false);
+  const [secretaryOpen, setSecretaryOpen] = useState<false | true | 'journal'>(false);
   /** Предложение секретаря из push или ссылки `/secretary/:id` (ТЗ-21). */
   const [secretaryFocus, setSecretaryFocus] = useState<string | null>(null);
   useEffect(() => {
@@ -300,7 +302,8 @@ export function App() {
   /** Центр уведомлений (#4655): открывают колокольчики в панелях и всплывашки. */
   const [centerOpen, setCenterOpen] = useState(false);
   useEffect(() => {
-    const open = () => setCenterOpen(true);
+    // #4807 §6.6: колокольчики и всплывашки ведут во «Входящие» — одно место для всего
+    const open = () => navigate({ section: 'inbox' });
     window.addEventListener(OPEN_CENTER_EVENT, open);
     return () => window.removeEventListener(OPEN_CENTER_EVENT, open);
   }, []);
@@ -777,7 +780,7 @@ export function App() {
           if (section === 'radar' && canManage) prefetchRadar();
         }}
         onJoinCall={joinActiveCall}
-        onOpenSecretary={() => setSecretaryOpen(true)}
+        onOpenSecretary={(journal) => setSecretaryOpen(journal ? 'journal' : true)}
         onLogout={logout}
       />
 
@@ -852,6 +855,7 @@ export function App() {
         {/* Остальное открывают редко и ненадолго — держать это в памяти незачем */}
         {/* Новости — свой раздел, а не вкладка чатов: это издание компании, а не переписка */}
         {route.section === 'news' && <Suspense fallback={pageFallback}><FeedPage postId={route.postId} /></Suspense>}
+        {route.section === 'inbox' && <Suspense fallback={pageFallback}><InboxPage tab={route.tab} /></Suspense>}
         {route.section === 'chat' && route.view === 'postcall' && (
           <Suspense fallback={pageFallback}><PostCallPage meetingId={route.meetingId} roomId={route.roomId} /></Suspense>
         )}
@@ -1048,6 +1052,7 @@ export function App() {
         <SecretaryPanel
           canManage={user.role === 'owner' || user.role === 'manager'}
           focusId={secretaryFocus}
+          initialTab={secretaryOpen === 'journal' ? 'journal' : undefined}
           onClose={() => { setSecretaryOpen(false); setSecretaryFocus(null); }}
         />
       )}

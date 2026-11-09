@@ -47,13 +47,14 @@ function when(iso: string): string {
   return sameDay ? time : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
 }
 
-export function SecretaryPanel({ canManage = false, focusId = null, onClose }: { canManage?: boolean; focusId?: string | null; onClose: () => void }) {
+export function SecretaryPanel({ canManage = false, focusId = null, onClose, initialTab }: { canManage?: boolean; focusId?: string | null; onClose: () => void; initialTab?: 'journal' }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   /*
     Первая вкладка — «Ждут решения» (ТЗ-21): секретарь не только отчитывается о
     сделанном, но и приносит то, что без человека не решить. Журнал — рядом.
   */
-  const [tab, setTab] = useState<SecretaryTab | 'journal'>('inbox');
+  // #4807 §7: из строки пользы ИИ — сразу «Журнал»: что ИИ сделал, со ссылками и статусом
+  const [tab, setTab] = useState<SecretaryTab | 'journal'>(initialTab ?? 'inbox');
   const [waiting, setWaiting] = useState<{ total: number; commitments: number }>({ total: 0, commitments: 0 });
   useEffect(() => {
     const load = () => api.proposalsSummary()

@@ -27,22 +27,26 @@ const draftKey = (id: string) => `qevo.review.draft:${id}`;
  * ИИ объясняет, но не принимает. Пришла новая версия, пока читал старую, — просим
  * перечитать. Решение не прошло (права, сеть) — комментарий остаётся черновиком.
  */
-export function ReviewQueue({ onClose, onOpenTask, projectId, projectName }: {
+export function ReviewQueue({ onClose, onOpenTask, projectId, projectName, embedTaskId, onDecided }: {
   onClose: () => void;
+  /** #4807 §6.3: предпросмотр во «Входящих» — только решение по одной задаче, без окна и списка. */
+  embedTaskId?: string;
+  onDecided?: (taskId: string, action: 'accept' | 'return') => void;
   /** Макет 05: «Все задачи на проверке» или только этот проект. */
   projectId?: string;
   projectName?: string;
   onOpenTask: (t: { id: string; project_id: string }) => void;
 }) {
   const [queue, setQueue] = useState<QueueItem[] | null>(null);
-  const [pick, setPick] = useState<string | null>(null);
+  const [pick, setPick] = useState<string | null>(embedTaskId ?? null);
+  useEffect(() => { if (embedTaskId) setPick(embedTaskId); }, [embedTaskId]);
   const [item, setItem] = useState<ReviewItem | null>(null);
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState<'' | 'accept' | 'return' | 'ask' | 'ai'>('');
   const [scope, setScope] = useState<'all' | 'project'>('all');
-  useEscape(onClose, !busy);
+  useEscape(onClose, !busy && !embedTaskId);
 
   const loadQueue = useCallback(async (keep?: string | null) => {
     try {
@@ -54,7 +58,7 @@ export function ReviewQueue({ onClose, onOpenTask, projectId, projectName }: {
       });
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить очередь'); setQueue([]); }
   }, []);
-  useEffect(() => { void loadQueue(); }, [loadQueue]);
+  useEffect(() => { if (!embedTaskId) void loadQueue(); }, [loadQueue, embedTaskId]);
 
   const loadItem = useCallback(async (id: string) => {
     setItem(null); setErr('');
@@ -88,6 +92,7 @@ export function ReviewQueue({ onClose, onOpenTask, projectId, projectName }: {
       if (action === 'ask') { toastSaved('Вопрос отправлен', 'Исполнитель увидит его в обсуждении задачи'); return; }
       feedback(action === 'accept' ? 'task.approved' : 'task.moved');
       toastSaved(action === 'accept' ? 'Результат принят' : 'Возвращено на доработку', `#${item.task.id}`);
+      if (embedTaskId) { onDecided?.(item.task.id, action); return; }
       // следующая по очереди — сразу, без возврата к доске
       const rest = (queue ?? []).filter((x) => x.id !== item.task.id);
       setQueue(rest);
@@ -130,37 +135,7 @@ export function ReviewQueue({ onClose, onOpenTask, projectId, projectName }: {
   const undone = item?.checklist.filter((c) => !c.is_done) ?? [];
   const checkSum = item?.check?.summary as { total?: number; fixed?: number; notFixed?: number; check?: number } | undefined;
 
-  return (
-    <div className="rq-overlay" role="dialog" aria-modal="true" aria-label="Ждут моего решения">
-      <div className="rq">
-        <header className="rq-head">
-          <div>
-            <div className="dim">Проекты и задачи{projectName ? ` / ${projectName}` : ''} / Решения</div>
-            <h2>Проверка результата</h2>
-          </div>
-          <span className="rq-head-acts">
-            {projectId && (
-              <select className="ui-input ui-input-sm" value={scope} onChange={(e) => setScope(e.target.value as 'all' | 'project')} aria-label="Какие задачи показывать">
-                <option value="all">Все задачи на проверке</option>
-                <option value="project">Только «{projectName}»</option>
-              </select>
-            )}
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={18} /></Button>
-          </span>
-        </header>
-        <div className="rq-body">
-          <aside className="rq-list" aria-label="Решения ждут от вас">
-            <div className="rq-list-head">Решения ждут от вас <Badge tone="info">{shownQueue?.length ?? '…'}</Badge></div>
-            {shownQueue?.length === 0 && <p className="dim">Сейчас ничего не ждёт вашего решения.</p>}
-            {shownQueue?.map((q) => (
-              <button key={q.id} className={`rq-row${q.id === pick ? ' is-on' : ''}`} onClick={() => setPick(q.id)} aria-current={q.id === pick}>
-                <span className="dim">{when(q.handoff?.at ?? q.submitted_at)}</span>
-                <b>#{q.id} · {q.title}</b>
-                <span className="dim">{q.handoff ? `Версия ${q.handoff.version} · ${q.handoff.author ?? q.assignee_name ?? ''}` : q.assignee_name ?? ''} · {q.project_name}</span>
-              </button>
-            ))}
-          </aside>
-
+  const main = (
           <section className="rq-main">
             {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
             {info && <div className="tv2-callout tv2-callout-warn" role="status"><Icon name="info" size={15} /> {info}</div>}
@@ -245,6 +220,41 @@ export function ReviewQueue({ onClose, onOpenTask, projectId, projectName }: {
               </>
             )}
           </section>
+  );
+  if (embedTaskId) return <div className="rq-embed">{main}</div>;
+
+  return (
+    <div className="rq-overlay" role="dialog" aria-modal="true" aria-label="Ждут моего решения">
+      <div className="rq">
+        <header className="rq-head">
+          <div>
+            <div className="dim">Проекты и задачи{projectName ? ` / ${projectName}` : ''} / Решения</div>
+            <h2>Проверка результата</h2>
+          </div>
+          <span className="rq-head-acts">
+            {projectId && (
+              <select className="ui-input ui-input-sm" value={scope} onChange={(e) => setScope(e.target.value as 'all' | 'project')} aria-label="Какие задачи показывать">
+                <option value="all">Все задачи на проверке</option>
+                <option value="project">Только «{projectName}»</option>
+              </select>
+            )}
+            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={18} /></Button>
+          </span>
+        </header>
+        <div className="rq-body">
+          <aside className="rq-list" aria-label="Решения ждут от вас">
+            <div className="rq-list-head">Решения ждут от вас <Badge tone="info">{shownQueue?.length ?? '…'}</Badge></div>
+            {shownQueue?.length === 0 && <p className="dim">Сейчас ничего не ждёт вашего решения.</p>}
+            {shownQueue?.map((q) => (
+              <button key={q.id} className={`rq-row${q.id === pick ? ' is-on' : ''}`} onClick={() => setPick(q.id)} aria-current={q.id === pick}>
+                <span className="dim">{when(q.handoff?.at ?? q.submitted_at)}</span>
+                <b>#{q.id} · {q.title}</b>
+                <span className="dim">{q.handoff ? `Версия ${q.handoff.version} · ${q.handoff.author ?? q.assignee_name ?? ''}` : q.assignee_name ?? ''} · {q.project_name}</span>
+              </button>
+            ))}
+          </aside>
+
+          {main}
         </div>
       </div>
     </div>

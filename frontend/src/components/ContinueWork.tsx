@@ -21,7 +21,7 @@ function clock(ms: number): string {
  * идущем таймере или начатом черновике. Таймер идёт в реальном времени, ⏸ — пауза;
  * до трёх записей, вторая и третья — по раскрытию. Пусто — блока нет.
  */
-export default function ContinueWork({ onGo }: { onGo: () => void }) {
+export default function ContinueWork({ onGo, compact = false }: { onGo: () => void; compact?: boolean }) {
   const { user } = useAuth();
   const route = useRoute();
   const [items, setItems] = useState<Item[]>([]);
@@ -77,6 +77,17 @@ export default function ContinueWork({ onGo }: { onGo: () => void }) {
     window.dispatchEvent(new Event('teamcrm:tasks-changed'));
     setRev((r) => r + 1);
   };
+  // #4807 §5: свёрнутое меню — живая кнопка ⏸ таймера, остальное в развёрнутом
+  if (compact) {
+    const t = items.find((i) => i.timer);
+    if (!t) return null;
+    return (
+      <button type="button" className="sbl-cw-pause sbl-cw-mini" onClick={() => void pause(t.timer!.taskId)}
+        title={`${t.text} · ${clock(now - new Date(t.timer!.startedAt).getTime())} — пауза`} aria-label="Остановить таймер">
+        <Icon name="pause" size={14} />
+      </button>
+    );
+  }
   const row = (it: Item, first: boolean) => (
     <li key={it.key} className={first ? 'sbl-cw-card' : undefined}>
       {it.timer

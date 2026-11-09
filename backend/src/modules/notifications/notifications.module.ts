@@ -12,11 +12,12 @@ import { PushService } from './push.service';
 import { CenterRepository } from './center.repository';
 import { NotificationCenter } from './center.service';
 import { NotificationCenterController } from './center.controller';
+import { InboxBoxController } from './inbox.controller';
 
 /** Почтовые уведомления: постановка в очередь + отдельный отправляющий обработчик; центр уведомлений (#4655). */
 @Module({
   imports: [DatabaseModule, TelegramModule],
-  controllers: [NotificationsController, NotificationCenterController],
+  controllers: [NotificationsController, NotificationCenterController, InboxBoxController],
   providers: [NotificationsRepository, NotificationsService, MailWorker, TelegramMirror, InboxRepository, FcmSender, PushService,
     CenterRepository, NotificationCenter],
   exports: [NotificationsService, TelegramMirror, InboxRepository, PushService, NotificationCenter],

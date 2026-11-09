@@ -18,7 +18,9 @@ export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'ch
   | 'console'
   | 'settings' | 'profile'
   /** Встреча по постоянной ссылке `/meet/{publicId}` (ТЗ-14): в меню её нет, в неё приходят по ссылке. */
-  | 'meet';
+  | 'meet'
+  /** #4807 §6: «Входящие» — `/inbox`, вкладка — `/inbox/ai` и т. п. */
+  | 'inbox';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -55,7 +57,7 @@ export type Route = {
 };
 
 const SECTIONS: Section[] = [
-  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients',
+  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients', 'inbox',
 ];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
@@ -167,6 +169,8 @@ export function parsePath(pathname: string): Route {
       return seg[1] ? { section, meetId: seg[1] } : { section: 'calendar' };
     case 'clients':
       return seg[1] ? { section, clientId: seg[1] } : { section };
+    case 'inbox':
+      return seg[1] ? { section, tab: seg[1] } : { section };
     default:
       return { section };
   }
@@ -174,6 +178,8 @@ export function parsePath(pathname: string): Route {
 
 export function buildPath(r: Route): string {
   switch (r.section) {
+    case 'inbox':
+      return r.tab && r.tab !== 'important' ? `/inbox/${enc(r.tab)}` : '/inbox';
     case 'focus':
       if (r.view === 'inbox') return '/focus/inbox';
       if (r.view === 'ai-call') return '/onboarding/ai-call';

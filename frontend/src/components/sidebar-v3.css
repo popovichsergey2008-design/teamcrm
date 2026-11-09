@@ -1,29 +1,28 @@
-/* Меню слева по макету #4799 (01–06): знак, команды меню текстом, уведомления, QEVO Bot и компания внизу. */
-.nav-brand { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 0; background: transparent; color: var(--text); cursor: pointer; border-radius: var(--radius-sm); text-align: left; }
-.nav-brand:hover { background: var(--hover); }
-.nav-brand-text { display: flex; flex-direction: column; line-height: 1.05; }
-.nav-brand-text b { font-size: 15px; letter-spacing: .04em; }
-.nav-brand-text span { font-size: 9.5px; letter-spacing: .12em; color: var(--text-mut); }
-.nav-cmd { display: flex; align-items: center; gap: 8px; width: 100%; padding: 3px 8px; border: 0; background: transparent; color: var(--text-mut); cursor: pointer; font: inherit; font-size: calc(12px * var(--fs-scale)); border-radius: var(--radius-sm); text-align: left; }
-.nav-cmd:hover { color: var(--text); background: var(--hover); }
-.nav-archive-top { margin: 0; padding: 0; border: 0; }
-.nav-notif { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; margin-top: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev); color: var(--text); cursor: pointer; font: inherit; font-size: var(--fs-sm); text-align: left; }
-.nav-notif:hover { border-color: var(--border-2); }
-.nav-notif-n { margin-left: auto; color: var(--accent); font-weight: 600; white-space: nowrap; }
-.nav-section-title { margin: 8px 8px 2px; font-size: calc(10.5px * var(--fs-scale)); letter-spacing: .08em; text-transform: uppercase; color: var(--text-mut); }
-.nav-botrow { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
-.nav-bot-line { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
-.nav-bot-line:hover { background: var(--hover); }
-.nav-bot-ico { width: 30px; height: 30px; flex: none; display: inline-grid; place-items: center; overflow: hidden; border-radius: 50%; }
-.nav-bot-ico svg, .nav-care-mini svg { width: 100%; height: 100%; }
-.nav-bot-text { display: flex; flex-direction: column; line-height: 1.2; font-size: var(--fs-sm); }
-.nav-bot-text span { color: var(--text-mut); font-size: calc(11px * var(--fs-scale)); }
-.nav-care-mini { width: 30px; height: 30px; flex: none; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; overflow: hidden; }
-.nav-org-line { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-top: 1px solid var(--border); background: transparent; color: var(--text-dim); cursor: pointer; font: inherit; font-size: var(--fs-sm); text-align: left; }
-.nav-org-line:hover { color: var(--text); background: var(--hover); }
-.nav-org-line .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-org-line .nav-org-logo { width: 18px; height: 18px; border-radius: 4px; object-fit: cover; }
-.nav-cmd:focus-visible, .nav-notif:focus-visible, .nav-bot-line:focus-visible, .nav-care-mini:focus-visible, .nav-org-line:focus-visible, .nav-brand:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
-.nav-collapsed .nav-cmd, .nav-collapsed .nav-notif, .nav-collapsed .nav-org-line, .nav-collapsed .nav-brand { justify-content: center; }
-.nav-collapsed .nav-botrow { flex-direction: column; }
-.nav-collapsed .nav-org-line > svg:last-child { display: none; }
+/* Левое меню по #4807 §5 (макет 07): 244 px / свёрнутое 60 px, 2 счётчика, без красного */
+.nav-ws-row { display: flex; align-items: center; gap: 4px; min-height: 36px; }
+.nav-ws { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 2px 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.nav-ws:hover { background: var(--hover); }
+.nav-ws-logo { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 8px; background: var(--accent); color: var(--on-fill); font-weight: 700; object-fit: cover; overflow: hidden; }
+.nav-ws-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.nav-ws-text b { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-ws-text span { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); }
+.nav-ws-fold { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-mut); cursor: pointer; }
+.nav-ws-fold:hover { background: var(--hover); color: var(--text); }
+.nav-collapsed .nav-ws-row { flex-direction: column; }
+.nav-count.nav-count-info { background: var(--fill-info); }
+.nav-count.nav-count-warn { background: var(--warn); color: var(--text); }
+.nav-count.nav-count-mute { background: transparent; color: var(--text-mut); font-weight: 500; }
+.nav-agent { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.nav-agent-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.nav-agent-line { font-size: calc(11px * var(--fs-scale)); color: var(--ok); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-agent-hint { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-more { display: flex; flex-direction: column; gap: 2px; }
+.nav-more-btn { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.nav-more-body { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; }
+.nav-help { width: 100%; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.nav-help-ico { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 7px; background: var(--ok-soft, var(--accent-soft)); color: var(--ok); }
+.nav-help-time { margin-left: auto; color: var(--ok); font-size: calc(11.5px * var(--fs-scale)); font-weight: 600; }
+.nav-user-more { margin-left: auto; color: var(--text-mut); display: inline-flex; }
+.sbl-cw-mini { margin: 0 auto 6px; }
+.nav-ws:focus-visible, .nav-ws-fold:focus-visible, .nav-agent:focus-visible, .nav-more-btn:focus-visible, .nav-help:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.nav-collapsed .nav-ws, .nav-collapsed .nav-help, .nav-collapsed .nav-agent { justify-content: center; }

@@ -1287,6 +1287,8 @@ export const api = {
       'GET', `/secretary/summary?tz=${new Date().getTimezoneOffset()}`,
     ),
   secretaryLog: (limit = 50) => request<AiAction[]>('GET', `/secretary/log?limit=${limit}`),
+  /** #4807 §7: строка пользы ИИ под «AI-агентом» — сегодня и 7 дней, только подтверждённое. */
+  aiStats: () => request<{ line: string; hint: string; tip: string }>('GET', '/ai/stats'),
 
   /**
    * Поиск по смыслу: эмбеддинг запроса + pgvector по архиву (задачи, комментарии,

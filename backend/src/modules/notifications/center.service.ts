@@ -6,6 +6,7 @@ import {
   centerKey, mentionedUsers, RecipientOpts, TASK_EVENT_KEY, TaskEventDetails, TaskEventKind,
   taskEventPhrase, taskEventText, taskRecipients,
 } from './center-rules';
+import { groupInbox, InboxTab } from './inbox-rules';
 
 /** Событие по задаче для истории. */
 export interface CenterTaskEvent extends RecipientOpts {
@@ -168,6 +169,32 @@ export class NotificationCenter {
   async unreadMany(v: CenterViewer, ids: string[]) {
     if (await this.repo.markUnread(v, ids)) this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.item', { ids });
     return { unread: await this.repo.unread(v) };
+  }
+
+  // ── «Входящие» (#4807 §6) ──
+
+  /** Вкладка по 50 строк; однотипное по задаче за сутки — одной строкой. */
+  async inbox(v: CenterViewer, tab: InboxTab, before: string | null) {
+    const limit = 50;
+    const rows = await this.repo.inboxList(v, tab, before, limit);
+    return { items: groupInbox(rows), next: rows.length === limit ? rows[rows.length - 1].id : null };
+  }
+
+  inboxCounters(v: CenterViewer) {
+    return this.repo.inboxCounts(v);
+  }
+
+  async inboxMark(v: CenterViewer, ids: string[], action: 'read' | 'unread' | 'done' | 'undone' | 'snooze', until?: Date) {
+    const n = await this.repo.inboxMark(v, ids, action, until);
+    // прочитано на одном устройстве — прочитано везде (6.5, п. 1)
+    if (n) this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.read', { ids, action });
+    return { changed: n, counters: await this.repo.inboxCounts(v) };
+  }
+
+  async inboxReadTask(v: CenterViewer, taskId: string) {
+    const n = await this.repo.inboxReadTask(v, taskId);
+    if (n) this.realtime.emitToUsers(v.tenantId, [v.userId], 'inbox.read', { taskId });
+    return { changed: n };
   }
 
   async readAll(v: CenterViewer, category: string | null) {

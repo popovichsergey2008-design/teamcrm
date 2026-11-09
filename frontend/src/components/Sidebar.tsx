@@ -2,23 +2,20 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
 import { applyHidden, applyOrder, isHidden, MENU_PREFS_CHANGED, MenuPrefs, moveItem, PROTECTED, toggleHidden } from '../lib/menu-order';
-import { badgeText, openNotificationCenter, useCenterUnread } from '../lib/notification-center';
+import { INBOX_CHANGED, inboxApi } from '../lib/inbox-api';
+import { flowApi } from '../lib/flow-api';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { setQuietSource, setStatusQuiet } from '../lib/quiet';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
-import { Logo } from './Logo';
-import { BotBadgeArt, SupportArt } from './NavFabArt';
 import { AuthedMedia } from './AuthedMedia';
 import { buildPath, isConsoleHost, navigate, Route, Section } from '../lib/router';
-import { openSupport } from './support/SupportDock';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
 import { useEscape } from '../hooks/useEscape';
 import { PRESENCE_CHANGED } from './MyStatusBar';
 import { FocusMenu, focusLine, focusSessionLine } from './FocusMenu';
 import { useFocusSession } from '../hooks/useFocusSession';
-import { humanMinutes } from '../lib/human-minutes';
 import { lazyComponent } from '../lib/lazy';
 
 const SidebarLists = lazyComponent(() => import('./SidebarLists').then((m) => m.default));
@@ -29,9 +26,8 @@ import { api } from '../lib/api';
 import type { Focus } from '../types';
 import { AppUpdateRow } from './AppUpdateRow';
 import './sidebar-v3.css';
-import { OptionSelect } from './ui/option-select';
 import { initialsOf } from '../lib/initials';
-import { restartTour, restartWelcome } from '../lib/tour';
+import { restartTour } from '../lib/tour';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -78,11 +74,22 @@ const FAV = 'fav' as Section;
 const FAV_ITEM: Item = { section: FAV, label: 'Избранное', icon: 'star', hint: 'Избранное и последние задачи' };
 /** #4715 (03.11): «Черновики» — отдельный пункт меню, устроен так же, как «Избранное». */
 const DRAFTS = 'drafts' as Section;
-const DRAFTS_ITEM: Item = { section: DRAFTS, label: 'Черновики', icon: 'edit', hint: 'Начатые и не поставленные задачи' };
 /** Пункты-блоки без своей страницы: ссылкой не открываются, главной не становятся. */
-const isBlock = (s: Section) => s === FAV || s === DRAFTS;
+/** #4807 §5, п. 9: AI-агент — пункт меню со строкой пользы под ним (раздел 7). */
+const AGENT = 'agent' as Section;
+const AGENT_ITEM: Item = { section: AGENT, label: 'AI-агент', icon: 'sparkles', hint: 'Работает в фоновом режиме' };
+const isBlock = (s: Section) => s === FAV || s === DRAFTS || s === AGENT;
+/** #4807 §5, п. 11: в «⋯ Ещё» — Черновики, Новости, Пульс команды, Личный кабинет. */
+const MORE: Section[] = ['news', 'radar'];
 
 const MENU: Item[] = [
+  {
+    // #4807 §6: одно место для всего, что ждёт моей реакции; заменило блок «Уведомления»
+    section: 'inbox',
+    label: 'Входящие',
+    icon: 'inbox',
+    hint: 'Решения, упоминания, назначенное вам, протоколы и предложения ИИ',
+  },
   {
     section: 'focus',
     label: 'Фокус дня',
@@ -91,15 +98,6 @@ const MENU: Item[] = [
     // «Входящие» из меню убраны: письмо в задачу невозможно, пока у домена нет входящей
     // почты, а голосовая постановка и так стоит кнопкой выше и в командной строке.
     // Экран и приёмные вебхуки живы — пункт возвращается одной строкой здесь.
-  },
-  {
-    // Календарь был подпунктом «Фокуса дня» — сразу под ним и остался, но теперь
-    // разделом: в него заходят не «из сегодняшнего дня», а планировать неделю,
-    // и прятать его внутрь чужого раздела значит прятать половину сценариев.
-    section: 'calendar',
-    label: 'Календарь',
-    icon: 'calendar',
-    hint: 'Встречи, приглашения и сроки задач — неделей, днём, месяцем или списком',
   },
   /*
     «Задачи» (реестр по всем проектам) больше не отдельная строка меню — заказчик
@@ -126,6 +124,15 @@ const MENU: Item[] = [
     ],
   },
   {
+    // Календарь был подпунктом «Фокуса дня» — сразу под ним и остался, но теперь
+    // разделом: в него заходят не «из сегодняшнего дня», а планировать неделю,
+    // и прятать его внутрь чужого раздела значит прятать половину сценариев.
+    section: 'calendar',
+    label: 'Календарь',
+    icon: 'calendar',
+    hint: 'Встречи, приглашения и сроки задач — неделей, днём, месяцем или списком',
+  },
+  {
     /*
       Новости компании — свой раздел, а не вкладка внутри чатов.
 
@@ -145,20 +152,6 @@ const MENU: Item[] = [
     icon: 'chart',
     hint: 'Экран руководителя: прогресс, загрузка, риски срыва сроков',
     roles: ['owner', 'manager'],
-  },
-  {
-    /*
-      Поддержка — последней строкой, под «Пульсом команды»: так попросил заказчик.
-
-      У сотрудника, у которого что-то не работает, должна быть одна кнопка, а не
-      вопрос «в какой проект и кому ставить задачу». Обращение становится обычной
-      задачей владельцу в проекте поддержки — с перепиской, файлами и статусом.
-      У тех, кто уже настроил порядок меню, новая строка встаёт в конец сама.
-    */
-    section: 'support',
-    label: 'Служба заботы',
-    icon: 'support',
-    hint: 'Живой разговор: ответит помощник, при необходимости позовём специалиста',
   },
   {
     /*
@@ -215,7 +208,8 @@ export function Sidebar({
   /** voice — открыть окно поиска сразу со включённым микрофоном. */
   onSearch: (voice?: boolean) => void;
   onJoinCall: (roomId: string) => void;
-  onOpenSecretary: () => void;
+  /** journal — открыть сразу вкладку «Журнал» (из строки пользы ИИ, #4807 §7). */
+  onOpenSecretary: (journal?: boolean) => void;
   /** наведение на пункт меню — повод прогреть данные раздела заранее */
   onHoverSection: (section: Section) => void;
   onLogout: () => void;
@@ -245,17 +239,6 @@ export function Sidebar({
   const { session: focusSession, receivedAt: focusAt } = useFocusSession();
   const inSession = !!focusSession && !focusSession.finished;
   const statusLine = inSession ? focusSessionLine(focusSession, focusAt) : focusLine(focus);
-  const [secretary, setSecretary] = useState<{ actions: number; savedMinutes: number } | null>(null);
-  /** Сколько предложений секретаря ждут решения (ТЗ-21) — живьём по событию. */
-  const [waiting, setWaiting] = useState(0);
-  useEffect(() => {
-    const load = () => api.proposalsSummary().then((s) => setWaiting(s.total)).catch(() => undefined);
-    load();
-    const socket = getSocket();
-    socket.on('assistant.proposal', load);
-    socket.on('connect', load);
-    return () => { socket.off('assistant.proposal', load); socket.off('connect', load); };
-  }, []);
   const menuRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -266,7 +249,6 @@ export function Sidebar({
    * само» при первой же смене устройства.
    */
   const [prefs, setPrefs] = useState<MenuPrefs>(user.uiPrefs ?? {});
-  const [archiveOpen, setArchiveOpen] = useState(false);
   /*
     Перетаскивание пунктов как в Битриксе (#4601): зажал пункт мышью и тянешь —
     меню целиком подсвечивается (режим правки), соседи расступаются, отпустил —
@@ -282,14 +264,54 @@ export function Sidebar({
     window.addEventListener(MENU_PREFS_CHANGED, on);
     return () => window.removeEventListener(MENU_PREFS_CHANGED, on);
   }, []);
-  const centerUnread = useCenterUnread();
+  /*
+    #4807 §6.4: одно число у «Входящих» — непрочитанное «Важное» вместе с решениями,
+    которые ждут меня. Жёлтое, если среди них есть решения, иначе синее.
+  */
+  const [inbox, setInbox] = useState<{ n: number; decisions: number; tip: string }>({ n: 0, decisions: 0, tip: '' });
+  useEffect(() => {
+    let t = 0;
+    const load = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => {
+        void Promise.all([inboxApi.counters(), flowApi.queue().catch(() => [])]).then(([c, q]) => {
+          const decisions = q.length + c.decisions;
+          setInbox({ n: c.important - c.decisions + decisions, decisions, tip: `Ждут решения ${decisions} · Упоминания ${c.mentions} · Назначено ${c.assigned}` });
+        }).catch(() => undefined);
+      }, 300);
+    };
+    load();
+    const socket = getSocket();
+    socket.on('inbox.item', load); socket.on('inbox.read', load); socket.on('connect', load);
+    window.addEventListener(INBOX_CHANGED, load);
+    window.addEventListener('teamcrm:tasks-changed', load);
+    return () => {
+      window.clearTimeout(t);
+      socket.off('inbox.item', load); socket.off('inbox.read', load); socket.off('connect', load);
+      window.removeEventListener(INBOX_CHANGED, load);
+      window.removeEventListener('teamcrm:tasks-changed', load);
+    };
+  }, []);
+  /** #4807 §7: строка пользы ИИ — только подтверждённое и только моё, за сегодня. */
+  const [aiLine, setAiLine] = useState<{ line: string; tip: string; hint: string } | null>(null);
+  useEffect(() => {
+    const load = () => api.aiStats().then(setAiLine).catch(() => undefined);
+    load();
+    const t = window.setInterval(load, 60_000);
+    window.addEventListener('teamcrm:tasks-changed', load);
+    return () => { window.clearInterval(t); window.removeEventListener('teamcrm:tasks-changed', load); };
+  }, []);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const allowed = MENU.filter((i) => visible(i.roles, user.role) && (!i.platformOnly || (user.platformStaff && isConsoleHost()))
     && (!i.devOnly || CLIENTS_ENABLED));
-  // «Избранное» по умолчанию — под разделами, как было до настройки (#4725)
-  const ordered = applyOrder([...allowed, FAV_ITEM, DRAFTS_ITEM], prefs);
-  const menuItems = applyHidden(ordered, prefs);
-  const hiddenItems = ordered.filter((i) => isHidden(i.section, prefs));
+  // #4807: «Входящие» — первыми и у тех, кто уже расставил меню по-своему
+  const menuPrefs: MenuPrefs = prefs.order?.length && !prefs.order.includes('inbox') ? { ...prefs, order: ['inbox', ...prefs.order] } : prefs;
+  // AI-агент и «Избранное» — под разделами; Новости, Пульс и Черновики — в «Ещё»
+  const ordered = applyOrder([...allowed.filter((i) => !MORE.includes(i.section)), AGENT_ITEM, FAV_ITEM], menuPrefs);
+  const menuItems = applyHidden(ordered, menuPrefs);
+  const hiddenItems = ordered.filter((i) => isHidden(i.section, menuPrefs));
+  const moreItems = allowed.filter((i) => MORE.includes(i.section));
   // Меню уже трогали: только тогда «Вернуть по умолчанию» вообще имеет смысл.
   const hasPrefs = !!(prefs.order?.length || prefs.hidden?.length || prefs.home);
   /** Главная страница: открывается при входе и по логотипу (#4601). */
@@ -414,15 +436,11 @@ export function Sidebar({
   // Обе выборки дешёвые, поэтому обновляем их вместе со счётчиками разделов.
   useEffect(() => {
     const loadFocus = () => api.getFocus().then(setFocus).catch(() => undefined);
-    const loadSummary = () => api.secretarySummary().then(setSecretary).catch(() => undefined);
     loadFocus();
-    loadSummary();
     // фокус можно поставить и из командной строки — строка под именем обязана это показать
     window.addEventListener('teamcrm:focus-changed', loadFocus);
-    window.addEventListener('teamcrm:tasks-changed', loadSummary);
     return () => {
       window.removeEventListener('teamcrm:focus-changed', loadFocus);
-      window.removeEventListener('teamcrm:tasks-changed', loadSummary);
     };
   }, []);
 
@@ -586,10 +604,29 @@ export function Sidebar({
       >
         {/* ── верхний блок ── */}
         <div className="nav-top">
-          <button className="nav-brand" onClick={() => go({ section: home as Section })} title="QEVO · на главную" aria-label="На главную">
-            <Logo size={24} />
-            <span className="nav-label nav-brand-text"><b>QEVO</b><span>ONE WORKSPACE</span></span>
-          </button>
+          {/* #4807 §5, п. 1: строка 36 px — переключатель пространства и «Свернуть» справа */}
+          <div className="nav-ws-row">
+            <DropdownMenu
+              align="start"
+              trigger={(
+                <button className="nav-ws" title={`Пространство: ${orgName}`}>
+                  {orgLogo ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-ws-logo" /> : <span className="nav-ws-logo" aria-hidden="true">{orgName.trim().charAt(0).toUpperCase()}</span>}
+                  <span className="nav-label nav-ws-text"><b>{orgName} <Icon name="chevron-down" size={12} /></b><span>пространство</span></span>
+                </button>
+              )}
+            >
+              {organizations.map((o) => (
+                <MenuItem key={o.tenantId} onSelect={() => { if (String(o.tenantId) !== String(user.tenantId)) onSwitchOrg(o.tenantId); }} icon={<Icon name={String(o.tenantId) === String(user.tenantId) ? 'check' : 'building'} size={15} />}>
+                  {o.name} · {roleLabel(o.role)}
+                </MenuItem>
+              ))}
+              <MenuSeparator />
+              <MenuItem onSelect={() => onSwitchOrg('__new__')} icon={<Icon name="plus" size={15} />}>Создать пространство…</MenuItem>
+            </DropdownMenu>
+            <button className="nav-ws-fold" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
+              <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={15} />
+            </button>
+          </div>
           <div className="nav-org">
             {/*
               Верхнего меню больше нет (#4717, 02.11): наверху — сквозной поиск, он открывается
@@ -599,7 +636,7 @@ export function Sidebar({
             <div className="nav-search-row nav-search-top">
               <button className="nav-search" onClick={() => { setOpen(false); onSearch(); }} title="Поиск и команды (Ctrl+K)">
                 <Icon name="search" size={16} />
-                <span className="nav-label">Поиск приложения</span>
+                <span className="nav-label">Поиск</span>
                 <kbd className="nav-kbd">Ctrl K</kbd>
               </button>
               <button
@@ -612,52 +649,6 @@ export function Sidebar({
               </button>
             </div>
           </div>
-          {/* #4799, макет 01: под поиском — команды самого меню текстом */}
-          <button className="nav-cmd" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
-            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} />
-            <span className="nav-label">Свернуть меню</span>
-          </button>
-          <button className="nav-cmd" onClick={() => go({ section: 'settings', tab: 'navigation' })} title="Порядок меню, главная страница, что открывать при входе">
-            <Icon name="settings" size={14} />
-            <span className="nav-label">Настроить меню</span>
-          </button>
-          {hiddenItems.length > 0 && (
-            <div className="nav-archive nav-archive-top">
-              <button className="nav-cmd" onClick={() => setArchiveOpen((v) => !v)} aria-expanded={archiveOpen} title="Скрытые пункты меню">
-                <Icon name={archiveOpen ? 'chevron-down' : 'more'} size={14} />
-                <span className="nav-label">Ещё разделы · {hiddenItems.length}</span>
-              </button>
-              {archiveOpen && !collapsed && (
-                <>
-                  {hiddenItems.map((item) => (
-                    <div key={item.section} className="nav-archive-row">
-                      {isBlock(item.section) ? (
-                        <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
-                      ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
-                        <>
-                          <Icon name={item.icon} size={16} />
-                          <span className="nav-label">{item.label}</span>
-                        </>
-                      ))}
-                      <button className="nav-archive-back" onClick={() => unhide(item.section)} title="Вернуть в меню" aria-label={`Вернуть «${item.label}» в меню`}>
-                        <Icon name="eye" size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  <button className="nav-archive-all" onClick={() => savePrefs({ ...prefs, hidden: [] })}>
-                    <Icon name="refresh" size={13} /> Восстановить все пункты
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-          {/* Центр уведомлений (#4655) — карточкой «Уведомления · N непрочитано», как на макете */}
-          <button className={`nav-notif${centerUnread ? ' has-new' : ''}`} onClick={openNotificationCenter} title={centerUnread ? `Уведомления: непрочитанных ${centerUnread}` : 'Уведомления'} aria-label={centerUnread ? `Уведомления: непрочитанных ${centerUnread}` : 'Уведомления'}>
-            <Icon name="bell" size={16} />
-            <span className="nav-label">Уведомления</span>
-            {centerUnread > 0 && <span className="nav-notif-n">{badgeText(centerUnread)}<span className="nav-label"> непрочитано</span></span>}
-          </button>
-
           {/*
             Кнопок «Новая задача», «Созвон» и «Гость» здесь больше нет.
 
@@ -671,29 +662,27 @@ export function Sidebar({
         {/* ── основное меню: порядок и состав человек настраивает под себя ── */}
         <nav ref={navRef} className={`nav-main${drag ? ' nav-editing' : ''}`} aria-label="Разделы">
           {/* #4764: появляется только при незавершённых действиях */}
-          {!collapsed && <ContinueWork onGo={() => setOpen(false)} />}
-          {!collapsed && <div className="nav-section-title">Рабочее пространство</div>}
+          <ContinueWork onGo={() => setOpen(false)} compact={collapsed} />
           {menuItems.map((item) => {
-            if (isBlock(item.section) && collapsed) return null;
+            if ((item.section === FAV || item.section === DRAFTS) && collapsed) return null;
             // реестр задач живёт внутри «Проектов» — там и подсветка
             const active = route.section === item.section || (item.section === 'projects' && route.section === 'tasks');
             // Ноль не показываем вовсе — по ТЗ панель молчит, пока от человека
             // ничего не требуется. Пустой кружок читался бы как «что-то есть».
-            const badge = item.section === 'chat' ? unread
-              : item.section === 'focus' ? counters.focus.decide
-              : item.section === 'calendar' ? counters.calendar?.pending ?? 0
-              : item.section === 'radar' ? counters.radar?.risks ?? 0
-              // Непрочитанные объявления компании: их на то и объявляют, чтобы прочитали
-              : item.section === 'news' ? counters.news?.unread ?? 0
-              // «В проектах что-то произошло»: чужие изменения в моих задачах, до
-              // которых я ещё не дошёл. То же самое, что непрочитанное в чатах.
-              : item.section === 'projects' ? counters.tasks?.unread ?? 0
+            /*
+              #4807 §5: счётчиков в меню два — «Входящие» (жёлтый, если ждут ваши решения,
+              иначе синий) и «Чаты» (синий). У «Фокуса дня» — серое число задач на сегодня.
+              Красного в меню нет.
+            */
+            const badge = item.section === 'inbox' ? inbox.n
+              : item.section === 'chat' ? unread
+              : item.section === 'focus' ? counters.focus.today
               : 0;
-            const badgeTitle = item.section === 'focus' ? 'ждут вашего решения'
-              : item.section === 'calendar' ? 'приглашений без ответа'
-              : item.section === 'projects' ? 'новых изменений в ваших задачах'
-              : item.section === 'news' ? 'объявлений, которые вы не читали'
-              : item.section === 'radar' ? 'задач просрочено' : undefined;
+            const badgeTitle = item.section === 'inbox' ? inbox.tip
+              : item.section === 'chat' ? 'непрочитанных чатов'
+              : item.section === 'focus' ? 'задач на сегодня' : undefined;
+            const badgeTone = item.section === 'inbox' ? (inbox.decisions ? ' nav-count-warn' : ' nav-count-info')
+              : item.section === 'chat' ? ' nav-count-info' : ' nav-count-mute';
             // Разворачивать нечего, если у раздела нет ни проектов, ни подпунктов —
             // шеврон в таком месте обещает содержимое, которого не существует.
             const subs = item.subs?.filter((sub) => visible(sub.roles, user.role)) ?? [];
@@ -715,7 +704,15 @@ export function Sidebar({
                 style={drag ? { transform: `translateY(${drag.section === item.section ? drag.dy : dragShift(idx)}px)` } : undefined}
               >
                 {/* #4713, #4715, #4725: избранное и черновики; модуль грузится после первого экрана */}
-                {isBlock(item.section) ? <SidebarLists onGo={() => setOpen(false)} part={item.section === DRAFTS ? 'drafts' : 'fav'} /> : link({ section: item.section }, active, 'nav-item', item.label, (
+                {item.section === AGENT ? (
+                  <button className="nav-item nav-agent" onClick={() => { setOpen(false); onOpenSecretary(!!aiLine?.line); }} title={collapsed ? `AI-агент${aiLine?.line ? ` · ${aiLine.line}` : aiLine?.hint ? ` · ${aiLine.hint}` : ''}` : aiLine?.tip || 'Работает в фоновом режиме'}>
+                    <Icon name="sparkles" size={18} />
+                    <span className="nav-label nav-agent-text">
+                      <span>AI-агент</span>
+                      {aiLine?.line ? <span className="nav-agent-line">сегодня: {aiLine.line}</span> : aiLine?.hint ? <span className="nav-agent-hint">{aiLine.hint}</span> : null}
+                    </span>
+                  </button>
+                ) : isBlock(item.section) ? <SidebarLists onGo={() => setOpen(false)} part={item.section === DRAFTS ? 'drafts' : 'fav'} /> : link({ section: item.section }, active, 'nav-item', item.label, (
                   <>
                     <Icon name={item.icon} size={18} />
                     <span className="nav-label">{item.label}</span>
@@ -726,7 +723,7 @@ export function Sidebar({
                     )}
                     {badge > 0 && (
                       <span
-                        className={`nav-count${item.section === 'radar' ? ' nav-count-warn' : ''}`}
+                        className={`nav-count${badgeTone}`}
                         title={badgeTitle}
                         aria-label={badgeTitle ? `${badge} ${badgeTitle}` : `${badge} непрочитанных`}
                       >
@@ -791,32 +788,43 @@ export function Sidebar({
           })}
           {!menuItems.some((i) => i.section === 'chat') && callWidget}
 
-          {/*
-            #4727: AI-агент и личный кабинет — в конце прокрутки, ниже всех пунктов меню
-            (раньше стояли над прокруткой и отнимали у неё место). Внизу остаётся аккаунт.
-          */}
-          <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {/* AI-агент (бывший AI Секретарь, #4724): показываем ровно то, что записано в журнале действий.
-                Ноль тоже показываем — это честнее, чем прятать виджет, обещавший пользу. */}
-            <button className="nav-secretary" onClick={() => { setOpen(false); onOpenSecretary(); }} title="Работает в фоновом режиме">
-              <Icon name="sparkles" size={18} />
-              <span className="nav-label nav-secretary-text">
-                <span>AI-агент · {secretary?.actions ?? 0}</span>
-                <span className="nav-secretary-saved">
-                  {waiting > 0
-                    ? <b className="nav-secretary-waiting">ждут решения: {waiting}</b>
-                    : secretary && secretary.savedMinutes > 0 ? `сэкономлено ${humanMinutes(secretary.savedMinutes)}` : 'действий сегодня'}
-                </span>
-              </span>
-            </button>
-
-            {link({ section: 'settings' }, route.section === 'settings', 'nav-item nav-cabinet', 'Личный кабинет: профиль, команда, интеграции, настройки', (
-              <>
-                <Icon name="settings" size={18} />
-                <span className="nav-label">Личный кабинет</span>
-              </>
-            ))}
-          </div>
+          {/* #4807 §5, п. 11: «⋯ Ещё» — Черновики, Новости, Пульс команды, Личный кабинет и скрытые пункты */}
+          {!collapsed && (
+            <div className="nav-more">
+              <button className="nav-item nav-more-btn" onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen}>
+                <Icon name="more" size={18} />
+                <span className="nav-label">Ещё</span>
+                <Icon name={moreOpen ? 'chevron-down' : 'chevron-right'} size={14} />
+              </button>
+              {moreOpen && (
+                <div className="nav-more-body">
+                  <SidebarLists onGo={() => setOpen(false)} part="drafts" />
+                  {moreItems.map((item) => (
+                    <span key={item.section}>
+                      {link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
+                        <><Icon name={item.icon} size={18} /><span className="nav-label">{item.label}</span></>
+                      ))}
+                    </span>
+                  ))}
+                  {link({ section: 'settings' }, route.section === 'settings', 'nav-item', 'Личный кабинет', (
+                    <><Icon name="settings" size={18} /><span className="nav-label">Личный кабинет</span></>
+                  ))}
+                  {hiddenItems.map((item) => (
+                    <div key={item.section} className="nav-archive-row">
+                      {isBlock(item.section) ? (
+                        <span className="nav-item"><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></span>
+                      ) : link({ section: item.section }, route.section === item.section, 'nav-item', item.label, (
+                        <><Icon name={item.icon} size={16} /><span className="nav-label">{item.label}</span></>
+                      ))}
+                      <button className="nav-archive-back" onClick={() => unhide(item.section)} title="Вернуть в меню" aria-label={`Вернуть «${item.label}» в меню`}>
+                        <Icon name="eye" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {/* В приложении на телефоне: версия, последнее обновление и кнопка обновиться */}
           {!collapsed && <AppUpdateRow />}
 
@@ -824,57 +832,18 @@ export function Sidebar({
 
         {/* ── нижний блок ── */}
         <div className="nav-bottom">
-          {/*
-            Служба заботы — над AI Секретарём (просьба заказчика).
-
-            Раньше это был кружок в правом нижнем углу: он висел над полем ввода чатов
-            и мешал печатать. Строка в панели видна из любого раздела и ничему не мешает;
-            сама панель разговора открывается, как и прежде, поверх страницы.
-          */}
-          {/*
-            Тот же кружок, что был в углу, — теперь здесь, над AI Секретарём (заказчик
-            хотел именно его). Строки с подписью под ним нет: раздел «Служба заботы» и так
-            есть в списке разделов выше, и две одинаковые строки подряд читались как ошибка.
-          */}
-          {/*
-            QEVO Bot — личный секретарь (ТЗ-18) — рядом со службой заботы: в списке чатов
-            его не находили («его там в чатах никто не найдёт в жизни», заказчик 08.10).
-            Кружок открывает бота на весь экран; виден из любого раздела.
-          */}
-          <div className="nav-botrow">
-            <button
-              className="nav-bot-line"
-              onClick={() => { setOpen(false); navigate({ section: 'chat', chatId: 'anthill' }); }}
-              title="QEVO Bot — ваш секретарь: напоминания, сводки, встречи, почта"
-              aria-label="Открыть QEVO Bot — секретаря"
-            >
-              <span className="nav-bot-ico"><BotBadgeArt /></span>
-              <span className="nav-label nav-bot-text"><b>QEVO Bot</b><span>Секретарь</span></span>
-            </button>
-            {/* удержание 1 с — шторка «голосом, созвон или написать» (ТЗ-34, п. 2.1) */}
-            <button className="nav-care-mini" data-care-hold="" onClick={() => { setOpen(false); openSupport(); }} title="Написать в службу заботы" aria-label="Написать в службу заботы">
-              <SupportArt />
-            </button>
-          </div>
-          {/* Компания — своей строкой: переключить пространство или создать новое */}
-          <DropdownMenu
-            align="start"
-            trigger={(
-              <button className="nav-org-line" title={`Компания: ${orgName}`}>
-                {orgLogo ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-org-logo" /> : <Icon name="building" size={15} />}
-                <span className="nav-label">{orgName}</span>
-                <Icon name="chevron-down" size={13} />
-              </button>
-            )}
+          {/* #4807 §5, п. 14: одна точка помощи — QEVO Bot с кнопкой «Позвать инженера» */}
+          <button
+            className="nav-item nav-help"
+            data-care-hold=""
+            onClick={() => { setOpen(false); navigate({ section: 'chat', chatId: 'anthill' }); }}
+            title="Помощь и бот: QEVO Bot ответит сразу, инженер — за 30 секунд"
+            aria-label="Помощь и бот"
           >
-            {organizations.map((o) => (
-              <MenuItem key={o.tenantId} onSelect={() => { if (String(o.tenantId) !== String(user.tenantId)) onSwitchOrg(o.tenantId); }} icon={<Icon name={String(o.tenantId) === String(user.tenantId) ? 'check' : 'building'} size={15} />}>
-                {o.name} · {roleLabel(o.role)}
-              </MenuItem>
-            ))}
-            <MenuSeparator />
-            <MenuItem onSelect={() => onSwitchOrg('__new__')} icon={<Icon name="plus" size={15} />}>Создать пространство…</MenuItem>
-          </DropdownMenu>
+            <span className="nav-help-ico"><Icon name="heart" size={15} /></span>
+            <span className="nav-label">Помощь и бот</span>
+            <span className="nav-label nav-help-time">30 сек</span>
+          </button>
           <div className="nav-profile" ref={menuRef} style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 6 }}>
             {/*
               Аккаунт — внизу (#4716, 02.11; до того — наверху по #1348).
@@ -897,65 +866,19 @@ export function Sidebar({
               <span className={`nav-dot nav-dot-${inSession ? 'deep' : focus?.kind ?? 'free'}`} aria-hidden="true" />
               <span className="nav-user-text">
                 <span className="nav-user-name">{user.fullName}</span>
-                <span className="nav-user-role" title={organizations.length > 1 ? `Пространство: ${orgName} · ${statusLine}` : statusLine}>
-                  {organizations.length > 1 && !inSession ? orgName : statusLine}
+                <span className="nav-user-role" title={statusLine}>
+                  {myStatus === 'busy' ? 'Занят' : myStatus === 'away' ? 'Отошёл' : 'Свободен'} · {statusLine.charAt(0).toLowerCase() + statusLine.slice(1)}
                 </span>
               </span>
+              {!collapsed && <span className="nav-user-more" aria-hidden="true"><Icon name="more" size={16} /></span>}
             </button>
             {menuOpen && (
               <div className="menu-pop nav-menu-pop" role="menu">
-                {/* #4716: личный кабинет — и здесь, первым: его ищут, нажав на своё имя */}
-                <button
-                  className="menu-item"
-                  role="menuitem"
-                  onClick={() => { setMenuOpen(false); setOpen(false); go({ section: 'settings' }); }}
-                >
-                  <Icon name="settings" size={15} /> Личный кабинет
-                </button>
-                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
-                <button
-                  className="menu-item"
-                  role="menuitem"
-                  onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}
-                >
-                  <Icon name="user" size={15} /> Профиль
-                </button>
-                {/* #4605: пройти обучение заново — общий обзор и подсказки разделов */}
-                <button
-                  className="menu-item"
-                  role="menuitem"
-                  onClick={() => { setMenuOpen(false); setOpen(false); restartTour(); }}
-                >
-                  <Icon name="book" size={15} /> Обучение
-                </button>
-                {/* #4620: первый запуск заново — слайды, выбор и Qevo-бот */}
-                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setOpen(false); restartWelcome(); }}>
-                  <Icon name="rocket" size={15} /> Быстрый старт
-                </button>
-                {/* Пространство — здесь же: переключить или создать. Переименовать — в профиле, у создателя. */}
-                <div className="menu-theme">
-                  <span className="dim">Пространство</span>
-                  <OptionSelect
-                    className="input nav-org-select"
-                    value={user.tenantId}
-                    onChange={(e) => { setMenuOpen(false); onSwitchOrg(e.target.value); }}
-                    aria-label="Пространство"
-                  >
-                    {organizations.map((o) => (
-                      <option key={o.tenantId} value={o.tenantId}>
-                        {organizations.length > 1 ? `${o.name} · ${roleLabel(o.role)}` : o.name}
-                      </option>
-                    ))}
-                    {organizations.length === 0 && <option value={user.tenantId}>Моя организация</option>}
-                    <option value="__new__">+ Создать пространство…</option>
-                  </OptionSelect>
-                </div>
-                {/* Свой статус для коллег — только руками (решение заказчика):
-                    «занят» ставят нарочно, чтобы к тебе не шли, и снимают сами. */}
+                {/* #4807 §5: статус — один раз; пространство — наверху меню */}
                 <div className="menu-theme">
                   <span className="dim">Статус</span>
                   <span className="menu-status" role="group" aria-label="Статус для коллег">
-                    {([['', 'обычный'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
+                    {([['', 'свободен'], ['busy', 'занят'], ['away', 'отошёл']] as const).map(([v, label]) => (
                       <button
                         key={v}
                         className={`menu-status-btn${(myStatus ?? '') === v ? ' active' : ''}`}
@@ -966,10 +889,24 @@ export function Sidebar({
                     ))}
                   </span>
                 </div>
+                <FocusMenu focus={focus} onChange={(f) => { setFocus(f); setMenuOpen(false); }} />
+                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); go({ section: 'profile' }); }}>
+                  <Icon name="user" size={15} /> Профиль
+                </button>
+                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setOpen(false); go({ section: 'settings' }); }}>
+                  <Icon name="settings" size={15} /> Личный кабинет
+                </button>
+                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); go({ section: 'settings', tab: 'navigation' }); }}>
+                  <Icon name="list" size={15} /> Настроить меню
+                </button>
                 <div className="menu-theme">
                   <span className="dim">Тема</span>
                   <ThemeSwitch />
                 </div>
+                {/* #4605: пройти обучение заново — общий обзор и подсказки разделов */}
+                <button className="menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setOpen(false); restartTour(); }}>
+                  <Icon name="book" size={15} /> Обучение
+                </button>
                 <button className="menu-item menu-danger" role="menuitem" onClick={() => { setMenuOpen(false); onLogout(); }}>
                   <Icon name="logout" size={15} /> Выйти
                 </button>

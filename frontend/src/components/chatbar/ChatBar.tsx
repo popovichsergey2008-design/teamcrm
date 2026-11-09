@@ -10,7 +10,6 @@ import { stampLabel } from '../../lib/chat-text';
 import type { SearchResults } from '../../types';
 import { PeoplePicker } from '../PeoplePicker';
 import { initialsOf } from '../../lib/initials';
-import { badgeText, openNotificationCenter, useCenterUnread } from '../../lib/notification-center';
 
 /** Строка списка чатов — то, что отдаёт GET /chats (см. ChatsPage). */
 export interface BarChat {
@@ -43,7 +42,7 @@ interface BarUser { id: string; fullName: string; avatarUrl?: string | null; isA
  * Данные — те же, что у раздела «Чаты & Созвоны» (`/chats`), плюс присутствие; свои
  * таблицы Chat Bar не заводит. Обновляется по тем же событиям сокета, что и раздел.
  */
-export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, onNewChat, currentUserId, onCallUserIds, activeChatId, onStartCall, inCall }: {
+export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onNewChat, currentUserId, onCallUserIds, activeChatId, onStartCall, inCall }: {
   expanded: boolean;
   onToggle: () => void;
   onOpenChat: (chatId: string) => void;
@@ -53,7 +52,8 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
   onStartCall: (opts: { memberIds: string[]; withAi: boolean }) => void;
   /** Уже в созвоне — второй не начать. */
   inCall: boolean;
-  onOpenAi: () => void;
+  /** #4807 §8: QEVO Bot ушёл из правой панели в «Помощь и бот»; проп оставлен для совместимости. */
+  onOpenAi?: () => void;
   onNewChat: () => void;
   currentUserId: string;
   /** Кто сейчас в созвоне — у него подпись «на мите». */
@@ -187,7 +187,6 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
     [chats],
   );
   // число на колокольчике — из центра уведомлений (#4655), одно на все значки
-  const centerUnread = useCenterUnread();
 
   /* Поиск — по чатам и по людям сразу: человек ищет «Глеб», а не «диалог с Глебом». */
   const q = query.trim().toLowerCase();
@@ -282,33 +281,7 @@ export function ChatBar({ expanded, onToggle, onOpenChat, onCollapse, onOpenAi, 
           <Icon name={shown ? 'chevron-right' : 'chevron-left'} size={16} />
           {shown && <span className="bar-label">Чаты</span>}
         </button>
-        {/*
-          Колокольчик ведёт в центр уведомлений (#4655) — тот же, что в левой панели:
-          два разных «уведомления» в двух углах экрана путают. Непрочитанные сообщения
-          видны на самих чатах ниже и на «Чатах» в меню.
-        */}
-        <button
-          className="bar-icon"
-          onClick={() => { setHoverOpen(false); openNotificationCenter(); }}
-          title={centerUnread ? `Уведомления: непрочитанных ${centerUnread}` : 'Уведомления'}
-          aria-label="Уведомления"
-        >
-          <span className="bar-avatar">
-            <Icon name="bell" size={16} />
-            {centerUnread > 0 && <span className="bar-badge">{badgeText(centerUnread)}</span>}
-          </span>
-          {shown && <span className="bar-label">{centerUnread ? `Уведомления · ${badgeText(centerUnread)}` : 'Уведомления'}</span>}
-        </button>
-        {/* QEVO Bot — такой же собеседник, как коллега: открывается тем же окном (ТЗ-6). */}
-        <button
-          className={`bar-icon${activeChatId === 'anthill' ? ' active' : ''}`}
-          onClick={() => { setHoverOpen(false); if (expanded) onCollapse(); onOpenAi(); }}
-          title="QEVO Bot — AI-помощник: спросить о задачах, чатах и митах"
-          aria-label="QEVO Bot — AI-помощник"
-        >
-          <Icon name="robot" size={16} />
-          {shown && <span className="bar-label">QEVO Bot</span>}
-        </button>
+        {/* #4807 §8: колокольчик — во «Входящих» слева, QEVO Bot — в «Помощь и бот»; здесь созвон, люди и чаты */}
       </div>
 
       {shown && (

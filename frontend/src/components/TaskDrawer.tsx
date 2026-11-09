@@ -42,6 +42,7 @@ import { Tabs } from './ui/tabs';
 import { GoogleFilesBlock } from './google/GoogleFilesBlock';
 import { useTitleHint } from '../lib/page-title';
 import { feedback, feedback as fx } from '../lib/feedback';
+import { INBOX_CHANGED, inboxApi } from '../lib/inbox-api';
 // «Послушать контекст · 15 сек» (ТЗ-25) — отдельным куском, только у задач со встречи
 const TaskAudioProof = lazy(() => import('./meetings/TaskAudioProof'));
 // «Было/стало» (#4657) — своим куском и со своим CSS: отчёт смотрят после сдачи, не в каждой карточке
@@ -144,6 +145,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   /** Просьбу о переносе решили здесь — панель прячем, не ждём перечитывания карточки (#4695). */
   const [shiftDecided, setShiftDecided] = useState(false);
   useEffect(() => { setShiftDecided(false); }, [task.id, task.deadline_shift_to]);
+  // #4807 §6.5, п. 2: открыл задачу — её строки во «Входящих» прочитаны (не «Готово»)
+  useEffect(() => {
+    void inboxApi.readTask(String(task.id)).then((r) => { if (r.changed) window.dispatchEvent(new Event(INBOX_CHANGED)); }).catch(() => undefined);
+  }, [task.id]);
   /** Куда переехала задача — строкой под полем: перенос не должен проходить молча. */
   const [movedNote, setMovedNote] = useState('');
   /** Проекты для переноса: только те, которые человек видит. */
