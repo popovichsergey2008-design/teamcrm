@@ -3371,7 +3371,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .chat-edit .mention-wrap { display: flex; width: 100%; }
 .chat-edit .input { flex: 1; width: 100%; min-width: 0; font-size: calc(14px * var(--fs-scale)); }
 .chat-edit-actions { display: flex; gap: 6px; }
-/* Галочки «отправлено / прочитано» — как в мессенджерах. */
+/* #4842: пока правим — пузырь во всю ширину ленты, как поле нового сообщения: в 70% длинный текст не поправить */
+.chat-msg:has(> .chat-edit) { width: 100%; max-width: 100%; box-sizing: border-box; }/* Галочки «отправлено / прочитано» — как в мессенджерах. */
 .chat-ticks { display: inline-flex; align-items: center; color: var(--text-dim); }
 .chat-ticks .icon + .icon { margin-left: -6px; }
 .chat-ticks.read { color: var(--accent); }

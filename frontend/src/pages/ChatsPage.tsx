@@ -813,6 +813,20 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     finally { reload(); notifyChatsChanged(); }
   };
 
+  /**
+   * #4843: весь чат — непрочитанным прямо из списка, как в Telegram; повторно — прочитанным.
+   * Открытый чат закрываем по той же причине, что и выше: открытие само снимает пометку.
+   */
+  const toggleUnreadFromList = async (c: Chat) => {
+    const id = String(c.id);
+    const unread = Number(c.unread) > 0 || !!c.markedUnread;
+    if (!unread && id === String(activeId)) { setActiveId(null); setMessages([]); setThread(null); }
+    setChats((prev) => prev.map((x) => (String(x.id) === id ? { ...x, markedUnread: !unread, unread: unread ? 0 : x.unread } : x)));
+    try { await (unread ? api.markChatRead(id) : api.markChatUnread(id)); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось пометить'); }
+    finally { reload(); notifyChatsChanged(); }
+  };
+
   /** Чат с собой: открывается один и тот же, сколько ни нажимай. */
   const openNotes = async () => {
     try {
@@ -2054,6 +2068,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       key={c.id} chat={c} active={String(c.id) === String(activeId)}
       group={withGroup && c.kind === 'dm' ? groupFor(c.peerId) : undefined}
       onClick={() => openChat(c.id)} onStar={() => star(c)}
+      onUnread={() => void toggleUnreadFromList(c)}
       onInfo={c.kind === 'self' ? undefined : () => { openChat(c.id); setThread(null); setInfoOpen(true); }}
       onLeave={c.kind === 'group' || c.kind === 'channel' ? () => void leaveFromList(c) : undefined}
       onRename={canRenameChat(c) ? () => void renameChat(c) : undefined}
@@ -3991,10 +4006,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   );
 }
 
-function ChatRow({ chat, active, group, onClick, onStar, onInfo, onRename, onLeave, onDelete }: {
+function ChatRow({ chat, active, group, onClick, onStar, onUnread, onInfo, onRename, onLeave, onDelete }: {
   chat: Chat; active: boolean; group?: string; onClick: () => void;
   /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
   onStar?: () => void;
+  /** #4843: «Пометить как непрочитанное / прочитанное», не заходя в чат. */
+  onUnread?: () => void;
   /** Действия с чатом прямо из списка: сведения, выйти, удалить (нет — пункта нет). */
   onInfo?: () => void;
   onRename?: () => void;
@@ -4021,7 +4038,9 @@ function ChatRow({ chat, active, group, onClick, onStar, onInfo, onRename, onLea
           </span>
         )}
       </span>
-      {chat.unread > 0 && <span className="chat-unread">{chat.unread}</span>}
+      {chat.unread > 0
+        ? <span className="chat-unread">{chat.unread}</span>
+        : chat.markedUnread && <span className="chat-unread chat-unread-mark" title="Помечен непрочитанным" aria-label="Помечен непрочитанным" />}
     </button>
     {/* Звезда вынесена из кнопки чата: кнопку внутрь кнопки не вложить, а закреплять
         нужно, не открывая переписку. */}
@@ -4036,7 +4055,7 @@ function ChatRow({ chat, active, group, onClick, onStar, onInfo, onRename, onLea
       </button>
     )}
     {/* Управление чатом из списка: раньше «Удалить» пряталось в самом низу «Сведений» */}
-    {(onInfo || onRename || onLeave || onDelete) && (
+    {(onUnread || onInfo || onRename || onLeave || onDelete) && (
       <DropdownMenu
         trigger={(
           <button className="chat-star chat-row-more" title="Действия с чатом" aria-label={`Действия с чатом «${chat.title ?? 'Чат'}»`}>
@@ -4044,6 +4063,11 @@ function ChatRow({ chat, active, group, onClick, onStar, onInfo, onRename, onLea
           </button>
         )}
       >
+        {onUnread && (
+          <MenuItem onSelect={onUnread} icon={<Icon name="mail" size={15} />}>
+            {chat.unread > 0 || chat.markedUnread ? 'Пометить как прочитанное' : 'Пометить как непрочитанное'}
+          </MenuItem>
+        )}
         {onInfo && <MenuItem onSelect={onInfo} icon={<Icon name="info" size={15} />}>Сведения и участники</MenuItem>}
         {onRename && <MenuItem onSelect={onRename} icon={<Icon name="edit" size={15} />}>Переименовать</MenuItem>}
         {onLeave && <MenuItem onSelect={onLeave} icon={<Icon name="logout" size={15} />}>Выйти из чата</MenuItem>}
