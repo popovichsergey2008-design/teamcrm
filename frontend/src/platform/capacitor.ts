@@ -327,11 +327,14 @@ async function warmUp(): Promise<void> {
   const [d, a] = await Promise.all([Device.getInfo().catch(() => null), CapApp.getInfo().catch(() => null)]);
   await prepareLocalNotifications();
   /*
-    Содержимое не попадает в переключатель приложений (ТЗ-9, D-07). Снимки экрана при этом
-    разрешены (preventScreenshots: false в capacitor.config): без них человек не может
-    показать, что у него сломалось, — это мешало больше, чем защищало.
+    Снимки экрана РАЗРЕШЕНЫ (10.11, просьба заказчика: «скриншоты запрещены — как показать
+    баг?»). Плагин на Android не умеет «скрыть в переключателе, но разрешить снимки»:
+    настройку preventScreenshots он не читает и всегда ставит FLAG_SECURE, а тот запрещает
+    и снимки, и запись экрана. Поэтому защиту снимаем целиком — и здесь, в веб-части
+    (дойдёт до установленных приложений обновлением по воздуху), и в capacitor.config
+    для новых сборок. Цена: в переключателе приложений снова видно содержимое (D-07).
   */
-  void PrivacyScreen.enable().catch(() => undefined);
+  void PrivacyScreen.disable().catch(() => undefined);
   syncSystemBars();
   window.addEventListener('qevo:care-progress', (e) => void careProgress((e as CustomEvent<CareProgress | null>).detail ?? null));
   deviceInfo = {

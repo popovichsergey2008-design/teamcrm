@@ -31,8 +31,9 @@ const config: CapacitorConfig = {
   plugins: {
     SplashScreen: { launchAutoHide: true, launchShowDuration: 600, backgroundColor: '#f5f1ea' },
     Keyboard: { resize: 'body' },
-    // Переключатель приложений содержимое не показывает, снимки экрана — можно (D-07 с поправкой).
-    PrivacyScreen: { enable: true, preventScreenshots: false },
+    // 10.11: выключено — на Android плагин ставит FLAG_SECURE и запрещает снимки экрана,
+    // а заказчику нужно присылать скриншоты багов (см. platform/capacitor.ts).
+    PrivacyScreen: { enable: false },
   },
 };
 
