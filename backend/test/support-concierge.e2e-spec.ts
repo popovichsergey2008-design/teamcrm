@@ -8,6 +8,7 @@ import { AllExceptionsFilter } from '../src/common/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../src/common/http/response.interceptor';
 import { RedisIoAdapter } from '../src/common/auth/redis-io.adapter';
 import { DbService } from '../src/database/db.service';
+import { POLICY_VERSIONS } from '../src/modules/legal/policy-consents.service';
 
 /**
  * ТЗ-29: консьерж-поддержка поверх службы заботы.
@@ -118,12 +119,12 @@ describe('ТЗ-29 — консьерж-поддержка (e2e)', () => {
     await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(O).send({ via: 'access', grantId }).expect(404);
     await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(M).send({ via: 'nowhere' }).expect(400);
     const given = (await http.post(`/api/support/desk/${conv.id}/remote-consent`).set(M).set('User-Agent', 'e2e-agent').send({ via: 'access', grantId }).expect(201)).body.data;
-    expect(given).toMatchObject({ active: true, version: 'v2' });
+    expect(given).toMatchObject({ active: true, version: POLICY_VERSIONS.remote_support });
     const row = await db.one<{ version: string; user_agent: string; ip: string | null; context: any }>(
       `SELECT version, user_agent, ip, context FROM policy_consents WHERE policy = 'remote_support' AND context->>'conversationId' = $1::text ORDER BY id DESC LIMIT 1`,
       [String(conv.id)],
     );
-    expect(row).toMatchObject({ version: 'v2', user_agent: 'e2e-agent' });
+    expect(row).toMatchObject({ version: POLICY_VERSIONS.remote_support, user_agent: 'e2e-agent' });
     expect(row!.ip).toBeTruthy();
     expect(row!.context).toMatchObject({ via: 'access', grantId: String(grantId) });
     const granted =(await http.post(`/api/support/desk/${conv.id}/access/${grantId}/decide`).set(M).send({ allow: true, projectId: String(proj.id) }).expect(201)).body.data;
