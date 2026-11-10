@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
+/** Строка блоков «Родительская задача» / «Подзадачи» (#4846). */
+export interface FamilyRow {
+  rel: 'parent' | 'child'; id: string; title: string; closed: boolean; deadline_at: Date | null; project_id: string;
+  assignee_id: string | null; assignee_name: string | null; column_name: string | null; created_at: Date;
+}
+
 export interface BlockerRow {
   id: string; task_id: string; reason: string; need: string; helper_id: string | null; helper_name: string | null;
   next_step: string; due_on: string | null; created_by: string | null; created_at: Date;
@@ -129,6 +135,49 @@ export class FlowRepository {
         WHERE l.tenant_id = $1 AND l.depends_on_id = $2 AND t.deleted_at IS NULL`,
       [tenantId, taskId],
     );
+  }
+
+  // ── подзадачи (#4846) ──
+
+  /** Родитель и подзадачи одной выборкой: блоки карточки рисуются вместе. */
+  family(tenantId: string, taskId: string) {
+    return this.db.many<FamilyRow>(
+      `SELECT 'parent' AS rel, p.id::text, p.title, p.closed_at IS NOT NULL AS closed, p.deadline_at, p.project_id::text,
+              p.assignee_id::text, u.full_name AS assignee_name, c.name AS column_name, p.created_at
+         FROM tasks t JOIN tasks p ON p.id = t.parent_task_id AND p.tenant_id = t.tenant_id
+         LEFT JOIN users u ON u.id = p.assignee_id LEFT JOIN board_columns c ON c.id = p.column_id
+        WHERE t.tenant_id = $1 AND t.id = $2 AND p.deleted_at IS NULL
+       UNION ALL
+       SELECT 'child', s.id::text, s.title, s.closed_at IS NOT NULL, s.deadline_at, s.project_id::text,
+              s.assignee_id::text, u.full_name, c.name, s.created_at
+         FROM tasks s LEFT JOIN users u ON u.id = s.assignee_id LEFT JOIN board_columns c ON c.id = s.column_id
+        WHERE s.tenant_id = $1 AND s.parent_task_id = $2 AND s.deleted_at IS NULL
+        ORDER BY created_at`,
+      [tenantId, taskId],
+    );
+  }
+
+  /** Цепочка родителей вверх от задачи — для запрета кругов. Глубина ограничена на всякий случай. */
+  async ancestors(tenantId: string, taskId: string): Promise<string[]> {
+    const rows = await this.db.many<{ id: string }>(
+      `WITH RECURSIVE up(id, parent, depth) AS (
+         SELECT id, parent_task_id, 0 FROM tasks WHERE tenant_id = $1 AND id = $2
+         UNION ALL
+         SELECT t.id, t.parent_task_id, up.depth + 1 FROM tasks t JOIN up ON t.id = up.parent
+          WHERE t.tenant_id = $1 AND up.depth < 50
+       ) SELECT id::text FROM up`,
+      [tenantId, taskId],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  async setParent(tenantId: string, taskId: string, parentId: string | null): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE tasks SET parent_task_id = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND parent_task_id IS DISTINCT FROM $3::bigint`,
+      [tenantId, taskId, parentId],
+    );
+    return (r.rowCount ?? 0) > 0;
   }
 
   async addLink(tenantId: string, taskId: string, dependsOn: string, actorId: string): Promise<boolean> {

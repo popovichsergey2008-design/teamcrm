@@ -14,6 +14,7 @@ import { toastSaved } from '../../lib/notifications';
 import { useAuth } from '../../state/auth';
 import type { Task, TaskBlocker, User } from '../../types';
 import { HandoffDialog } from './HandoffDialog';
+import { TaskFamily } from './TaskFamily';
 import './task-flow.css';
 import { DateInput } from '../DateInput';
 
@@ -164,6 +165,9 @@ export function TaskFlowPanel({ task, columns, users, onRefresh, onOpenChat }: {
           </div>
         )}
       </div>
+
+      {/* #4846: подзадачи и родительская задача — как в Битрикс24 */}
+      <TaskFamily task={task} columns={columns} users={users} onRefresh={onRefresh} />
 
       {/* Связи: что нужно завершить сначала и кто ждёт эту задачу (#4798 §9) */}
       <div className="tf-block">

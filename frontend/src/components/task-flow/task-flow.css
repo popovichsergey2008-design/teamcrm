@@ -40,3 +40,10 @@
   .rq-grid { grid-template-columns: 1fr; }
   .rq-actions .ui-btn { min-height: 44px; flex: 1 1 100%; }
 }
+/* #4846: подзадачи и родительская задача */
+.tfam-head { display: flex; align-items: center; gap: 6px; }
+.tfam-row { flex-wrap: nowrap; }
+.tfam-title { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tfam-row.is-closed .tfam-title { text-decoration: line-through; color: var(--text-mut); }
+.tfam-due { flex: none; padding: 1px 8px; border: 1px solid var(--accent-line); border-radius: 999px; color: var(--accent); font-size: var(--fs-xs); white-space: nowrap; }
+.tfam .avatar-xs { width: 22px; height: 22px; font-size: 10px; flex: none; }

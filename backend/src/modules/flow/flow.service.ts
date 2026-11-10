@@ -13,7 +13,7 @@ import { TasksService } from '../tasks/tasks.service';
 import {
   BLOCKER_LABEL, BlockerReason, RULE_ACTIONS, RULE_PRESETS, RULE_TRIGGERS, RuleAction, RuleTrigger, ruleSentence, wouldCycle,
 } from './flow-rules';
-import { FlowRepository } from './flow.repository';
+import { FamilyRow, FlowRepository } from './flow.repository';
 
 type Actor = { userId: string; tenantId: string; role: string };
 
@@ -159,6 +159,43 @@ export class FlowService implements OnModuleInit, OnModuleDestroy {
     }
     await this.touched(a.tenantId, taskId);
     return this.repo.linksOf(a.tenantId, taskId);
+  }
+
+  // ── подзадачи (#4846, как в Битрикс24) ──
+
+  /** Родитель и подзадачи. Чужие проекты, которых человек не видит, не показываем. */
+  async family(a: Actor, taskId: string) {
+    await this.visibleTask(a, taskId);
+    const rows = await this.repo.family(a.tenantId, taskId);
+    const seen = new Map<string, boolean>();
+    const out: FamilyRow[] = [];
+    for (const r of rows) {
+      if (!seen.has(r.project_id)) seen.set(r.project_id, await this.projects.canSee(a.tenantId, r.project_id, a));
+      if (seen.get(r.project_id)) out.push(r);
+    }
+    return { parent: out.find((r) => r.rel === 'parent') ?? null, children: out.filter((r) => r.rel === 'child') };
+  }
+
+  /** Сделать задачу подзадачей другой (или снять родителя: parentId = null). */
+  async setParent(a: Actor, taskId: string, parentId: string | null) {
+    const t = await this.visibleTask(a, taskId);
+    const pid = parentId ? String(parentId).replace(/^#/, '') : null;
+    const before = t.parent_task_id ? String(t.parent_task_id) : null;
+    if (pid) {
+      const p = await this.visibleTask(a, pid);
+      if (String(p.id) === String(t.id)) throw AppException.validation('Задача не может быть подзадачей самой себя');
+      if ((await this.repo.ancestors(a.tenantId, String(p.id))).includes(String(t.id))) {
+        throw AppException.conflict(`Нельзя: #${p.id} сама находится внутри #${t.id} — получится круг`, { reason: 'cycle' });
+      }
+    }
+    if (await this.repo.setParent(a.tenantId, String(t.id), pid)) {
+      await this.activity.log(a.tenantId, String(t.id), a.userId, pid ? 'parent_set' : 'parent_removed', { parentId: pid ?? before });
+      if (pid) await this.activity.log(a.tenantId, pid, a.userId, 'subtask_added', { taskId: String(t.id), title: t.title });
+      if (before && before !== pid) await this.activity.log(a.tenantId, before, a.userId, 'subtask_removed', { taskId: String(t.id), title: t.title });
+      await this.touched(a.tenantId, String(t.id));
+      for (const id of [pid, before]) if (id) await this.touched(a.tenantId, id);
+    }
+    return this.family(a, String(t.id));
   }
 
   /** Закрыли задачу — тем, кто её ждал, «можно приступать» (один раз). */

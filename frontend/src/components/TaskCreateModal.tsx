@@ -41,6 +41,8 @@ interface Props {
   onCreated: () => void;
   /** Черновик, с которого продолжаем (#1534): поля заполняются им. */
   draft?: TaskDraft | null;
+  /** #4846: создаём подзадачу — после создания задача встаёт под эту. */
+  parent?: { id: string; title: string } | null;
 }
 
 /** «Через N дней» в значение поля срока: к 18:00, как и при ручной постановке. */
@@ -66,7 +68,7 @@ const PRIORITY_OPTIONS = [
  * иначе задачу приходится заводить в два захода (создал, открыл, дозаполнил).
  * Всё уходит одним запросом: задача с половиной полей хуже, чем ошибка целиком.
  */
-export function TaskCreateModal({ projectId, columnId, columnName, projectName, users, defaultManagerId, onClose, onCreated, draft }: Props) {
+export function TaskCreateModal({ projectId, columnId, columnName, projectName, users, defaultManagerId, onClose, onCreated, draft, parent }: Props) {
   const { user } = useAuth();
   // разбор голоса сорвался в прошлый раз — сказанное возвращается в название (#4668)
   const [title, setTitle] = useState(draft?.title || draft?.speech || '');
@@ -389,6 +391,12 @@ export function TaskCreateModal({ projectId, columnId, columnName, projectName, 
       });
       setCreatedId(String(created.id));
       feedback('task.created');
+      // подзадача: задача уже есть, сбой привязки не должен её терять — скажем ниже
+      let parentLost = false;
+      if (parent) {
+        try { await request('PUT', `/tasks/${created.id}/parent`, { parentId: parent.id }); }
+        catch { parentLost = true; }
+      }
       // #4665: через полминуты — сообщение со списком «тег, проект, исполнитель»; сбой не мешает задаче
       if (filledByVoice.current) void api.nlConfirmLater(String(created.id)).catch(() => undefined);
       removeDraft(draftId.current); // задача создана — черновик своё отслужил
@@ -409,6 +417,11 @@ export function TaskCreateModal({ projectId, columnId, columnName, projectName, 
       const failed = await uploadTaskFiles(String(created.id), files, (i, n, name) => setUploadNote(
         i < n ? `Загружаю файлы: ${i + 1} из ${n} — ${name}` : '',
       ));
+      if (parentLost) {
+        setErr(`Задача создана (#${created.id}), но не встала подзадачей к #${parent?.id}. Откройте её и укажите родительскую задачу в блоке «Родительская задача».`);
+        setBusy(false);
+        return;
+      }
       if (lostItems.length) {
         setErr(`Задача создана (#${created.id}), но не добавились пункты чек-листа: ${lostItems.join('; ')}. Допишите их в карточке, на вкладке «Чек-лист».`);
         setBusy(false);
@@ -479,8 +492,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, projectName, 
       <div className="ui-modal" role="dialog" aria-modal="true" aria-labelledby="task-create-title" onClick={(e) => e.stopPropagation()}>
         <header className="ui-modal-head">
           <div className="ui-modal-title-wrap">
-            <h2 id="task-create-title" className="ui-modal-title">Новая задача</h2>
-            <span className="ui-modal-sub">{projectName ? `Проект «${projectName}» · ` : ''}колонка «{columnName}»</span>
+            <h2 id="task-create-title" className="ui-modal-title">{parent ? 'Новая подзадача' : 'Новая задача'}</h2>
+            <span className="ui-modal-sub">{projectName ? `Проект «${projectName}» · ` : ''}колонка «{columnName}»{parent ? ` · подзадача к #${parent.id} «${parent.title.slice(0, 60)}»` : ''}</span>
           </div>
           <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Закрыть"><Icon name="close" size={16} /></Button>
         </header>

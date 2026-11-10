@@ -46,6 +46,8 @@ export interface TaskRow {
   approval_state: string;
   /** #4799: кто проверяет результат; пусто — постановщик (0243). */
   reviewer_id?: string | null;
+  /** #4846: родительская задача — эта задача её подзадача (0248). */
+  parent_task_id?: string | null;
   /** ТЗ-30: когда сдал на проверку и когда вернули (ставит триггер). */
   submitted_at?: Date | null;
   returned_at?: Date | null;

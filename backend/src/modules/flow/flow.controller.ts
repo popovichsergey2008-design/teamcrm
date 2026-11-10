@@ -26,6 +26,9 @@ class NoteDto {
 class LinkDto {
   @Matches(/^#?\d{1,18}$/) dependsOn!: string;
 }
+class ParentDto {
+  @IsOptional() @Matches(/^#?\d{1,18}$/) parentId?: string | null;
+}
 class SubmitDto {
   @IsOptional() @IsString() @MaxLength(2000) done?: string;
   @IsOptional() @IsString() @MaxLength(1000) where?: string;
@@ -95,6 +98,11 @@ export class FlowController {
   links(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.flow.links(u, id); }
   @Post('tasks/:id/links')
   addLink(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: LinkDto) { return this.flow.addLink(u, id, dto.dependsOn); }
+  /** #4846: подзадачи — родитель и дочерние задачи для карточки; смена родителя. */
+  @Get('tasks/:id/family')
+  family(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.flow.family(u, id); }
+  @Put('tasks/:id/parent')
+  setParent(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ParentDto) { return this.flow.setParent(u, id, dto.parentId ?? null); }
   @Delete('tasks/:id/links/:dep')
   removeLink(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('dep') dep: string) { return this.flow.removeLink(u, id, dep); }
 

@@ -12,6 +12,9 @@ export interface Handoff {
   decision: 'accepted' | 'returned' | null; decided_at: string | null; decision_note: string | null;
 }
 export interface TaskLink { dir: 'waits' | 'blocks'; id: string; title: string; closed: boolean; deadline_at: string | null; project_id: string; assignee_name: string | null }
+/** #4846: родитель и подзадачи для карточки. */
+export interface FamilyTask { rel: 'parent' | 'child'; id: string; title: string; closed: boolean; deadline_at: string | null; project_id: string; assignee_id: string | null; assignee_name: string | null; column_name: string | null }
+export interface TaskFamily { parent: FamilyTask | null; children: FamilyTask[] }
 export interface QueueItem {
   id: string; title: string; project_id: string; project_name: string; column_name: string;
   assignee_name: string | null; creator_name: string | null; deadline_at: string | null; submitted_at: string | null;
@@ -54,6 +57,8 @@ export const flowApi = {
   links: (taskId: string) => request<TaskLink[]>('GET', `/tasks/${taskId}/links`),
   addLink: (taskId: string, dependsOn: string) => request<TaskLink[]>('POST', `/tasks/${taskId}/links`, { dependsOn }),
   removeLink: (taskId: string, dep: string) => request<TaskLink[]>('DELETE', `/tasks/${taskId}/links/${dep}`),
+  family: (taskId: string) => request<TaskFamily>('GET', `/tasks/${taskId}/family`),
+  setParent: (taskId: string, parentId: string | null) => request<TaskFamily>('PUT', `/tasks/${taskId}/parent`, { parentId }),
 
   submit: (taskId: string, b: {
     done?: string; where?: string; limits?: string; reviewerId?: string | null;

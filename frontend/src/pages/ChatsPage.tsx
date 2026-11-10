@@ -3789,28 +3789,29 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             <input type="checkbox" checked={alsoInChannel} onChange={(e) => setAlsoInChannel(e.target.checked)} />
             Также отправить в основной чат
           </label>
+          {/* Приготовленные вложения ветки: видно, что уйдёт, и можно убрать лишнее.
+              #4845: над строкой ввода, как в ленте, — внутри строки снимок выталкивал поле и кнопку «Отправить». */}
+          {threadPending.length > 0 && (
+            <div className="chat-pending">
+              {threadPending.map((p, i) => (
+                <span key={`${p.file.name}-${i}`} className="chat-pending-item">
+                  {p.url
+                    ? <img className="chat-pending-img" src={p.url} alt={p.file.name} />
+                    : <Icon name="paperclip" size={16} />}
+                  <span className="chat-pending-name">{p.file.name}</span>
+                  <button
+                    className="ui-btn ui-btn-ghost ui-btn-sm"
+                    onClick={() => dropThreadPending(i)}
+                    title="Убрать это вложение"
+                    aria-label="Убрать вложение"
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="chat-input">
-            {/* Приготовленные вложения ветки: видно, что уйдёт, и можно убрать лишнее. */}
-            {threadPending.length > 0 && (
-              <div className="chat-pending">
-                {threadPending.map((p, i) => (
-                  <span key={`${p.file.name}-${i}`} className="chat-pending-item">
-                    {p.url
-                      ? <img className="chat-pending-img" src={p.url} alt={p.file.name} />
-                      : <Icon name="paperclip" size={16} />}
-                    <span className="chat-pending-name">{p.file.name}</span>
-                    <button
-                      className="ui-btn ui-btn-ghost ui-btn-sm"
-                      onClick={() => dropThreadPending(i)}
-                      title="Убрать это вложение"
-                      aria-label="Убрать вложение"
-                    >
-                      <Icon name="close" size={14} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
             {/* Скрепка и в ветке: показать снимком быстрее, чем описать словами. */}
             <label className="ui-btn ui-btn-ghost ui-btn-sm" title="Приложить файлы" style={{ cursor: 'pointer' }}>
               <Icon name="paperclip" size={16} />
