@@ -6000,3 +6000,5 @@ body.is-dragging { user-select: none; cursor: grabbing; }
 .screen-crash-card { max-width: 420px; text-align: center; display: grid; gap: 10px; }
 .screen-crash-card h2 { margin: 0; font-size: 18px; }
 .screen-crash-actions { display: flex; gap: 8px; justify-content: center; }
+/* #4852: вместо полосы «Сохранить» — тихая строка, пока идёт автосохранение */
+.task-autosave { position: sticky; bottom: 0; align-self: flex-end; margin-top: 6px; padding: 4px 10px; border-radius: 999px; background: var(--bg-elev-2); color: var(--text-mut); font-size: var(--fs-xs); }

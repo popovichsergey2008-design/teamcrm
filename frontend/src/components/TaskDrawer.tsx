@@ -303,7 +303,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
    * задачи и рассылает уведомления — сливать её с общей правкой полей нельзя.
    */
   /** true — сохранено (или ушло в очередь без сети); false — нет, причина на экране. */
-  const saveAll = async (confirmOverload = false): Promise<boolean> => {
+  const saveAll = async (confirmOverload = false, quiet = false): Promise<boolean> => {
     if (!title.trim()) { setErr('Название не может быть пустым'); return false; }
     setErr('');
     setSaving(true);
@@ -362,27 +362,50 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
       if (approval !== initialApproval) await api.setTaskApproval(task.id, approval);
 
       onRefresh();
-      toastSaved('Задача сохранена');
-      feedback('task.saved');
+      // автосохранение — молча, как в Битриксе: всплывашка на каждую паузу в наборе раздражает
+      if (!quiet) { toastSaved('Задача сохранена'); feedback('task.saved'); }
       return true;
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Ошибка'); return false; }
     finally { setSaving(false); }
   };
 
   /*
-    Закрыть карточку (#1554). Правки названия и описания сохраняются кнопкой — на
-    телефоне её легко не заметить, и закрытие молча теряло написанное. Теперь
-    спрашиваем: сохранить или нет; не сохранилось — карточка остаётся открытой.
+    #4852: автосохранение вместо кнопки «Сохранить» — как в Битриксе.
+
+    Любая правка поля уходит на сервер сама через секунду тишины: печатать можно не
+    отвлекаясь, а запросов — по одному на паузу, а не на букву. Не получилось (перегруз
+    исполнителя ждёт подтверждения, конфликт версий, ошибка) или ушло в очередь без
+    сети — тот же набор правок второй раз не шлём, пока человек его не поменяет.
+    Пустое название не сохраняем — подскажем, когда закроют карточку.
+  */
+  const draftSig = JSON.stringify([title, desc, assigneeId, managerId, priority, estimate, deadline, approval]);
+  const sentSig = useRef<string | null>(null);
+  useEffect(() => {
+    if (!dirty || saving || !title.trim() || sentSig.current === draftSig) return;
+    const timer = window.setTimeout(() => {
+      sentSig.current = draftSig;
+      void saveAll(false, true);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftSig, dirty, saving]);
+
+  /*
+    Закрыть карточку (#1554). Несохранённое (закрыли раньше, чем прошла секунда)
+    дописываем сразу; не сохранилось — карточка остаётся открытой с причиной.
   */
   const closeSafe = async () => {
     if (!dirty) { onClose(); return; }
-    const save = await confirmAction({
-      title: 'Сохранить изменения?',
-      description: 'Вы поправили задачу, но не сохранили правки.',
-      confirmLabel: 'Сохранить', cancelLabel: 'Не сохранять',
-    });
-    if (!save) { onClose(); return; }
-    if (await saveAll()) onClose();
+    if (!title.trim()) {
+      const drop = await confirmAction({
+        title: 'Название пустое',
+        description: 'Без названия задачу не сохранить. Закрыть и не сохранять последние правки?',
+        confirmLabel: 'Закрыть', cancelLabel: 'Вернуться',
+      });
+      if (drop) onClose();
+      return;
+    }
+    if (await saveAll(false, true)) onClose();
   };
   /**
    * Решение постановщика по сданной работе.
@@ -1206,9 +1229,9 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               action={(
                 <Button
                   size="sm"
-                  variant={editingDesc && desc !== (task.description ?? '') ? 'primary' : 'ghost'}
+                  variant="ghost"
                   onClick={() => setEditingDesc((v) => !v)}
-                  title={editingDesc ? 'Закончить правку — сохранится общей кнопкой внизу' : 'Изменить описание'}
+                  title={editingDesc ? 'Закончить правку — описание сохраняется само' : 'Изменить описание'}
                 >
                   <Icon name={editingDesc ? 'check' : 'edit'} size={14} /> {editingDesc ? 'Готово' : 'Редактировать'}
                 </Button>
@@ -1339,19 +1362,10 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
         )}
 
         {/*
-          Полоса сохранения — внизу карточки и всегда на виду, на любой вкладке.
-          Ответ на вопрос «мои правки применились?» лежит в ОДНОМ месте.
+          #4852: кнопки «Сохранить» больше нет — правки сохраняются сами. Тихая строка
+          остаётся только на время записи: подтверждение, что ничего нажимать не нужно.
         */}
-        <div className={`task-save-bar${dirty ? ' is-dirty' : ''}`}>
-          <span className="task-save-note">
-            {dirty
-              ? 'Есть несохранённые правки — Ctrl+S или «Сохранить»'
-              : 'Всё сохранено. Файлы, теги, люди и чек-лист сохраняются сразу'}
-          </span>
-          <Button variant="primary" onClick={() => saveAll(false)} disabled={!dirty} loading={saving}>
-            {saving ? 'Сохраняю…' : dirty ? 'Сохранить' : 'Сохранено'}
-          </Button>
-        </div>
+        {saving && <div className="task-autosave" role="status">Сохраняю…</div>}
         </div>
 
         {/* Правая колонка — чат задачи. Он на виду всегда: обсуждение и есть работа

@@ -59,7 +59,7 @@
 .kc-step.t-returned { background: var(--warn-soft); color: var(--text); }
 .kc-step.t-client, .kc-step.t-wait { background: var(--bg-elev-2); color: var(--text-dim); }
 .board-v2 .task-card-new { box-shadow: inset 3px 0 0 var(--accent), 0 1px 2px rgba(16,24,40,.05); }
-.board-v2 .task-unread { background: var(--accent); }
+.board-v2 .task-unread { background: var(--fill-danger); color: var(--on-fill); } /* #4855: как в компактном виде */
 
 /* колонки: ширина, свёрнутые, «Показать более ранние» */
 .board-columns.w-narrow .column { width: 248px; }
@@ -190,7 +190,18 @@
 .kc-prio::before { content: '· '; color: var(--text-mut); font-weight: 400; }
 .kc-prio.p-high { color: var(--warn); font-weight: 600; }
 .kc-prio.p-urgent { color: var(--danger); font-weight: 600; }
-.kc-unread { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+/*
+  #4855: «новое для вас» — красный кружок с числом. Синяя точка 7 px терялась на карточке.
+  Красный с белой цифрой контрастен на обеих темах (--fill-danger светлее в тёмной), а
+  кольцо цвета карточки отделяет его от соседних значков. С «Просрочено» не путается:
+  там бледная плашка со словами, здесь — насыщенный кружок с числом.
+*/
+.kc-unread {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--fill-danger); color: var(--on-fill); font-size: 11px; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 2px var(--bg-elev);
+}
 .kc-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .kc-line3 { display: flex; align-items: center; gap: 6px; min-height: 19px; min-width: 0; font-size: calc(12px * var(--fs-scale)); }
 .kc-ava { display: grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; flex: none; color: #fff; font-size: 8.5px; font-weight: 700; }
@@ -232,3 +243,5 @@
   .kv2-count { font-size: calc(12.5px * var(--fs-scale)); }
 }
 
+/* #4854: «Реестр всех проектов» и «Общие задачи» в списке проектов — только на телефоне, на компьютере они кнопками в шапке */
+@media (min-width: 721px) { .board-switch-pop .board-switch-phone { display: none; } }

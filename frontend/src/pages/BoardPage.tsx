@@ -293,12 +293,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
   /** Переключатель досок в названии проекта: открыт ли и что набрали в поиске. */
   const [switchOpen, setSwitchOpen] = useState(false);
   const [switchQuery, setSwitchQuery] = useState('');
-  /** #4829: список открывается под той кнопкой, которой его вызвали, — по её левому краю. */
-  const [switchFrom, setSwitchFrom] = useState<'name' | 'all'>('all');
-  const toggleSwitch = (from: 'name' | 'all') => {
-    setSwitchFrom(from);
-    setSwitchOpen((v) => !(v && from === switchFrom));
-  };
+  // #4854: список проектов один — под названием проекта
+  const toggleSwitch = () => setSwitchOpen((v) => !v);
   const switchPopRef = useRef<HTMLSpanElement | null>(null);
   // У правого края экрана список, выровненный влево, ушёл бы за край — сдвигаем ровно на вылет.
   useLayoutEffect(() => {
@@ -307,10 +303,10 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
     el.style.left = '0px';
     const over = el.getBoundingClientRect().right - (window.innerWidth - 8);
     if (over > 0) el.style.left = `${-over}px`;
-  }, [switchOpen, switchFrom]);
+  }, [switchOpen]);
   // Щелчок мимо списка досок и Esc закрывают его: без этого он висел до перезагрузки.
   const closeSwitch = useCallback(() => setSwitchOpen(false), []);
-  useDismiss(switchOpen, closeSwitch, '.board-switch-btn, .bp-name-btn');
+  useDismiss(switchOpen, closeSwitch, '.bp-name-btn');
   const [showFeed, setShowFeed] = useState(false);
   const subscribedRef = useRef<string | null>(null);
   // поле создания проекта живёт внизу сайдбара — с пустого экрана до него ведёт кнопка
@@ -835,14 +831,15 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
             {!!p.unread && <span className="ui-badge ui-badge-info">{p.unread}</span>}
           </button>
         ))}
+      {/* на компьютере эти два пункта есть кнопками в шапке — в списке они только на телефоне (#4854) */}
       <button
-        className="chat-pop-row board-switch-all"
+        className="chat-pop-row board-switch-all board-switch-phone"
         onClick={() => { setSwitchOpen(false); forgetProject(); navigate({ section: 'projects' }); }}
       >
         <Icon name="list" size={13} /> Реестр всех проектов
       </button>
       {/* на телефоне кнопок «Все проекты / Общие задачи» в шапке нет — переход здесь */}
-      <button className="chat-pop-row" onClick={() => { setSwitchOpen(false); navigate({ section: 'tasks' }); }}>
+      <button className="chat-pop-row board-switch-phone" onClick={() => { setSwitchOpen(false); navigate({ section: 'tasks' }); }}>
         <Icon name="board" size={13} /> Общие задачи
       </button>
     </span>
@@ -900,22 +897,23 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
               <span className="bp-ico" aria-hidden="true">{board.project.name.trim().charAt(0).toUpperCase()}</span>
               <span className="board-switch">
                 <h1 className="bp-name">
-                  <button className="bp-name-btn" onClick={() => toggleSwitch('name')} aria-expanded={switchOpen && switchFrom === 'name'} title="Открыть список проектов">
+                  <button className="bp-name-btn" onClick={toggleSwitch} aria-expanded={switchOpen} title="Открыть список проектов">
                     {board.project.name} <Icon name="chevron-down" size={14} />
                   </button>
                 </h1>
-                {switchOpen && switchFrom === 'name' && switchPop}
+                {switchOpen && switchPop}
               </span>
               {/* #4713: проект — в избранное, он появится в сайдбаре */}
               <FavoriteStar kind="project" id={String(board.project.id)} title={board.project.name} />
               <span className="bp-ctx">
-                {/* «Все проекты ⌄» — переход к другому проекту и реестр; «Общие задачи» — задачи из нескольких проектов */}
-                <span className="board-switch">
-                  <Button variant="ghost" size="sm" className="board-switch-btn bp-all-btn" onClick={() => toggleSwitch('all')} aria-expanded={switchOpen && switchFrom === 'all'} title="Перейти к другому проекту или открыть реестр проектов">
-                    Все проекты <Icon name="chevron-down" size={14} />
-                  </Button>
-                  {switchOpen && switchFrom === 'all' && switchPop}
-                </span>
+                {/*
+                  #4854: «Все проекты» — реестр проектов, а не второй такой же список.
+                  Раньше и стрелка у названия, и эта кнопка открывали одно и то же меню —
+                  дубль. Переключиться на другой проект — стрелка у названия.
+                */}
+                <Button variant="ghost" size="sm" className="bp-all-btn" onClick={() => { forgetProject(); navigate({ section: 'projects' }); }} title="Реестр всех проектов">
+                  Все проекты
+                </Button>
                 <Button variant="ghost" size="sm" className="bp-quiet" onClick={() => navigate({ section: 'tasks' })} title="Задачи из всех доступных проектов, с названием проекта у каждой">
                   Общие задачи ↗
                 </Button>
