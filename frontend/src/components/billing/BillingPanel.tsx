@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/api';
 import { billingApi, type BillingView } from '../../lib/billing-api';
 import { useEscape } from '../../hooks/useEscape';
 import { overlayProps } from '../../lib/overlay';
+import { TeamBonusBlock } from './TeamBonusBlock';
 import '../ai-plan.css';
 import './billing.css';
 
@@ -80,6 +81,8 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
               <div className="dim bil-note">Сотрудников в компании: {v.members}.</div>
               {v.testMode && <div className="dim bil-note">Тестовый режим ЮKassa: настоящие деньги не списываются.</div>}
             </div>
+
+            {v.teamBonus && <TeamBonusBlock bonus={v.teamBonus} canInvite={canPay} onChanged={() => void billingApi.view().then(setV).catch(() => undefined)} />}
 
             {!v.complimentary && (
               <div className="drawer-section">

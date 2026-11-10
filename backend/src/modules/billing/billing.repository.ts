@@ -290,6 +290,75 @@ export class BillingRepository {
     await this.db.query(`UPDATE billing_webhook_events SET processed_at=now(), error=$2 WHERE id=$1`, [id, error]);
   }
 
+  // ── «Пригласить команду · +1 мес» ──
+
+  /**
+   * Сколько человек пришло в команду, не считая владельца: участники как в membersCount
+   * (без клиентов, служебный профиль поддержки не активен и не считается) минус один.
+   */
+  async invitedCount(tenantId: string): Promise<number> {
+    return Math.max(0, (await this.membersCount(tenantId)) - 1);
+  }
+
+  /** Отметка бонуса за команду: когда начислен и до какого числа продлил. */
+  teamBonusOf(tenantId: string) {
+    return this.db.one<{ team_bonus_at: Date | null; team_bonus_until: Date | null }>(
+      `SELECT team_bonus_at, team_bonus_until FROM tenants WHERE id = $1`, [tenantId],
+    );
+  }
+
+  /** Пространства, уже набравшие команду, но без бонуса: «вечные» и площадка не в счёт. */
+  async teamBonusCandidates(minInvited: number): Promise<string[]> {
+    const rows = await this.db.many<{ id: string }>(
+      `SELECT t.id::text FROM tenants t
+         LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
+        WHERE t.team_bonus_at IS NULL AND NOT t.is_platform AND NOT COALESCE(s.complimentary, FALSE)
+          AND (SELECT count(*) FROM users u JOIN roles r ON r.id = u.role_id
+                WHERE u.tenant_id = t.id AND u.is_active AND r.code <> 'client') - 1 >= $1`,
+      [minInvited],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Начислить месяц за команду — один раз. Продлевается то, что сейчас действует:
+   * оплаченный срок, иначе пробный (свой у подписки или у пространства). Уже кончилось —
+   * месяц считается от сегодня. Отметка и продление — одной транзакцией.
+   * Начислили — новый конец; уже было (или «вечное») — null.
+   */
+  async grantTeamBonus(tenantId: string, months: number, trialDays: number): Promise<Date | null> {
+    return this.db.withTransaction(async (c) => {
+      const mark = await c.query(
+        `UPDATE tenants t SET team_bonus_at = now(), updated_at = now()
+          WHERE t.id = $1 AND t.team_bonus_at IS NULL AND NOT t.is_platform
+            AND NOT EXISTS (SELECT 1 FROM tenant_subscriptions s WHERE s.tenant_id = t.id AND s.complimentary)
+          RETURNING t.id`, [tenantId],
+      );
+      if (!mark.rowCount) return null;
+      const step = `make_interval(months => ${Number(months)})`;
+      const sub = await c.query<{ current_period_end: Date | null; trial_ends_at: Date | null }>(
+        `SELECT current_period_end, trial_ends_at FROM tenant_subscriptions WHERE tenant_id = $1 FOR UPDATE`, [tenantId],
+      );
+      const s = sub.rows[0];
+      let until: Date;
+      if (s?.current_period_end) {
+        until = (await c.query<{ v: Date }>(
+          `UPDATE tenant_subscriptions SET current_period_end = GREATEST(current_period_end, now()) + ${step}, updated_at = now()
+            WHERE tenant_id = $1 RETURNING current_period_end AS v`, [tenantId])).rows[0].v;
+      } else if (s?.trial_ends_at) {
+        until = (await c.query<{ v: Date }>(
+          `UPDATE tenant_subscriptions SET trial_ends_at = GREATEST(trial_ends_at, now()) + ${step}, updated_at = now()
+            WHERE tenant_id = $1 RETURNING trial_ends_at AS v`, [tenantId])).rows[0].v;
+      } else {
+        until = (await c.query<{ v: Date }>(
+          `UPDATE tenants SET trial_ends_at = GREATEST(COALESCE(trial_ends_at, created_at + make_interval(days => $2::int)), now()) + ${step}
+            WHERE id = $1 RETURNING trial_ends_at AS v`, [tenantId, trialDays])).rows[0].v;
+      }
+      await c.query(`UPDATE tenants SET team_bonus_until = $2 WHERE id = $1`, [tenantId, until]);
+      return until;
+    });
+  }
+
   async membersCount(tenantId: string): Promise<number> {
     const r = await this.db.one<{ n: string }>(
       `SELECT count(*)::text AS n FROM users u JOIN roles r ON r.id=u.role_id WHERE u.tenant_id=$1 AND u.is_active AND r.code <> 'client'`,

@@ -492,7 +492,7 @@ function TaskCard({
           <span>№{task.id}</span>
           {prio && (task.priority === 'high' || task.priority === 'urgent') && <span className={`kc-prio p-${task.priority}`}>{prio.label}</span>}
           {task.risk_level && !paused && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
-          {/* #4855: было синей точкой 7 px — её не замечали; теперь красный кружок с числом, как в мессенджерах */}
+          {/* #4855: было синей точкой 7 px — её не замечали; теперь крупный яркий синий кружок с числом */}
           {!!task.unread && (
             <span className="kc-unread" title={`Новое для вас: ${task.unread} — с вашего последнего просмотра (не просрочка)`} aria-label={`Новое для вас: ${task.unread}`}>
               {task.unread > 99 ? '99+' : task.unread}

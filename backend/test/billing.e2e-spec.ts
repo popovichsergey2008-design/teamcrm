@@ -63,6 +63,26 @@ describe('Оплата подписки (e2e)', () => {
     await http.post('/api/auth/email/resend').set(H(o.token)).expect(200);
   });
 
+  it('«Пригласить команду · +1 мес»: шестой приглашённый — месяц к пробному один раз', async () => {
+    const o = await register();
+    const before = (await http.get('/api/billing').set(H(o.token)).expect(200)).body.data;
+    expect(before.teamBonus).toMatchObject({ need: 6, invited: 0, grantedAt: null });
+    const role = await db.one<{ id: string }>(`SELECT id FROM roles WHERE code = 'member' LIMIT 1`);
+    for (let i = 0; i < 6; i++) {
+      await db.query(`INSERT INTO users (tenant_id, email, full_name, password_hash, role_id) VALUES ($1, $2, 'Коллега', 'x', $3)`,
+        [o.tenantId, `team_${i}_${uniq()}@t.test`, role!.id]);
+    }
+    const after = (await http.get('/api/billing').set(H(o.token)).expect(200)).body.data;
+    expect(after.teamBonus.invited).toBe(6);
+    expect(after.teamBonus.grantedAt).toBeTruthy();
+    const added = new Date(after.until).getTime() - new Date(before.until).getTime();
+    expect(added / 86_400_000).toBeGreaterThanOrEqual(28);
+    const again = (await http.get('/api/billing').set(H(o.token)).expect(200)).body.data;
+    expect(again.until).toBe(after.until);
+    const mails = await db.many(`SELECT event_key FROM mail_outbox WHERE tenant_id=$1 AND event_key = 'billing.team_bonus'`, [o.tenantId]);
+    expect(mails.length).toBe(1);
+  });
+
   it('напоминание владельцу о конце пробного — одно письмо, без повторов', async () => {
     const o = await register();
     // #4779: пробный — 7 + 7 дней от регистрации (tenants.trial_ends_at); до конца осталось 2 дня

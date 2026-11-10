@@ -22,6 +22,8 @@ export interface BillingView {
   testMode: boolean;
   /** #4779: пробный 7 + 7 — первые 7 дней и бонус за регистрацию в Telegram-боте. */
   trial: { baseDays: number; bonusDays: number; bonusGranted: boolean; firstEnds: string; until: string | null } | null;
+  /** «Пригласить команду · +1 мес»: сколько пришло (без владельца), сколько нужно, начислен ли месяц. */
+  teamBonus: { need: number; months: number; invited: number; grantedAt: string | null; until: string | null } | null;
 }
 
 export const billingApi = {

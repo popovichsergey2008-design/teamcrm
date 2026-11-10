@@ -91,6 +91,9 @@
   --fill-info:   #0b5e9e;
   --fill-muted:  #525d72;
   --on-fill:     #ffffff;
+  /* #4855: «новое для вас» — яркий синий кружок (Борис: «больше и ярче, но синий»); белая цифра 5,1:1 */
+  --notify:      #1a66d9;
+  --on-notify:   #ffffff;
 
   /*
     ───── Фирменные цвета QEVO ─────
@@ -199,6 +202,8 @@
     --fill-danger: #b3303a;
     --fill-info:   #0a6bb0;
     --fill-muted:  #4d5c77;
+    --notify:      #5aa2ff;
+    --on-notify:   #08121f;
     --on-ok:     #08110d;
   --on-warn:   #1a1300;
     --overlay:   rgba(6,10,20,.55);
@@ -263,6 +268,8 @@
   --fill-danger: #b3303a;
   --fill-info:   #0a6bb0;
   --fill-muted:  #4d5c77;
+  --notify:      #5aa2ff;
+  --on-notify:   #08121f;
   --on-ok:     #08110d;
   --on-warn:   #1a1300;
   --overlay:   rgba(6,10,20,.55);

@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '../../common/http/app-exception';
-import { amountValue, effective, Effective, extendPeriod, moveFor, moveKey, movePrice, moveReady, noticeDue, PriceMove } from './billing-rules';
+import { amountValue, effective, Effective, extendPeriod, moveFor, moveKey, movePrice, moveReady, noticeDue, PriceMove, TEAM_BONUS_INVITES, TEAM_BONUS_MONTHS, TRIAL_DAYS } from './billing-rules';
 import { BillingRepository, PlanRow, TenantSubRow } from './billing.repository';
 import { billingLetter, priceMoveLetter } from './billing-letters';
 import { ProviderPayment, YooKassaClient, YooKassaError } from './yookassa.client';
@@ -69,6 +69,8 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
 
   /** Экран «Тариф и оплата». */
   async view(tenantId: string) {
+    // пригласили шестого и сразу открыли «Тариф» — не ждать фонового прохода
+    await this.checkTeamBonus(tenantId).catch(() => undefined);
     const [row, plans, payments, members] = await Promise.all([
       this.repo.sub(tenantId), this.repo.plans(), this.repo.payments(tenantId), this.repo.membersCount(tenantId),
     ]);
@@ -102,7 +104,29 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       configured: !!this.kassa,
       testMode: this.kassa?.testMode ?? false,
       trial: this.trialOut(row, eff),
+      teamBonus: eff.complimentary ? null : await this.teamBonusOut(tenantId),
     };
+  }
+
+  // ───────────── «Пригласить команду · +1 мес» ─────────────
+
+  private async teamBonusOut(tenantId: string) {
+    const [invited, mark] = await Promise.all([this.repo.invitedCount(tenantId), this.repo.teamBonusOf(tenantId)]);
+    return {
+      need: TEAM_BONUS_INVITES, months: TEAM_BONUS_MONTHS, invited,
+      grantedAt: mark?.team_bonus_at ?? null, until: mark?.team_bonus_until ?? null,
+    };
+  }
+
+  /** Набрали команду — начислить месяц и написать владельцам. Повторно ничего не делает. */
+  async checkTeamBonus(tenantId: string): Promise<boolean> {
+    if ((await this.repo.invitedCount(tenantId)) < TEAM_BONUS_INVITES) return false;
+    const until = await this.repo.grantTeamBonus(tenantId, TEAM_BONUS_MONTHS, TRIAL_DAYS);
+    if (!until) return false;
+    this.forget(tenantId);
+    this.log.log(`бонус за команду: пространство ${tenantId}, до ${until.toISOString().slice(0, 10)}`);
+    await this.notify(tenantId, 'team_bonus', until, `team_bonus:${tenantId}`).catch(() => undefined);
+    return true;
   }
 
   /**
@@ -268,6 +292,10 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
         await this.repo.markNotified(row.tenant_id, moveKey(move.id));
         acted += 1;
       }
+    }
+    // «+1 мес за команду»: тем, кто набрал 6 приглашённых с прошлого прохода
+    for (const id of await this.repo.teamBonusCandidates(TEAM_BONUS_INVITES)) {
+      if (await this.checkTeamBonus(id).catch((e) => { this.log.warn(`бонус за команду ${id}: ${(e as Error).message}`); return false; })) acted += 1;
     }
     for (const row of await this.repo.watchList()) {
       const eff = effective(row, new Date(row.tenant_created_at), now, row.is_platform);

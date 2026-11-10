@@ -6,6 +6,9 @@
  */
 export const TRIAL_DAYS = 14;
 export const GRACE_DAYS = 3;
+/** «Пригласить команду · +1 мес»: столько участников кроме владельца — и месяц в подарок, один раз. */
+export const TEAM_BONUS_INVITES = 6;
+export const TEAM_BONUS_MONTHS = 1;
 export const PERIOD_MONTHS = 1;
 const DAY = 86_400_000;
 

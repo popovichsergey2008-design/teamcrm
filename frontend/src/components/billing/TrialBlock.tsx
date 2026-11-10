@@ -3,6 +3,8 @@ import { billingApi, type BillingView } from '../../lib/billing-api';
 import { dayMonth, daysUntil, openTelegramBot } from '../../lib/tg-bonus';
 import { Icon } from '../Icon';
 import { useTrialLimits } from '../../lib/trial-limits';
+import { useAuth } from '../../state/auth';
+import { TeamBonusBlock } from './TeamBonusBlock';
 
 /**
  * Блок пробного периода в «Настройки → Тариф и ИИ» (#4779, п. 3): на сайте обещаем
@@ -13,6 +15,7 @@ export function TrialBlock() {
   const [v, setV] = useState<BillingView | null>(null);
   const [note, setNote] = useState('');
   const limits = useTrialLimits();
+  const { user } = useAuth();
   useEffect(() => {
     const load = () => billingApi.view().then(setV).catch(() => undefined);
     load();
@@ -20,9 +23,14 @@ export function TrialBlock() {
     return () => window.removeEventListener('focus', load);
   }, []);
   const t = v?.trial;
-  if (!t) return null;
+  const team = v?.teamBonus ? (
+    <TeamBonusBlock bonus={v.teamBonus} canInvite={user?.role === 'owner' || user?.role === 'manager'}
+      onChanged={() => void billingApi.view().then(setV).catch(() => undefined)} />
+  ) : null;
+  if (!t) return team;
   const left = Math.min(t.baseDays, daysUntil(t.firstEnds));
   return (
+    <>
     <div className="drawer-section">
       <div className="drawer-section-title">Пробный период</div>
       {t.bonusGranted ? (
@@ -47,5 +55,7 @@ export function TrialBlock() {
         </ul>
       )}
     </div>
+    {team}
+    </>
   );
 }
