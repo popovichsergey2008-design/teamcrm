@@ -12,7 +12,7 @@ export type LegalKind = 'privacy' | 'remote-support';
 
 export const LEGAL: Record<LegalKind, { path: string; title: string; version: string; date: string }> = {
   privacy: { path: '/legal/privacy', title: 'Политика конфиденциальности', version: 'v2', date: '26.10.2026' },
-  'remote-support': { path: '/legal/remote-support', title: 'Политика удалённой технической поддержки', version: 'v2', date: '26.10.2026' },
+  'remote-support': { path: '/legal/remote-support', title: 'Политика удалённой технической поддержки', version: 'v3', date: '05.11.2026' },
 };
 
 /** Какой документ открыт по адресу; null — адрес не про политики. */

@@ -93,7 +93,7 @@ export function ColumnView({
     const title = (quick ?? '').trim();
     if (!title || !onQuickAdd) { setQuick(null); return; }
     setQuickBusy(true);
-    try { await onQuickAdd(column.id, title); setQuick(''); } finally { setQuickBusy(false); }
+    try { await onQuickAdd(column.id, title); setQuick(null); /* созданная задача открывается сама (#4849) */ } finally { setQuickBusy(false); }
   };
   const [over, setOver] = useState(false);
   const [colOver, setColOver] = useState(false);
@@ -410,6 +410,8 @@ function TaskCard({
     step && step.tone !== 'work' ? step.text : '',
     task.audio_proof_sec ? `Фрагмент созвона ${task.audio_proof_sec} сек` : '',
     task.checklistTotal ? `Чек-лист ${task.checklistDone}/${task.checklistTotal}` : '',
+    task.subtasksTotal ? `Подзадачи ${task.subtasksDone}/${task.subtasksTotal}` : '',
+    task.parent_task_id ? `Подзадача к #${task.parent_task_id}` : '',
     stale > 0 ? `Нет обновления ${daysWord(stale)}` : '',
     task.agent_assigned ? 'Исполнитель — ИИ-агент' : '',
     task.merged_into_id ? `Объединена с #${task.merged_into_id}` : '',
@@ -502,6 +504,9 @@ function TaskCard({
             {!!task.commentsCount && <span><Icon name="chat" size={12} />{task.commentsCount}</span>}
             {!!task.attachmentsCount && <span><Icon name="paperclip" size={12} />{task.attachmentsCount}</span>}
             {!!task.checklistTotal && <span className={task.checklistDone === task.checklistTotal ? 'is-done' : undefined}><Icon name="check" size={12} />{task.checklistDone}/{task.checklistTotal}</span>}
+            {/* #4846: подзадачи «завершено/всего»; у самой подзадачи — значок, что она часть другой */}
+            {!!task.subtasksTotal && <span className={task.subtasksDone === task.subtasksTotal ? 'is-done' : undefined} title={`Подзадачи: завершено ${task.subtasksDone} из ${task.subtasksTotal}`} aria-label={`Подзадачи: завершено ${task.subtasksDone} из ${task.subtasksTotal}`}><Icon name="list" size={12} />{task.subtasksDone}/{task.subtasksTotal}</span>}
+            {!!task.parent_task_id && <span title={`Подзадача к #${task.parent_task_id}`} aria-label={`Подзадача к #${task.parent_task_id}`}><Icon name="arrow-up" size={12} />#{task.parent_task_id}</span>}
           </span>
         </div>
       </>) : (<>
@@ -552,6 +557,8 @@ function TaskCard({
         {due ? <span className={`kc-due d-${due.tone}`} title={task.deadline_at ? `Срок: ${new Date(task.deadline_at).toLocaleString('ru-RU')}` : undefined}>{due.text}</span> : <span className="kc-due d-none">без срока</span>}
         <span className="kc-counts">
           {!!task.checklistTotal && <span className={task.checklistDone === task.checklistTotal ? 'is-done' : undefined} title="Чек-лист">Чек-лист {task.checklistDone}/{task.checklistTotal}</span>}
+          {!!task.subtasksTotal && <span className={task.subtasksDone === task.subtasksTotal ? 'is-done' : undefined} title="Подзадачи: завершено / всего">Подзадачи {task.subtasksDone}/{task.subtasksTotal}</span>}
+          {!!task.parent_task_id && <span title="Эта задача — часть другой">Подзадача к #{task.parent_task_id}</span>}
           {!!task.commentsCount && <span title="Сообщений в обсуждении">Комментарии {task.commentsCount}</span>}
           {MONETIZATION_ENABLED && cost !== null && <span title="Себестоимость в реальном времени">₽ {cost.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}</span>}
         </span>

@@ -400,6 +400,10 @@ export interface Task {
   audio_proof_sec?: number | null;
   checklistTotal?: number;
   checklistDone?: number;
+  /** #4846: подзадачи — всего и завершено; у подзадачи — её родитель. */
+  subtasksTotal?: number;
+  subtasksDone?: number;
+  parent_task_id?: string | null;
   /**
    * Сколько по задаче произошло НОВОГО лично для меня.
    *

@@ -1074,8 +1074,10 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     detail={ui.detail}
                     onQuickAdd={async (columnId, title) => {
                       try {
-                        await api.createTask({ projectId: String(board.project.id), title, columnId: String(columnId), confirmedWithoutTags: true });
-                        void reloadBoard();
+                        const created = await api.createTask({ projectId: String(board.project.id), title, columnId: String(columnId), confirmedWithoutTags: true });
+                        // #4849: Enter — и задача сразу открыта; искать её внизу колонки не нужно
+                        reloadBoard(); // карточка возьмёт задачу из доски, как только та придёт
+                        setOpenTaskId(String(created.id));
                       } catch (e) {
                         setError(e instanceof ApiError ? e.message : 'Не удалось создать задачу');
                         throw e;

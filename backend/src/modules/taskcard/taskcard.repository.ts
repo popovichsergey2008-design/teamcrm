@@ -328,12 +328,15 @@ export class TaskCardRepository {
         WHERE tl.tenant_id=$1 AND tl.task_id IN (SELECT id FROM tasks WHERE tenant_id=$1 AND project_id=$2)`,
       [tenantId, projectId],
     );
-    const counts = await this.db.many<{ task_id: string; comments: string; attachments: string; cl_total: string; cl_done: string }>(
+    const counts = await this.db.many<{ task_id: string; comments: string; attachments: string; cl_total: string; cl_done: string; sub_total: string; sub_done: string }>(
       `SELECT t.id AS task_id,
               (SELECT COUNT(*) FROM task_comments c WHERE c.task_id=t.id) AS comments,
               (SELECT COUNT(*) FROM task_attachments a WHERE a.task_id=t.id) AS attachments,
               (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.task_id=t.id) AS cl_total,
-              (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.task_id=t.id AND ci.is_done) AS cl_done
+              (SELECT COUNT(*) FROM task_checklist_items ci WHERE ci.task_id=t.id AND ci.is_done) AS cl_done,
+              -- #4846: подзадачи на карточке доски — «3/5», как чек-лист
+              (SELECT COUNT(*) FROM tasks s WHERE s.parent_task_id=t.id AND s.deleted_at IS NULL) AS sub_total,
+              (SELECT COUNT(*) FROM tasks s WHERE s.parent_task_id=t.id AND s.deleted_at IS NULL AND s.closed_at IS NOT NULL) AS sub_done
          FROM tasks t WHERE t.tenant_id=$1 AND t.project_id=$2`,
       [tenantId, projectId],
     );
