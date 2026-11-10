@@ -367,3 +367,16 @@ button, input, textarea, select { font-family: inherit; font-size: inherit; }
 
 /* иконки: наследуют цвет текста и выравниваются по строке */
 .icon { display: inline-block; vertical-align: -0.125em; flex-shrink: 0; }
+
+/*
+  Телефон (10.11, после переделки доски и меню #4807): мелкие подписи стали 11 px —
+  номера, статусы, бейджи, поля карточки. На экране телефона это нечитаемо. Два
+  нижних размера на телефоне крупнее; крупные заголовки не трогаем.
+*/
+@media (max-width: 720px) {
+  :root { --fs-xs: calc(12.5px * var(--fs-scale)); --fs-sm: calc(14px * var(--fs-scale)); }
+  /* подписи, заданные числом, а не токеном: поля карточки задачи, «Входящие», «Фокус дня» */
+  :root :is(.tf-grid dt, .ib-group, .ib-wait, .ib-time, .ib-sub, .fd-rank, .fd-check, .fb-title, .tasks-v2-id, .tv2-num) {
+    font-size: calc(12.5px * var(--fs-scale));
+  }
+}

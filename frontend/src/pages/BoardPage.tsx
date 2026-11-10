@@ -841,6 +841,10 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       >
         <Icon name="list" size={13} /> Реестр всех проектов
       </button>
+      {/* на телефоне кнопок «Все проекты / Общие задачи» в шапке нет — переход здесь */}
+      <button className="chat-pop-row" onClick={() => { setSwitchOpen(false); navigate({ section: 'tasks' }); }}>
+        <Icon name="board" size={13} /> Общие задачи
+      </button>
     </span>
   );
 

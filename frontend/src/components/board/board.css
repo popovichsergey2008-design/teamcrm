@@ -147,6 +147,24 @@
 .board-v2 .bb-status { min-height: 22px; gap: 4px 6px; font-size: calc(11.5px * var(--fs-scale)); }
 .bb-sum { color: var(--text-mut); white-space: nowrap; }
 .bb-stages { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: 4px; }
+/*
+  #4841: на планшете и ноутбуке строка «Показано… · этапы · Инфоцентр» переносилась —
+  кнопка Инфоцентра уезжала пятой строкой и съедала высоту доски. Строка — одна:
+  этапы прокручиваются вбок, «Показано…» обрезается многоточием, Инфоцентр — справа.
+*/
+@media (min-width: 721px) {
+  .board-v2 .bb-status { flex-wrap: nowrap; }
+  .board-v2 .bb-status > * { flex-shrink: 0; }
+  .board-v2 .bb-status .bb-sum { flex-shrink: 1; min-width: 60px; overflow: hidden; text-overflow: ellipsis; }
+  .board-v2 .bb-status .bb-stages { flex-wrap: nowrap; flex-shrink: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .board-v2 .bb-status .bb-stages::-webkit-scrollbar { display: none; }
+  .board-v2 .bb-status .bb-spacer { flex: 1 1 0; min-width: 0; }
+  /* то же для строки быстрых условий: «Проверить по очереди» не уезжает отдельной строкой */
+  .board-v2 .bb-quick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .board-v2 .bb-quick::-webkit-scrollbar { display: none; }
+  .board-v2 .bb-quick > * { flex-shrink: 0; }
+  .board-v2 .bb-quick .bb-spacer { flex: 1 1 0; min-width: 8px; }
+}
 .board-v2 .bb-stage { height: 20px; padding: 0 7px; line-height: 18px; font-size: calc(11.5px * var(--fs-scale)); }
 .board-v2 .bb-status .bb-link, .board-v2 .bb-quick .bb-link { font-size: calc(11.5px * var(--fs-scale)); padding: 0 2px; }
 .bb-link:disabled { color: var(--text-mut); cursor: default; text-decoration: none; }
@@ -187,3 +205,30 @@
 .kc-compact .task-card-move { top: 4px; right: 4px; display: flex; gap: 2px; }
 .board-v2 .bb .kv2-seg { padding: 1px; }
 .board-v2 .bb .kv2-seg-btn { height: 26px; }
+
+/*
+  Доска на телефоне (10.11): шапка занимала половину экрана — девять строк до первой
+  колонки, — а карточка унаследовала «компактные» размеры компьютера (номер 11,5 px,
+  инициалы 8,5 px). Шапка: быстрые условия и этапы — по одной строке с прокруткой вбок,
+  «Все проекты / Общие задачи» — в списке проектов под названием. Карточка — крупнее.
+*/
+@media (max-width: 720px) {
+  .bp-head .bp-ctx { display: none; }
+  .board-v2 .bb-quick, .board-v2 .bb-status {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    margin-right: -12px; padding-right: 12px;
+  }
+  .board-v2 .bb-quick::-webkit-scrollbar, .board-v2 .bb-status::-webkit-scrollbar { display: none; }
+  .board-v2 .bb-quick > *, .board-v2 .bb-status > * { flex-shrink: 0; }
+  .board-v2 .bb-status .bb-sum { display: none; }
+  .board-v2 .bb-stages { flex-wrap: nowrap; margin-left: 0; }
+  .board-v2 .bb-status, .board-v2 .bb-status .bb-link, .board-v2 .bb-quick .bb-link, .board-v2 .bb-stage { font-size: calc(13px * var(--fs-scale)); }
+  .board-v2 .bb-chip { font-size: calc(13.5px * var(--fs-scale)); }
+  /* карточка */
+  .kc-line1 { height: auto; font-size: calc(13px * var(--fs-scale)); }
+  .kc-ava { width: 22px; height: 22px; font-size: 10px; }
+  .kc-st { font-size: calc(13px * var(--fs-scale)); line-height: 22px; }
+  .kc-line3 .kc-due, .kc-due { font-size: calc(13px * var(--fs-scale)); }
+  .kv2-count { font-size: calc(12.5px * var(--fs-scale)); }
+}
+

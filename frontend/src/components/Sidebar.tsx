@@ -287,7 +287,11 @@ export function Sidebar({
       t = window.setTimeout(() => {
         void Promise.all([inboxApi.counters(), flowApi.queue().catch(() => [])]).then(([c, q]) => {
           const decisions = q.length + c.decisions;
-          setInbox({ n: c.important - c.decisions + decisions, decisions, tip: `Ждут решения ${decisions} · Упоминания ${c.mentions} · Назначено ${c.assigned}` });
+          const next = { n: c.important - c.decisions + decisions, decisions, tip: `Ждут решения ${decisions} · Упоминания ${c.mentions} · Назначено ${c.assigned}` };
+          setInbox(next);
+          // колокольчик на телефоне показывает то же число, что «Входящие» (NotificationBell)
+          (window as Window & { __qevoInbox?: typeof next }).__qevoInbox = next;
+          window.dispatchEvent(new CustomEvent('qevo:inbox-count', { detail: next }));
         }).catch(() => undefined);
       }, 300);
     };

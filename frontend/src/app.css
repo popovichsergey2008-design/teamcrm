@@ -150,10 +150,12 @@
 .notif-bell:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .notif-bell-badge {
   position: absolute; top: -3px; right: -7px; min-width: 14px; height: 16px; padding: 0 3px;
-  border-radius: 8px; background: var(--fill-danger); color: var(--on-fill);
+  /* #4807: как счётчик «Входящих» — синий; жёлтый, если ждут ваши решения. Красного нет */
+  border-radius: 8px; background: var(--fill-info); color: var(--on-fill);
   font-size: calc(10px * var(--fs-scale)); font-weight: 700; line-height: 16px; text-align: center;
   border: 2px solid var(--bg-elev); box-sizing: content-box; pointer-events: none;
 }
+.notif-bell-badge.is-warn { background: var(--attn); color: var(--on-attn); }
 .nav-collapsed .nav-bell { order: 2; }
 .notif-bell-float { display: none; }
 @media (max-width: 900px) {
