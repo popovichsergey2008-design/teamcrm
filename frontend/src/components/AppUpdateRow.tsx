@@ -60,15 +60,19 @@ export function AppUpdateRow() {
   };
 
   return (
-    <div className="app-update-row">
+    // 10.11: одной строкой — три строки подробностей занимали полменю; они — в подсказке
+    <div
+      className="app-update-row"
+      title={`${release
+        ? `Последнее обновление: ${release.latestNative}${release.publishedAt ? ` от ${day(release.publishedAt)}` : ''}${behind ? ' — не установлено' : ' — установлено'}`
+        : 'Проверяем, есть ли обновления…'}
+Интерфейс ${platform.info().bundleVersion}`}
+    >
       <div className="app-update-text">
-        <span className="app-update-title"><Icon name="download" size={14} /> Приложение {installed?.split(' ')[0] ?? ''}</span>
-        <span className="dim">
-          {release
-            ? `Последнее обновление: ${release.latestNative}${release.publishedAt ? ` от ${day(release.publishedAt)}` : ''}${behind ? ' — не установлено' : ' — установлено'}`
-            : 'Проверяем, есть ли обновления…'}
+        <span className="app-update-title">
+          <Icon name="download" size={14} /> Приложение {installed?.split(' ')[0] ?? ''}
+          {behind && release && <span className="app-update-new"> · есть {release.latestNative}</span>}
         </span>
-        <span className="dim">Интерфейс {platform.info().bundleVersion}</span>
       </div>
       {behind ? (
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => window.dispatchEvent(new Event(UPDATE_OPEN_EVENT))}>

@@ -195,3 +195,6 @@
 .fd-stack:empty { display: none; }
 .tn-pulse { margin-left: auto; font-weight: 500; }
 .fd-row-static { cursor: default; }
+
+/* 10.11, телефон: номер задачи рядом с названием не рвётся по буквам («#1 / 29 / 3») */
+.fd-num { white-space: nowrap; flex: none; }

@@ -2413,7 +2413,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           собеседника в списке, чтобы появилась кнопка «Созвон», — лишний шаг ровно
           там, где нужна скорость.
         */}
-        <div className="chat-view-head">
+        {/* у QEVO Bot ссылка гостю и созвон не нужны — на телефоне эта строка ломала его шапку */}
+        <div className={`chat-view-head${view === 'anthill' ? ' is-hidden' : ''}`}>
           <GuestLinkButton
             chats={[...dms, ...groups].map((c) => ({ id: String(c.id), title: c.title ?? 'Чат' }))}
             chatId={activeId ? String(activeId) : null}
@@ -2682,6 +2683,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               ? { type: 'task', id: context.taskId }
               : context?.projectId ? { type: 'project', id: context.projectId } : null}
             onClose={onClose ?? (() => setView('chat'))}
+            onBack={() => { setView('chat'); setActiveId(null); }}
           />
         )}
 

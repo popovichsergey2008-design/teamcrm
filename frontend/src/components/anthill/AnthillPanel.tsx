@@ -78,12 +78,14 @@ const LAST_SESSION_KEY = 'qevo.bot.session';
 function rememberSession(id: string) { try { localStorage.setItem(LAST_SESSION_KEY, id); } catch { /* без хранилища — откроем самый свежий */ } }
 function lastSession(): string | null { try { return localStorage.getItem(LAST_SESSION_KEY); } catch { return null; } }
 
-export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, session }: {
+export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscreen, session }: {
   /** Открыть этот разговор: `/chat/anthill/thread/:id` из уведомления (#4665). */
   session?: string | null;
   /** Что открыто у человека под окном — уходит ответом на «о чём речь». */
   context?: AnthillContext | null;
   onClose?: () => void;
+  /** Телефон: «назад» к списку чатов — иначе из бота было не выйти в другие чаты. */
+  onBack?: () => void;
   fullscreen?: boolean;
   onFullscreen?: () => void;
 }) {
@@ -402,6 +404,11 @@ export function AnthillPanel({ context, onClose, fullscreen, onFullscreen, sessi
   return (
     <section className={`anthill anthill-v2${fullscreen ? ' anthill-full' : ''}`} aria-label="QEVO Bot">
       <div className="chat-head anthill-head">
+        {onBack && (
+          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-back" onClick={onBack} title="К списку чатов" aria-label="К списку чатов">
+            <Icon name="chevron-left" size={16} />
+          </button>
+        )}
         <span className="anthill-title">
           <span className="anthill-mark" aria-hidden="true"><Icon name="robot" size={16} /></span>
           <span className="anthill-title-text">

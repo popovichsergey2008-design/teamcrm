@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
 import { useBackClose } from '../lib/overlay';
+import './lightbox.css';
 
 /**
  * Один снимок в просмотре. Либо готовый адрес (лента компании), либо номер файла —
