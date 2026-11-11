@@ -102,6 +102,12 @@ export function toastSaved(title = 'Сохранено', body = ''): void {
   showToast({ title, body, kind: 'saved' });
 }
 
+// Подсказки сервера из запросов (ТЗ 10.11: «осталось 2 задачи голосом») — api.ts шлёт событием,
+// чтобы не тянуть этот модуль в кусок запросов
+if (typeof window !== 'undefined') {
+  window.addEventListener('qevo:notice', (e) => toastSaved('Пробный период', String((e as CustomEvent).detail ?? '')));
+}
+
 /*
   Счётчик в заголовке вкладки живёт в `tab-alert`: там же мигание о новом, и два
   хозяина у `document.title` неизбежно перетирали бы друг друга. Здесь — только

@@ -1,3 +1,5 @@
+import { TRIAL_TEXT } from '../billing/trial-limits.service';
+import { NpsStateService } from '../feedback/nps-state.service';
 import { ProjectResolverService } from '../nl/project-resolver.service';
 import { DbService } from '../../database/db.service';
 import { TagsService } from '../tags/tags.service';
@@ -118,6 +120,7 @@ export class MeetingsService implements OnModuleInit {
     @Optional() private readonly calendar?: CalendarService,
     /** #4787, п. 11: задачи из итогов — к карточке встречи. */
     @Optional() private readonly calendarCard?: CalendarCardService,
+    @Optional() private readonly nps?: NpsStateService,
   ) {}
 
   list(tenantId: string, viewer: ProjectViewer) {
@@ -332,6 +335,8 @@ export class MeetingsService implements OnModuleInit {
     attendees?: { userId: string; name: string }[];
     /** Сколько шёл созвон — честнее, чем конец последней реплики. */
     durationSec?: number;
+    /** ТЗ 10.11: запись остановлена лимитом пробного периода — ИИ разобрал первые 15 минут. */
+    trialCut?: boolean;
   }): Promise<string | null> {
     if (!input.tracks.length) return null;
 
@@ -349,6 +354,7 @@ export class MeetingsService implements OnModuleInit {
       if (event) await this.repo.linkEvent(meeting.id, event.id).catch(() => undefined);
     }
     if (input.durationSec) await this.repo.setDuration(meeting.id, input.durationSec).catch(() => undefined);
+    if (input.trialCut) await this.repo.markTrialCut(meeting.id).catch(() => undefined);
 
     // Итоги встречи (ТЗ-22): разбор заводится сразу, экран после звонка уже ждёт его.
     // Без распознавания речи итогов не собрать — короткий экран: запись, участники, время.
@@ -388,6 +394,9 @@ export class MeetingsService implements OnModuleInit {
         await this.repo.setStatus(meeting.id, 'analyzing');
         await this.postcall.mark(input.tenantId, meeting.id, { summary: 'running', decisions: 'running', tasks: 'running' });
         await this.analyze(input.tenantId, meeting.id, input.projectId, replies);
+        if (input.trialCut) await this.repo.prefixSummary(input.tenantId, meeting.id, TRIAL_TEXT.callCutProtocol).catch(() => undefined);
+        // ТЗ 10.11: первый созвон с ИИ-протоколом — повод спросить оценку
+        await this.nps?.protocol(input.tenantId, [input.actorId, ...attendees.map((a) => a.userId)]);
         await this.repo.setStatus(meeting.id, 'done');
         // письмо клиенту готовит навык секретаря (ТЗ-21) — подписчиком ниже, сразу после разбора
         await this.postcall.mark(input.tenantId, meeting.id, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'running' });

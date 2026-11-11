@@ -4,7 +4,7 @@ import { EmptyState } from '../EmptyState';
 import { Button } from '../ui/button';
 import { Dialog, confirmAction } from '../ui/dialog';
 import { Input } from '../ui/input';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, request } from '../../lib/api';
 import { navigate } from '../../lib/router';
 import { toastSaved } from '../../lib/notifications';
 import './task-trash.css';
@@ -59,7 +59,7 @@ export function TaskTrashDialog({ onClose, onChanged }: { onClose: () => void; o
     }))) return;
     setBusy(t.id); setErr('');
     try {
-      await api.deleteTaskForever(t.id);
+      await request('DELETE', `/tasks/${t.id}?permanent=1&confirmTimeLoss=1`);
       setItems((cur) => (cur ?? []).filter((x) => x.id !== t.id));
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось удалить'); } finally { setBusy(null); }
   };

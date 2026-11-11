@@ -214,6 +214,25 @@ export class MeetingsRepository {
     await this.db.query(`UPDATE meetings SET room_id = $2 WHERE id = $1`, [id, roomId]);
   }
 
+  /** ТЗ 10.11: ИИ разобрал только первые 15 минут — лимит пробного периода. */
+  async markTrialCut(id: string): Promise<void> {
+    await this.db.query(`UPDATE meetings SET trial_cut=true, updated_at=now() WHERE id=$1`, [id]);
+  }
+
+  async isTrialCut(meetingId: string): Promise<boolean> {
+    const r = await this.db.one<{ trial_cut: boolean }>(`SELECT trial_cut FROM meetings WHERE id=$1`, [meetingId]);
+    return !!r?.trial_cut;
+  }
+
+  /** Первая строка протокола — пометка о лимите (ТЗ 10.11); повторно не добавляется. */
+  async prefixSummary(tenantId: string, meetingId: string, line: string): Promise<void> {
+    await this.db.query(
+      `UPDATE meeting_summaries SET summary = $3::text || chr(10) || chr(10) || summary
+        WHERE tenant_id=$1 AND meeting_id=$2 AND position($3::text in summary) = 0`,
+      [tenantId, meetingId, line],
+    );
+  }
+
   async setDuration(id: string, seconds: number): Promise<void> {
     await this.db.query(`UPDATE meetings SET duration_sec=$2, updated_at=now() WHERE id=$1`, [id, seconds]);
   }

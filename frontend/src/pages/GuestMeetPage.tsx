@@ -238,7 +238,8 @@ export function GuestMeetPage({ token, publicId, onStaffLogin }: {
     <div className="guest-footer">
       {brand?.footerText && <span>{brand.footerText}</span>}
       {brand?.poweredBy !== false && (
-        <a href="https://qevo.one/?utm_source=guest&utm_medium=footer" target="_blank" rel="noopener noreferrer" onClick={() => void api.guestEvent(cred ?? (publicId ? { publicId } : {}), 'cta_clicked')}>Сделано в QEVO</a>
+        // ТЗ 10.11: подпись QEVO внизу гостевой страницы
+        <span className="guest-qevo-mark">Протокол подготовил ИИ-ассистент QEVO · <a href="https://qevo.one/?utm_source=product&utm_medium=protocol" target="_blank" rel="noopener noreferrer" onClick={() => void api.guestEvent(cred ?? (publicId ? { publicId } : {}), 'cta_clicked')}>qevo.one</a></span>
       )}
     </div>
   );

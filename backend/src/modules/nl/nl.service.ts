@@ -1,5 +1,6 @@
 import { ProjectResolverService } from './project-resolver.service';
 import { TRIAL_TEXT, TrialLimitsService } from '../billing/trial-limits.service';
+import { NpsStateService } from '../feedback/nps-state.service';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
@@ -174,6 +175,7 @@ export class NlService {
     private readonly org: OrgService,
     /** #4779, п. 4.4: 20 задач голосом на пространство в пробный период. */
     private readonly trialLimits: TrialLimitsService,
+    private readonly nps: NpsStateService,
   ) {}
 
   private async roleOf(tenantId: string, userId: string): Promise<string | null> {
@@ -1126,8 +1128,15 @@ export class NlService {
           source,
         }).catch((e) => { this.log.warn(`подтверждение постановки ${task.id}: ${(e as Error).message}`); return null; })
         : null;
-      if (byVoice) await this.trialLimits.add(tenantId, 'voice_task').catch(() => undefined);
-      return { type: 'task', task, ...(confirmAt ? { confirmAt } : {}) };
+      // ТЗ 10.11: задача, поставленная ИИ голосом или текстом, — повод спросить оценку после десятой
+      await this.nps.aiTask(tenantId, userId);
+      let trialNotice: string | null = null;
+      if (byVoice) {
+        await this.trialLimits.add(tenantId, 'voice_task').catch(() => undefined);
+        // ТЗ 10.11: осталось ровно 2 из 20 — предупредить сейчас
+        if ((await this.trialLimits.left(tenantId, 'voice_task').catch(() => null)) === 2) trialNotice = TRIAL_TEXT.voiceAlmost;
+      }
+      return { type: 'task', task, ...(confirmAt ? { confirmAt } : {}), ...(trialNotice ? { trialNotice } : {}) };
     }
     if (body.intent === 'create_deal') {
       // то же право, что у раздела сделок: быстрая команда не обходит его

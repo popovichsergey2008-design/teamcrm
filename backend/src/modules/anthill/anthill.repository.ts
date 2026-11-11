@@ -237,6 +237,12 @@ export class AnthillRepository {
   /** Задача создана ботом — помечаем, как это уже делает разбор переписки (0137). */
   async markTaskByAi(tenantId: string, taskId: string): Promise<void> {
     await this.db.query(`UPDATE tasks SET created_by_ai=true WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
+    // ТЗ 10.11: задача от ИИ — повод спросить оценку после десятой (nps_state)
+    await this.db.query(
+      `INSERT INTO nps_state (tenant_id, user_id, ai_tasks)
+       SELECT tenant_id, created_by, 1 FROM tasks WHERE tenant_id=$1 AND id=$2 AND created_by IS NOT NULL
+       ON CONFLICT (tenant_id, user_id) DO UPDATE SET ai_tasks = nps_state.ai_tasks + 1`, [tenantId, taskId],
+    ).catch(() => undefined);
   }
 
   action(tenantId: string, userId: string, id: string): Promise<ActionRow | null> {

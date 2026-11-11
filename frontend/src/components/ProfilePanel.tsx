@@ -18,12 +18,14 @@ import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { initialsOf } from '../lib/initials';
 import { lazyComponent } from '../lib/lazy';
+
 import { InboxPrefs } from './InboxPrefs';
 import { DateInput } from './DateInput';
 // второй фактор открывают редко — его код (и генератор QR) грузится по первому показу
 const MfaSettings = lazyComponent(() => import('./auth/MfaSettings').then((m) => m.default));
+const ReviewForm = lazyComponent(() => import('./feedback/ReviewForm').then((m) => m.ReviewForm));
 
-type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients';
+type Tab = 'profile' | 'security' | 'availability' | 'notify' | 'prompts' | 'clients' | 'review';
 
 
 /** Ключ настройки «дублировать в Telegram» — тот же, что в API уведомлений. */
@@ -192,12 +194,15 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
               <Icon name="handshake" size={14} /> Клиенты и сделки
             </button>
           )}
+          {/* ТЗ 10.11: отзыв для сайта — прямо из профиля */}
+          <button className={tab === 'review' ? 'active' : ''} onClick={() => setTab('review')}><Icon name="star" size={14} /> Оставить отзыв</button>
         </nav>
         <div className="profile-content">
           {msg && <div className="dim">{msg}</div>}
 
           {tab === 'prompts' && <PromptsLibrary />}
           {tab === 'clients' && me.isFounder && <ClientsPanel embedded />}
+          {tab === 'review' && <ReviewForm />}
 
         {tab === 'profile' && (
           <>

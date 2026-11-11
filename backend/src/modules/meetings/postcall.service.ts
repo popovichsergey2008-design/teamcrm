@@ -1,3 +1,4 @@
+import { TRIAL_TEXT } from '../billing/trial-limits.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { ClientsRepository } from '../clients/clients.repository';
@@ -150,7 +151,10 @@ export class PostcallService implements OnModuleInit {
       row.followup_status === 'ready' ? 'письмо клиенту' : '',
     ].filter(Boolean) : [];
     const title = `Итоги встречи готовы${counts?.title ? `: ${counts.title}` : ''}`.slice(0, 120);
-    const body = row.ai ? (parts.join(' · ') || 'Краткие итоги и стенограмма') : 'Запись сохранена';
+    const done = row.ai ? (parts.join(' · ') || 'Краткие итоги и стенограмма') : 'Запись сохранена';
+    // ТЗ 10.11: созвон обрезан лимитом пробного периода — сказать прямо в уведомлении
+    const cut = await this.meetings.isTrialCut(row.meeting_id).catch(() => false);
+    const body = cut ? `${TRIAL_TEXT.callCutNotice} ${done}` : done;
     const path = `/meetings/${row.meeting_id}/postcall`;
     if (row.owner_id && !row.opened_at) {
       await this.push.personal({ tenantId, userId: String(row.owner_id), eventKey: 'meeting.postcall', title, body: `${body} — разберите`, path }).catch(() => false);

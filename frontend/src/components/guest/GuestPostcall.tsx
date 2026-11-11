@@ -29,7 +29,7 @@ const T = {
     expiredHint: 'Напишите организатору — он пришлёт итоги ещё раз.',
     none: 'Итогов этой встречи пока нет.',
     rejoin: 'Вернуться во встречу',
-    madeIn: 'Встреча организована в QEVO',
+    madeIn: 'Протокол подготовил ИИ-ассистент QEVO',
     learn: 'Узнать, что такое QEVO',
     ics: 'Файл .ics',
   },
@@ -57,7 +57,7 @@ const T = {
     expiredHint: 'Please contact the organizer to receive them again.',
     none: 'There are no notes for this meeting yet.',
     rejoin: 'Back to the meeting',
-    madeIn: 'This meeting was organized with QEVO',
+    madeIn: 'Minutes prepared by the QEVO AI assistant',
     learn: 'Learn about QEVO',
     ics: '.ics file',
   },
@@ -237,11 +237,11 @@ export default function GuestPostcall({ cred, companyName, onRejoin }: {
             </div>
           )}
 
-          {/* Мягкий вирусный хвост (п. 13): только после подтверждения и если бренд разрешает */}
-          {data.acknowledgedAt && data.brand?.poweredBy !== false && (
+          {/* ТЗ 10.11: мелкая подпись под протоколом; выключается только на платном тарифе */}
+          {data.brand?.poweredBy !== false && (
             <div className="gp-viral dim">
               {t.madeIn} ·{' '}
-              <a href="https://qevo.one/?utm_source=guest&utm_medium=postcall" target="_blank" rel="noopener noreferrer" onClick={() => void api.guestEvent(cred, 'cta_clicked')}>{t.learn}</a>
+              <a href="https://qevo.one/?utm_source=product&utm_medium=protocol" target="_blank" rel="noopener noreferrer" onClick={() => void api.guestEvent(cred, 'cta_clicked')}>qevo.one</a>
             </div>
           )}
         </>

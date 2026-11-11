@@ -98,6 +98,8 @@ import { WorkloadModule } from './modules/workload/workload.module';
 import { WorkloadActionsModule } from './modules/workload/workload-actions.module';
 import { SmartReplyModule } from './modules/smart-reply/smart-reply.module';
 import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skills.module';
+import { FeedbackCoreModule } from './modules/feedback/nps-state.service';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 
 @Module({
   imports: [
@@ -201,6 +203,8 @@ import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skil
     SecretaryModule,
     AssistantModule,
     ChatsModule,
+    FeedbackCoreModule,
+    FeedbackModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

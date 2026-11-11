@@ -1084,7 +1084,7 @@ export class MeetGateway implements OnModuleInit {
     const stop = setTimeout(() => {
       if (!this.recording.isRecording(room.id)) return;
       room.aiEnabled = false;
-      void this.finishRecording(room, null).then(() => {
+      void this.finishRecording(room, null, true).then(() => {
         for (const userId of room.participants.keys()) {
           this.toUser(room.tenantId, userId, 'meet.recording', { meeting_id: room.id, active: false });
         }
@@ -1105,7 +1105,7 @@ export class MeetGateway implements OnModuleInit {
    * Останавливает запись и отдаёт дорожки в конвейер встреч: стенограмма с именами,
    * сводка, черновики задач. Ошибка обработки не должна ронять созвон.
    */
-  private async finishRecording(room: MeetingRoom, actorId: string | null): Promise<void> {
+  private async finishRecording(room: MeetingRoom, actorId: string | null, trialCut = false): Promise<void> {
     this.clearTrialStop(room);
     if (!this.recording.isRecording(room.id)) return;
     // автор записи — всегда сотрудник: created_by и uploaded_by ссылаются на users(id)
@@ -1125,6 +1125,7 @@ export class MeetGateway implements OnModuleInit {
         // для итогов встречи (ТЗ-22): кто был, включая молчавших, и сколько шёл созвон
         attendees: [...(room.attendees ?? new Map<string, string>()).entries()].map(([userId, name]) => ({ userId, name })),
         durationSec: Math.round((Date.now() - room.startedAt) / 1000),
+        trialCut,
       });
     } catch (e) {
       this.log.warn(`обработка записи ${room.id}: ${(e as Error).message}`);

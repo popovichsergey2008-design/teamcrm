@@ -1,0 +1,8 @@
+/* ТЗ 10.11: оценка 0–10 и отзыв для сайта */
+.nps-scale { display: flex; gap: 4px; flex-wrap: wrap; }
+.nps-dot { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); font-weight: 600; cursor: pointer; }
+.nps-dot:hover { border-color: var(--accent); }
+.nps-dot.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.nps-ends { display: flex; justify-content: space-between; font-size: var(--fs-xs); margin-top: 4px; }
+.review-form { max-width: 560px; }
+.review-form .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }

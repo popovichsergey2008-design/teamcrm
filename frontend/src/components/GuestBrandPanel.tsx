@@ -92,7 +92,11 @@ export function GuestBrandPanel({ canManage, onClose }: { canManage: boolean; on
               </label>
               <label className="gbp-check"><input type="checkbox" checked={s.recordingNotice} onChange={(e) => void save({ recordingNotice: e.target.checked })} /> Предупреждать гостя о записи и ИИ-протоколе</label>
               <label className="gbp-check"><input type="checkbox" checked={s.consentRequired} disabled={!s.recordingNotice} onChange={(e) => void save({ consentRequired: e.target.checked })} /> Без отметки согласия не пускать</label>
-              <label className="gbp-check"><input type="checkbox" checked={s.poweredBy} onChange={(e) => void save({ poweredBy: e.target.checked })} /> Показывать «Сделано в QEVO»</label>
+              {/* ТЗ 10.11: подпись выключается только на платном тарифе */}
+              <label className="gbp-check" title={s.canHidePoweredBy === false ? 'Выключить подпись можно на платном тарифе' : undefined}>
+                <input type="checkbox" checked={s.poweredBy || s.canHidePoweredBy === false} disabled={s.canHidePoweredBy === false} onChange={(e) => void save({ poweredBy: e.target.checked })} />
+                {' '}Показывать подпись «Протокол подготовил ИИ-ассистент QEVO · qevo.one»{s.canHidePoweredBy === false ? ' — выключить можно на платном тарифе' : ''}
+              </label>
               <label className="field"><span>Сколько дней клиент видит итоги</span>
                 <input className="input" type="number" min={1} max={365} defaultValue={s.summaryDays} onBlur={(e) => Number(e.target.value) !== s.summaryDays && void save({ summaryDays: Number(e.target.value) })} />
               </label>

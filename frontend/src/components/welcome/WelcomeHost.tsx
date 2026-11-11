@@ -3,7 +3,7 @@ import { api } from '../../lib/api';
 import { useAuth } from '../../state/auth';
 import { Icon } from '../Icon';
 import { GuideBot } from './GuideBot';
-import { restore, type BotState } from './flow';
+import { initial, restore, type BotState } from './flow';
 import { CareStart, Faces } from './CareStart';
 import './welcome.css';
 
@@ -59,7 +59,9 @@ export default function WelcomeHost({ resume = false }: {
       {phase === 'slides' && <Slides onDone={() => setPhase('choice')} />}
       {phase === 'choice' && (
         <Choice
-          onSelf={() => { shown(); setBotOn(true); setPhase('bot'); }}
+          // ТЗ 10.11: бот начат — сразу помним его шаг 1, иначе после обновления страницы на
+          // первом шаге бот пропадал, а вместо него открывалось обучение из 8 шагов
+          onSelf={() => { saved.current = true; keep(initial()); setBotOn(true); setPhase('bot'); }}
           onCare={() => { shown(); setPhase('care'); }}
           onClose={() => { shown(); setPhase('off'); }}
         />

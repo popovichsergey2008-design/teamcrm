@@ -380,8 +380,9 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
 
   const narrow = window.matchMedia(NARROW).matches;
   const showPanel = !hidden && !s.mini && !asking && spot === 'none';
-  // обучение ждёт, пока бот открыт: свернул или закрыл — подсказки включаются
-  const hold = !hidden && !s.mini;
+  // ТЗ 10.11: пока бот не пройден до конца и не закрыт (и свёрнутый тоже), обучение
+  // из 8 шагов и подсказки разделов ждут — два помощника наперебой путают новичка
+  const hold = true;
 
   const sphereLabel = s.sphereText || SPHERES.find((x) => x.key === s.sphere)?.label || '';
   const nav = (

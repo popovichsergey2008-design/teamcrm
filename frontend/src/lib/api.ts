@@ -315,6 +315,8 @@ export interface GuestBrandSettings {
   companyName: string | null; logoFileId: string | null; accent: string | null; background: string;
   welcomeText: string | null; footerText: string | null; poweredBy: boolean; recordingNotice: boolean;
   consentRequired: boolean; summaryDays: number; tenantName: string; preview: GuestBrand;
+  /** ТЗ 10.11: подпись QEVO выключается только на платном тарифе. */
+  canHidePoweredBy?: boolean;
 }
 
 /** Персональный брифинг «Фокуса дня» (ТЗ-27): один снимок на день — текст, голос, источники. */
@@ -1049,8 +1051,6 @@ export const api = {
   /** Корзина задач: что удалено и возврат. */
   taskTrash: () => request<{ items: any[] }>('GET', '/tasks/trash'),
   restoreTask: (id: string) => request<{ restored: boolean }>('POST', `/tasks/${id}/restore`, {}),
-  /** Из корзины — насовсем (право «удалять навсегда», по умолчанию у владельца). */
-  deleteTaskForever: (id: string) => request<{ deleted: true }>('DELETE', `/tasks/${id}?permanent=1&confirmTimeLoss=1`),
 
   listTags: (archived = false) =>
     request<{ items: TagItem[]; settings: TagSettings }>('GET', `/tags${archived ? '?archived=1' : ''}`),
@@ -1721,7 +1721,9 @@ export const api = {
     request<any[]>('POST', '/nl/parse-many', {
       text, ...(currentProjectId ? { currentProjectId, ...(currentKind ? { currentKind } : {}) } : {}), ...(auto ? { auto: true } : {}),
     }),
-  nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body),
+  // ТЗ 10.11: после 18-й задачи голосом в пробном периоде сервер присылает предупреждение
+  nlApply: (body: { intent: string; task?: any; deal?: any }) => request<any>('POST', '/nl/apply', body)
+    .then((r) => { if (r?.trialNotice) window.dispatchEvent(new CustomEvent('qevo:notice', { detail: String(r.trialNotice) })); return r; }),
   /** #4665: форма, заполненная голосом, — «Задача поставлена от вас» через 30 секунд. */
   nlConfirmLater: (taskId: string) => request<{ confirmAt: string | null }>('POST', '/nl/confirm-later', { taskId }),
   /**

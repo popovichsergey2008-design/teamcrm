@@ -56,7 +56,6 @@ import { useDeltaSync } from './hooks/useDeltaSync';
 import { OfflineBar } from './components/OfflineBar';
 import { useConsoleAlerts } from './hooks/useConsoleAlerts';
 import { ChatOverlay } from './components/chatbar/ChatOverlay';
-import { ConsoleTopBar } from './components/console/ConsoleTopBar';
 import { useSeedStickyChecks } from './lib/sticky-checks';
 import { setEffectsPrefs } from './lib/feedback';
 import { seedTour, useTourWanted, useWelcome } from './lib/tour';
@@ -114,6 +113,9 @@ const CallPanel = lazy(() => import('./components/CallPanel').then((m) => ({ def
 const TourHost = lazy(() => import('./components/tour/TourHost'));
 // первый запуск (#4620): слайды, выбор и Qevo-бот — один раз, своим куском
 const WelcomeHost = lazy(() => import('./components/welcome/WelcomeHost'));
+const NpsPrompt = lazy(() => import('./components/feedback/NpsPrompt'));
+// шапка консоли нужна только службе заботы — первому экрану CRM не нужна
+const ConsoleTopBar = lazy(() => import('./components/console/ConsoleTopBar').then((m) => ({ default: m.ConsoleTopBar })));
 // #4779: имя и название пространства после регистрации — один раз, отдельным куском
 const SetupNames = lazy(() => import('./components/auth/SetupNames'));
 // итоги клиенту (#1525): окно поверх любого экрана, когда итог встречи готов
@@ -715,7 +717,7 @@ export function App() {
     }
     return (
       <div className="shell console-shell">
-        <ConsoleTopBar name={user.fullName} avatarPath={avatarPath} onLogout={logout} />
+        <Suspense fallback={null}><ConsoleTopBar name={user.fullName} avatarPath={avatarPath} onLogout={logout} /></Suspense>
         <div className="console-body">
           <main className="console-main">
             <Suspense fallback={pageFallback}><ConsolePage route={route} /></Suspense>
@@ -1027,6 +1029,8 @@ export function App() {
       {/* пока кусок первого запуска грузится, обучение ждёт (data-tour-hold) */}
       {needNames && <Suspense fallback={null}><SetupNames onDone={() => setNamesLater(true)} /></Suspense>}
       {welcome > 0 && !needNames && <Suspense fallback={<i data-tour-hold hidden />}><WelcomeHost key={welcome} resume={welcome < 2} /></Suspense>}
+      {/* ТЗ 10.11: «Порекомендовали бы QEVO коллеге?» — не поверх знакомства с продуктом */}
+      {welcome === 0 && !needNames && user && <Suspense fallback={null}><NpsPrompt /></Suspense>}
       {followupId && <Suspense fallback={null}><FollowupPopup key={followupId} id={followupId} onClose={() => setFollowupId('')} /></Suspense>}
 
       <BottomNav

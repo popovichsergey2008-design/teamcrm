@@ -11,6 +11,7 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { GuestLinksRepository } from '../media/guest-links.repository';
 import { GuestSessionsRepository } from '../media/guest-sessions.repository';
 import { buildIcs } from '../calendar/ics';
+import { BillingService } from '../billing/billing.service';
 import { BrandRow, GuestPortalRepository, MeetingRow, PublishedSummary, SummaryRow } from './guest-portal.repository';
 import {
   AgreementSide, draftAgreements, googleCalendarUrl, guestLanguage, normalizeHex, outlookCalendarUrl, parseModelDraft,
@@ -46,7 +47,22 @@ export class GuestPortalService {
     private readonly crypto: IntegrationCryptoService,
     private readonly db: DbService,
     private readonly config: ConfigService,
+    private readonly billing: BillingService,
   ) {}
+
+  /**
+   * ТЗ 10.11: подпись «Протокол подготовил ИИ-ассистент QEVO · qevo.one» выключается только
+   * на платном тарифе (и у «вечных» пространств). В пробный период она есть всегда.
+   */
+  private async paid(tenantId: string): Promise<boolean> {
+    const eff = await this.billing.state(tenantId).catch(() => null);
+    return eff?.status === 'ACTIVE';
+  }
+
+  private async brandViewFor(b: BrandRow) {
+    const v = this.brandView(b);
+    return { ...v, poweredBy: v.poweredBy || !(await this.paid(String(b.tenant_id))) };
+  }
 
   private baseUrl() {
     return (this.config.get<string>('APP_BASE_URL') || 'https://app.qevo.one').replace(/\/+$/, '');
@@ -76,7 +92,7 @@ export class GuestPortalService {
     else if (q.session) tenantId = (await this.sessions.byKey(String(q.session)))?.tenant_id ?? null;
     if (!tenantId) return null;
     const b = await this.repo.brand(String(tenantId));
-    return b ? this.brandView(b) : null;
+    return b ? this.brandViewFor(b) : null;
   }
 
   async brandSettings(tenantId: string) {
@@ -87,7 +103,8 @@ export class GuestPortalService {
       welcomeText: b.welcome_text, footerText: b.footer_text, poweredBy: b.powered_by,
       recordingNotice: b.recording_notice, consentRequired: b.consent_required, summaryDays: b.summary_days,
       tenantName: b.tenant_name,
-      preview: this.brandView(b),
+      canHidePoweredBy: await this.paid(tenantId),
+      preview: await this.brandViewFor(b),
     };
   }
 
@@ -99,6 +116,9 @@ export class GuestPortalService {
     if (!cur) throw AppException.notFound('Организация не найдена');
     const txt = (v: string | null | undefined, max: number, keep: string | null) => (v === undefined ? keep : (v ?? '').trim().slice(0, max) || null);
     if (p.accent && !normalizeHex(p.accent)) throw AppException.validation('Цвет — в виде #RRGGBB');
+    if (p.poweredBy === false && !(await this.paid(tenantId))) {
+      throw AppException.validation('Подпись QEVO можно выключить на платном тарифе');
+    }
     if (p.logoFileId) {
       const f = await this.files.meta(tenantId, p.logoFileId);
       if (!f || !/^image\/(png|jpeg|webp|gif)$/.test(f.content_type)) throw AppException.validation('Логотип — картинка PNG, JPG, WEBP или GIF');
@@ -156,7 +176,7 @@ export class GuestPortalService {
     const base = {
       state,
       guestName: g.name,
-      brand: brand ? this.brandView(brand) : null,
+      brand: brand ? await this.brandViewFor(brand) : null,
       meeting: { title: event?.title ?? meeting?.title ?? 'Встреча', at: (event?.starts_at ?? meeting?.happened_at ?? null) as Date | null, organizer: event?.organizer_name ?? null },
     };
     if (state !== 'ready' || !pub || !summary) return { ...base, summary: null, acknowledgedAt: null };
