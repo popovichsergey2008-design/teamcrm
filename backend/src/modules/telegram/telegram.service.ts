@@ -78,8 +78,9 @@ export class TelegramService {
 
   /** Привязка по коду; код одноразовый и истекающий. */
   /** +7 дней за регистрацию в боте (#4779): один раз на пространство. Начислили — новый конец пробного. */
-  grantTrialBonus(tenantId: string): Promise<Date | null> {
-    return this.repo.grantTrialBonus(tenantId, TRIAL_BONUS_DAYS);
+  // ТЗ 10.11: «на сайте и в приложении везде 14 дней без условий» — бонус больше не начисляется
+  grantTrialBonus(): Promise<Date | null> {
+    return Promise.resolve(null);
   }
 
   async tryLink(telegramUserId: string | number, codeText: string): Promise<(TgAccount & { bonusUntil: Date | null }) | null> {
@@ -90,7 +91,7 @@ export class TelegramService {
     if (!found) return null;
     await this.repo.linkAccount(found.tenant_id, found.user_id, String(telegramUserId), found.id);
     // привязка из CRM — это и есть «регистрация в Telegram-боте» для пришедших с сайта (#4779)
-    const bonusUntil = await this.grantTrialBonus(String(found.tenant_id)).catch(() => null);
+    const bonusUntil = await this.grantTrialBonus().catch(() => null);
     return { tenant_id: found.tenant_id, user_id: found.user_id, telegram_user_id: String(telegramUserId), bonusUntil };
   }
 }

@@ -99,8 +99,8 @@ export function LoginPage() {
 
         <div className="error-text">{error}</div>
 
-        {/* #4779: на сайте — «14 дней», условие 7 + 7 объясняем здесь */}
-        {mode === 'register' && <p className="dim" style={{ fontSize: 13, margin: '0 0 8px' }}>14 дней бесплатно: 7 дней сразу и ещё 7 за регистрацию в Telegram-боте</p>}
+        {/* ТЗ 10.11: как на сайте — 14 дней без условий */}
+        {mode === 'register' && <p className="dim" style={{ fontSize: 13, margin: '0 0 8px' }}>14 дней бесплатно, без условий</p>}
 
         <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || (mode === 'register' && !agreed)} type="submit">
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}

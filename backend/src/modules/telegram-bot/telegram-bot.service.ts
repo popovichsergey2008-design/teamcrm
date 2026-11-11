@@ -23,7 +23,7 @@ import { TelegramBotRepository } from './telegram-bot.repository';
 import { TelegramBotWorkService } from './telegram-bot-work.service';
 
 /** Пробный период (#4779): 7 дней сразу + 7 за регистрацию здесь — один раз на пространство. */
-const TRIAL_DAYS = 7;
+const TRIAL_DAYS = 14; // ТЗ 10.11: 14 дней без условий
 /** Сколько ждём модель на демо: дольше человек в чате не ждёт — дальше правила. */
 const MODEL_TIMEOUT_MS = 6000;
 /** Оценка расхода: gpt-4o-mini на одну карточку и быстрая расшифровка за минуту. */
@@ -153,7 +153,7 @@ export class TelegramBotService {
     if (!own) return this.say(who.chatId, T.welcome(this.base));
     const [person, trial] = await Promise.all([this.repo.roleOf(own.tenantId, own.userId), this.repo.trialOf(own.tenantId)]);
     const days = person?.role_code === 'owner' && !trial?.paid ? trialDaysLeft(trial?.trial_ends_at) : null;
-    const bonus = days !== null && days > 0 && !trial?.trial_bonus_days;
+    const bonus = false; // ТЗ 10.11: бонус «+7 за бота» убран
     return this.say(who.chatId, T.welcomeBack(who.firstName, days, this.base, bonus));
   }
 
@@ -328,8 +328,8 @@ export class TelegramBotService {
     await this.repo.linkIfFree(tenantId, userId, who.tgId);
     await this.repo.startTrial(tenantId, TRIAL_DAYS, 'telegram_bot');
     await this.repo.setSpace(who.tgId, tenantId, userId);
-    // #4779: регистрация здесь — +7 дней сразу (один раз на пространство)
-    const bonusUntil = await this.telegram.grantTrialBonus(tenantId).catch(() => null);
+    // ТЗ 10.11: бонуса за регистрацию здесь больше нет — 14 дней сразу (startTrial выше)
+    const bonusUntil: Date | null = null;
 
     const demo = /^\d+$/.test(demoId) && demoId !== '0' ? await this.repo.demoOf(who.tgId, demoId) : null;
     const card = demo?.card?.title ? demo.card : null;
@@ -366,7 +366,7 @@ export class TelegramBotService {
   private async bonus(who: Who): Promise<void> {
     const own = await this.ownSpace(who.tgId);
     if (!own) return this.say(who.chatId, T.consent(this.base, '0'));
-    const until = await this.telegram.grantTrialBonus(own.tenantId);
+    const until = await this.telegram.grantTrialBonus();
     return this.say(who.chatId, { text: until ? T.bonusGranted(trialDay(until)) : T.BONUS_ALREADY });
   }
 

@@ -60,6 +60,12 @@ export const DEFAULT_PREFS: BriefPrefs = {
 export class FocusBriefRepository {
   constructor(private readonly db: DbService) {}
 
+  /** В пространстве ещё нет ни одной задачи (удалённые не в счёт). */
+  async spaceEmpty(tenantId: string): Promise<boolean> {
+    const r = await this.db.one<{ x: number }>(`SELECT 1 AS x FROM tasks WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1`, [tenantId]);
+    return !r;
+  }
+
   // ── снимок ──
 
   snapshot(tenantId: string, userId: string, date: string): Promise<SnapshotRow | null> {

@@ -21,12 +21,11 @@ export function appButton(text: string, url: string): Button {
   return /^https:\/\//i.test(url) ? { text, web_app: { url } } : { text, url };
 }
 
-export const BOT_NAME = 'QEVO — ИИ-ассистент и задачи';
+export const BOT_NAME = 'QEVO';
 // #4779, п. 15.1–15.2: условие 7 + 7 — в профиле бота (ставит setupProfile через Bot API)
-export const BOT_DESCRIPTION =
-  'Превращаю голосовые и переписку в задачи с ТЗ за 2 секунды. Нажмите Старт и проверьте на своём поручении без регистрации. '
-  + 'За регистрацию здесь +7 дней к пробному периоду QEVO.';
-export const BOT_SHORT_DESCRIPTION = 'Голосовые и переписка → задачи с ТЗ за 2 секунды. За регистрацию здесь +7 дней к тесту QEVO.';
+// ТЗ 10.11: без «+7 дней» — на сайте и в приложении везде 14 дней без условий
+export const BOT_DESCRIPTION = 'Голосовые и переписка → задачи с ТЗ за 2 секунды.';
+export const BOT_SHORT_DESCRIPTION = 'Голосовые и переписка → задачи с ТЗ за 2 секунды.';
 
 /** #4779, п. 15.6: сразу после регистрации в боте. */
 export const bonusGranted = (until: string) => `Готово, +7 дней начислены. Пробный период до ${until}.`;
@@ -47,12 +46,11 @@ export function welcome(base: string): { text: string; markup: Keyboard } {
       '',
       'Запишите мне любое голосовое поручение (например: «Дима, подготовь отчет по рекламе к пятнице 15:00 и добавь сравнение с прошлым месяцем») или нажмите готовый пример ниже.',
       '',
-      // #4779, п. 15.3
-      'Пробный период QEVO: 7 дней при регистрации на сайте и ещё 7 за регистрацию здесь.',
+      'Пробный период QEVO — 14 дней бесплатно, без условий.',
     ].join('\n'),
     markup: rows(
       // #4779, п. 15.4: первой строкой
-      cb('Зарегистрироваться: +7 дней', 'b:tk:0'),
+      cb('Зарегистрироваться', 'b:tk:0'),
       cb('Проверить на готовом примере', 'b:ex'),
       appButton('Открыть демо-доску QEVO (Mini App)', `${base}/tg/board?demo=1`),
       cb('Перенести доски из Битрикс24 / YouGile', 'b:mv'),
@@ -87,7 +85,7 @@ export function daysLeftText(n: number): string {
 /** Шаг 2 ТЗ: кнопки под карточкой. */
 export function cardButtons(demoId: string, base: string): Keyboard {
   return rows(
-    cb('Забрать задачу в свое пространство (+7 дней бесплатно)', `b:tk:${demoId}`),
+    cb('Забрать задачу в свое пространство', `b:tk:${demoId}`),
     // до регистрации — демо-карточка Mini App без сервера (как в ТЗ)
     appButton('Покликать эту задачу в Mini App', `${base}/tg/task/demo`),
     cb('Надиктовать еще одно поручение', 'b:ag'),
@@ -104,7 +102,7 @@ export const UNSUPPORTED = 'Пришлите поручение голосовы
 export function userLimit(demoId: string | null): { text: string; markup: Keyboard } {
   return {
     text: 'На сегодня демо-попытки закончились.\nЗаберите задачу в своё пространство — там ИИ разбирает поручения каждый день, а первые 14 дней бесплатно.',
-    markup: rows(cb('Создать пространство (+7 дней бесплатно)', `b:tk:${demoId ?? '0'}`)),
+    markup: rows(cb('Создать пространство (14 дней бесплатно)', `b:tk:${demoId ?? '0'}`)),
   };
 }
 

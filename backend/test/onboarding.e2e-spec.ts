@@ -42,17 +42,17 @@ describe('онбординг владельца (e2e)', () => {
   };
   const step = (view: any, key: string) => view.steps.find((s: any) => s.key === key);
 
-  it('сразу после регистрации пройден один шаг из девяти, первым зовём выбрать тариф ИИ', async () => {
+  it('сразу после регистрации пройден один шаг из девяти, шага «Выбрать тариф ИИ» нет (ТЗ 10.11)', async () => {
     const O = await owner('ob1');
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
 
-    expect(view.total).toBe(10);
+    expect(view.total).toBe(9);
     expect(step(view, 'leads')).toMatchObject({ done: false, required: false });
     expect(view.done).toBe(1);
     expect(step(view, 'workspace').done).toBe(true);
     expect(view.completed).toBe(false);
-    // ТЗ-33: Registration → Workspace → AI Plan — обязательный шаг первым
-    expect(view.next).toBe('ai_plan');
+    expect(view.steps.some((s: any) => s.key === 'ai_plan')).toBe(false);
+    expect(view.next).toBe('project');
 
     // выбор — один раз; «Расширенный» — пробный с жёстким лимитом
     const plan = (await http.post('/api/ai/plan/select').set(O).send({ plan_code: 'AI_EXTENDED' }).expect(201)).body.data;
@@ -61,7 +61,6 @@ describe('онбординг владельца (e2e)', () => {
     expect(plan.capabilities['ai.web_search']).toBe(true);
     await http.post('/api/ai/plan/select').set(O).send({ plan_code: 'AI_BASIC' }).expect(409);
     const after = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
-    expect(step(after, 'ai_plan').done).toBe(true);
     expect(after.next).toBe('project');
 
     // понижение — сам владелец: интернет закрыт сразу
@@ -100,8 +99,8 @@ describe('онбординг владельца (e2e)', () => {
 
     const view = (await http.get('/api/onboarding').set(O).expect(200)).body.data;
     expect(step(view, 'team').skipped).toBe(true);
-    // к отложенному больше не зовём; первым — обязательный выбор тарифа ИИ (ТЗ-33)
-    expect(view.next).toBe('ai_plan');
+    // к отложенному больше не зовём; первым — обязательный проект (шага тарифа ИИ нет, ТЗ 10.11)
+    expect(view.next).toBe('project');
 
     // «позже» на проект — отказ: без него системой не пользуются
     await http.post('/api/onboarding/skip').set(O).send({ step: 'project' }).expect(400);

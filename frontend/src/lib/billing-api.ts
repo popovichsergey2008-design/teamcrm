@@ -1,7 +1,7 @@
 import { request } from './api';
 
 /** Оплата подписки (ЮKassa). Отдельно от api.ts: зовут только ленивые экран и плашка. */
-export interface BillingPlan { code: string; title: string; price: number; priceYear: number | null; maxMembers: number | null; description: string }
+export interface BillingPlan { code: string; title: string; price: number; priceYear: number | null; maxMembers: number | null; description: string; perMember?: boolean }
 export interface BillingView {
   status: 'TRIAL' | 'ACTIVE' | 'GRACE' | 'READ_ONLY';
   until: string | null;

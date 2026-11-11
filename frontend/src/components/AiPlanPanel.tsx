@@ -3,27 +3,20 @@ import './ai-plan.css';
 import { Icon } from './Icon';
 import { SkeletonList } from './Skeleton';
 import { Checkbox } from './ui/checkbox';
-import { confirmAction } from './ui/dialog';
-import { PlanCards } from './AiPlanChooser';
 import { CareEmpty } from './care/CareEmpty';
 import { TrialBlock } from './billing/TrialBlock';
 import { api, ApiError } from '../lib/api';
 import { navigate } from '../lib/router';
 import { useEscape } from '../hooks/useEscape';
 import { overlayProps } from '../lib/overlay';
-import type { AiPlanCode, AiPlanView } from '../types';
+import type { AiPlanView } from '../types';
 
 const num = (n: number) => n.toLocaleString('ru-RU');
-const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '');
 const FEATURE: Record<string, string> = { web_search: 'Поиск в интернете', read_url: 'Чтение страниц по ссылке' };
-const STATUS: Record<string, string> = {
-  TRIAL: 'пробный', ACTIVE: 'действует', PAST_DUE: 'ожидает оплаты', SUSPENDED: 'приостановлен', CANCELLED: 'отменён',
-};
 
 /**
- * «Настройки → Тариф и ИИ» (ТЗ-33, §38–40): тариф, интернет-кредиты, расход CRM-ИИ,
- * жёсткий лимит, смена тарифа. Оплаты в продукте пока нет: «Перейти на Расширенный» —
- * заявка, тариф включает вендор; понизить владелец может сам.
+ * «Настройки → Тариф и ИИ» (ТЗ-33, §38–40): ИИ в тарифе, интернет-кредиты, расход CRM-ИИ,
+ * жёсткий лимит. Выбор «Базовый / Расширенный» убран по ТЗ 10.11.
  */
 export function AiPlanPanel({ canManage, onClose }: { canManage: boolean; onClose: () => void }) {
   useEscape(onClose);
@@ -40,18 +33,6 @@ export function AiPlanPanel({ canManage, onClose }: { canManage: boolean; onClos
     try { setV(await fn()); } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); } finally { setBusy(false); }
   };
 
-  const pick = async (code: AiPlanCode) => {
-    if (!v) return;
-    if (!v.selected) return run(() => api.aiPlanSelect(code));
-    if (code === 'AI_EXTENDED') return run(() => api.aiPlanUpgrade());
-    if (!(await confirmAction({
-      title: 'Перейти на «Базовый»?',
-      description: 'ИИ перестанет ходить в интернет сразу. Всё, что он уже нашёл и написал, останется, история расхода — тоже.',
-      confirmLabel: 'Перейти на «Базовый»',
-    }))) return;
-    return run(() => api.aiPlanDowngrade());
-  };
-
   const w = v?.web;
   const pct = w && w.limit > 0 ? Math.min(100, Math.round((w.used / w.limit) * 100)) : 0;
 
@@ -65,7 +46,7 @@ export function AiPlanPanel({ canManage, onClose }: { canManage: boolean; onClos
 
         {/* ТЗ-34 «Сегодня» п.6.1: забота включена в каждый тариф */}
         <CareEmpty k="badge" />
-        {/* #4779, п. 3–4: пробный период 7 + 7 и его лимиты */}
+        {/* пробный период (14 дней без условий) и его лимиты */}
         <TrialBlock />
 
         {!v && !err && <SkeletonList rows={4} />}
@@ -73,25 +54,15 @@ export function AiPlanPanel({ canManage, onClose }: { canManage: boolean; onClos
 
         {v && (
           <>
+            {/*
+              ТЗ 10.11: выбора тарифа ИИ («Базовый» / «Расширенный») больше нет — в тарифе QEVO
+              один объём ИИ на пространство, как на сайте.
+            */}
             <div className="drawer-section">
-              <div className="drawer-section-title">Тариф</div>
-              {v.selected ? (
-                <div>
-                  <b>«{v.planTitle}»</b> · {STATUS[v.status ?? ''] ?? v.status}
-                  {v.status === 'TRIAL' && v.trialEndsAt && (v.trialExpired
-                    ? <span className="error-text"> — пробный закончился {day(v.trialEndsAt)}, интернет выключен</span>
-                    : <span className="dim"> до {day(v.trialEndsAt)}</span>)}
-                </div>
-              ) : (
-                <div className="dim">Тариф ещё не выбран — сейчас ИИ работает как в «Базовом».</div>
-              )}
-              {v.upgradeRequestedAt && v.plan !== 'AI_EXTENDED' && (
-                <div className="dim">Заявка на «Расширенный» отправлена {day(v.upgradeRequestedAt)} — мы свяжемся с вами.</div>
-              )}
-              <PlanCards current={v.plan} busy={busy || !canManage} onPick={canManage ? (c) => void pick(c) : undefined}
-                pickLabel={(c) => (!v.selected ? `Выбрать «${c === 'AI_EXTENDED' ? 'Расширенный' : 'Базовый'}»`
-                  : c === v.plan ? 'Текущий тариф'
-                    : c === 'AI_EXTENDED' ? 'Перейти на «Расширенный»' : 'Перейти на «Базовый»')} />
+              <div className="drawer-section-title">ИИ в тарифе</div>
+              <p style={{ margin: 0 }}>
+                В тариф входит 1 000 000 токенов в месяц на пространство. Если не хватит, подключите свой ключ Kimi в «Интеграции» и платите Kimi напрямую. Без ключа ИИ-функции встанут, остальной QEVO работает как обычно.
+              </p>
             </div>
 
             {w && (v.plan === 'AI_EXTENDED' || w.used > 0) && (

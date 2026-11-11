@@ -21,7 +21,8 @@ export default function BillingBar({ isOwner }: { isOwner: boolean }) {
     Бонус уже взят — эта плашка не нужна, дальше обычная «за 3 дня до конца».
   */
   const t = v.trial;
-  const firstLeft = t && !t.bonusGranted ? new Date(t.firstEnds).getTime() - Date.now() : null;
+  // ТЗ 10.11: бонуса за бота нет (bonusDays 0) — эта плашка не показывается
+  const firstLeft = t && t.bonusDays && !t.bonusGranted ? new Date(t.firstEnds).getTime() - Date.now() : null;
   if (firstLeft !== null && firstLeft > 0 && firstLeft <= 2 * DAY) {
     const days = Math.ceil(firstLeft / DAY);
     return (

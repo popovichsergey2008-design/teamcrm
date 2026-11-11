@@ -33,7 +33,10 @@ export function TrialBlock() {
     <>
     <div className="drawer-section">
       <div className="drawer-section-title">Пробный период</div>
-      {t.bonusGranted ? (
+      {/* ТЗ 10.11: 14 дней без условий — бонуса за Telegram-бота больше нет */}
+      {!t.bonusDays ? (
+        <p style={{ margin: 0 }}>Пробный период — {t.baseDays} дней бесплатно, без условий: до {dayMonth(t.until)}.</p>
+      ) : t.bonusGranted ? (
         <p style={{ margin: 0 }}><Icon name="check-circle" size={14} /> Готово, +{t.bonusDays} дней начислены. Пробный период до {dayMonth(t.until)}.</p>
       ) : (
         <>

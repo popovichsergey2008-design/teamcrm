@@ -135,9 +135,10 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
    */
   private trialOut(row: TenantSubRow | null, eff: Effective) {
     if (eff.status !== 'TRIAL' || !row?.trial_started_at) return null;
-    const firstEnds = new Date(new Date(row.trial_started_at).getTime() + 7 * 86_400_000);
+    // ТЗ 10.11: 14 дней без условий — бонуса за бота больше нет (bonusDays 0: экран его не предлагает)
+    const firstEnds = new Date(new Date(row.trial_started_at).getTime() + TRIAL_DAYS * 86_400_000);
     return {
-      baseDays: 7, bonusDays: 7,
+      baseDays: TRIAL_DAYS, bonusDays: 0,
       bonusGranted: Number(row.trial_bonus_days ?? 0) > 0,
       firstEnds, until: eff.until,
     };
@@ -146,7 +147,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   private planOut(p: PlanRow) {
     return {
       code: p.code, title: p.title, price: Number(p.price_rub), priceYear: p.price_year_rub == null ? null : Number(p.price_year_rub),
-      maxMembers: p.max_members, description: p.description,
+      maxMembers: p.max_members, description: p.description, perMember: !!p.per_member,
     };
   }
 
@@ -159,8 +160,10 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     if (!plan || !plan.is_active) throw AppException.validation('Такого тарифа нет');
     if (period === 'year' && plan.price_year_rub == null) throw AppException.validation(`Тариф «${plan.title}» на год не продаётся`);
     const months = period === 'year' ? 12 : 1;
-    const price = period === 'year' ? plan.price_year_rub! : plan.price_rub;
     const members = await this.repo.membersCount(tenantId);
+    // ТЗ 10.11: тариф «QEVO» — цена за пользователя, сумма = цена × сотрудники (не меньше одного)
+    const unit = Number(period === 'year' ? plan.price_year_rub! : plan.price_rub);
+    const price = String(plan.per_member ? unit * Math.max(1, members) : unit);
     if (plan.max_members !== null && members > plan.max_members) {
       throw AppException.validation(`В компании ${members} сотрудников, а тариф «${plan.title}» — до ${plan.max_members}. Выберите тариф побольше`);
     }

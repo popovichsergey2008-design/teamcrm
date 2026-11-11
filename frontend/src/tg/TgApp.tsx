@@ -189,7 +189,7 @@ export default function TgApp() {
   const demoBanner = session.state === 'demo' ? (
     <div className="tg-demo" role="note">
       {/* #4779, п. 13.1–13.4 */}
-      <p><b>Это пример.</b> Создайте рабочую зону команды и получите +7 дней бесплатно.</p>
+      <p><b>Это пример.</b> Создайте рабочую зону команды — 14 дней бесплатно, без условий.</p>
       <button type="button" className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void startFree(wa)}>
         Начать бесплатно
       </button>

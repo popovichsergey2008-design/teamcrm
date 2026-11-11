@@ -155,7 +155,8 @@ export class FocusBriefService implements OnModuleInit {
       if (before?.status === 'ready' && before.facts_version === version && before.rules_text === rules) {
         summary = before.summary_text;
         model = before.model;
-      } else {
+      } else if (!facts.spaceEmpty) {
+        // подсказку пустого пространства (ТЗ 10.11) модель не переписывает — она дословная
         const p = await this.polish(v, rules).catch(() => null);
         if (p) { summary = p.text; model = p.model; }
       }
@@ -248,6 +249,7 @@ export class FocusBriefService implements OnModuleInit {
       announcements: ann.map((a) => ({ id: a.id, title: (a.title || a.body).replace(/\s+/g, ' ').trim().slice(0, 80) })),
       clients: preset.clients ? { followups: waiting.followups } : null,
       team: overloaded ? { overloaded } : null,
+      spaceEmpty: await this.repo.spaceEmpty(v.tenantId),
     };
   }
 

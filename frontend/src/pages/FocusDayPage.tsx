@@ -21,6 +21,7 @@ import { CloseDayDialog } from './CloseDayDialog';
 import { TeamNow } from './TeamNow';
 import { MyStatusBar } from '../components/MyStatusBar';
 import { useAuth } from '../state/auth';
+import { helloName } from '../lib/hello-name';
 import { feedback } from '../lib/feedback';
 // приглашение на демо ИИ-созвона (ТЗ-24) — отдельным куском, не в стартовой сборке
 const AiDemoInvite = lazy(() => import('../components/AiDemoInvite'));
@@ -464,7 +465,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     <div className={`focus-page fd-page${zen ? ' fd-zen' : ''}`}>
       <header className="fd-head">
         <div>
-          <div className="focus-hello">{greeting()}, {user?.fullName?.split(' ')[0] ?? ''}!</div>
+          {/* ТЗ 10.11: пока имя не введено в «Давайте познакомимся», — без имени (не начало почты) */}
+          <div className="focus-hello">{greeting()}{helloName(user) ? `, ${helloName(user)}` : ''}!</div>
           <div className="dim">{DATE_FMT.format(new Date())}</div>
         </div>
         <div className="fd-head-side">

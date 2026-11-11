@@ -8,7 +8,7 @@ const EMPTY: OnboardingFacts = {
 describe('путь владельца: шаги и завершение', () => {
   it('сразу после регистрации пройден только первый шаг', () => {
     const steps = buildSteps({ ...EMPTY, aiPlan: false });
-    expect(progress(steps)).toEqual({ done: 1, total: 10 });
+    expect(progress(steps)).toEqual({ done: 1, total: 9 });
     expect(steps[0].key).toBe('workspace');
     expect(steps[0].done).toBe(true);
     expect(isComplete(steps)).toBe(false);
@@ -30,11 +30,10 @@ describe('путь владельца: шаги и завершение', () => 
     expect(isComplete(steps)).toBe(true);
   });
 
-  it('ТЗ-33: без выбранного тарифа ИИ путь не завершается и зовём сначала к нему', () => {
-    const noPlan = buildSteps({ ...EMPTY, aiPlan: false, projects: 1, tasks: 1 });
-    expect(isComplete(noPlan)).toBe(false);
-    expect(nextStep(noPlan)?.key).toBe('ai_plan');
-    expect(nextStep(buildSteps({ ...EMPTY, aiPlan: false }))?.key).toBe('ai_plan');
+  it('ТЗ 10.11: шага «Выбрать тариф ИИ» нет — без него путь завершается', () => {
+    const noPlan = buildSteps({ ...EMPTY, aiPlan: false, projects: 1, tasks: 1, projectInfo: true });
+    expect(noPlan.some((s) => (s.key as string) === 'ai_plan')).toBe(false);
+    expect(isComplete(noPlan)).toBe(true);
   });
 
   it('«команду позвал» — это и отправленное приглашение, а не только пришедший коллега', () => {

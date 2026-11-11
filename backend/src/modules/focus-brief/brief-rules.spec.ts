@@ -1,4 +1,4 @@
-import { acceptPolish, BriefFacts, briefText, composeBrief, factsHash, listenLabel, presetFor, speechScript } from './brief-rules';
+import { acceptPolish, BriefFacts, briefText, composeBrief, EMPTY_SPACE_BRIEF, factsHash, listenLabel, presetFor, speechScript } from './brief-rules';
 
 const base = (over: Partial<BriefFacts> = {}): BriefFacts => ({
   today: '2026-10-12', dayOff: false, boss: false, top: [], meetings: [], postcall: [], commitments: [], dueOutside: [],
@@ -10,6 +10,11 @@ const item = (rank: number, title: string, deadlineDate: string | null = null, d
 });
 
 describe('composeBrief', () => {
+  it('ТЗ 10.11: в пространстве нет задач — одна подсказка дословно, без «перегрузок нет»', () => {
+    const b = composeBrief(base({ spaceEmpty: true, team: { overloaded: [] } }));
+    expect(briefText(b)).toBe(EMPTY_SPACE_BRIEF);
+    expect(b.actions).toEqual([]);
+  });
   it('три задачи, две горят: главное — из тройки, итог «три действия ниже»', () => {
     const b = composeBrief(base({ top: [item(1, 'Проверить mobile join', '2026-10-12'), item(2, 'Ответить Acme', '2026-10-11'), item(3, 'Релиз')] }));
     const t = briefText(b);

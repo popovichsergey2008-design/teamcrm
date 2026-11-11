@@ -65,13 +65,13 @@ describe('Telegram-бот для сайта (e2e)', () => {
   let tenantId = '';
   let loginLink = '';
 
-  it('/start site → приветствие ТЗ, условие 7 + 7 и кнопка регистрации первой (#4779), метка источника', async () => {
+  it('/start site → приветствие ТЗ, 14 дней без условий и кнопка регистрации первой, метка источника', async () => {
     await text(guest, '/start site');
     const m = last(guest);
     expect(m.text).toContain('Привет! Я ИИ-помощник QEVO');
-    expect(m.text).toContain('Пробный период QEVO: 7 дней при регистрации на сайте и ещё 7 за регистрацию здесь.');
+    expect(m.text).toContain('Пробный период QEVO — 14 дней бесплатно, без условий.');
     expect(buttons(m).map((b) => b.text)).toEqual([
-      'Зарегистрироваться: +7 дней',
+      'Зарегистрироваться',
       'Проверить на готовом примере', 'Открыть демо-доску QEVO (Mini App)', 'Перенести доски из Битрикс24 / YouGile',
     ]);
     expect(calls.some((c) => c.method === 'answerCallbackQuery')).toBe(false);
@@ -94,7 +94,7 @@ describe('Telegram-бот для сайта (e2e)', () => {
     expect(m.text).toContain('Чек-лист ТЗ:');
     expect(calls.some((c) => c.method === 'sendChatAction' && String(c.body.chat_id) === String(guest))).toBe(true);
     const take = buttons(m).find((b) => b.callback_data?.startsWith('b:tk:'));
-    expect(take.text).toBe('Забрать задачу в свое пространство (+7 дней бесплатно)');
+    expect(take.text).toBe('Забрать задачу в свое пространство');
     demoId = take.callback_data.split(':')[2];
     const after = await db.one<{ n: string }>(`SELECT count(*) AS n FROM tasks WHERE title = 'Подготовить отчет по рекламе'`);
     expect(after!.n).toBe(before!.n);
@@ -111,8 +111,8 @@ describe('Telegram-бот для сайта (e2e)', () => {
   it('«Принимаю» → организация, владелец, привязка, проект с задачей, пробный период, согласие', async () => {
     await press(guest, `b:ok:${demoId}`);
     expect(last(guest).text).toContain('Ваше рабочее пространство создано!');
-    // #4779: +7 дней — сразу за регистрацию в боте
-    expect(last(guest).text).toContain('Готово, +7 дней начислены. Пробный период до');
+    // ТЗ 10.11: бонуса за бота нет — 14 дней сразу
+    expect(last(guest).text).not.toContain('+7 дней');
     const acc = await db.one<{ id: string }>(`SELECT id::text FROM accounts WHERE email = $1`, [`tg${guest}@users.qevo.one`]);
     expect(acc).toBeTruthy();
     const link = await db.one<{ tenant_id: string; user_id: string }>(
@@ -124,7 +124,7 @@ describe('Telegram-бот для сайта (e2e)', () => {
     expect(t!.name).toBe('Анна — команда');
     expect(t!.source).toBe('telegram_bot');
     expect(Number(t!.days)).toBe(14);
-    expect(Number(t!.bonus)).toBe(7);
+    expect(Number(t!.bonus)).toBe(0);
     const task = await db.one<{ title: string; project: string }>(
       `SELECT t.title, p.name AS project FROM tasks t JOIN projects p ON p.id = t.project_id WHERE t.tenant_id = $1`, [tenantId]);
     expect(task!.title).toBe('Подготовить отчет по рекламе');
@@ -149,13 +149,13 @@ describe('Telegram-бот для сайта (e2e)', () => {
     loginLink = buttons(m)[0].url;
     expect(loginLink).toMatch(/\?tglogin=[A-Za-z0-9_-]{20,}$/);
     const t = await db.one<{ bonus: number }>(`SELECT trial_bonus_days AS bonus FROM tenants WHERE id = $1`, [tenantId]);
-    expect(Number(t!.bonus)).toBe(7);
+    expect(Number(t!.bonus)).toBe(0);
     const lead = await db.one<{ source: string; team_size: string; contact: string }>(
       `SELECT source, team_size, contact FROM landing_leads WHERE tenant_id = $1`, [tenantId]);
     expect(lead).toEqual({ source: 'telegram', team_size: '6-15', contact: `@anna${guest}` });
     // повторный ответ — без второго бонуса и второй заявки
     await press(guest, 'b:tm:l');
-    expect(Number((await db.one<{ bonus: number }>(`SELECT trial_bonus_days AS bonus FROM tenants WHERE id = $1`, [tenantId]))!.bonus)).toBe(7);
+    expect(Number((await db.one<{ bonus: number }>(`SELECT trial_bonus_days AS bonus FROM tenants WHERE id = $1`, [tenantId]))!.bonus)).toBe(0);
     expect((await db.many(`SELECT id FROM landing_leads WHERE tenant_id = $1`, [tenantId])).length).toBe(1);
   });
 
@@ -201,10 +201,10 @@ describe('Telegram-бот для сайта (e2e)', () => {
     const code = (await http$.post('/api/me/telegram/link-code').set(O).expect(201)).body.data.code;
     await text(staff, `/start ${code}`);
     expect(last(staff).text).toContain('Аккаунт привязан');
-    // #4779: пришёл с сайта, привязал бота — +7 дней пространству, один раз
-    expect(last(staff).text).toContain('Готово, +7 дней начислены');
+    // ТЗ 10.11: привязка бота больше не продлевает пробный — 14 дней без условий
+    expect(last(staff).text).not.toContain('+7 дней');
     const bonus = await db.one<{ b: number }>(`SELECT trial_bonus_days AS b FROM tenants WHERE id = $1`, [owner.organizations[0].tenantId]);
-    expect(Number(bonus!.b)).toBe(7);
+    expect(Number(bonus!.b)).toBe(0);
 
     await text(staff, '/start site');
     expect(last(staff).text).toContain('С возвращением');

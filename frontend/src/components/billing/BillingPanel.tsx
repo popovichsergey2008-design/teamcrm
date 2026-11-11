@@ -102,9 +102,17 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                     return (
                       <div key={p.code} className={`bil-plan ${current ? 'bil-plan-current' : ''}`}>
                         <div className="bil-plan-title">{p.title}</div>
+                        {/* ТЗ 10.11: один тариф «QEVO» как на сайте — цена за пользователя */}
+                        {p.perMember ? (<>
+                          <div className="bil-plan-price">от {rub(p.priceYear != null ? Math.round(p.priceYear / 12) : p.price)} <span className="dim">за пользователя в месяц</span></div>
+                          <div className="dim bil-note">{p.priceYear != null ? `${rub(Math.round(p.priceYear / 12))} при оплате за год, ` : ''}{rub(p.price)} при помесячной оплате</div>
+                          <div className="dim bil-plan-text">{p.description}</div>
+                          <div className="bil-note">К оплате: {v.members} {v.members % 10 === 1 && v.members % 100 !== 11 ? 'пользователь' : 'польз.'} × {rub(year ? p.priceYear! : p.price)} = <b>{rub((year ? p.priceYear! : p.price) * Math.max(1, v.members))}</b> {year ? 'за год' : 'в месяц'}</div>
+                        </>) : (<>
                         <div className="bil-plan-price">{rub(year ? p.priceYear! : p.price)} <span className="dim">{year ? '/ год' : '/ мес'}</span></div>
                         {year && <div className="dim bil-note">≈ {rub(Math.round(p.priceYear! / 12))} в месяц{p.priceYear! < p.price * 12 ? `, выгода ${rub(p.price * 12 - p.priceYear!)}` : ''}</div>}
                         <div className="dim bil-plan-text">{p.maxMembers ? `До ${p.maxMembers} сотрудников. ` : 'Без ограничения сотрудников. '}{p.description}</div>
+                        </>)}
                         {canPay && v.configured && (
                           <button
                             className="ui-btn ui-btn-primary ui-btn-sm"

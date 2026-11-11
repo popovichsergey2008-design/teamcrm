@@ -56,7 +56,12 @@ export interface BriefFacts {
   clients: { followups: number } | null;
   /** перегруженные люди (null — сигналы команды выключены или не положены по роли) */
   team: { overloaded: string[] } | null;
+  /** ТЗ 10.11: в пространстве ещё нет ни одной задачи — вместо брифа одна подсказка */
+  spaceEmpty?: boolean;
 }
+
+/** ТЗ 10.11, дословно: бриф пространства, где ещё нет задач. */
+export const EMPTY_SPACE_BRIEF = 'Задач пока нет. Поставьте первую задачу голосом или текстом, и завтра утром здесь появится ваш план на день.';
 
 export interface BriefSource {
   id: string;
@@ -108,6 +113,7 @@ type Section = (typeof ORDER)[number];
  * Что не влезло, отбрасывается по важности, а не по порядку.
  */
 export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): ComposedBrief {
+  if (f.spaceEmpty) return { sentences: [{ text: EMPTY_SPACE_BRIEF, refs: [] }], sources: [], actions: [], mentions: [] };
   const sources: BriefSource[] = [];
   const actions: BriefAction[] = [];
   const mentions: string[] = [];

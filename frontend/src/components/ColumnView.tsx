@@ -116,6 +116,7 @@ export function ColumnView({
   */
   const [showOlder, setShowOlder] = useState(false);
   const isDoneCol = stageNow === 'done';
+  const crowded = !isFirst && !isDoneCol && column.tasks.length > 15;
   const split = useMemo(() => (isDoneCol ? splitDone(column.tasks) : { recent: column.tasks, older: [] }), [isDoneCol, column.tasks]);
   const shown = isDoneCol && !showOlder ? split.recent : column.tasks;
   // место среди показанных → место среди задач колонки (часть «Готово» свёрнута)
@@ -228,7 +229,10 @@ export function ColumnView({
         )}
         <span className="col-head-right">
           <span className="kv2-count">{column.tasks.length}</span>
-          {!!overWip.length && <span className="col-many" title={`Больше ${wipLimit} у человека: ${overWip.join(', ')}. Проверьте, что сейчас важнее.`}>· много</span>}
+          {/* ТЗ 10.11: больше 15 задач в колонке — «· много»; в первой колонке и «Готово» много задач — норма */}
+          {(!!overWip.length || crowded) && (
+            <span className="col-many" title={[crowded ? `В колонке ${column.tasks.length} задач — больше 15. Возможно, стоит разгрузить этап.` : '', overWip.length ? `Больше ${wipLimit} у человека: ${overWip.join(', ')}. Проверьте, что сейчас важнее.` : ''].filter(Boolean).join(' ')}>· много</span>
+          )}
           {canEdit && (
             <Button variant="ghost" size="icon-sm" className="kv2-col-menu col-add" aria-label={`Новая задача в «${column.name}»`} title="Новая задача в этой колонке (Enter — создать, Esc — отмена)"
               onClick={() => (onQuickAdd ? setQuick((v) => (v === null ? '' : null)) : onRequestAddTask(column.id))}>

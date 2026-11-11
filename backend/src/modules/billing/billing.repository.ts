@@ -5,6 +5,8 @@ import { PriceMove, SubRow } from './billing-rules';
 export interface PlanRow {
   code: string; title: string; price_rub: string; price_year_rub: string | null; max_members: number | null;
   description: string; sort_order: number; is_active: boolean; version: number;
+  /** ТЗ 10.11: цена за каждого сотрудника, а не за пространство. */
+  per_member?: boolean;
 }
 
 export interface TenantSubRow extends SubRow {
@@ -38,13 +40,13 @@ export class BillingRepository {
 
   plans(activeOnly = true): Promise<PlanRow[]> {
     return this.db.many<PlanRow>(
-      `SELECT code, title, price_rub::text, price_year_rub::text, max_members, description, sort_order, is_active, version
+      `SELECT code, title, price_rub::text, price_year_rub::text, max_members, description, sort_order, is_active, version, per_member
          FROM billing_plans ${activeOnly ? 'WHERE is_active' : ''} ORDER BY sort_order, price_rub`,
     );
   }
 
   plan(code: string): Promise<PlanRow | null> {
-    return this.db.one<PlanRow>(`SELECT code, title, price_rub::text, price_year_rub::text, max_members, description, sort_order, is_active, version FROM billing_plans WHERE code=$1`, [code]);
+    return this.db.one<PlanRow>(`SELECT code, title, price_rub::text, price_year_rub::text, max_members, description, sort_order, is_active, version, per_member FROM billing_plans WHERE code=$1`, [code]);
   }
 
   /**

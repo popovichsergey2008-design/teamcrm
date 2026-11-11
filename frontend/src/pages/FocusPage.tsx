@@ -7,6 +7,7 @@ import { api, ApiError } from '../lib/api';
 import { cached, dropCache } from '../lib/cache';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { useAuth } from '../state/auth';
+import { helloName } from '../lib/hello-name';
 import type { Approval, Task } from '../types';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { LeftoversDialog, leftoversSeenToday } from '../components/LeftoversDialog';
@@ -291,7 +292,8 @@ function LegacyFocusPage({ onOpenTask, onJoinCall, active = true }: FocusProps) 
     <div className="focus-page focus-v2">
       <div className="focus-head">
         <div>
-          <div className="focus-hello">{greeting()}, {user?.fullName?.split(' ')[0] ?? ''}!</div>
+          {/* ТЗ 10.11: пока имя не введено в «Давайте познакомимся», — без имени (не начало почты) */}
+          <div className="focus-hello">{greeting()}{helloName(user) ? `, ${helloName(user)}` : ''}!</div>
           <div className="dim">{DATE_FMT.format(new Date())}</div>
         </div>
         <div className="focus-progress-box">

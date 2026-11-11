@@ -1025,7 +1025,7 @@ input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible { outlin
 .avatar-group { border-radius: 8px; }
 
 /* ── панель чатов справа (Chat Bar) ─────────────────────────────────────────── */
-.chat-bar { width: 60px; }
+.chat-bar { width: 52px; } /* ТЗ 10.11: узкая правая панель — 52 px (было 60) */
 .chat-bar.expanded { width: 300px; box-shadow: var(--shadow-lg); }
 .bar-top, .bar-bottom { padding: 8px; gap: 2px; }
 .bar-icon { min-height: 40px; border-radius: var(--radius); }

@@ -19,7 +19,7 @@ export interface TourStep {
   center?: boolean;
 }
 
-const RESTART_DESKTOP = 'Пройти обучение заново: нажмите на своё имя слева вверху → «Обучение».';
+const RESTART_DESKTOP = 'Пройти обучение заново: нажмите на своё имя слева внизу → «Обучение».';
 const RESTART_MOBILE = 'Пройти обучение заново: «Ещё» → нажмите на своё имя → «Обучение».';
 
 export const TOURS: Record<TourKey, TourStep[]> = {
