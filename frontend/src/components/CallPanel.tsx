@@ -173,6 +173,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
   const [guestNote, setGuestNote] = useState('');
   /** Организатор этой встречи (или начавший созвон): ему — «Завершить для всех» и «Закрыть вход». */
   const [hostRole, setHostRole] = useState(false);
+  const endedByMe = useRef(false);
   const [locked, setLocked] = useState(false);
   /** «Сообщить организатору»: отправлено / можно ещё раз. */
   const [notified, setNotified] = useState<'pending' | 'sent' | 'later' | null>(null);
@@ -482,12 +483,13 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
           },
           onEnded: (by) => {
             noRejoin.current = true;
-            // сотрудника с записанной встречи ведём сразу в итоги; гостю — только записка
-            if (!isGuest && everRecorded.current) {
+            // сотрудника с записанной встречи ведём сразу в итоги; гостю — только записка;
+            // завершивший сам (#4883) просто выходит — записка «Вход не состоялся» ему ни к чему
+            if (!isGuest && (everRecorded.current || endedByMe.current)) {
               pipRef.current?.close();
               pipRef.current = null;
               client.current?.leave();
-              onCloseRef.current({ roomId: meetingId, recorded: true, last: true });
+              onCloseRef.current({ roomId: meetingId, recorded: everRecorded.current, last: true });
               return;
             }
             setGuestState('rejected');
@@ -1276,7 +1278,7 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
             /* #4883: красная, рядом с «Выйти» — чтобы не выходить по привычке, оставляя созвон идти */
             <button
               className="ui-btn ui-btn-sm call-end-all"
-              onClick={async () => { if (await confirmAction({ title: 'Выйти и завершить созвон для всех?', description: 'Созвон закончится у каждого участника. Если нужно уйти только самому — нажмите «Выйти».', confirmLabel: 'Завершить для всех', danger: true })) client.current?.endForAll(); }}
+              onClick={async () => { if (await confirmAction({ title: 'Выйти и завершить созвон для всех?', description: 'Созвон закончится у каждого участника. Если нужно уйти только самому — нажмите «Выйти».', confirmLabel: 'Завершить для всех', danger: true })) { endedByMe.current = true; client.current?.endForAll(); } }}
               title="Выйти и завершить для всех: созвон закончится у каждого"
               aria-label="Выйти и завершить созвон для всех"
             >
