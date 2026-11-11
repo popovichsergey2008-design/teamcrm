@@ -180,19 +180,26 @@ export class MeetGateway implements OnModuleInit {
   }
 
   private async onConnect(ws: WebSocket, user: AccessTokenPayload): Promise<void> {
-    // имени в токене нет — берём из базы, оно показывается всем участникам созвона
-    const row = await this.db
-      .one<{ full_name: string }>(`SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2`, [user.tenantId, user.sub])
-      .catch(() => null);
     const client: Client = {
       ws,
       userId: String(user.sub),
       tenantId: String(user.tenantId),
-      displayName: row?.full_name || user.email || 'Участник',
+      displayName: user.email || 'Участник',
       meetingId: null,
       isGuest: false,
     };
+    /*
+      Слушаем сокет СРАЗУ, а имя из базы подставляем потом. Клиент шлёт «meet.join» в ту же
+      секунду, как сокет открылся; пока ждали базу, обработчика сообщений ещё не было, и
+      вход терялся — сокет открыт, а в комнату никто не вошёл: «Сервер созвонов не открыл
+      исходящий канал» (11.11, база отвечала медленно).
+    */
     this.wire(client);
+    // имени в токене нет — берём из базы, оно показывается всем участникам созвона
+    const row = await this.db
+      .one<{ full_name: string }>(`SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2`, [user.tenantId, user.sub])
+      .catch(() => null);
+    if (row?.full_name) client.displayName = row.full_name;
     /*
       Телефон открылся по push «входящий звонок» (ТЗ-9): сам вызов ушёл в сокет, которого
       тогда не было. Если звонок ещё идёт — показываем его заново в новое соединение.
