@@ -666,7 +666,8 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const removeTask = async (confirmTimeLoss = false) => {
     if (!confirmTimeLoss && !(await confirmAction({
       title: `Удалить задачу «${task.title}»?`,
-      description: 'Вместе с ней исчезнут комментарии, чек-лист и вложения. Отменить это будет нельзя.',
+      // задача уходит в корзину целиком — с комментариями, чек-листом и файлами
+      description: 'Задача попадёт в корзину вместе с комментариями, чек-листом и вложениями. Вернуть её можно в «Общие задачи» → «Корзина».',
       danger: true,
     }))) return;
     setErr(''); setMoving(true);

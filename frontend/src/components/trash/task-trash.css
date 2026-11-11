@@ -1,0 +1,9 @@
+/* Корзина задач */
+.trash-list { list-style: none; margin: 0; padding: 0; max-height: min(60vh, 560px); overflow-y: auto; }
+.trash-row { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--border); }
+.trash-row:last-child { border-bottom: 0; }
+.trash-main { flex: 1; min-width: 0; }
+.trash-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trash-meta { font-size: var(--fs-xs); margin-top: 2px; }
+.trash-actions { display: flex; gap: 4px; flex: none; }
+@media (max-width: 720px) { .trash-row { flex-wrap: wrap; } .trash-actions { width: 100%; justify-content: flex-end; } }

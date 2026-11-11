@@ -166,8 +166,8 @@ export class TasksRepository {
   }
 
   trashList(tenantId: string) {
-    return this.db.many<{ id: string; title: string; project_name: string; deleted_at: string; deleted_by_name: string | null; delete_reason: string | null }>(
-      `SELECT t.id::text, t.title, p.name AS project_name, t.deleted_at, u.full_name AS deleted_by_name, t.delete_reason
+    return this.db.many<{ id: string; title: string; project_id: string; project_name: string; deleted_at: string; deleted_by_name: string | null; delete_reason: string | null }>(
+      `SELECT t.id::text, t.title, t.project_id::text, p.name AS project_name, t.deleted_at, u.full_name AS deleted_by_name, t.delete_reason
          FROM tasks t
          JOIN projects p ON p.id = t.project_id
          LEFT JOIN users u ON u.id = t.deleted_by

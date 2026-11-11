@@ -1049,6 +1049,8 @@ export const api = {
   /** Корзина задач: что удалено и возврат. */
   taskTrash: () => request<{ items: any[] }>('GET', '/tasks/trash'),
   restoreTask: (id: string) => request<{ restored: boolean }>('POST', `/tasks/${id}/restore`, {}),
+  /** Из корзины — насовсем (право «удалять навсегда», по умолчанию у владельца). */
+  deleteTaskForever: (id: string) => request<{ deleted: true }>('DELETE', `/tasks/${id}?permanent=1&confirmTimeLoss=1`),
 
   listTags: (archived = false) =>
     request<{ items: TagItem[]; settings: TagSettings }>('GET', `/tags${archived ? '?archived=1' : ''}`),

@@ -14,6 +14,7 @@ import { Toggle } from '../components/ui/toggle';
 import { Menu } from '@base-ui/react/menu';
 import { Tooltip } from '../components/ui/tooltip';
 import { FavoriteStar } from '../components/FavoriteStar';
+import { lazyComponent } from '../lib/lazy';
 import { api, TagItem } from '../lib/api';
 import { deadlineBadge, labelTextColor, priorityBadge } from '../lib/labels';
 import {
@@ -22,6 +23,8 @@ import {
   registryQuery, scopeHint, sortMark,
 } from '../lib/task-registry-view';
 import type { Project } from '../types';
+
+const TaskTrashDialog = lazyComponent(() => import('../components/trash/TaskTrashDialog').then((m) => m.TaskTrashDialog));
 
 /**
  * Реестр задач — «покажи ВСЁ».
@@ -105,6 +108,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
 }) {
   const [filters, setFilters] = useState<RegistryFilters>({ ...EMPTY_FILTERS, scope });
   const [rows, setRows] = useState<Row[]>([]);
+  const [trashOpen, setTrashOpen] = useState(false);
   const [meta, setMeta] = useState({ total: 0, page: 1, pageSize: 50, pages: 1 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,6 +261,10 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
             title="Таблица со всеми проектами"
           >
             <Icon name="list" size={15} /> Все проекты
+          </Button>
+          {/* Корзина: удалённые задачи можно вернуть — раньше это умел только сервер */}
+          <Button variant="ghost" size="sm" onClick={() => setTrashOpen(true)} title="Удалённые задачи — вернуть или удалить навсегда">
+            <Icon name="trash" size={15} /> Корзина
           </Button>
           {/*
             Поставить задачу — прямо отсюда (просьба заказчика: ставить задачи там, где
@@ -621,6 +629,7 @@ export function TasksPage({ active, scope, onScope, onOpenTask, onNewTask, onVoi
           </Button>
         </nav>
       )}
+      {trashOpen && <TaskTrashDialog onClose={() => setTrashOpen(false)} onChanged={() => void load(filters, true)} />}
     </div>
   );
 }
