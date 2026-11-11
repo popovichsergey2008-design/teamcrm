@@ -5971,8 +5971,15 @@ body.is-dragging { user-select: none; cursor: grabbing; }
 .guest-meeting-title { font-weight: 700; font-size: calc(17px * var(--fs-scale)); margin: 0; color: var(--text); }
 .guest-closed { border-color: var(--danger-line); background: var(--danger-soft); }
 
-/* «Завершить для всех» — не то же, что «Выйти»: отдельная кнопка, тоже тревожная */
-.call-end-all { border-color: var(--danger); color: var(--danger); background: transparent; }
+/* «Выйти и завершить для всех» (#4883) — красная, рядом с «Выйти» (её ставим следом) */
+.call-end-all { margin-left: auto; background: var(--fill-danger); border-color: var(--fill-danger); color: var(--on-fill); font-weight: 600; }
+.call-end-all:hover { filter: brightness(.92); background: var(--fill-danger); color: var(--on-fill); }
+.call-end-all + .call-leave { margin-left: 8px; }
+@media (max-width: 640px) {
+  .call-controls .call-end-all { margin-left: 0; order: 98; background: transparent; border-color: transparent; color: var(--text); }
+  .call-controls .call-end-all > .icon { background: #c62828; border-color: #c62828; color: #fff; }
+  .call-controls .call-end-all:hover { filter: none; background: transparent; }
+}
 
 /* Гости встречи по email (ТЗ-14) */
 .meeting-guests { display: flex; flex-direction: column; gap: 6px; }

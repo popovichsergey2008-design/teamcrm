@@ -73,6 +73,8 @@ interface Client {
   opRoomId?: string;
   /** Последняя подсветка (ТЗ-29) — предохранитель от потока отметок. */
   lastPointerAt?: number;
+  /** Владелец или руководитель компании: «Выйти и завершить для всех» в любом своём созвоне (#4883). */
+  admin?: boolean;
 }
 
 /**
@@ -187,6 +189,7 @@ export class MeetGateway implements OnModuleInit {
       displayName: user.email || 'Участник',
       meetingId: null,
       isGuest: false,
+      admin: user.role === 'owner' || user.role === 'manager',
     };
     /*
       Слушаем сокет СРАЗУ, а имя из базы подставляем потом. Клиент шлёт «meet.join» в ту же
@@ -361,7 +364,7 @@ export class MeetGateway implements OnModuleInit {
           this.send(c.ws, 'meet.guest-knocking', { meeting_id: room.id, guest_id: g.userId, name: g.displayName, employee: !g.isGuest });
         }
         // кто здесь может «Завершить для всех» и «Закрыть вход»
-        const isHost = access ? access.host : room.startedBy === c.userId;
+        const isHost = !!c.admin || (access ? access.host : room.startedBy === c.userId);
         this.send(c.ws, 'meet.role', { meeting_id: room.id, host: isHost, meeting: !!access, locked: !!room.locked });
         // пришёл организатор — участники из зала ожидания проходят сами (trusted / host_required)
         if (access?.host) void this.reviewLobby(room);
@@ -374,7 +377,7 @@ export class MeetGateway implements OnModuleInit {
        */
       case 'meet.end-all': {
         if (!room || !room.participants.has(c.userId)) return;
-        if (!(await this.canHost(c, room))) return this.send(c.ws, 'meet.error', { message: 'Завершить для всех может организатор' });
+        if (!(await this.canHost(c, room))) return this.send(c.ws, 'meet.error', { message: 'Завершить для всех может организатор или руководитель' });
         await this.guests.endMeeting(c.tenantId, room.id).catch(() => undefined);
         this.trace(c, 'meeting.ended', { people: room.participants.size });
         for (const w of [...(this.lobby.get(room.id)?.values() ?? [])]) {
@@ -918,6 +921,7 @@ export class MeetGateway implements OnModuleInit {
   /** Может ли человек «Завершить для всех» / «Закрыть вход». */
   private async canHost(c: Client, room: MeetingRoom): Promise<boolean> {
     if (c.isGuest) return false;
+    if (c.admin) return true;
     const meetingHost = await this.guests.isMeetingHost(c.tenantId, room.id, c.userId).catch(() => null);
     return meetingHost === null ? room.startedBy === c.userId : meetingHost;
   }
@@ -944,7 +948,7 @@ export class MeetGateway implements OnModuleInit {
       }
       this.send(w.ws, 'meet.guest-admitted', { meeting_id: room.id });
       await this.joinRoom(w, room);
-      this.send(w.ws, 'meet.role', { meeting_id: room.id, host: access.host, meeting: true, locked: !!room.locked });
+      this.send(w.ws, 'meet.role', { meeting_id: room.id, host: access.host || !!w.admin, meeting: true, locked: !!room.locked });
     }
     if (!waiting.size) this.lobby.delete(room.id);
   }

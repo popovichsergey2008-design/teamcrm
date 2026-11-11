@@ -1273,14 +1273,16 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
             </button>
           )}
           {hostRole && (
+            /* #4883: красная, рядом с «Выйти» — чтобы не выходить по привычке, оставляя созвон идти */
             <button
-              className="ui-btn ui-btn-outline ui-btn-sm call-end-all"
-              onClick={async () => { if (await confirmAction({ title: 'Завершить встречу для всех?', description: 'Все участники выйдут из созвона, а войти снова сможет только организатор.', confirmLabel: 'Завершить для всех', danger: true })) client.current?.endForAll(); }}
-              title="Завершить встречу для всех: созвон закончится у каждого"
+              className="ui-btn ui-btn-sm call-end-all"
+              onClick={async () => { if (await confirmAction({ title: 'Выйти и завершить созвон для всех?', description: 'Созвон закончится у каждого участника. Если нужно уйти только самому — нажмите «Выйти».', confirmLabel: 'Завершить для всех', danger: true })) client.current?.endForAll(); }}
+              title="Выйти и завершить для всех: созвон закончится у каждого"
+              aria-label="Выйти и завершить созвон для всех"
             >
               <Icon name="phone-off" size={15} />
-              <span className="call-btn-label">Завершить для всех</span>
-              <span className="call-btn-cap">Для всех</span>
+              <span className="call-btn-label">Выйти и завершить для всех</span>
+              <span className="call-btn-cap">Завершить всем</span>
             </button>
           )}
           {/* Выход — заметной красной кнопкой «положить трубку» (задача #1463). */}
