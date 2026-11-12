@@ -236,6 +236,8 @@ export interface FocusItem {
   checklistDone: number;
   /** #4767: оценка задачи в минутах; null — оценки нет */
   estimateMin?: number | null;
+  /** #4892, п. 8: время на задачу в календаре на сегодня */
+  calendarBlock?: { startsAt: string; endsAt: string } | null;
   /** «почему эта задача» — готовые строки, собранные сервером */
   reasons: string[];
   score: number;

@@ -39,7 +39,7 @@ const stamp = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec 
  * должен выполнить. Уверенность в исполнителе видна (§14): названный и найденный —
  * просто имя; угаданный — «ИИ предполагает»; не найденный — «выберите».
  */
-export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, selected, onSelect, onChoice, proof, recordingUrl, duplicate }: {
+export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, selected, onSelect, onChoice, proof, recordingUrl, duplicate, onMerge }: {
   draft: any; projects: Project[]; users: User[];
   onApply: (d: any, patch: DraftChoice) => void;
   onReject: (d: any) => void;
@@ -53,6 +53,8 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
   recordingUrl?: string | null;
   /** уже существующая задача по той же договорённости (§10) */
   duplicate?: { taskId: string; projectId: string; title: string };
+  /** #4892, п. 7: «Добавить в #1326» — поручение комментарием в существующую задачу, без дубля. */
+  onMerge?: (d: any, taskId: string) => void;
 }) {
   const [assigneeId, setAssigneeId] = useState(draft.assignee_id ?? '');
   const [projectId, setProjectId] = useState(draft.project_id ?? '');
@@ -190,6 +192,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
         <div className="draft-unsure">
           Похоже, задача уже есть: «{duplicate.title}»{' '}
           <button type="button" className="link-btn" onClick={() => navigate({ section: 'projects', projectId: duplicate.projectId, taskId: duplicate.taskId })}>Открыть</button>
+          {onMerge && <>{' · '}<button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => onMerge(draft, duplicate.taskId)}>Добавить в #{duplicate.taskId}</button></>}
         </div>
       )}
       {proof && recordingUrl && (

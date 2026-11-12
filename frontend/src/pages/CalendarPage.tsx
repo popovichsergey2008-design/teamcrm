@@ -10,7 +10,7 @@ import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { meetingUrl, shareMeeting } from './MeetingPage';
 import { CalendarSyncPanel } from '../components/CalendarSyncPanel';
 import { GoogleFilesBlock } from '../components/google/GoogleFilesBlock';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, request } from '../lib/api';
 import { feedback } from '../lib/feedback';
 import { navigate } from '../lib/router';
 import {
@@ -48,6 +48,9 @@ import { AssistantPanel } from './calendar/AssistantPanel';
 import { FirstRun, useConnect } from './calendar/ConnectCalendar';
 import { MeetingPrep } from './calendar/MeetingPrep';
 import { calApi, type CalPrefs, type CallItem, type WeekAssistant } from './calendar/cal-api';
+import { DeclineBox, FocusGoalCard, PreviewBar, RescheduleBanner, type Proposed } from './calendar/TimeWork';
+import { isTimeless } from './calendar/DeadlinesBar';
+import { getSocket } from '../lib/socket';
 import './calendar/calendar.css';
 import { DateInput } from '../components/DateInput';
 
@@ -278,6 +281,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [assistKey, setAssistKey] = useState(0);
   const [windows, setWindows] = useState<{ startsAt: string; endsAt: string; label: string }[]>([]);
   const [calls, setCalls] = useState<CallItem[]>([]);
+  /** #4892, п. 7: встречи с готовыми итогами → разбор; п. 8–9: предпросмотр пунктиром. */
+  const [summaries, setSummaries] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState<{ items: Proposed[]; apply: () => Promise<unknown>; text: string } | null>(null);
   const loadPrefs = useCallback(() => calApi.prefs().then(setPrefs).catch(() => undefined), []);
   useEffect(() => { void loadPrefs(); }, [loadPrefs]);
 
@@ -300,6 +306,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       setWork(r.work);
       // созвоны QEVO, в том числе начатые из чата (#4892, п. 0)
       calApi.calls(from.toISOString(), to.toISOString()).then(setCalls).catch(() => setCalls([]));
+      request<{ event_id: string; meeting_id: string }[]>('GET', `/calendar/plus/summaries?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`)
+        .then((rows) => setSummaries(Object.fromEntries(rows.map((x) => [String(x.event_id), String(x.meeting_id)])))).catch(() => undefined);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить календарь');
     } finally {
@@ -311,6 +319,28 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 
   useEffect(() => { void reload(); }, [reload]);
   const connect = useConnect(() => { void loadPrefs(); void reload(); });
+  // фокус переехал из-за встречи, план дня стал блоками, кто-то отказался — сетка обновляется сама
+  useEffect(() => {
+    const sock = getSocket();
+    const onChanged = () => { void reload(); };
+    const onMoved = (e: { title: string; body: string }) => { toastSaved(e.title, e.body); void reload(); };
+    sock.on('calendar.changed', onChanged);
+    sock.on('calendar.focus-moved', onMoved);
+    return () => { sock.off('calendar.changed', onChanged); sock.off('calendar.focus-moved', onMoved); };
+  }, [reload]);
+  /** «Разложить по неделе» (п. 8): ИИ раскладывает, сетка показывает пунктиром, ставим по «Применить». */
+  const planWeek = async () => {
+    try {
+      const r = await request<{ placements: { taskId: string; title: string; startsAt: string; endsAt: string; label: string }[]; unplaced: { title: string }[] }>(
+        'POST', '/calendar/plus/plan-week', { from: from.toISOString(), to: to.toISOString() });
+      if (!r.placements.length) { toastSaved('Разложить не получилось', r.unplaced.length ? 'до сроков нет свободных окон' : 'задач со сроком на этой неделе нет'); return; }
+      setPreview({
+        items: r.placements.map((x) => ({ startsAt: x.startsAt, endsAt: x.endsAt, label: `предложено: ${x.title}` })),
+        text: `ИИ разложил ${new Set(r.placements.map((x) => x.taskId)).size} ${plural(new Set(r.placements.map((x) => x.taskId)).size, 'задачу', 'задачи', 'задач')} в свободные окна${r.unplaced.length ? ` · не влезло: ${r.unplaced.length}` : ''}`,
+        apply: () => request('POST', '/calendar/plus/plan-week/apply', { placements: r.placements.map((x) => ({ taskId: x.taskId, startsAt: x.startsAt, endsAt: x.endsAt })) }),
+      });
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось разложить'); }
+  };
   // первый вход: карточка недели появляется, как только календарь подключён
   useEffect(() => {
     if (!prefs || prefs.onboarded || !prefs.connected.any) return;
@@ -640,7 +670,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               days={days}
               work={gridWork}
               clash={clash}
-              windows={windows}
+              windows={[...windows, ...(preview?.items ?? [])]}
+              summaries={summaries}
+              dueTasks={showTasks ? tasks : []}
               onOpenCall={openCall}
               segments={segmentsByDay}
               allDayOf={allDayOf}
@@ -661,7 +693,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
                 onClose={() => { setAssistOpen(false); setWindows([]); localStorage.setItem('teamcrm.calendarAssist', '0'); }}
               />
             )}
-            {planOpen && <PlanPanel refreshKey={planKey} onPlan={(taskId) => setTaskTime({ taskId })} onClose={togglePlan} />}
+            {assistOpen && <FocusGoalCard from={from.toISOString()} to={to.toISOString()} refreshKey={assistKey} onPreview={setPreview} />}
+            {planOpen && <PlanPanel refreshKey={planKey} onPlan={(taskId) => setTaskTime({ taskId })} onClose={togglePlan} onPlanWeek={() => void planWeek()} />}
           </div>
         )}
       </div>
@@ -695,6 +728,13 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       )}
       {pollOpen && <PollDialog onClose={() => setPollOpen(false)} onDecided={() => { setPollOpen(false); void reload(); }} />}
       {planDayOpen && <PlanDayDialog onClose={() => setPlanDayOpen(false)} onSaved={() => { setPlanDayOpen(false); void reload(); }} />}
+      {preview && (
+        <PreviewBar
+          text={preview.text}
+          onCancel={() => setPreview(null)}
+          onApply={async () => { await preview.apply(); setPreview(null); toastSaved('Готово', 'блоки поставлены в календарь'); await reload(); }}
+        />
+      )}
       {undo && (
         <div className="cal-undo" role="status">
           <span>{undo.text}</span>
@@ -724,6 +764,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           onStartCall={onStartCall}
           onRespond={respond}
           onUndo={setUndo}
+          summaryMeetingId={editing.id ? summaries[String(editing.id)] : undefined}
         />
       )}
     </div>
@@ -731,13 +772,16 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 }
 
 /** Сетка дня и недели: часы слева, события в колонках дней. */
-function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreate, onDropTask, clash, windows, onOpenCall }: {
+function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreate, onDropTask, clash, windows, onOpenCall, summaries, dueTasks }: {
   days: Date[];
   work: Work;
   /** #4892, п. 2: свои пересекающиеся встречи — красным; окна от ассистента — пунктиром. */
   clash: Set<string>;
   windows: { startsAt: string; endsAt: string; label: string }[];
   onOpenCall: (c: CallItem) => void;
+  /** п. 7: «итоги готовы»; п. 8: сроки — без фиктивного времени в полосе «весь день», со временем — меткой на часе. */
+  summaries: Record<string, string>;
+  dueTasks: CalTask[];
   segments: DaySegment<GridItem>[][];
   allDayOf: (d: Date) => CalEvent[];
   onOpen: (e: CalEvent) => void;
@@ -795,6 +839,11 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
       <div className="cal-corner cal-allday-label">весь день</div>
       {days.map((d) => (
         <div key={`a${d.getTime()}`} className="cal-allday">
+          {dueTasks.filter((t) => !t.closed_at && isTimeless(t.deadline_at) && startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime()).map((t) => (
+            <button key={`due${t.id}`} className="cal-chip cal-chip-due" onClick={() => openTask(t)} title={`Срок ${startOfDay(d).getTime() === startOfDay(new Date()).getTime() ? 'сегодня' : 'в этот день'} · ${t.title}`}>
+              <Icon name="flag" size={11} /><span className="cal-chip-text">срок{startOfDay(d).getTime() === startOfDay(new Date()).getTime() ? ' сегодня' : ''}: {t.title}</span>
+            </button>
+          ))}
           {allDayOf(d).map((e) => (
             <button
               key={e.id}
@@ -831,6 +880,12 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
             )}
             {HOURS.map((h) => (
               <button key={h} className="cal-slot" onClick={() => onCreate(d, h)} aria-label={`Создать событие ${d.toLocaleDateString('ru-RU')} в ${h}:00`} />
+            ))}
+            {dueTasks.filter((t) => !t.closed_at && !isTimeless(t.deadline_at) && startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime()).map((t) => (
+              <button key={`dm${t.id}`} className="cal-due-mark" style={{ top: `${((Date.parse(t.deadline_at) - startOfDay(d).getTime()) / 86_400_000) * 100}%` }}
+                onClick={() => openTask(t)} title={`Срок: ${t.title} ${hhmm(t.deadline_at)}`}>
+                Срок: {t.title} {hhmm(t.deadline_at)}
+              </button>
             ))}
             {windows.filter((w) => startOfDay(new Date(w.startsAt)).getTime() === startOfDay(d).getTime()).map((w) => {
               const top = (Date.parse(w.startsAt) - startOfDay(d).getTime()) / 86_400_000;
@@ -880,7 +935,7 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
                   )}
                 </span>
                 <span className="cal-event-title">{seg.event.title}</span>
-                {(seg.event as CalEvent).call?.summaryReady && <span className="cal-event-sub">итоги готовы</span>}
+                {((seg.event as CalEvent).call?.summaryReady || summaries[String(seg.event.id)]) && <span className="cal-event-sub">итоги готовы</span>}
                 {(seg.event as CalEvent).call?.live && <span className="cal-event-sub">идёт сейчас</span>}
                 {/*
                   Подпись под названием: место, а если его нет — первая строка описания.
@@ -1034,7 +1089,7 @@ function shiftEnd(nextStart: string, prevStart: string, prevEnd: string): string
 }
 
 /** Создание и правка события. Одна форма на оба случая: разница только в кнопках снизу. */
-function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, onUndo }: {
+function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, onUndo, summaryMeetingId }: {
   value: Partial<CalEvent>;
   people: User[];
   onClose: () => void;
@@ -1043,8 +1098,13 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
   onRespond: (id: string, s: 'accepted' | 'declined') => void;
   /** «Отменить изменение» (#4787, п. 19) */
   onUndo?: (u: { text: string; run: () => Promise<unknown> }) => void;
+  /** #4892, п. 7: у встречи готовы итоги — ссылка на протокол. */
+  summaryMeetingId?: string;
 }) {
   const { user: me } = useAuth();
+  /** п. 10: отказ с причиной и «Перенести» с лучшими слотами. */
+  const [declining, setDeclining] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const meId = me?.id ? String(me.id) : undefined;
   /** Повтор новой встречи (#4787, п. 17) */
   const [repeat, setRepeat] = useState<{ freq: string; until: string }>({ freq: '', until: '' });
@@ -1552,6 +1612,29 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
         )}
         {!isNew && value.seriesId && <div className="dim cal-small"><Icon name="refresh" size={12} /> Повторяющаяся встреча — при изменении спросим, менять только эту или всю серию</div>}
         {!isNew && value.id && <GoogleFilesBlock entityType="event" entityId={String(value.id)} compact />}
+        {!isNew && value.id && summaryMeetingId && (
+          <div className="tv2-callout tv2-callout-info"><Icon name="check-circle" size={15} /> Итоги готовы ·{' '}
+            <button className="cal-link" onClick={() => { navigate({ section: 'chat', view: 'postcall', meetingId: summaryMeetingId }); onClose(); }}>протокол и задачи</button>
+          </div>
+        )}
+        {/* #4892, п. 10: отказалась половина или ключевой участник — баннер переноса */}
+        {!isNew && value.id && canEdit && <RescheduleBanner eventId={String(value.id)} onMoved={onSaved} />}
+        {moveOpen && value.id && (
+          <CommonTimeDialog
+            meId={meId}
+            title={`Перенести: ${value.title ?? 'встреча'}`}
+            initialIds={(value.participants ?? []).filter((p) => !p.isOrganizer).map((p) => String(p.userId))}
+            initialMinutes={Math.max(15, Math.round((Date.parse(String(value.endsAt)) - Date.parse(String(value.startsAt))) / 60000))}
+            exceptEventId={String(value.id)}
+            onClose={() => setMoveOpen(false)}
+            onPoll={() => setMoveOpen(false)}
+            onPick={(v) => {
+              void request('POST', `/calendar/plus/events/${value.id}/reschedule`, { startsAt: v.startsAt, endsAt: v.endsAt })
+                .then(() => { toastSaved('Встреча перенесена', 'приглашения обновлены'); setMoveOpen(false); onSaved(); })
+                .catch((e) => { setErr(e instanceof ApiError ? e.message : 'Не удалось перенести'); setMoveOpen(false); });
+            }}
+          />
+        )}
         {/* #4892, п. 6: карточка встречи = подготовка */}
         {!isNew && value.id && value.scope !== 'external' && (value.participants?.length ?? 0) > 1 && (
           <MeetingPrep
@@ -1571,11 +1654,15 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
 
         <div className="cal-dialog-actions">
-          {value.myStatus === 'invited' && value.id && (
+          {value.myStatus === 'invited' && value.id && !declining && (
             <>
               <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { onRespond(String(value.id), 'accepted'); onClose(); }}>Принять</button>
-              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { onRespond(String(value.id), 'declined'); onClose(); }}>Отклонить</button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setDeclining(true)}>Отклонить</button>
             </>
+          )}
+          {declining && value.id && <DeclineBox eventId={String(value.id)} onDone={onSaved} onCancel={() => setDeclining(false)} />}
+          {canEdit && !isNew && value.id && (value.participants?.length ?? 0) > 1 && Date.parse(String(value.startsAt)) > Date.now() && (
+            <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setMoveOpen(true)}><Icon name="clock" size={14} /> Перенести</button>
           )}
           {/* Встреча с созвоном — на её страницу: там время, состояние, проверка устройств и вход */}
           {value.meeting ? (

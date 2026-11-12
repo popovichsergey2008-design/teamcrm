@@ -104,6 +104,9 @@ export class PresenceService {
       `SELECT u.id, u.full_name, u.avatar_file_id, u.presence_status, u.workday_closed_until,
               f.kind, f.note, f.task_id, f.until,
               fs.id AS session_id, fs.task_id AS session_task_id, fs.planned_end_at AS session_end,
+              -- #4892, п. 9: идёт фокус-блок из календаря — статус «В фокусе»
+              (SELECT max(b.ends_at) FROM calendar_blocks b WHERE b.tenant_id = u.tenant_id AND b.user_id = u.id
+                  AND b.kind = 'focus' AND b.starts_at <= now() AND b.ends_at > now()) AS block_end,
               (SELECT COALESCE(json_agg(json_build_object('id', x.id::text, 'title', x.title)), '[]'::json)
                  FROM tasks x JOIN projects xp ON xp.id = x.project_id
                 WHERE x.id = ANY(fs.task_ids) AND x.deleted_at IS NULL
@@ -133,7 +136,8 @@ export class PresenceService {
       const p = resolvePresence({
         online: online.has(userId),
         inCall: this.callProbe(tenantId, userId),
-        focus: r.kind ? { kind: r.kind, note: r.note, taskId: r.task_id ? String(r.task_id) : null, until: r.until } : null,
+        focus: r.kind ? { kind: r.kind, note: r.note, taskId: r.task_id ? String(r.task_id) : null, until: r.until }
+          : r.block_end ? { kind: 'deep', note: null, taskId: null, until: r.block_end } : null,
         manual: (r.presence_status as ManualStatus) ?? null,
         workdayClosedUntil: r.workday_closed_until,
         session: r.session_id

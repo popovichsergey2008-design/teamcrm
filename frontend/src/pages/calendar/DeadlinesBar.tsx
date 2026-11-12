@@ -12,9 +12,19 @@ export interface DueTask {
 const ROWS = 2;
 const isDone = (t: DueTask) => !!t.closed_at || t.status === 'DONE';
 const open = (t: DueTask) => navigate({ section: 'projects', projectId: String(t.project_id), taskId: String(t.id) });
+/**
+ * Срок без времени (#4892, п. 8): дату без часа хранят как 00:00, 23:59 по месту или
+ * 21:00 по Москве (18:00 UTC). Такой срок — «весь день», а не «00:00 · просрочено» или «21:00».
+ */
+export function isTimeless(iso: string): boolean {
+  const d = new Date(iso);
+  const hm = d.getHours() * 60 + d.getMinutes();
+  return hm === 0 || hm === 23 * 60 + 59 || (d.getUTCHours() === 18 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0);
+}
+
 const when = (t: DueTask, today: number) => {
   const d = new Date(t.deadline_at);
-  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const time = isTimeless(t.deadline_at) ? 'весь день' : d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   return startOfDay(d).getTime() === today ? time : `${d.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'short' })}, ${time}`;
 };
 

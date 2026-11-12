@@ -1,12 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { CaldavService } from './caldav.service';
 import { CalendarPlusService } from './calendar-plus.service';
 import { ChatMeetingService } from './chat-meeting.service';
 import { MeetingPrepService } from './meeting-prep.service';
+import { TimeWorkService } from './time-work.service';
 
 class PrefsDto {
   @IsOptional() @IsString() @MaxLength(5) workStart?: string | null;
@@ -64,6 +66,28 @@ class ProposeDto {
 class VoteDto {
   @IsInt() @Min(0) @Max(5) index!: number;
 }
+class RangeDto {
+  @IsOptional() @IsDateString() from?: string;
+  @IsOptional() @IsDateString() to?: string;
+}
+class PlacementDto {
+  @IsString() taskId!: string;
+  @IsDateString() startsAt!: string;
+  @IsDateString() endsAt!: string;
+}
+class ApplyWeekDto {
+  @IsArray() @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => PlacementDto) placements!: PlacementDto[];
+}
+class MergeDto {
+  @IsString() taskId!: string;
+}
+class DeclineDto {
+  @IsOptional() @IsString() @MaxLength(300) comment?: string;
+}
+class SlotDto {
+  @IsDateString() startsAt!: string;
+  @IsDateString() endsAt!: string;
+}
 
 /** Календарь #4892: ассистент, лучшее время, событие фразой, подготовка, встреча из чата, Яндекс. */
 @ApiTags('calendar')
@@ -76,6 +100,7 @@ export class CalendarPlusController {
     private readonly prep: MeetingPrepService,
     private readonly chat: ChatMeetingService,
     private readonly caldav: CaldavService,
+    private readonly work: TimeWorkService,
   ) {}
 
   @Get('prefs')
@@ -84,14 +109,65 @@ export class CalendarPlusController {
   @Patch('prefs')
   savePrefs(@CurrentUser() u: AuthUser, @Body() dto: PrefsDto) { return this.plus.savePrefs(u.tenantId, u.userId, dto); }
 
-  /** Карточка недели и подсказки ассистента (п. 1–2). */
+  /** Карточка недели и подсказки ассистента (п. 1–2, 10). */
   @Get('assistant')
-  assistant(@CurrentUser() u: AuthUser, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.plus.assistant(u.tenantId, u, { from, to });
+  async assistant(@CurrentUser() u: AuthUser, @Query('from') from?: string, @Query('to') to?: string) {
+    const base = await this.plus.assistant(u.tenantId, u, { from, to });
+    const prefs = await this.plus.prefsRow(u.tenantId, u.userId);
+    const f = from ?? new Date().toISOString();
+    const t = to ?? new Date(Date.now() + 7 * 86_400_000).toISOString();
+    const declined = await this.work.declinedSuggestions(u.tenantId, u, f, t, prefs?.dismissed ?? []).catch(() => []);
+    const overlap = base.suggestions.filter((s) => s.kind === 'overlap');
+    const rest = base.suggestions.filter((s) => s.kind !== 'overlap');
+    return { ...base, suggestions: [...overlap, ...declined, ...rest].slice(0, 4) };
   }
 
   @Post('assistant/apply')
-  apply(@CurrentUser() u: AuthUser, @Body() dto: KeyDto) { return this.plus.applySuggestion(u.tenantId, u, dto); }
+  apply(@CurrentUser() u: AuthUser, @Body() dto: KeyDto) {
+    if (dto.key.startsWith('declined:')) return this.work.applyDeclined(u.tenantId, u, dto.key);
+    return this.plus.applySuggestion(u.tenantId, u, dto);
+  }
+
+  /** «Разложить по неделе» (п. 8): предпросмотр и «Применить». */
+  @Post('plan-week')
+  planWeek(@CurrentUser() u: AuthUser, @Body() dto: RangeDto) { return this.work.planWeekPreview(u.tenantId, u, dto); }
+
+  @Post('plan-week/apply')
+  planWeekApply(@CurrentUser() u: AuthUser, @Body() dto: ApplyWeekDto) { return this.work.planWeekApply(u.tenantId, u, dto.placements); }
+
+  /** Цель фокуса на неделю (п. 9). */
+  @Post('focus-goal')
+  focusGoal(@CurrentUser() u: AuthUser, @Body() dto: RangeDto) { return this.work.focusGoal(u.tenantId, u, dto); }
+
+  @Post('focus-goal/apply')
+  focusGoalApply(@CurrentUser() u: AuthUser, @Body() dto: RangeDto) { return this.work.focusGoalApply(u.tenantId, u, dto); }
+
+  /** После встречи (п. 7). */
+  @Post('meetings/:id/to-chat')
+  toChat(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.work.summaryToChat(u.tenantId, u, id); }
+
+  @Post('meetings/:id/next-week')
+  nextWeek(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.work.nextWeek(u.tenantId, u, id); }
+
+  @Post('drafts/:id/merge')
+  merge(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: MergeDto) { return this.work.mergeDraft(u.tenantId, u, id, dto.taskId); }
+
+  @Get('summaries')
+  summaries(@CurrentUser() u: AuthUser, @Query('from') from: string, @Query('to') to: string) {
+    return this.work.summaries(u.tenantId, u.userId, from, to);
+  }
+
+  /** Отказ с причиной и перенос в 1 клик (п. 10). */
+  @Post('events/:id/decline')
+  decline(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: DeclineDto) { return this.work.decline(u.tenantId, u.userId, id, dto.comment ?? null); }
+
+  @Get('events/:id/declines')
+  declines(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.work.declines(u.tenantId, u, id); }
+
+  @Post('events/:id/reschedule')
+  reschedule(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SlotDto) {
+    return this.work.reschedule(u.tenantId, u, id, dto.startsAt, dto.endsAt);
+  }
 
   @Post('assistant/dismiss')
   dismiss(@CurrentUser() u: AuthUser, @Body() dto: KeyDto) { return this.plus.dismiss(u.tenantId, u.userId, dto.key); }

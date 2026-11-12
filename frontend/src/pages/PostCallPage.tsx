@@ -4,7 +4,7 @@ import { Icon, type IconName } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
 import { Button } from '../components/ui/button';
 import { confirmAction } from '../components/ui/dialog';
-import { api, ApiError, PostcallBlockStatus, PostcallView } from '../lib/api';
+import { api, ApiError, PostcallBlockStatus, PostcallView, request } from '../lib/api';
 import { useAuth } from '../state/auth';
 import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
@@ -256,6 +256,25 @@ function PostCall({ meetingId }: { meetingId: string }) {
       toastSaved('Добавлено в Фокус дня');
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось добавить в Фокус'); }
   };
+  /** #4892, п. 7: похожая задача уже есть — поручение уходит в неё комментарием. */
+  const merge = async (d: any, taskId: string) => {
+    setErr('');
+    try { await request('POST', `/calendar/plus/drafts/${d.id}/merge`, { taskId }); toastSaved(`Добавлено в #${taskId}`); await load(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось добавить'); }
+  };
+  /** «Создать все и отправить итоги в чат» (п. 7): одно нажатие — задачи и итоги в чате встречи. */
+  const createAllToChat = async () => {
+    await createSelected(readyAll, true);
+    try { await request('POST', `/calendar/plus/meetings/${meetingId}/to-chat`); toastSaved('Итоги отправлены в чат встречи'); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отправить итоги в чат'); }
+  };
+  /** «Следующая встреча через неделю» — те же люди и время, приглашения уходят как обычно. */
+  const nextWeek = async () => {
+    try {
+      const r = await request<{ startsAt: string }>('POST', `/calendar/plus/meetings/${meetingId}/next-week`);
+      toastSaved('Следующая встреча назначена', new Date(r.startsAt).toLocaleString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось назначить встречу'); }
+  };
   const recap = async () => {
     setRecapBusy(true);
     try {
@@ -474,6 +493,11 @@ function PostCall({ meetingId }: { meetingId: string }) {
                       <Button variant="primary" size="lg" loading={bulk} disabled={bulk || !readyAll.length} onClick={() => void createSelected(readyAll, true)}>
                         {readyAll.length === pending.length ? 'Подтвердить всё' : `Создать ${readyAll.length} готовые`}
                       </Button>
+                      {readyAll.length > 0 && (
+                        <Button variant="outline" disabled={bulk} onClick={() => void createAllToChat()}>
+                          Создать все {readyAll.length} и отправить итоги в чат
+                        </Button>
+                      )}
                       <Button variant="ghost" onClick={() => document.querySelector('.pc-drafts')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
                         Проверить по одной
                       </Button>
@@ -492,7 +516,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
                 <DraftRow
                   key={d.id} draft={d} projects={projects} users={users} onApply={apply} onReject={reject} onSaved={() => void load()}
                   selected={isPicked(d)} onSelect={(on) => setPicked((p) => ({ ...p, [d.id]: on }))}
-                  proof={proofs[d.id]} recordingUrl={recordingUrl} duplicate={dups[d.id]}
+                  proof={proofs[d.id]} recordingUrl={recordingUrl} duplicate={dups[d.id]} onMerge={(x, taskId) => void merge(x, taskId)}
                   onChoice={(c) => setChoices((m) => ({ ...m, [d.id]: c }))}
                 />
               ))}
@@ -573,6 +597,17 @@ function PostCall({ meetingId }: { meetingId: string }) {
                   <Icon name="send" size={14} /> Отправить итоги участникам ({staffOthers})
                 </Button>
               ))}
+          </div>
+        )}
+
+        {ai && !processing && (
+          <div className="pc-actions pc-recap">
+            <Button variant="outline" size="sm" onClick={() => void nextWeek()}><Icon name="calendar" size={14} /> Следующая встреча через неделю</Button>
+            {tasks.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => void request('POST', `/calendar/plus/meetings/${meetingId}/to-chat`).then(() => toastSaved('Итоги отправлены в чат встречи')).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось'))}>
+                <Icon name="chat" size={14} /> Отправить итоги в чат
+              </Button>
+            )}
           </div>
         )}
 

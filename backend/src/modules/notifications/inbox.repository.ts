@@ -162,6 +162,10 @@ export class InboxRepository {
             OR EXISTS (SELECT 1 FROM user_focus f
                         WHERE f.tenant_id = $1 AND f.user_id = $2 AND f.kind = 'deep'
                           AND (f.until IS NULL OR f.until > now()))
+            -- #4892, п. 9: идёт фокус-блок из календаря — уведомления в тишине, как в фокус-сессии
+            OR EXISTS (SELECT 1 FROM calendar_blocks b
+                        WHERE b.tenant_id = $1 AND b.user_id = $2 AND b.kind = 'focus'
+                          AND b.starts_at <= now() AND b.ends_at > now())
             -- «Завершить день» с тихим режимом: молчим до утра (ТЗ-16, п. 86)
             OR EXISTS (SELECT 1 FROM users u
                         WHERE u.tenant_id = $1 AND u.id = $2 AND u.quiet_after_close

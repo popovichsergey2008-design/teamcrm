@@ -100,6 +100,10 @@ jobs:
       - name: migrate
         run: npm run migrate
       - name: e2e (live PG/Redis/RabbitMQ)
+        # 110+ файлов в одном процессе: куча jest растёт от файла к файлу и упиралась
+        # в ~4 ГБ по умолчанию (12.11, #4892) — у раннера 16 ГБ
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
         run: npm run test:e2e
       - run: npm run build
 

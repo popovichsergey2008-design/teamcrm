@@ -294,6 +294,10 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               {item.projectName && <Badge tone="outline">{item.projectName}</Badge>}
               {due && <Badge tone={due.tone} title={due.title}><Icon name="clock" size={11} />{due.label}</Badge>}
               {prio && <Badge tone={prio.tone}>{prio.label}</Badge>}
+              {/* #4892, п. 8: тот же блок, что в календаре, — сдвинули там, видно здесь */}
+              {item.calendarBlock && (
+                <Badge tone="outline" title="Время на задачу в календаре"><Icon name="calendar" size={11} />{new Date(item.calendarBlock.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}–{new Date(item.calendarBlock.endsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</Badge>
+              )}
               {/* #4767: короткое решение / глубокая работа — по оценке задачи */}
               {item.status !== 'done' && <Badge tone="outline" title={size.minutes === null ? 'У задачи нет оценки — время фокуса выберите сами' : 'По оценке задачи'}>{size.label}</Badge>}
               {item.kind === 'task' && item.checklistTotal > 0 && (

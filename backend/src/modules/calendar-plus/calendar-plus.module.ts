@@ -12,6 +12,7 @@ import { CalendarPlusRepository } from './calendar-plus.repository';
 import { CalendarPlusService } from './calendar-plus.service';
 import { ChatMeetingService } from './chat-meeting.service';
 import { MeetingPrepService } from './meeting-prep.service';
+import { TimeWorkService } from './time-work.service';
 
 /**
  * #4892 ТЗ «Календарь»: видеть время → договориться → подготовиться → сделать.
@@ -21,7 +22,7 @@ import { MeetingPrepService } from './meeting-prep.service';
 @Module({
   imports: [CalendarModule, ChatsModule, RealtimeModule, AiModule, NotificationsModule, TelegramModule],
   controllers: [CalendarPlusController],
-  providers: [CalendarPlusService, CalendarPlusRepository, MeetingPrepService, ChatMeetingService, CaldavService, IntegrationCryptoService],
+  providers: [CalendarPlusService, CalendarPlusRepository, MeetingPrepService, ChatMeetingService, CaldavService, IntegrationCryptoService, TimeWorkService],
   exports: [CalendarPlusService, CalendarPlusRepository],
 })
 export class CalendarPlusModule {}

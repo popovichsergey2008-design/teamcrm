@@ -62,6 +62,8 @@ export interface ItemLive {
   task_about: string | null;
   /** #4767: оценка исполнителя в часах — короткое решение или глубокая работа. */
   estimate_hours: string | null;
+  /** #4892, п. 8: блок времени в календаре на сегодня. */
+  block?: { startsAt: string; endsAt: string } | null;
 }
 
 /** Условие «проект виден человеку $2» — то же, что в списке проектов. */
@@ -460,7 +462,13 @@ export class FocusDayRepository {
               (a.status = 'pending') AS approval_pending, a.subject AS approval_subject,
               (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id) AS checklist_total,
               (SELECT count(*)::int FROM task_checklist_items ci WHERE ci.task_id = t.id AND ci.is_done) AS checklist_done,
-              ua.full_name AS assignee_name
+              ua.full_name AS assignee_name,
+              -- #4892, п. 8: время на задачу в календаре — тот же блок, что в сетке
+              (SELECT json_build_object('startsAt', b.starts_at, 'endsAt', b.ends_at)
+                 FROM calendar_blocks b
+                WHERE b.task_id = t.id AND b.user_id = $2 AND b.ends_at > now() - interval '12 hours'
+                  AND b.starts_at < now() + interval '24 hours'
+                ORDER BY b.starts_at LIMIT 1) AS block
          FROM focus_day_items i
          LEFT JOIN tasks t ON t.id = i.task_id
          LEFT JOIN projects p ON p.id = t.project_id

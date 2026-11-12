@@ -1,3 +1,4 @@
+import { emitFocusPlanAccepted } from './focus-hooks';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -361,6 +362,9 @@ export class FocusDayService {
     const plan = await this.requirePlan(v, now);
     if (plan.status === 'proposed' || plan.status === 'modified') {
       await this.repo.setPlan(plan.id, { status: plan.status === 'modified' ? 'modified' : 'accepted', accepted: true });
+      // #4892, п. 8: принятый план — это те же блоки в календаре
+      const taskIds = (await this.repo.items(plan.id)).filter((i) => i.task_id && i.status === 'active').map((i) => String(i.task_id));
+      await emitFocusPlanAccepted({ tenantId: v.tenantId, userId: v.userId, role: v.role, taskIds, date: (await this.context(v, now)).today });
     }
     this.changed(v);
     return this.today(v, now);
@@ -615,6 +619,8 @@ function present(i: ItemRow, l: ItemLive | undefined) {
     // #4767: из оценки — короткое решение или глубокая работа; нет оценки — null, точность не изображаем
     estimateMin: gone || l?.estimate_hours == null ? null : Math.round(Number(l.estimate_hours) * 60) || null,
     checklistTotal: l?.checklist_total ?? 0,
+    // #4892, п. 8: когда задача стоит в календаре — сдвинули блок там, видно и здесь
+    calendarBlock: gone ? null : l?.block ?? null,
     checklistDone: l?.checklist_done ?? 0,
     reasons: gone ? [] : i.reasons,
     score: Number(i.priority_score),

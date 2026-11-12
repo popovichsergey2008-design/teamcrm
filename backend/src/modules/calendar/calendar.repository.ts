@@ -434,6 +434,7 @@ export class CalendarRepository {
     const row = await this.db.one<{ quiet: boolean }>(
       `SELECT (EXISTS (SELECT 1 FROM focus_sessions s WHERE s.tenant_id = $1 AND s.user_id = $2 AND s.status = 'running' AND s.planned_end_at > now())
             OR EXISTS (SELECT 1 FROM user_focus f WHERE f.tenant_id = $1 AND f.user_id = $2 AND f.kind = 'deep' AND (f.until IS NULL OR f.until > now()))
+            OR EXISTS (SELECT 1 FROM calendar_blocks b WHERE b.tenant_id = $1 AND b.user_id = $2 AND b.kind = 'focus' AND b.starts_at <= now() AND b.ends_at > now())
             OR EXISTS (SELECT 1 FROM users u WHERE u.tenant_id = $1 AND u.id = $2 AND u.quiet_after_close AND u.workday_closed_until > now())) AS quiet`,
       [tenantId, userId],
     );
