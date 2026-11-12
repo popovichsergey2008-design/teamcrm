@@ -9,7 +9,9 @@ export interface BookingTypeRow {
   buffer_before: number; buffer_after: number;
   questions: { text: string; required?: boolean }[]; reminders: number[]; position: number; active: boolean;
   /** #4787, п. 16: к кому запись — к себе, к любому из команды, ко всем сразу, группа */
-  mode: 'personal' | 'round_robin' | 'collective' | 'group'; member_ids: string[]; rr_rule: 'nearest' | 'even'; seats: number | null;
+  mode: 'personal' | 'round_robin' | 'collective' | 'group'; member_ids: string[]; rr_rule: 'nearest' | 'even' | 'turn'; seats: number | null;
+  /** #4892, п. 11: кто может записаться, лимит в день у вида, к чему привязана запись */
+  audience?: 'all' | 'staff'; max_per_day?: number | null; task_id?: string | null; client_id?: string | null;
 }
 export interface BookingTypePublicRow extends BookingTypeRow {
   owner_name: string; owner_avatar: string | null; owner_tz: string | null; tenant_name: string | null;
@@ -63,14 +65,17 @@ export class BookingRepository {
     title: string; description: string | null; durationMin: number; weekly: unknown; locationKind: string; location: string | null;
     bufferBefore: number; bufferAfter: number; questions: unknown; reminders: number[]; position: number;
     mode?: string; memberIds?: string[]; rrRule?: string; seats?: number | null;
+    audience?: string; maxPerDay?: number | null; taskId?: string | null; clientId?: string | null;
   }) {
     return this.db.one<BookingTypeRow>(
       `INSERT INTO booking_types (tenant_id, user_id, slug, title, description, duration_min, weekly, location_kind, location,
-                                  buffer_before, buffer_after, questions, reminders, position, mode, member_ids, rr_rule, seats)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::int[],$14,$15,$16::bigint[],$17,$18) RETURNING *`,
+                                  buffer_before, buffer_after, questions, reminders, position, mode, member_ids, rr_rule, seats,
+                                  audience, max_per_day, task_id, client_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12::jsonb,$13::int[],$14,$15,$16::bigint[],$17,$18,$19,$20,$21::bigint,$22::bigint) RETURNING *`,
       [tenantId, userId, slug, t.title, t.description, t.durationMin, t.weekly == null ? null : JSON.stringify(t.weekly),
         t.locationKind, t.location, t.bufferBefore, t.bufferAfter, JSON.stringify(t.questions ?? []), t.reminders, t.position,
-        t.mode ?? 'personal', t.memberIds ?? [], t.rrRule ?? 'nearest', t.seats ?? null],
+        t.mode ?? 'personal', t.memberIds ?? [], t.rrRule ?? 'nearest', t.seats ?? null,
+        t.audience ?? 'all', t.maxPerDay ?? null, t.taskId ?? null, t.clientId ?? null],
     );
   }
 
@@ -78,15 +83,18 @@ export class BookingRepository {
     title: string; description: string | null; durationMin: number; weekly: unknown; locationKind: string; location: string | null;
     bufferBefore: number; bufferAfter: number; questions: unknown; reminders: number[];
     mode?: string; memberIds?: string[]; rrRule?: string; seats?: number | null;
+    audience?: string; maxPerDay?: number | null; taskId?: string | null; clientId?: string | null;
   }) {
     return this.db.one<BookingTypeRow>(
       `UPDATE booking_types SET title=$4, description=$5, duration_min=$6, weekly=$7::jsonb, location_kind=$8, location=$9,
               buffer_before=$10, buffer_after=$11, questions=$12::jsonb, reminders=$13::int[],
-              mode=$14, member_ids=$15::bigint[], rr_rule=$16, seats=$17, updated_at=now()
+              mode=$14, member_ids=$15::bigint[], rr_rule=$16, seats=$17,
+              audience=$18, max_per_day=$19, task_id=$20::bigint, client_id=$21::bigint, updated_at=now()
         WHERE tenant_id=$1 AND user_id=$2 AND id=$3 AND active RETURNING *`,
       [tenantId, userId, id, t.title, t.description, t.durationMin, t.weekly == null ? null : JSON.stringify(t.weekly),
         t.locationKind, t.location, t.bufferBefore, t.bufferAfter, JSON.stringify(t.questions ?? []), t.reminders,
-        t.mode ?? 'personal', t.memberIds ?? [], t.rrRule ?? 'nearest', t.seats ?? null],
+        t.mode ?? 'personal', t.memberIds ?? [], t.rrRule ?? 'nearest', t.seats ?? null,
+        t.audience ?? 'all', t.maxPerDay ?? null, t.taskId ?? null, t.clientId ?? null],
     );
   }
 
@@ -283,6 +291,47 @@ export class BookingRepository {
         GROUP BY starts_at`,
       [typeId, exceptBookingId ?? null],
     );
+  }
+
+  /** #4892, п. 11: записей этого вида у сотрудника по дням (лимит «не чаще N в день»). */
+  async perDay(typeId: string, hostId: string, timeZone: string, exceptBookingId?: string | null): Promise<Map<string, number>> {
+    const rows = await this.db.many<{ d: string; n: number }>(
+      `SELECT to_char(starts_at AT TIME ZONE $3, 'YYYY-MM-DD') AS d, count(*)::int AS n FROM bookings
+        WHERE type_id = $1 AND user_id = $2 AND status = 'confirmed' AND starts_at > now() - interval '1 day'
+          AND ($4::bigint IS NULL OR id <> $4::bigint)
+        GROUP BY 1`,
+      [typeId, hostId, timeZone, exceptBookingId ?? null],
+    );
+    return new Map(rows.map((r) => [r.d, Number(r.n)]));
+  }
+
+  /** «По очереди» (п. 11): кому из команды запись доставалась давнее всех. */
+  async lastAssigned(typeId: string, hostIds: string[]): Promise<Map<string, number>> {
+    const rows = await this.db.many<{ user_id: string; at: Date }>(
+      `SELECT user_id::text, max(created_at) AS at FROM bookings WHERE type_id = $1 AND user_id = ANY($2::bigint[]) GROUP BY user_id`,
+      [typeId, hostIds],
+    );
+    return new Map(rows.map((r) => [String(r.user_id), new Date(r.at).getTime()]));
+  }
+
+  /** Привязка записи (п. 11): к задаче вида и к клиенту — по виду или по почте гостя. */
+  async linkEvent(tenantId: string, eventId: string, taskId: string | null, clientId: string | null, guestEmail: string, actorId: string) {
+    if (taskId) {
+      await this.db.query(
+        `INSERT INTO calendar_event_tasks (tenant_id, event_id, task_id, source, created_by) VALUES ($1, $2, $3, 'linked', $4)
+         ON CONFLICT (event_id, task_id) DO NOTHING`, [tenantId, eventId, taskId, actorId]);
+    }
+    const client = clientId ?? (await this.db.one<{ id: string }>(
+      `SELECT c.id::text FROM clients c WHERE c.tenant_id = $1 AND lower(c.email) = lower($2) LIMIT 1`, [tenantId, guestEmail]).catch(() => null))?.id ?? null;
+    if (client) await this.db.query(`UPDATE calendar_events SET client_id = $3 WHERE tenant_id = $1 AND id = $2`, [tenantId, eventId, client]).catch(() => undefined);
+  }
+
+  userContact(tenantId: string, userId: string) {
+    return this.db.one<{ full_name: string; email: string }>(`SELECT full_name, email FROM users WHERE tenant_id = $1 AND id = $2 AND is_active`, [tenantId, userId]);
+  }
+
+  setBookedBy(id: string, userId: string) {
+    return this.db.query(`UPDATE bookings SET booked_by = $2 WHERE id = $1`, [id, userId]);
   }
 
   /** Сколько записей этого вида у сотрудника за месяц — для «равномерного распределения». */

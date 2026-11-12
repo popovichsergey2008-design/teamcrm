@@ -1,3 +1,4 @@
+import { askCalendarAgent } from '../../common/calendar-agent-hook';
 import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { randomUUID } from 'node:crypto';
 import { ProactiveService } from '../proactive/proactive.service';
@@ -1422,6 +1423,17 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
             + '\nЧтобы поставить встречу, нужен create_event с выбранным временем.',
           sources: [],
         };
+      },
+    },
+    {
+      // #4892, п. 13: команды календарю обычным языком — план изменений со ссылкой «применить в календаре»
+      name: 'calendar_agent', kind: 'read',
+      description: 'ИИ-агент календаря для массовых изменений и сводки дня: «перенеси все мои встречи завтра после 15:00 на пятницу, мне к врачу», «освободи утро четверга», «найди час с Глебом на этой неделе», «что у меня завтра?». Возвращает план (было → стало, кто занят, текст участникам) и ссылку, по которой человек применяет план в календаре. Сам ничего не меняет. text — фраза человека целиком.',
+      params: { text: 'фраза человека целиком' },
+      async run(ctx, p) {
+        const r = await askCalendarAgent(ctx.tenantId, ctx.user, str(p.text, 500));
+        if (!r) return { text: 'Агент календаря не понял команду — уточните день и встречи.', sources: [] };
+        return { text: `${r.text}\nОткрыть план и применить: ${r.url}`, sources: [] };
       },
     },
     {

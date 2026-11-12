@@ -50,6 +50,7 @@ import { MeetingPrep } from './calendar/MeetingPrep';
 import { calApi, type CalPrefs, type CallItem, type WeekAssistant } from './calendar/cal-api';
 import { DeclineBox, FocusGoalCard, PreviewBar, RescheduleBanner, type Proposed } from './calendar/TimeWork';
 import { isTimeless } from './calendar/DeadlinesBar';
+import { CalendarAgent, TimeAnalytics } from './calendar/CalendarAgent';
 import { getSocket } from '../lib/socket';
 import './calendar/calendar.css';
 import { DateInput } from '../components/DateInput';
@@ -283,6 +284,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [calls, setCalls] = useState<CallItem[]>([]);
   /** #4892, п. 7: встречи с готовыми итогами → разбор; п. 8–9: предпросмотр пунктиром. */
   const [summaries, setSummaries] = useState<Record<string, string>>({});
+  /** #4892, п. 12–13: ИИ-агент и аналитика времени. */
+  const [agent, setAgent] = useState<string | null>(() => { try { return new URLSearchParams(window.location.search).get('agent'); } catch { return null; } });
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [preview, setPreview] = useState<{ items: Proposed[]; apply: () => Promise<unknown>; text: string } | null>(null);
   const loadPrefs = useCallback(() => calApi.prefs().then(setPrefs).catch(() => undefined), []);
   useEffect(() => { void loadPrefs(); }, [loadPrefs]);
@@ -550,6 +554,12 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
               <Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} />
             </button>
           </div>
+          <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setAgent('')} title="Команды календарю обычным языком: «перенеси все мои встречи завтра на пятницу»">
+            <Icon name="sparkles" size={15} /><span className="cal-hide-phone"> ИИ-агент</span>
+          </button>
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAnalyticsOpen(true)} title="Куда уходит время: встречи, фокус, остальное">
+            <Icon name="chart" size={15} /><span className="cal-hide-phone"> Аналитика</span>
+          </button>
           <button className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setShareOpen(true)} title="Ссылка, по которой клиент или коллега сам выберет время">
             <Icon name="link" size={15} /><span className="cal-hide-phone"> Поделиться временем</span>
           </button>
@@ -573,6 +583,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
             <MenuItem icon={<Icon name="plug" size={15} />} onSelect={() => connect.start('yandex')}>Яндекс Календарь</MenuItem>
             <MenuItem icon={<Icon name="plug" size={15} />} onSelect={() => connect.start('outlook')}>Outlook</MenuItem>
             <MenuItem icon={<Icon name="clock" size={15} />} onSelect={() => { void calApi.savePrefs({ onboarded: false }).then(setPrefs); }}>Мои часы, обед и пояс</MenuItem>
+            <MenuItem icon={<Icon name="download" size={15} />} onSelect={() => { void api.calendarExportLink().then((l) => { if (l.url) window.open(l.url, '_blank', 'noopener'); }); }}>Выгрузить мои события (.ics)</MenuItem>
             <MenuItem icon={<Icon name="list" size={15} />} onSelect={togglePlan}>
               {planOpen ? 'Скрыть «Задачи для планирования»' : 'Показать «Задачи для планирования»'}
             </MenuItem>
@@ -728,6 +739,15 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       )}
       {pollOpen && <PollDialog onClose={() => setPollOpen(false)} onDecided={() => { setPollOpen(false); void reload(); }} />}
       {planDayOpen && <PlanDayDialog onClose={() => setPlanDayOpen(false)} onSaved={() => { setPlanDayOpen(false); void reload(); }} />}
+      {agent !== null && (
+        <CalendarAgent initial={agent || undefined} onClose={() => setAgent(null)} onApplied={() => { setAgent(null); void reload(); }} />
+      )}
+      {analyticsOpen && (
+        <TimeAnalytics
+          from={from.toISOString()} to={to.toISOString()} boss={user?.role === 'owner' || user?.role === 'manager'}
+          onClose={() => setAnalyticsOpen(false)} onChanged={() => void reload()}
+        />
+      )}
       {preview && (
         <PreviewBar
           text={preview.text}

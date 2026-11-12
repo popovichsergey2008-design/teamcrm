@@ -18,10 +18,11 @@ const DEFAULT_TYPES = [
 
 export interface TypeInput {
   /** #4787, п. 16 */
-  mode?: 'personal' | 'round_robin' | 'collective' | 'group'; memberIds?: string[]; rrRule?: 'nearest' | 'even'; seats?: number | null;
+  mode?: 'personal' | 'round_robin' | 'collective' | 'group'; memberIds?: string[]; rrRule?: 'nearest' | 'even' | 'turn'; seats?: number | null;
   title: string; description?: string | null; durationMin: number; weekly?: Weekly | null;
   locationKind?: 'call' | 'place' | 'phone'; location?: string | null;
   bufferBefore?: number; bufferAfter?: number; questions?: { text: string; required?: boolean }[]; reminders?: number[];
+  audience?: string; maxPerDay?: number | null; taskId?: string | null; clientId?: string | null;
 }
 export interface RulesInput {
   weekly: Weekly; blockedDates?: string[]; vacations?: { from: string; to: string }[];
@@ -58,6 +59,7 @@ export class BookingService {
       durationMin: t.duration_min, weekly: t.weekly, locationKind: t.location_kind, location: t.location,
       bufferBefore: t.buffer_before, bufferAfter: t.buffer_after, questions: t.questions ?? [], reminders: t.reminders ?? [],
       mode: t.mode ?? 'personal', memberIds: (t.member_ids ?? []).map(String), rrRule: t.rr_rule ?? 'nearest', seats: t.seats ?? null,
+      audience: t.audience ?? 'all', maxPerDay: t.max_per_day ?? null, taskId: t.task_id ? String(t.task_id) : null, clientId: t.client_id ? String(t.client_id) : null,
     };
   }
 
@@ -69,7 +71,8 @@ export class BookingService {
     const weekly = t.weekly ? this.cleanWeekly(t.weekly, true) : null;
     const locationKind = t.locationKind === 'place' || t.locationKind === 'phone' ? t.locationKind : 'call';
     const clampBuf = (n: unknown) => Math.max(0, Math.min(240, Math.round(Number(n) || 0)));
-    const questions = (t.questions ?? []).map((q) => ({ text: String(q.text ?? '').trim().slice(0, 300), required: !!q.required })).filter((q) => q.text).slice(0, 10);
+    // #4892, п. 11: анкета — от одного до трёх вопросов
+    const questions = (t.questions ?? []).map((q) => ({ text: String(q.text ?? '').trim().slice(0, 300), required: !!q.required })).filter((q) => q.text).slice(0, 3);
     const reminders = [...new Set((t.reminders ?? [15]).map((n) => Math.round(Number(n))).filter((n) => n >= 0 && n <= 20160))].slice(0, 6);
     const mode = (['round_robin', 'collective', 'group'] as const).find((m) => m === t.mode) ?? 'personal';
     const memberIds = [...new Set((t.memberIds ?? []).map(String))].slice(0, 20);
@@ -78,7 +81,11 @@ export class BookingService {
     return {
       title, description: t.description?.trim().slice(0, 1000) || null, durationMin, weekly, locationKind,
       location: t.location?.trim().slice(0, 255) || null, bufferBefore: clampBuf(t.bufferBefore), bufferAfter: clampBuf(t.bufferAfter),
-      questions, reminders, mode, memberIds: mode === 'round_robin' || mode === 'collective' ? memberIds : [], rrRule: t.rrRule === 'even' ? 'even' : 'nearest', seats,
+      questions, reminders, mode, memberIds: mode === 'round_robin' || mode === 'collective' ? memberIds : [],
+      rrRule: t.rrRule === 'even' || t.rrRule === 'turn' ? t.rrRule : 'nearest', seats,
+      audience: t.audience === 'staff' ? 'staff' : 'all',
+      maxPerDay: t.maxPerDay == null || Number(t.maxPerDay) <= 0 ? null : Math.min(50, Math.round(Number(t.maxPerDay))),
+      taskId: t.taskId ? String(t.taskId) : null, clientId: t.clientId ? String(t.clientId) : null,
     };
   }
 
@@ -219,7 +226,13 @@ export class BookingService {
   /** Свободные слоты одного ведущего — моментами (мс). */
   private async hostSlots(t: BookingTypeRow, hostId: string, exceptBookingId: string | null) {
     const { rules, timeZone, busyRows, now } = await this.slotsInput(t, exceptBookingId, hostId);
-    return { slots: new Set(bookingSlots(this.input(t, rules, timeZone, busyRows, now)).flatMap((d) => d.slots)), timeZone, rules, now };
+    let slots = bookingSlots(this.input(t, rules, timeZone, busyRows, now)).flatMap((d) => d.slots);
+    // #4892, п. 11: «не чаще N в день» у самого вида — дни, где лимит выбран, закрыты
+    if (t.max_per_day) {
+      const per = await this.repo.perDay(String(t.id), hostId, timeZone, exceptBookingId);
+      slots = slots.filter((s) => (per.get(zonedParts(Date.parse(s), timeZone).date) ?? 0) < Number(t.max_per_day));
+    }
+    return { slots: new Set(slots), timeZone, rules, now };
   }
 
   private group(slots: Iterable<string>, timeZone: string) {
@@ -259,6 +272,7 @@ export class BookingService {
       type: {
         slug: t.slug, title: t.title, description: t.description, durationMin: t.duration_min,
         locationKind: t.location_kind, location: t.location_kind === 'call' ? null : t.location, questions: t.questions ?? [],
+        audience: t.audience ?? 'all',
       },
       organizerTimeZone: t.owner_tz || 'Europe/Moscow',
     };
@@ -278,9 +292,13 @@ export class BookingService {
     return { tenantId: String(t.tenant_id), fileId: String(t.owner_avatar) };
   }
 
-  async book(slug: string, dto: { startsAt: string; name: string; email: string; timeZone?: string; answers?: string[] }) {
+  async book(slug: string, dto: { startsAt: string; name: string; email: string; timeZone?: string; answers?: string[] }, staff?: { tenantId: string; userId: string } | null) {
     const t = await this.repo.typeBySlug(slug);
     if (!t) throw AppException.notFound('Ссылка записи не найдена или выключена');
+    // #4892, п. 11: «только сотрудники» — записаться может сотрудник этой компании, вошедший в QEVO
+    if (t.audience === 'staff' && (!staff || String(staff.tenantId) !== String(t.tenant_id))) {
+      throw AppException.forbidden('Эта запись — только для сотрудников. Войдите в QEVO и откройте ссылку снова.');
+    }
     const name = String(dto.name ?? '').trim().slice(0, 120);
     const email = String(dto.email ?? '').trim().toLowerCase();
     if (!name) throw AppException.validation('Укажите имя');
@@ -293,12 +311,20 @@ export class BookingService {
     const token = randomBytes(24).toString('base64url');
     const placed = await this.place(t, start, { guestName: name, guestEmail: email, guestTz: this.cleanTz(dto.timeZone), answers, manageHash: sha(token) }, null);
     const row = placed.row;
+    if (staff) await this.repo.setBookedBy(String(row.id), staff.userId).catch(() => undefined);
     await this.mailGuest('confirm', t, row, token, placed.callUrl);
     await this.mailOrganizer('new', t, row);
     return {
       ...this.publicType(t),
       booking: { startsAt: row.starts_at.toISOString(), endsAt: row.ends_at.toISOString(), name, email, callUrl: placed.callUrl, manageUrl: this.manageUrl(token) },
     };
+  }
+
+  /** Запись сотрудника (#4892, п. 11): имя и почта — из его учётной записи. */
+  async bookStaff(slug: string, dto: { startsAt: string; answers?: string[] }, staff: { tenantId: string; userId: string }) {
+    const me = await this.repo.userContact(staff.tenantId, staff.userId);
+    if (!me) throw AppException.forbidden('Нет доступа');
+    return this.book(slug, { startsAt: dto.startsAt, name: me.full_name, email: me.email, answers: dto.answers }, staff);
   }
 
   /**
@@ -340,6 +366,10 @@ export class BookingService {
       if (t.rr_rule === 'even') {
         const counts = await Promise.all(free.map(async (h) => ({ h, n: await this.repo.recentCount(String(t.id), h) })));
         hostId = counts.sort((a, b) => a.n - b.n)[0].h;
+      } else if (t.rr_rule === 'turn') {
+        // по очереди: тот, кому запись доставалась давнее всех (кому ни разу — первым)
+        const last = await this.repo.lastAssigned(String(t.id), free);
+        hostId = [...free].sort((a, b) => (last.get(a) ?? 0) - (last.get(b) ?? 0))[0];
       }
     } else if (t.mode === 'collective') {
       if (free.length !== hosts.length) throw await taken();
@@ -361,6 +391,8 @@ export class BookingService {
       } as Parameters<CalendarService['create']>[2]);
       await this.repo.setEvent(String(row.id), String(ev.id));
       row.event_id = String(ev.id);
+      // #4892, п. 11: запись привязывается к задаче или клиенту
+      await this.repo.linkEvent(tenantId, String(ev.id), t.task_id ?? null, t.client_id ?? null, guest.guestEmail, hostId).catch(() => undefined);
       const callUrl = await this.inviteToEvent(t, hostId, String(ev.id), guest.guestEmail, guest.guestName);
       return { row, callUrl, hostId };
     } catch (e) {

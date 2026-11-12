@@ -51,3 +51,6 @@
 .bk-poll-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .bk-poll-when { font-weight: 600; text-transform: capitalize; }
 .bk-poll-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+/* #4892, п. 11: ближайшие слоты */
+.bk-nearest { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 12px; }

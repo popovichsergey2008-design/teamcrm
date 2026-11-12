@@ -9,6 +9,7 @@ import { CalendarPlusService } from './calendar-plus.service';
 import { ChatMeetingService } from './chat-meeting.service';
 import { MeetingPrepService } from './meeting-prep.service';
 import { TimeWorkService } from './time-work.service';
+import { AgentService, PlanItem } from './agent.service';
 
 class PrefsDto {
   @IsOptional() @IsString() @MaxLength(5) workStart?: string | null;
@@ -84,6 +85,17 @@ class MergeDto {
 class DeclineDto {
   @IsOptional() @IsString() @MaxLength(300) comment?: string;
 }
+class AgentDto {
+  @IsString() @MinLength(3) @MaxLength(500) text!: string;
+}
+class AgentApplyDto {
+  @IsArray() @ArrayMaxSize(20) items!: PlanItem[];
+  @IsOptional() @IsString() @MaxLength(500) message?: string | null;
+}
+class ShortenDto {
+  @IsString() eventId!: string;
+  @IsInt() @Min(10) @Max(240) minutes!: number;
+}
 class SlotDto {
   @IsDateString() startsAt!: string;
   @IsDateString() endsAt!: string;
@@ -101,7 +113,25 @@ export class CalendarPlusController {
     private readonly chat: ChatMeetingService,
     private readonly caldav: CaldavService,
     private readonly work: TimeWorkService,
+    private readonly agent: AgentService,
   ) {}
+
+  /** ИИ-агент календаря (п. 13): план изменений — и «Применить». */
+  @Post('agent')
+  agentPlan(@CurrentUser() u: AuthUser, @Body() dto: AgentDto) { return this.agent.plan(u.tenantId, u, dto.text); }
+
+  @Post('agent/apply')
+  agentApply(@CurrentUser() u: AuthUser, @Body() dto: AgentApplyDto) { return this.agent.apply(u.tenantId, u, dto); }
+
+  /** Аналитика времени (п. 12): «Моя неделя» и «Команда» для руководителя. */
+  @Get('analytics/me')
+  myWeek(@CurrentUser() u: AuthUser, @Query('from') from?: string, @Query('to') to?: string) { return this.agent.myWeek(u.tenantId, u, { from, to }); }
+
+  @Get('analytics/team')
+  teamWeek(@CurrentUser() u: AuthUser, @Query('from') from?: string, @Query('to') to?: string) { return this.agent.team(u.tenantId, u, { from, to }); }
+
+  @Post('analytics/shorten')
+  shorten(@CurrentUser() u: AuthUser, @Body() dto: ShortenDto) { return this.agent.shorten(u.tenantId, u, dto.eventId, dto.minutes); }
 
   @Get('prefs')
   prefs(@CurrentUser() u: AuthUser) { return this.plus.prefs(u.tenantId, u.userId); }

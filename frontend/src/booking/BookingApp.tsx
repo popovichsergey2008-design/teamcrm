@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { apiUrl } from '../lib/origin';
+import { request } from '../lib/api';
 import './booking.css';
 
 /**
@@ -14,7 +15,7 @@ import './booking.css';
 
 interface Page {
   organizer: { name: string; avatarUrl: string | null; company: string | null };
-  type: { slug: string; title: string; description: string | null; durationMin: number; locationKind: 'call' | 'place' | 'phone'; location: string | null; questions: { text: string; required?: boolean }[] };
+  type: { slug: string; title: string; description: string | null; durationMin: number; locationKind: 'call' | 'place' | 'phone'; location: string | null; questions: { text: string; required?: boolean }[]; audience?: 'all' | 'staff' };
   days: { date: string; slots: string[] }[];
   booking?: { status?: string; startsAt: string; endsAt: string; name: string; email: string; callUrl?: string | null; manageUrl?: string; past?: boolean };
 }
@@ -68,6 +69,8 @@ export default function BookingApp() {
   const poll = path.startsWith('/book/poll/') ? decodeURIComponent(path.slice('/book/poll/'.length)) : null;
   const slug = manage || poll ? null : decodeURIComponent(path.slice('/book/'.length));
   useEffect(() => { document.title = manage ? 'Ваша запись — QEVO' : 'Запись на встречу — QEVO'; }, [manage]);
+  // #4892, п. 11: страница записи — светлая, понятная, в любой теме устройства
+  useEffect(() => { document.documentElement.dataset.theme = 'light'; }, []);
   return (
     <main className="bk">
       {manage ? <Manage token={manage} /> : poll ? <Poll slug={poll} /> : slug ? <Book slug={slug} /> : <Missing />}
@@ -148,7 +151,10 @@ function Book({ slug }: { slug: string }) {
     if (!picked || !page) return;
     setBusy(true); setErr('');
     try {
-      const r = await call<Page>('POST', encodeURIComponent(slug), { startsAt: picked, name, email, timeZone: guestTz(), answers });
+      // «только сотрудники» — запись от вошедшего сотрудника, имя и почта берутся из его учётки
+      const r = staff
+        ? await request<Page>('POST', `/calendar/booking/staff/${encodeURIComponent(slug)}`, { startsAt: picked, answers })
+        : await call<Page>('POST', encodeURIComponent(slug), { startsAt: picked, name, email, timeZone: guestTz(), answers });
       setDone(r.booking ?? null);
     } catch (x) {
       const b = x as BookError;
@@ -158,6 +164,9 @@ function Book({ slug }: { slug: string }) {
     } finally { setBusy(false); }
   };
 
+  const staff = page?.type.audience === 'staff';
+  // ближайшие слоты сразу — запись за три нажатия: время → данные → подтвердить
+  const nearest = (page?.days ?? []).flatMap((d) => d.slots).slice(0, 3);
   if (!page) return <section className="bk-card">{err ? <><h1>Запись недоступна</h1><p className="bk-dim">{err}</p></> : <p className="bk-dim">Загружаю…</p>}</section>;
   if (done) {
     return (
@@ -181,13 +190,26 @@ function Book({ slug }: { slug: string }) {
   return (
     <section className="bk-card">
       <Organizer page={page} />
+      {staff && <p className="bk-dim">Запись только для сотрудников — войдите в QEVO на этом устройстве.</p>}
+      {nearest.length > 0 && !picked && (
+        <div className="bk-nearest">
+          <div className="bk-dim bk-small">Ближайшее время</div>
+          <div className="bk-row">
+            {nearest.map((s) => (
+              <button key={s} type="button" className="ui-btn ui-btn-outline" onClick={() => setPicked(s)}>
+                {new Date(s).toLocaleString('ru-RU', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <h2 className="bk-h2">Выберите удобное время</h2>
       <SlotPicker days={page.days} picked={picked} onPick={setPicked} />
       {picked && (
         <form className="bk-form" onSubmit={(e) => void submit(e)}>
           <div className="bk-chosen"><Icon name="calendar" size={15} /> {fullWhen(picked, new Date(Date.parse(picked) + page.type.durationMin * 60_000).toISOString())}</div>
-          <label>Ваше имя<input className="ui-input" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
-          <label>Email<input className="ui-input" required type="email" maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>
+          {!staff && <label>Ваше имя<input className="ui-input" required maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>}
+          {!staff && <label>Email<input className="ui-input" required type="email" maxLength={320} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label>}
           {page.type.questions.map((q, i) => (
             <label key={i}>{q.text}{q.required ? ' *' : ''}
               <textarea className="ui-input" rows={3} required={!!q.required} maxLength={2000} value={answers[i] ?? ''}
@@ -195,7 +217,7 @@ function Book({ slug }: { slug: string }) {
             </label>
           ))}
           <button className="ui-btn ui-btn-primary bk-wide" type="submit" disabled={busy}>{busy ? 'Записываю…' : 'Подтвердить запись'}</button>
-          <p className="bk-dim bk-small">Регистрироваться в QEVO не нужно.</p>
+          <p className="bk-dim bk-small">{staff ? 'Встреча появится в вашем календаре QEVO.' : 'Регистрироваться в QEVO не нужно. Ссылка на звонок и напоминание придут на почту.'}</p>
         </form>
       )}
       {err && <p className="bk-err" role="alert"><Icon name="alert" size={15} /> {err}</p>}

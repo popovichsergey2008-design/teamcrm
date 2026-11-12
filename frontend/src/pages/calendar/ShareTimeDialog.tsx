@@ -47,9 +47,11 @@ export function ShareTimeDialog({ onClose }: { onClose: () => void }) {
                   <div className="cal-share-main">
                     <strong>{t.title}</strong>
                     <span className="dim">
-                      {t.durationMin} мин · {t.locationKind === 'call' ? 'созвон' : t.locationKind === 'phone' ? 'телефон' : (t.location || 'место')}
-                      {t.weekly ? ' · свои дни и часы' : ''}{t.bufferAfter ? ` · перерыв ${t.bufferAfter} мин` : ''}
-                      {t.mode === 'round_robin' ? ' · к команде' : t.mode === 'collective' ? ' · несколько сотрудников' : t.mode === 'group' ? ` · группа до ${t.seats}` : ''}
+                      {t.url.replace(/^https?:\/\//, '')} · {t.durationMin} мин · {t.locationKind === 'call' ? 'звонок Qevo' : t.locationKind === 'phone' ? 'телефон' : (t.location || 'место')}
+                      {t.questions.length ? ` · анкета из ${t.questions.length} ${t.questions.length === 1 ? 'вопроса' : 'вопросов'}` : ''}
+                      {t.weekly ? ' · свои дни и часы' : ''}{t.bufferAfter || t.bufferBefore ? ` · буфер ${Math.max(t.bufferAfter, t.bufferBefore)} мин` : ''}
+                      {t.mode === 'round_robin' ? ` · распределение: ${t.rrRule === 'turn' ? 'по очереди' : t.rrRule === 'even' ? 'тому, у кого меньше встреч' : 'ближайший свободный'}` : t.mode === 'collective' ? ' · несколько сотрудников' : t.mode === 'group' ? ` · группа до ${t.seats}` : ''}
+                      {t.audience === 'staff' ? ' · только сотрудники' : ''}{t.maxPerDay ? ` · не чаще ${t.maxPerDay} в день` : ''}
                     </span>
                   </div>
                   <div className="cal-share-actions">
@@ -60,6 +62,16 @@ export function ShareTimeDialog({ onClose }: { onClose: () => void }) {
                 </li>
               ))}
               {types === null && <li className="dim">Загружаю…</li>}
+              {/* #4892: экспорт ссылок — данные не пропадут вместе с сервисом */}
+              {(types?.length ?? 0) > 0 && (
+                <li><Button size="sm" variant="ghost" onClick={() => {
+                  const rows = [['Название', 'Длительность, мин', 'Ссылка'], ...(types ?? []).map((t) => [t.title, String(t.durationMin), t.url])];
+                  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join(String.fromCharCode(10));
+                  const a = document.createElement('a');
+                  a.href = URL.createObjectURL(new Blob([String.fromCharCode(0xfeff) + csv], { type: 'text/csv;charset=utf-8' }));
+                  a.download = 'qevo-booking-links.csv'; a.click(); URL.revokeObjectURL(a.href);
+                }}><Icon name="download" size={14} /> Выгрузить ссылки (.csv)</Button></li>
+              )}
             </ul>
             <Button variant="outline" onClick={() => setEditing('new')}><Icon name="plus" size={15} /> Свой вид встречи</Button>
           </>
@@ -141,8 +153,9 @@ function TypeEditor({ value, onDone }: { value: BookingType | null; onDone: () =
             </div>
             {mode === 'round_robin' && (
               <div className="kv2-seg">
+                <button className="kv2-seg-btn" aria-pressed={t.rrRule === 'turn'} onClick={() => set({ rrRule: 'turn' })}>По очереди</button>
+                <button className="kv2-seg-btn" aria-pressed={t.rrRule === 'even'} onClick={() => set({ rrRule: 'even' })}>Тому, у кого меньше встреч</button>
                 <button className="kv2-seg-btn" aria-pressed={(t.rrRule ?? 'nearest') === 'nearest'} onClick={() => set({ rrRule: 'nearest' })}>Ближайший доступный</button>
-                <button className="kv2-seg-btn" aria-pressed={t.rrRule === 'even'} onClick={() => set({ rrRule: 'even' })}>Равномерное распределение</button>
               </div>
             )}
           </>
@@ -183,6 +196,12 @@ function TypeEditor({ value, onDone }: { value: BookingType | null; onDone: () =
       </div>
       <div className="cal-field cal-field-row">
         <label>Перерыв до, мин<Input type="number" min={0} max={240} value={t.bufferBefore ?? 0} onChange={(e) => set({ bufferBefore: Number(e.target.value) || 0 })} /></label>
+        <label>Не чаще в день<Input type="number" min={0} max={50} value={t.maxPerDay ?? ''} placeholder="без лимита" onChange={(e) => set({ maxPerDay: e.target.value ? Number(e.target.value) : null })} /></label>
+        <label>Привязать к задаче №<Input value={t.taskId ?? ''} placeholder="необязательно" onChange={(e) => set({ taskId: e.target.value.replace(/\D/g, '') || null })} /></label>
+        <div className="kv2-seg" role="group" aria-label="Кто может записаться">
+          <button className="kv2-seg-btn" aria-pressed={(t.audience ?? 'all') === 'all'} onClick={() => set({ audience: 'all' })}>Записаться могут все</button>
+          <button className="kv2-seg-btn" aria-pressed={t.audience === 'staff'} onClick={() => set({ audience: 'staff' })}>Только сотрудники</button>
+        </div>
         <label>Перерыв после, мин<Input type="number" min={0} max={240} value={t.bufferAfter ?? 0} onChange={(e) => set({ bufferAfter: Number(e.target.value) || 0 })} /></label>
       </div>
       <div className="cal-field">Вопросы гостю перед записью
@@ -193,7 +212,7 @@ function TypeEditor({ value, onDone }: { value: BookingType | null; onDone: () =
             <Button size="icon-sm" variant="ghost" onClick={() => set({ questions: (t.questions ?? []).filter((_, j) => j !== i) })} aria-label="Убрать вопрос"><Icon name="close" size={14} /></Button>
           </div>
         ))}
-        {(t.questions ?? []).length < 10 && <Button size="sm" variant="ghost" onClick={() => set({ questions: [...(t.questions ?? []), { text: '', required: false }] })}><Icon name="plus" size={14} /> Вопрос</Button>}
+        {(t.questions ?? []).length < 3 && <Button size="sm" variant="ghost" onClick={() => set({ questions: [...(t.questions ?? []), { text: '', required: false }] })}><Icon name="plus" size={14} /> Вопрос</Button>}
       </div>
       <div className="cal-field">Напоминания мне
         <div className="cal-chips">

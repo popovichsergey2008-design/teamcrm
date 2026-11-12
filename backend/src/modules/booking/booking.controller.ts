@@ -23,6 +23,15 @@ class TypeDto {
   @IsOptional() @IsInt() @Min(0) @Max(240) bufferAfter?: number;
   @IsOptional() @IsArray() @ArrayMaxSize(10) questions?: { text: string; required?: boolean }[];
   @IsOptional() @IsArray() @ArrayMaxSize(6) @IsInt({ each: true }) reminders?: number[];
+  // #4787, п. 16 — без них whitelist вырезал командную запись; #4892, п. 11 — кто записывается, лимит, привязка
+  @IsOptional() @IsIn(['personal', 'round_robin', 'collective', 'group']) mode?: 'personal' | 'round_robin' | 'collective' | 'group';
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) memberIds?: string[];
+  @IsOptional() @IsIn(['nearest', 'even', 'turn']) rrRule?: 'nearest' | 'even' | 'turn';
+  @IsOptional() @IsInt() @Min(2) @Max(500) seats?: number | null;
+  @IsOptional() @IsIn(['all', 'staff']) audience?: 'all' | 'staff';
+  @IsOptional() @IsInt() @Min(0) @Max(50) maxPerDay?: number | null;
+  @IsOptional() @IsString() taskId?: string | null;
+  @IsOptional() @IsString() clientId?: string | null;
 }
 
 class RulesDto {
@@ -33,6 +42,11 @@ class RulesDto {
   @IsOptional() @IsInt() @Min(0) @Max(20160) minNoticeMin?: number;
   @IsOptional() @IsInt() @Min(1) @Max(365) horizonDays?: number;
   @IsOptional() @IsString() @MaxLength(64) timezone?: string;
+}
+
+class StaffBookDto {
+  @IsString() startsAt!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) answers?: string[];
 }
 
 class BookDto {
@@ -73,6 +87,12 @@ const VIEW_IP = { name: 'booking:view', limit: 300, windowSec: 10 * 60 };
 @Roles('owner', 'manager', 'member')
 export class BookingController {
   constructor(private readonly booking: BookingService, private readonly polls: TimePollService) {}
+
+  /** #4892, п. 11: запись «только для сотрудников» — от вошедшего сотрудника, имя и почта — его. */
+  @Post('staff/:slug')
+  bookStaff(@CurrentUser() u: AuthUser, @Param('slug') slug: string, @Body() dto: StaffBookDto) {
+    return this.booking.bookStaff(slug, dto, { tenantId: u.tenantId, userId: u.userId });
+  }
 
   @Get('types')
   types(@CurrentUser() u: AuthUser) { return this.booking.types(u.tenantId, u.userId); }

@@ -272,3 +272,13 @@
 .cal-resched { border: 1px solid var(--warn-line, var(--warn)); border-radius: var(--radius); background: var(--bg-elev); padding: 10px 12px; margin: 8px 0; display: flex; flex-direction: column; gap: 8px; }
 .cal-decline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%; }
 .cal-decline .ui-input { flex: 1 1 240px; }
+
+/* #4892, волна 3: ИИ-агент и аналитика времени */
+.cal-agent, .cal-analytics { display: flex; flex-direction: column; gap: 10px; }
+.cal-agent-me { align-self: flex-end; max-width: 85%; background: var(--accent-soft); border: 1px solid var(--accent-line, var(--accent)); border-radius: var(--radius); padding: 8px 12px; }
+.cal-agent-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.cal-agent-title { font-weight: 650; }
+.cal-agent-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+.cal-agent-row .cal-pill { margin-left: 0; }
+.cal-agent-time { width: auto; }
+.cal-team-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr auto; gap: 10px; align-items: center; font-size: var(--fs-sm); }

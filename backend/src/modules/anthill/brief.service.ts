@@ -1,3 +1,4 @@
+import { collectWeekLines } from '../../common/week-lines';
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { localParts } from '../assistant/ping-rules';
@@ -100,7 +101,10 @@ export class BriefService {
     const evening = eveningText(await this.repo.evening(tenantId, userId, from, to));
     // в последний рабочий день недели к итогам дня — итоги недели (§7.4)
     if (!(await this.lastWorkday(tenantId, now, tz))) return evening;
-    const week = await this.weekAudit(tenantId, userId, tz, now);
+    const audit = await this.weekAudit(tenantId, userId, tz, now);
+    // #4892, п. 12: итог календаря — в том же пятничном сообщении
+    const extra = await collectWeekLines(tenantId, userId).catch(() => [] as string[]);
+    const week = [audit, ...extra].filter(Boolean).join('\n');
     if (!week) return evening;
     return evening ? `${evening}\n\nНеделя:\n${week}` : `Неделя:\n${week}`;
   }

@@ -3652,13 +3652,15 @@ export interface FindTimeResult {
 export type WeeklyHours = Record<string, [string, string][]>;
 export interface BookingTypeInput {
   /** #4787, п. 16: к себе, к любому из команды, ко всем сразу, группа */
-  mode?: 'personal' | 'round_robin' | 'collective' | 'group'; memberIds?: string[]; rrRule?: 'nearest' | 'even'; seats?: number | null;
+  mode?: 'personal' | 'round_robin' | 'collective' | 'group'; memberIds?: string[]; rrRule?: 'nearest' | 'even' | 'turn'; seats?: number | null;
+  /** #4892, п. 11: кто может записаться, лимит в день, привязка к задаче или клиенту */
+  audience?: 'all' | 'staff'; maxPerDay?: number | null; taskId?: string | null; clientId?: string | null;
   title: string; description?: string | null; durationMin: number; weekly?: WeeklyHours | null;
   locationKind?: 'call' | 'place' | 'phone'; location?: string | null; bufferBefore?: number; bufferAfter?: number;
   questions?: { text: string; required?: boolean }[]; reminders?: number[];
 }
-export interface BookingType extends Required<Omit<BookingTypeInput, 'description' | 'weekly' | 'location' | 'seats'>> {
-  seats: number | null;
+export interface BookingType extends Required<Omit<BookingTypeInput, 'description' | 'weekly' | 'location' | 'seats' | 'maxPerDay' | 'taskId' | 'clientId'>> {
+  seats: number | null; maxPerDay: number | null; taskId: string | null; clientId: string | null;
   id: string; slug: string; url: string; description: string | null; weekly: WeeklyHours | null; location: string | null;
 }
 export interface BookingRules {

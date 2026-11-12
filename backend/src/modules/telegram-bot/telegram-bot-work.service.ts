@@ -1,3 +1,4 @@
+import { askCalendarAgent } from '../../common/calendar-agent-hook';
 import { HttpException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiService } from '../ai/ai.service';
@@ -103,6 +104,12 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
       if (await this.telegram.handleExternal(chatId, msg.text, { staff: true, name })) return;
     }
 
+    // #4892, п. 13: команды календарю обычным языком — план изменений и кнопка «Открыть в QEVO»
+    if (typeof msg.text === 'string' && !msg.text.startsWith('/')) {
+      // план только показываем — менять расписание можно лишь кнопкой «Применить» в QEVO
+      const agent = await askCalendarAgent(own.tenantId, { userId: own.userId, role: 'member' }, msg.text);
+      if (agent) return this.say(chatId, { text: agent.text, markup: { inline_keyboard: [[{ text: 'Открыть в QEVO', url: `${this.base}${agent.url}` }]] } as never });
+    }
     const intent = staffIntent(msg, await this.work.state(tgId));
     switch (intent.kind) {
       case 'standup':
