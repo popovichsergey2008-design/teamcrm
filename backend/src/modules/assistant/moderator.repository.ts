@@ -41,7 +41,8 @@ export class ModeratorRepository {
                 WHERE p.event_id = e.id AND p.status <> 'declined') > 1
           AND NOT EXISTS (
             SELECT 1 FROM meeting_agendas a
-             WHERE a.event_id = e.id AND a.starts_at = e.starts_at)
+             -- #4892: поправленную вручную повестку не пересобираем и после переноса
+             WHERE a.event_id = e.id AND (a.starts_at = e.starts_at OR a.edited_by IS NOT NULL))
         LIMIT 50`,
       [fromMinutes, toMinutes],
     );

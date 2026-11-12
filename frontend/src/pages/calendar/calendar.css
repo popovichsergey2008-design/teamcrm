@@ -44,8 +44,8 @@
 
 /* блоки своего расписания: задача — с зелёной чертой, фокус — с акцентной; текст обычный */
 .cal-event.cal-block { background: var(--bg-elev); color: var(--text); border: 1px solid var(--border-2); border-left-width: 4px; }
-.cal-event.cal-block.task { border-left-color: var(--ok); }
-.cal-event.cal-block.focus { background: var(--accent-soft); border-color: var(--accent-line, var(--accent)); border-left-color: var(--accent); }
+.cal-event.cal-block.task { background: var(--warn-soft); border-color: var(--warn-line, var(--warn)); border-left-color: var(--warn); }
+.cal-event.cal-block.focus { background: var(--ok-soft); border-color: var(--ok-line, var(--ok)); border-left-color: var(--ok); }
 .cal-event.cal-block.done { opacity: .6; }
 .cal-event.cal-block .cal-event-time { opacity: 1; color: var(--text-dim); }
 .cal-list-block .cal-list-title span:first-child svg { vertical-align: -2px; }
@@ -154,3 +154,108 @@
 .cal-rules { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); color: var(--text-dim); }
 .cal-rules li { display: flex; gap: 6px; align-items: flex-start; }
 .cal-rules svg { color: var(--ok); flex: none; margin-top: 2px; }
+
+/* ===== #4892 ТЗ «Календарь» ===== */
+.cal-link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+.cal-link.dim { color: var(--text-dim); }
+.cal-small { font-size: var(--fs-sm); }
+.cal-overdue, .cal-insight b.bad { color: var(--danger); }
+.cal-insight b.warn { color: var(--warn); }
+.cal-insight b.ok, .cal-prep .ok { color: var(--ok); }
+.cal-pill.ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-line, var(--ok)); margin-left: 6px; }
+.cal-pill.warn { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line, var(--warn)); margin-left: 6px; }
+
+/* п. 3: событие одной фразой */
+.cal-phrase { margin: 6px 0 8px; }
+.cal-phrase-field { display: flex; align-items: center; gap: 8px; border: 1px solid var(--accent-line, var(--accent)); border-radius: var(--radius); padding: 6px 10px; background: var(--bg-elev); color: var(--text-dim); }
+.cal-phrase-input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; min-width: 0; padding: 4px 0; }
+.cal-phrase-mic { border: 0; background: transparent; color: var(--text-dim); cursor: pointer; padding: 4px; border-radius: var(--radius-sm); }
+.cal-phrase-mic.on { color: var(--danger); }
+.cal-phrase-hint { font-size: var(--fs-sm); margin: 4px 2px; }
+.cal-phrase-err { color: var(--danger); font-size: var(--fs-sm); margin: 4px 2px; }
+.cal-phrase-card { margin-top: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.cal-phrase-title { font-weight: 650; padding-bottom: 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.cal-phrase-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.cal-phrase-row > span:last-child { text-align: right; }
+.cal-phrase-agenda { margin: 6px 0; padding-left: 20px; font-size: var(--fs-sm); }
+.cal-phrase-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* п. 1: первый вход и карточка недели */
+.cal-first { display: flex; gap: 16px; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 14px 16px; margin: 6px 0 10px; }
+.cal-first-main { flex: 1 1 360px; display: flex; flex-direction: column; gap: 10px; }
+.cal-first-kicker { font-size: calc(11px * var(--fs-scale)); letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.cal-first-kicker.ok { color: var(--ok); }
+.cal-first-title { margin: 0; font-size: calc(18px * var(--fs-scale)); }
+.cal-first-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.cal-hours-line { font-size: var(--fs-sm); }
+.cal-hours-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.cal-time { width: 7.2em; padding: 3px 6px; }
+.cal-insight { flex: 0 1 340px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev-2); padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.cal-insight-head { font-weight: 650; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.cal-insight-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); }
+.cal-insight .ui-btn { align-self: flex-start; margin-top: 6px; }
+.cal-connect-line { font-size: var(--fs-sm); margin: 2px 0 6px; }
+.cal-steps { margin: 0 0 10px; padding-left: 20px; font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 4px; }
+
+/* п. 2: ассистент недели, легенда, накладки, пунктирные окна */
+.cal-side { flex: 0 0 300px; display: flex; flex-direction: column; gap: 10px; min-width: 0; max-height: 80vh; overflow-y: auto; }
+.cal-side .cal-plan { flex: 0 0 auto; max-height: none; }
+.cal-assist { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.cal-assist-head { display: flex; justify-content: space-between; align-items: center; font-size: calc(11px * var(--fs-scale)); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); font-weight: 650; }
+.cal-assist-stat, .cal-assist-empty { font-size: var(--fs-sm); }
+.cal-assist-card { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elev-2); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.cal-assist-title { font-weight: 650; }
+.cal-assist-card.tone-danger .cal-assist-title { color: var(--danger); }
+.cal-assist-card.tone-warn .cal-assist-title { color: var(--warn); }
+.cal-assist-card.tone-ok .cal-assist-title { color: var(--ok); }
+.cal-assist-text { font-size: var(--fs-sm); color: var(--text-dim); }
+.cal-assist-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cal-assist-actions .cal-link { font-size: calc(11px * var(--fs-scale)); }
+.cal-preview { max-width: 560px; display: flex; flex-direction: column; gap: 10px; }
+.cal-preview-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.cal-preview-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.cal-event.clash { background: var(--danger-soft); border-color: var(--danger); border-left-color: var(--danger); }
+.cal-event.call { border-style: dashed; border-left-style: solid; }
+.cal-free-window { position: absolute; left: 3px; right: 3px; border: 2px dashed var(--accent); border-radius: var(--radius-sm); color: var(--accent); font-size: calc(11px * var(--fs-scale)); padding: 3px 6px; pointer-events: none; z-index: 1; overflow: hidden; }
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--fs-sm); margin: 8px 2px; }
+.cal-legend .lg { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.cal-legend .lg.meet { background: var(--accent); }
+.cal-legend .lg.focus { background: var(--ok); }
+.cal-legend .lg.due { background: var(--warn); }
+.cal-legend .lg.clash { background: var(--danger); }
+.cal-legend .lg.free { border: 2px dashed var(--accent); border-radius: 3px; }
+
+/* п. 4: лучшее время */
+.cal-find-btn { align-self: flex-start; margin: 2px 0 6px; }
+.cal-best-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-top: 10px; }
+.cal-best-slot { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev-2); padding: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.cal-best-slot.best { border-color: var(--ok); }
+.cal-best-slot .cal-pill.ok { margin-left: 0; }
+.cal-best-when { font-weight: 650; font-size: calc(16px * var(--fs-scale)); }
+.cal-bars { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.cal-bar-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr; gap: 10px; align-items: center; font-size: var(--fs-sm); }
+.cal-bar { position: relative; height: 12px; border-radius: 6px; background: var(--bg-elev-2); border: 1px solid var(--border); overflow: hidden; }
+.cal-bar-seg { position: absolute; top: 0; bottom: 0; }
+.cal-bar-seg.meeting { background: var(--accent); opacity: .55; }
+.cal-bar-seg.focus { background: var(--ok); opacity: .7; }
+.cal-bar-seg.lunch { background: var(--warn); opacity: .45; }
+.cal-bar-seg.off { background: var(--text-dim); opacity: .18; }
+
+/* п. 6: подготовка к встрече */
+.cal-prep { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); padding: 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 10px; }
+.cal-prep-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.cal-prep-title { font-weight: 650; font-size: calc(15px * var(--fs-scale)); }
+.cal-prep-block { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.cal-prep-row { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.cal-prep-links { display: flex; gap: 10px; font-size: var(--fs-sm); }
+.cal-prep-agenda { font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 3px; }
+.cal-prep-edit { width: 100%; font: inherit; }
+.cal-prep-min { font: inherit; background: var(--bg-elev-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cal-prep-foot { border-top: 1px solid var(--border); padding-top: 8px; }
+.cal-prep .ui-btn { align-self: flex-start; }
+@media (max-width: 700px) {
+  .cal-side { flex-basis: auto; max-height: none; }
+  .cal-body.with-plan { flex-direction: column; }
+  .cal-phrase-row { flex-direction: column; gap: 2px; }
+  .cal-phrase-row > span:last-child { text-align: left; }
+}

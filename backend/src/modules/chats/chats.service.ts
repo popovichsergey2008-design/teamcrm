@@ -4,6 +4,7 @@ import { AppException } from '../../common/http/app-exception';
 import { trackBackground } from '../../common/background-work';
 import { NlService } from '../nl/nl.service';
 import { ChatsAiService } from './chats-ai.service';
+import { emitChatText } from './chat-hooks';
 import { ChatTaskDraftService } from './chat-task-draft.service';
 import { CustomResponsesService } from './custom-responses.service';
 import { DiagService } from '../diagnostics/diag.service';
@@ -415,6 +416,8 @@ export class ChatsService {
       отправки: сообщение человека не должно ни ждать разбора, ни падать из-за него.
     */
     if (text) void this.drafts.noticeAnswer(tenantId, chatId, user.userId, text).catch(() => undefined);
+    // #4892, п. 5: «давайте созвонимся» и /встреча — календарь предложит время
+    if (text && !rootId) emitChatText({ tenantId, chatId: String(chatId), chatKind: chat.kind, chatTitle: chat.title ?? null, messageId: String(message.id), authorId: String(user.userId), text });
     return message;
   }
 

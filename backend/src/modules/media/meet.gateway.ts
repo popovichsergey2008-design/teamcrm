@@ -1,3 +1,4 @@
+import { CallLogService } from './call-log.service';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { TRIAL_CALL_SEC, TRIAL_TEXT, TrialLimitsService } from '../billing/trial-limits.service';
 import { ConfigService } from '@nestjs/config';
@@ -106,6 +107,7 @@ export class MeetGateway implements OnModuleInit {
     private readonly push: PushService,
     private readonly mirror: TelegramMirror,
     private readonly trialLimits: TrialLimitsService,
+    private readonly callLog: CallLogService,
   ) {}
 
   /**
@@ -775,6 +777,8 @@ export class MeetGateway implements OnModuleInit {
     if (room.graceTimer) { clearTimeout(room.graceTimer); room.graceTimer = undefined; room.graceUntil = undefined; }
     this.media.addParticipant(room, c.userId, c.displayName, c.ws);
     (room.joined ??= new Set()).add(c.userId);
+    // #4892, п. 0: созвон — в календарь участников, даже начатый сразу из чата
+    if (!c.isGuest) void this.callLog.joined(room.tenantId, room.id, room.chatId ?? null, c.userId);
     // комнату по гостевой ссылке поднимает тот, кто вошёл первым; хозяином становится
     // первый сотрудник — гость на эту роль не годится, у него нет учётной записи
     if (!room.startedBy && !c.isGuest) room.startedBy = c.userId;
@@ -1229,6 +1233,7 @@ export class MeetGateway implements OnModuleInit {
       // все разошлись, кнопку «стоп» никто не нажал — дописываем сами,
       // иначе ffmpeg остался бы висеть, а запись пропала
       await this.finishRecording(room, c.isGuest ? null : c.userId);
+      void this.callLog.ended(room.tenantId, room.id);
       this.media.closeRoom(room.id);
     }
   }

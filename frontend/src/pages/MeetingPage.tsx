@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '../components/Icon';
 import { EmptyState } from '../components/EmptyState';
 import { DeviceCheck } from '../components/DeviceCheck';
@@ -80,6 +80,14 @@ export function MeetingPage({ publicId, onJoin, inCall }: { publicId: string; on
       void load();
     } finally { setBusy(false); }
   };
+
+  // #4892, п. 6: «Войти» из Telegram (?join=1) открывает звонок сразу, без лишних экранов
+  const autoJoin = useRef(new URLSearchParams(window.location.search).get('join') === '1');
+  useEffect(() => {
+    if (!autoJoin.current || !info || !info.valid || inCall) return;
+    if (info.state === 'live' || info.state === 'open' || info.state === 'early') { autoJoin.current = false; void enter(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [info, inCall]);
 
   const share = async () => {
     if (!info?.valid) return;

@@ -12,6 +12,8 @@ interface ReminderPayload {
   location?: string | null;
   /** Встреча с созвоном: всплывашка ведёт на её страницу, где и войти (ТЗ-14). */
   publicId?: string | null;
+  /** #4892, п. 6: короткая подготовка — первые пункты повестки. */
+  prep?: string | null;
 }
 
 /** «за 15 минут», «за час», «за день» — человек читает словами, а не числом минут. */
@@ -36,7 +38,7 @@ export function useCalendarReminders(enabled: boolean): void {
 
     const onReminder = (p: ReminderPayload) => {
       const when = new Date(p.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-      const body = `${when}${p.location ? ` · ${p.location}` : ''} · ${inWords(p.minutesBefore)}`;
+      const body = `${when}${p.location ? ` · ${p.location}` : ''} · ${inWords(p.minutesBefore)}${p.prep ? ` · ${p.prep}` : ''}`;
       const path = p.publicId ? `/meet/${p.publicId}` : undefined;
       // #4749: висит до начала встречи (или пока не нажмут), следующее напоминание её заменяет
       const keep = { expireAt: new Date(p.startsAt).getTime(), replaceKey: `cal:${p.eventId}` };
@@ -47,7 +49,10 @@ export function useCalendarReminders(enabled: boolean): void {
       playMessageChime();
     };
 
+    // повестку встречи организатор отправил по кнопке (#4892, п. 6)
+    const onAgenda = (p: { title: string; body: string }) => showToast({ title: `Повестка: ${p.title}`, body: p.body.split(String.fromCharCode(10)).slice(0, 3).join(' · ') });
     socket.on('calendar.reminder', onReminder);
-    return () => { socket.off('calendar.reminder', onReminder); };
+    socket.on('calendar.agenda', onAgenda);
+    return () => { socket.off('calendar.reminder', onReminder); socket.off('calendar.agenda', onAgenda); };
   }, [enabled]);
 }

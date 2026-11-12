@@ -8,6 +8,7 @@ import { toastSaved } from '../../lib/notifications';
 import type { User } from '../../types';
 import { dayLabel } from './TaskTimeDialog';
 import './calendar.css';
+import { calApi, type BestTimeResult } from './cal-api';
 import { DateInput } from '../../components/DateInput';
 
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -32,38 +33,49 @@ function People({ people, roles, onChange, meId }: { people: User[]; roles: Reco
 }
 
 /**
- * «Найти общее время» (#4787, п. 15): свободны все обязательные — лучше и необязательные.
- * Про чужие встречи — только «занят». Выбранный вариант открывает форму встречи, и перед
- * сохранением занятость проверяется ещё раз.
+ * «Найти время» (#4892, п. 4; было — #4787, п. 15): три слота по качеству, лучший
+ * помечен, у каждого причина («все свободны · не в фокусе · у всех перерыв до и после»).
+ * Только в рабочих часах всех участников с учётом поясов (пояс — у имени), обед и
+ * защищённый фокус не предлагаются. Полоса занятости каждого на день лучшего слота
+ * показывает, почему другие варианты хуже; чужие встречи — только «занят».
  */
-export function CommonTimeDialog({ meId, onClose, onPick, onPoll }: {
+export function CommonTimeDialog({ meId, onClose, onPick, onPoll, initialIds, initialMinutes, exceptEventId, title }: {
   meId?: string;
   onClose: () => void;
   onPick: (v: { startsAt: string; endsAt: string; participantIds: string[] }) => void;
   onPoll: () => void;
+  initialIds?: string[];
+  initialMinutes?: number;
+  exceptEventId?: string;
+  title?: string;
 }) {
   const [people, setPeople] = useState<User[]>([]);
-  const [roles, setRoles] = useState<Record<string, Role>>({});
-  const [minutes, setMinutes] = useState(30);
-  const [opts, setOpts] = useState<{ startsAt: string; endsAt: string; busyOptional: string[]; note: string }[] | null>(null);
+  const [roles, setRoles] = useState<Record<string, Role>>(() => Object.fromEntries((initialIds ?? []).filter((x) => String(x) !== String(meId)).map((id) => [String(id), 'req' as Role])));
+  const [minutes, setMinutes] = useState(initialMinutes && initialMinutes >= 5 ? initialMinutes : 30);
+  const [res, setRes] = useState<BestTimeResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   useEffect(() => { api.listUsers().then(setPeople).catch(() => undefined); }, []);
-  useEffect(() => { setOpts(null); }, [roles, minutes]);
 
   const find = async () => {
     setBusy(true); setErr('');
     try {
       const req = Object.entries(roles).filter(([, r]) => r === 'req').map(([id]) => id);
       const opt = Object.entries(roles).filter(([, r]) => r === 'opt').map(([id]) => id);
-      setOpts((await api.calendarCommonTime({ participantIds: req, optionalIds: opt, minutes })).options);
+      setRes(await calApi.bestTime({ participantIds: req, optionalIds: opt, minutes, exceptEventId }));
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось подобрать время'); }
     finally { setBusy(false); }
   };
+  // сразу ищем, если участники уже известны (из формы встречи)
+  useEffect(() => { void find(); }, [roles, minutes]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const names = res?.people.filter((p) => !p.me).map((p) => p.name.split(' ')[0]) ?? [];
+  const dayStart = res ? Date.parse(res.day.startsAt) : 0;
+  const daySpan = res ? Math.max(1, Date.parse(res.day.endsAt) - dayStart) : 1;
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} size="md" title="Найти общее время"
-      description="Выберите участников и длительность — QEVO покажет, когда свободны все. О чужих встречах видно только «занят».">
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} size="lg"
+      title={title ?? `Найти время${names.length ? ` · ${[...names, 'вы'].join(', ')}` : ''} · ${minutes} мин`}
+      description="В рабочих часах всех участников, с учётом часовых поясов. Обед и фокус не предлагаются. О чужих встречах видно только «занят».">
       <div className="cal-tt">
         <div className="cal-tt-label">Участники <span className="dim">(нажмите ещё раз — необязательный)</span></div>
         <People people={people} roles={roles} onChange={setRoles} meId={meId} />
@@ -71,23 +83,41 @@ export function CommonTimeDialog({ meId, onClose, onPick, onPoll }: {
         <div className="cal-chips">
           {[15, 30, 45, 60, 90].map((m) => <button key={m} className={`cal-pill${minutes === m ? ' on' : ''}`} onClick={() => setMinutes(m)}>{m} мин</button>)}
         </div>
-        <div className="cal-tt-actions">
-          <Button variant="primary" onClick={() => void find()} disabled={busy || !Object.keys(roles).length}><Icon name="search" size={15} /> Найти время</Button>
-          <Button variant="ghost" onClick={onPoll}><Icon name="list" size={15} /> Есть внешние участники — опрос времени</Button>
-        </div>
-        {opts && opts.length > 0 && (
-          <ul className="cal-tt-options">
-            {opts.map((o) => (
-              <li key={o.startsAt}>
-                <button className="cal-tt-option" onClick={() => onPick({ startsAt: o.startsAt, endsAt: o.endsAt, participantIds: Object.keys(roles) })}>
-                  <strong>{dayLabel(o.startsAt)}, {hhmm(o.startsAt)}</strong>
-                  <span className="dim">{o.note}</span>
-                </button>
-              </li>
+        {busy && !res && <div className="dim cal-small">Подбираю…</div>}
+        {res && res.slots.length > 0 && (
+          <div className="cal-best-slots">
+            {res.slots.map((s) => (
+              <div key={s.startsAt} className={`cal-best-slot${s.best ? ' best' : ''}`}>
+                {s.best && <span className="cal-pill ok">лучшее</span>}
+                <div className="cal-best-when">{s.label.replace(/^./, (x) => x.toUpperCase())}</div>
+                <div className="dim cal-small">{s.reasons.join(' · ')}</div>
+                <button type="button" className={`ui-btn ui-btn-sm ${s.best ? 'ui-btn-primary' : 'ui-btn-outline'}`}
+                  onClick={() => onPick({ startsAt: s.startsAt, endsAt: s.endsAt, participantIds: Object.keys(roles) })}>Выбрать</button>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-        {opts && !opts.length && <div className="tv2-callout" role="status"><Icon name="info" size={15} /> В ближайшие дни общего окна нет — сократите встречу или сделайте часть участников необязательными.</div>}
+        {res && res.slots.length > 0 && (
+          <div className="cal-bars">
+            <div className="dim cal-small">Занятость {res.day.label}, {hhmm(res.day.startsAt)}–{hhmm(res.day.endsAt)}</div>
+            {res.people.map((p) => (
+              <div key={p.id} className="cal-bar-row">
+                <span className="cal-bar-name">{p.name}{p.zone ? ` (${p.zone})` : ''}{p.optional ? ' · необяз.' : ''}</span>
+                <span className="cal-bar">
+                  {p.bar.map((b, i) => (
+                    <span key={i} className={`cal-bar-seg ${b.kind}`} title={b.kind === 'meeting' ? 'занят' : b.kind === 'focus' ? 'фокус' : b.kind === 'lunch' ? 'обед' : 'вне рабочих часов'}
+                      style={{ left: `${Math.max(0, (Date.parse(b.startsAt) - dayStart) / daySpan) * 100}%`, width: `${Math.max(0.5, (Date.parse(b.endsAt) - Date.parse(b.startsAt)) / daySpan * 100)}%` }} />
+                  ))}
+                </span>
+              </div>
+            ))}
+            <div className="dim cal-small">синий — встречи · зелёный — фокус · коричневый — обед · пусто — свободно. Обед и фокус не предлагаются.</div>
+          </div>
+        )}
+        {res && !res.slots.length && <div className="tv2-callout" role="status"><Icon name="info" size={15} /> {res.message ?? 'Общего окна нет — сократите встречу или сделайте часть участников необязательными.'}</div>}
+        <div className="cal-tt-actions">
+          <Button variant="outline" onClick={onPoll}><Icon name="list" size={15} /> Внешние участники → опрос времени</Button>
+        </div>
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
       </div>
     </Dialog>

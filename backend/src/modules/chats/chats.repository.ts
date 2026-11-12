@@ -50,6 +50,8 @@ export interface MessageRow {
   pinned_at?: Date | null;
   /** Итог созвона: сообщение разворачивается в карточку со сводкой. */
   meeting_id?: string | null;
+  /** #4892, п. 5: предложение встречи из чата — карточка с голосованием. */
+  proposal_id?: string | null;
   /** Ответ помощника: помечен, чтобы его не спутали со словами коллеги. */
   is_ai?: boolean;
   /** Имя внешнего собеседника: у гостя нет строки в users. */
@@ -252,7 +254,7 @@ export class ChatsRepository {
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
               m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
-              m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
+              m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.proposal_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
               -- «был здесь» (last_read_at) — отдельной таблицы прочтений на каждое
@@ -306,7 +308,7 @@ export class ChatsRepository {
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
               m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
-              m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.is_ai, m.guest_name,
+              m.task_id, t.title AS task_title, t.project_id AS task_project_id, m.meeting_id, m.proposal_id, m.is_ai, m.guest_name,
               -- Две галочки, как в мессенджерах: сколько СОБЕСЕДНИКОВ уже открывали
               -- чат после этого сообщения и сколько их всего. Считаем от отметки
               -- «был здесь» (last_read_at) — отдельной таблицы прочтений на каждое
@@ -721,7 +723,7 @@ export class ChatsRepository {
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
               m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
               m.task_id, t.title AS task_title, t.project_id AS task_project_id,
-              m.meeting_id, m.is_ai, m.guest_name,
+              m.meeting_id, m.proposal_id, m.is_ai, m.guest_name,
               (SELECT COUNT(*)::int FROM chat_members cm
                 WHERE cm.chat_id = m.chat_id AND cm.user_id <> m.author_id
                   AND cm.last_read_at IS NOT NULL AND cm.last_read_at >= m.created_at) AS read_by,

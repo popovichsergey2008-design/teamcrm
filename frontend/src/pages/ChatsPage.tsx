@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { QevoBotMark } from '../components/QevoBotMark';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
-import { api, ApiError, QUEUED, Scheduled } from '../lib/api';
+import { api, ApiError, QUEUED, request, Scheduled } from '../lib/api';
 import { loadChats, markChatReadLocal, subscribeChats } from '../lib/chats-feed';
 import { feedback } from '../lib/feedback';
 import { OFFLINE_FLUSHED_EVENT, useQueuedFor } from '../hooks/useOfflineQueue';
@@ -42,6 +42,8 @@ import type { MessageTaskDraft } from '../components/MessageToTask';
 const MessageToTask = lazy(() => import('../components/MessageToTask').then((m) => ({ default: m.MessageToTask })));
 // созданная из сообщения задача — сразу окном поверх чата (#1554)
 const ChatSelectBar = lazy(() => import('../components/ChatSelectBar').then((m) => ({ default: m.ChatSelectBar })));
+// #4892, п. 5: встреча из чата — карточка голосования грузится, только когда она есть в ленте
+const ProposalCard = lazy(() => import('../components/chat/ProposalCard'));
 const TaskCardWindow = lazy(() => import('../components/TaskCardWindow').then((m) => ({ default: m.TaskCardWindow })));
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ForwardDialog } from '../components/ForwardDialog';
@@ -100,6 +102,7 @@ interface Message {
   pinned_at?: string | null;
   /** Итог созвона: сообщение разворачивается в карточку со сводкой и разбором. */
   meeting_id?: string | null;
+  proposal_id?: string | null;
   /** Ответ помощника: помечен, чтобы его не спутали со словами коллеги. */
   is_ai?: boolean;
   /** Имя внешнего собеседника: учётной записи у него нет. */
@@ -2088,6 +2091,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       onLeave={c.kind === 'group' || c.kind === 'channel' ? () => void leaveFromList(c) : undefined}
       onRename={canRenameChat(c) ? () => void renameChat(c) : undefined}
       onDelete={canDeleteChat(c) ? () => void deleteFromList(c) : undefined}
+      onMeet={c.kind === 'group' || c.kind === 'dm' || c.kind === 'project' ? () => { openChat(c.id); void request('POST', '/calendar/plus/proposals', { chatId: String(c.id) }).catch((e) => toastSaved('Не получилось', e instanceof ApiError ? e.message : '')); } : undefined}
     />
   );
   const unreadOf = (list: Chat[]) => list.reduce((n, c) => n + (Number(c.unread) || 0), 0);
@@ -2981,6 +2985,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   предложено сделать. Иначе разбор оседает в разделе встреч, куда надо
                   специально пойти, и половина договорённостей теряется.
                 */
+                if (m.proposal_id) {
+                  return (
+                    <div key={m.id} data-msg={String(m.id)}>
+                      {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
+                      <Suspense fallback={<div className="chat-system">{m.body}</div>}><ProposalCard id={String(m.proposal_id)} body={String(m.body ?? '')} /></Suspense>
+                    </div>
+                  );
+                }
                 if (m.meeting_id) {
                   const [head, ...rest] = String(m.body ?? '').split('\n');
                   return (
@@ -4026,7 +4038,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   );
 }
 
-function ChatRow({ chat, active, group, onClick, onStar, onUnread, onInfo, onRename, onLeave, onDelete }: {
+function ChatRow({ chat, active, group, onClick, onStar, onUnread, onInfo, onRename, onLeave, onDelete, onMeet }: {
   chat: Chat; active: boolean; group?: string; onClick: () => void;
   /** Закрепить сверху. В списке из сорока переписок нужные четыре ищут глазами. */
   onStar?: () => void;
@@ -4035,6 +4047,8 @@ function ChatRow({ chat, active, group, onClick, onStar, onUnread, onInfo, onRen
   /** Действия с чатом прямо из списка: сведения, выйти, удалить (нет — пункта нет). */
   onInfo?: () => void;
   onRename?: () => void;
+  /** #4892, п. 5: «Назначить встречу» — QEVO AI предложит время всем участникам. */
+  onMeet?: () => void;
   onLeave?: () => void;
   onDelete?: () => void;
 }) {
@@ -4089,6 +4103,7 @@ function ChatRow({ chat, active, group, onClick, onStar, onUnread, onInfo, onRen
           </MenuItem>
         )}
         {onInfo && <MenuItem onSelect={onInfo} icon={<Icon name="info" size={15} />}>Сведения и участники</MenuItem>}
+        {onMeet && <MenuItem onSelect={onMeet} icon={<Icon name="calendar" size={15} />}>Назначить встречу</MenuItem>}
         {onRename && <MenuItem onSelect={onRename} icon={<Icon name="edit" size={15} />}>Переименовать</MenuItem>}
         {onLeave && <MenuItem onSelect={onLeave} icon={<Icon name="logout" size={15} />}>Выйти из чата</MenuItem>}
         {onDelete && (

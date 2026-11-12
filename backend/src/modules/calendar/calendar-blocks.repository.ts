@@ -125,7 +125,7 @@ export class CalendarBlocksRepository {
        SELECT x.starts_at, x.ends_at
          FROM calendar_external_events x
          JOIN calendar_links l ON l.id = x.link_id
-        WHERE x.tenant_id = $1 AND l.user_id = $2 AND l.kind IN ('import', 'google') AND NOT x.all_day
+        WHERE x.tenant_id = $1 AND l.user_id = $2 AND l.kind IN ('import', 'google', 'yandex') AND NOT x.all_day
           AND x.starts_at < $4::timestamptz AND x.ends_at > $3::timestamptz
        UNION ALL
        SELECT b.starts_at, b.ends_at

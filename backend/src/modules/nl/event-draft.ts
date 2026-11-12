@@ -167,7 +167,7 @@ export function pickDay(text: string, now: Date): Date | null {
  * «Часов» без предлога — тоже время, кроме «на 2 часа»: там это длительность,
  * и путать их нельзя. Числительные к этому моменту уже стали цифрами.
  */
-function pickTime(text: string): { hour: number; minute: number } | null {
+export function pickTime(text: string): { hour: number; minute: number } | null {
   const t = norm(text);
   const m = word('(?:в|к)\\s+(\\d{1,2})(?:[:.\\s](\\d{2}))?\\s*(?:час|часа|часов)?\\s*(утра|дня|вечера|ночи)?').exec(t)
     ?? word('(?<!на\\s)(\\d{1,2})(?:[:.](\\d{2}))?\\s*(?:час|часа|часов)\\s*(утра|дня|вечера|ночи)?').exec(t);
@@ -185,7 +185,7 @@ function pickTime(text: string): { hour: number; minute: number } | null {
 }
 
 /** Длительность: «на час», «на полтора часа», «на 30 минут», «на 2 часа». */
-function pickDuration(text: string): number | null {
+export function pickDuration(text: string): number | null {
   const t = norm(text);
   if (word('на\\s+полтора\\s+часа').test(t)) return 90;
   if (word('на\\s+полчаса').test(t)) return 30;

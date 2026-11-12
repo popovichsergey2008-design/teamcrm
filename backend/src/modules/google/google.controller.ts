@@ -69,7 +69,9 @@ export class GoogleController {
   }
 
   @Delete('integrations/google')
-  disconnect(@CurrentUser() u: AuthUser) {
+  async disconnect(@CurrentUser() u: AuthUser) {
+    // #4892, п. 1: сначала убрать из Google всё, что положил QEVO, — без «призрачных» событий
+    await this.calendar.removeCopiesBeforeDisconnect(u.tenantId, u.userId).catch(() => undefined);
     return this.auth.disconnect(u.tenantId, u.userId);
   }
 

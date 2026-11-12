@@ -201,6 +201,11 @@ export class GoogleCalendarService implements OnModuleInit {
       .catch((e) => { if (!(e instanceof GoogleApiError && (e.status === 404 || e.status === 410))) this.log.warn(`копия не удалена: ${e.message}`); });
   }
 
+  /** Отключение Google (#4892, п. 1): копии наших встреч удаляются, пока токен ещё жив. */
+  removeCopiesBeforeDisconnect(tenantId: string, userId: string) {
+    return this.removeAllCopies(tenantId, userId);
+  }
+
   private async removeAllCopies(tenantId: string, userId: string) {
     const rows = await this.db.many<{ calendar_event_id: string }>(
       `SELECT calendar_event_id FROM google_calendar_events WHERE user_id=$1`, [userId]);

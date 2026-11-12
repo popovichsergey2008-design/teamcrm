@@ -43,6 +43,11 @@ import { PlanDayDialog } from './calendar/PlanDayDialog';
 import { EventCardPanel } from './calendar/EventCardPanel';
 import { CommonTimeDialog, PollDialog } from './calendar/MeetingTimeDialogs';
 import { askScope } from './calendar/askScope';
+import { PhraseBar } from './calendar/PhraseBar';
+import { AssistantPanel } from './calendar/AssistantPanel';
+import { FirstRun, useConnect } from './calendar/ConnectCalendar';
+import { MeetingPrep } from './calendar/MeetingPrep';
+import { calApi, type CalPrefs, type CallItem, type WeekAssistant } from './calendar/cal-api';
 import './calendar/calendar.css';
 import { DateInput } from '../components/DateInput';
 
@@ -57,7 +62,9 @@ const isPhone = () => typeof window !== 'undefined' && window.matchMedia('(max-w
 export interface CalEvent {
   id: string;
   /** `external` — встреча из чужого календаря: показываем, но не трогаем. */
-  scope: 'personal' | 'company' | 'external';
+  scope: 'personal' | 'company' | 'external' | 'call';
+  /** #4892, п. 0: созвон QEVO без встречи — из журнала созвонов. */
+  call?: CallItem;
   /** Название источника для внешней встречи: «Google-календарь». */
   source?: string;
   title: string;
@@ -264,6 +271,15 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const [err, setErr] = useState('');
   const [editing, setEditing] = useState<Partial<CalEvent> | null>(null);
   const [people, setPeople] = useState<User[]>([]);
+  /** #4892: личные часы и подключения, ассистент недели, пунктирные окна, созвоны. */
+  const [prefs, setPrefs] = useState<CalPrefs | null>(null);
+  const [week, setWeek] = useState<WeekAssistant | null>(null);
+  const [assistOpen, setAssistOpen] = useState(() => localStorage.getItem('teamcrm.calendarAssist') !== '0');
+  const [assistKey, setAssistKey] = useState(0);
+  const [windows, setWindows] = useState<{ startsAt: string; endsAt: string; label: string }[]>([]);
+  const [calls, setCalls] = useState<CallItem[]>([]);
+  const loadPrefs = useCallback(() => calApi.prefs().then(setPrefs).catch(() => undefined), []);
+  useEffect(() => { void loadPrefs(); }, [loadPrefs]);
 
   const days = useMemo(() => daysOf(view, anchor), [view, anchor]);
   const from = days[0];
@@ -280,7 +296,10 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       setOverdue(r.overdue ?? []);
       setBlocks(r.blocks ?? []);
       setPlanKey((k) => k + 1);
+      setAssistKey((k) => k + 1);
       setWork(r.work);
+      // созвоны QEVO, в том числе начатые из чата (#4892, п. 0)
+      calApi.calls(from.toISOString(), to.toISOString()).then(setCalls).catch(() => setCalls([]));
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить календарь');
     } finally {
@@ -291,6 +310,18 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   }, [from.getTime(), to.getTime(), showTasks]);
 
   useEffect(() => { void reload(); }, [reload]);
+  const connect = useConnect(() => { void loadPrefs(); void reload(); });
+  // первый вход: карточка недели появляется, как только календарь подключён
+  useEffect(() => {
+    if (!prefs || prefs.onboarded || !prefs.connected.any) return;
+    calApi.assistant(from.toISOString(), to.toISOString()).then(setWeek).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs]);
+  // ссылка из уведомления «/calendar?event=…» открывает встречу
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('event');
+    if (id) calApi.event(id).then((e) => setEditing(e as Partial<CalEvent>)).catch(() => undefined);
+  }, []);
   // «Нужно ещё время» после фокуса (#4787, п. 13) — сразу к подбору времени для задачи
   useEffect(() => {
     try {
@@ -372,7 +403,29 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
     }
   };
 
-  const timed = events.filter((e) => !e.allDay);
+  const callEvents: CalEvent[] = calls.map((c) => ({
+    id: c.id, scope: 'call', title: c.title, description: null, location: null, meetRoomId: null, sourceChatId: c.chatId,
+    startsAt: c.startsAt, endsAt: c.endsAt, allDay: false, color: null, isPrivate: false, ownerId: '', canEdit: false, myStatus: null,
+    participants: [], call: c,
+  }));
+  const timed = [...events, ...callEvents].filter((e) => !e.allDay);
+  // свои рабочие часы, если заданы, — иначе компании (#4892, п. 0)
+  const gridWork: Work = prefs?.ownHours ? { ...work, workStart: prefs.workStart, workEnd: prefs.workEnd } : work;
+  /** Накладки — свои встречи, пересекающиеся между собой (#4892, п. 2: красным). */
+  const clash = useMemo(() => {
+    const mine = events.filter((e) => !e.allDay && e.myStatus !== 'declined').sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+    const ids = new Set<string>();
+    for (let i = 0; i < mine.length; i++) {
+      for (let j = i + 1; j < mine.length && Date.parse(mine[j].startsAt) < Date.parse(mine[i].endsAt); j++) {
+        ids.add(String(mine[i].id)); ids.add(String(mine[j].id));
+      }
+    }
+    return ids;
+  }, [events]);
+  const openCall = (c: CallItem) => {
+    if (c.meetingId) navigate({ section: 'chat', view: 'meetings', meetingId: c.meetingId });
+    else if (c.chatId) navigate({ section: 'chat', chatId: c.chatId });
+  };
   const allDay = events.filter((e) => e.allDay);
 
   // встречи и блоки — в одной раскладке: блок не должен ложиться поверх встречи невидимо
@@ -382,7 +435,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
     for (const e of items) for (const seg of splitByDay(e, days)) per[seg.dayIndex].push(seg);
     return per.map((list) => layoutDay(list));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, blocks, days]);
+  }, [events, blocks, days, calls]);
 
   const allDayOf = (day: Date) => allDay.filter((e) => splitByDay(e, [day]).length > 0);
 
@@ -394,6 +447,21 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
   const taskMinToday = blocks.filter((b) => b.kind === 'task' && isToday(b.startsAt)).reduce((n, b) => n + minutesOf(b), 0);
   const focusMinToday = blocks.filter((b) => b.kind === 'focus' && isToday(b.startsAt)).reduce((n, b) => n + minutesOf(b), 0);
   const showSummary = days.some((d) => startOfDay(d).getTime() === today0);
+  /** Свободно сегодня: рабочие часы минус встречи и блоки (#4892, п. 0 — честно, без противоречий). */
+  const freeTodayMin = (() => {
+    const [sh, sm] = gridWork.workStart.split(':').map(Number);
+    const [eh, em] = gridWork.workEnd.split(':').map(Number);
+    const ws = new Date(today0); ws.setHours(sh, sm || 0, 0, 0);
+    const we = new Date(today0); we.setHours(eh, em || 0, 0, 0);
+    const spans = [
+      ...timed.filter((e) => isToday(e.startsAt) && e.myStatus !== 'declined').map((e) => [Date.parse(e.startsAt), Date.parse(e.endsAt)]),
+      ...blocks.filter((b) => isToday(b.startsAt)).map((b) => [Date.parse(b.startsAt), Date.parse(b.endsAt)]),
+    ].map(([a, b]) => [Math.max(a, ws.getTime()), Math.min(b, we.getTime())]).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+    let busyMs = 0; let cs = -1; let ce = -1;
+    for (const [a, b] of spans) { if (a > ce) { if (ce > cs) busyMs += ce - cs; cs = a; ce = b; } else ce = Math.max(ce, b); }
+    if (ce > cs) busyMs += ce - cs;
+    return Math.max(0, Math.round((we.getTime() - ws.getTime() - busyMs) / 60000));
+  })();
 
   /** Ближайший созвон (п. 18): идёт сейчас или начнётся в ближайшие 15 минут. */
   const now = Date.now();
@@ -469,6 +537,12 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
             <MenuItem icon={<Icon name={showTasks ? 'eye-off' : 'eye'} size={15} />} onSelect={() => toggleTasks()}>
               {showTasks ? 'Скрыть сроки задач' : 'Показывать сроки задач'}
             </MenuItem>
+            <MenuItem icon={<Icon name="sparkles" size={15} />} onSelect={() => { const n = !assistOpen; setAssistOpen(n); if (!n) setWindows([]); localStorage.setItem('teamcrm.calendarAssist', n ? '1' : '0'); }}>
+              {assistOpen ? 'Скрыть «Ассистент недели»' : 'Показать «Ассистент недели»'}
+            </MenuItem>
+            <MenuItem icon={<Icon name="plug" size={15} />} onSelect={() => connect.start('yandex')}>Яндекс Календарь</MenuItem>
+            <MenuItem icon={<Icon name="plug" size={15} />} onSelect={() => connect.start('outlook')}>Outlook</MenuItem>
+            <MenuItem icon={<Icon name="clock" size={15} />} onSelect={() => { void calApi.savePrefs({ onboarded: false }).then(setPrefs); }}>Мои часы, обед и пояс</MenuItem>
             <MenuItem icon={<Icon name="list" size={15} />} onSelect={togglePlan}>
               {planOpen ? 'Скрыть «Задачи для планирования»' : 'Показать «Задачи для планирования»'}
             </MenuItem>
@@ -478,9 +552,13 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 
       {showSummary && (
         <div className="cal-summary" aria-label="Сводка на сегодня">
+          {/* #4892, п. 0: без взаимоисключающих фраз — встречи, свободное время, фокус */}
           <span>Сегодня: {meetingsToday} {plural(meetingsToday, 'встреча', 'встречи', 'встреч')}</span>
-          <span>· {taskMinToday ? fmtMinutes(taskMinToday) : 'нет времени'} на задачи</span>
-          <span>· {focusMinToday ? `${fmtMinutes(focusMinToday)} фокуса` : 'фокус не запланирован'}</span>
+          <span>· {freeTodayMin ? fmtMinutes(freeTodayMin) : '0 мин'} свободно</span>
+          {taskMinToday > 0 && <span>· {fmtMinutes(taskMinToday)} на задачи</span>}
+          {focusMinToday ? <span>· {fmtMinutes(focusMinToday)} фокуса</span> : (
+            <span>· фокус не запланирован → <button className="cal-due-link" onClick={() => setFocusDlg({})}>Поставить</button></span>
+          )}
           <button className="cal-due-link" onClick={() => setPlanDayOpen(true)}>Помоги спланировать день</button>
           {nextCall && (
             <button className="ui-btn ui-btn-primary ui-btn-sm cal-join" onClick={() => onStartCall(nextCall.meetRoomId!)}>
@@ -507,6 +585,37 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
         </div>
       )}
 
+      {/* #4892, п. 1: первый вход — подключение и карточка недели */}
+      {prefs && !prefs.onboarded && (
+        <FirstRun
+          prefs={prefs}
+          week={week}
+          onPrefs={setPrefs}
+          onConnected={() => { void loadPrefs(); void reload(); }}
+          onSkip={() => { void calApi.savePrefs({ onboarded: true }).then(setPrefs); }}
+          onFix={() => {
+            void calApi.savePrefs({ onboarded: true }).then(setPrefs);
+            setAssistOpen(true); localStorage.setItem('teamcrm.calendarAssist', '1');
+            window.setTimeout(() => document.getElementById('cal-assistant')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+          }}
+        />
+      )}
+      {prefs && prefs.onboarded && !prefs.connected.any && (
+        <div className="cal-connect-line dim">
+          <Icon name="plug" size={13} /> Подключить{' '}
+          <button className="cal-link" onClick={() => connect.start('google')}>Google</button> или{' '}
+          <button className="cal-link" onClick={() => connect.start('yandex')}>Яндекс</button> календарь
+          {' · '}<button className="cal-link" onClick={() => connect.start('outlook')}>Outlook</button>
+        </div>
+      )}
+      {connect.dialogs}
+      {(view === 'week' || view === 'day') && (
+        <PhraseBar
+          onCreated={() => void reload()}
+          onEdit={(d) => setEditing({ title: d.title, description: d.description, startsAt: d.startsAt, endsAt: d.endsAt, allDay: d.allDay, scope: 'personal', participants: d.participantIds.map((id) => ({ userId: id, isOrganizer: false })) as CalEvent['participants'] })}
+        />
+      )}
+
       {workOpen && (
         <WorkSettingsPanel
           canManage={user?.role === 'owner'}
@@ -520,7 +629,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 
       {showTasks && <DeadlinesBar tasks={tasks} overdue={overdue} days={days} />}
 
-      <div className={`cal-body${planOpen ? ' with-plan' : ''}`}>
+      <div className={`cal-body${planOpen || assistOpen ? ' with-plan' : ''}`}>
         <div className="cal-main">
           {view === 'list' ? (
             <ListView days={days} events={events} tasks={showTasks ? tasks : []} blocks={blocks} onOpen={setEditing} onOpenBlock={setOpenBlock} onRespond={respond} />
@@ -529,7 +638,10 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
           ) : (
             <TimeGrid
               days={days}
-              work={work}
+              work={gridWork}
+              clash={clash}
+              windows={windows}
+              onOpenCall={openCall}
               segments={segmentsByDay}
               allDayOf={allDayOf}
               onOpen={setEditing}
@@ -539,8 +651,27 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
             />
           )}
         </div>
-        {planOpen && <PlanPanel refreshKey={planKey} onPlan={(taskId) => setTaskTime({ taskId })} onClose={togglePlan} />}
+        {(assistOpen || planOpen) && (
+          <div className="cal-side">
+            {assistOpen && (
+              <AssistantPanel
+                from={from.toISOString()} to={to.toISOString()} refreshKey={assistKey}
+                onChanged={() => void reload()}
+                onWindows={setWindows}
+                onClose={() => { setAssistOpen(false); setWindows([]); localStorage.setItem('teamcrm.calendarAssist', '0'); }}
+              />
+            )}
+            {planOpen && <PlanPanel refreshKey={planKey} onPlan={(taskId) => setTaskTime({ taskId })} onClose={togglePlan} />}
+          </div>
+        )}
       </div>
+      {(view === 'week' || view === 'day') && (
+        <div className="cal-legend dim" aria-label="Обозначения">
+          <span><i className="lg meet" /> встречи</span><span><i className="lg focus" /> фокус</span>
+          <span><i className="lg due" /> сроки задач</span><span><i className="lg clash" /> накладка</span>
+          <span><i className="lg free" /> свободно — предлагает ассистент</span>
+        </div>
+      )}
 
       {taskTime && (
         <TaskTimeDialog
@@ -600,9 +731,13 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
 }
 
 /** Сетка дня и недели: часы слева, события в колонках дней. */
-function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreate, onDropTask }: {
+function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreate, onDropTask, clash, windows, onOpenCall }: {
   days: Date[];
   work: Work;
+  /** #4892, п. 2: свои пересекающиеся встречи — красным; окна от ассистента — пунктиром. */
+  clash: Set<string>;
+  windows: { startsAt: string; endsAt: string; label: string }[];
+  onOpenCall: (c: CallItem) => void;
   segments: DaySegment<GridItem>[][];
   allDayOf: (d: Date) => CalEvent[];
   onOpen: (e: CalEvent) => void;
@@ -639,7 +774,8 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = Math.max(0, (timeToFraction(work.workStart) * 24 - 1) * HOUR_HEIGHT);
+    // #4892, п. 0: открываемся ровно на начале рабочего дня, ночь — прокруткой
+    el.scrollTop = Math.max(0, timeToFraction(work.workStart) * 24 * HOUR_HEIGHT - 4);
   }, [work.workStart, days.length]);
 
   // колонок ровно столько, сколько дней в виде: одна в дне, семь в неделе
@@ -696,6 +832,15 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
             {HOURS.map((h) => (
               <button key={h} className="cal-slot" onClick={() => onCreate(d, h)} aria-label={`Создать событие ${d.toLocaleDateString('ru-RU')} в ${h}:00`} />
             ))}
+            {windows.filter((w) => startOfDay(new Date(w.startsAt)).getTime() === startOfDay(d).getTime()).map((w) => {
+              const top = (Date.parse(w.startsAt) - startOfDay(d).getTime()) / 86_400_000;
+              const h = (Date.parse(w.endsAt) - Date.parse(w.startsAt)) / 86_400_000;
+              return (
+                <div key={w.startsAt} className="cal-free-window" style={{ top: `${top * 100}%`, height: `${h * 100}%` }}>
+                  {w.label} · {fmtMinutes(Math.round(h * 1440))}
+                </div>
+              );
+            })}
             {segments[i]?.map((seg) => isBlock(seg.event) ? (
               <button
                 key={`b${seg.event.id}-${seg.dayIndex}`}
@@ -718,15 +863,15 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
             ) : (
               <button
                 key={`${seg.event.id}-${seg.dayIndex}`}
-                className={`cal-event ${seg.event.scope === 'company' ? 'company' : ''} ${seg.event.scope === 'external' ? 'external' : ''} ${seg.event.myStatus === 'declined' ? 'declined' : ''} ${seg.event.myStatus === 'invited' ? 'invited' : ''}`}
+                className={`cal-event ${seg.event.scope === 'company' ? 'company' : ''} ${seg.event.scope === 'external' ? 'external' : ''} ${seg.event.scope === 'call' ? 'call' : ''} ${clash.has(String(seg.event.id)) ? 'clash' : ''} ${seg.event.myStatus === 'declined' ? 'declined' : ''} ${seg.event.myStatus === 'invited' ? 'invited' : ''}`}
                 style={{
                   top: `${seg.top * 100}%`,
                   height: `${seg.height * 100}%`,
                   left: `${(seg.column / seg.columns) * 100}%`,
                   width: `${(1 / seg.columns) * 100}%`,
                 }}
-                onClick={() => onOpen(seg.event as CalEvent)}
-                title={hint(seg.event as CalEvent)}
+                onClick={() => { const ev = seg.event as CalEvent; if (ev.call) onOpenCall(ev.call); else onOpen(ev); }}
+                title={(seg.event as CalEvent).call ? `${hhmm(seg.event.startsAt)}–${hhmm(seg.event.endsAt)} · ${seg.event.title}${(seg.event as CalEvent).call!.summaryReady ? ' · итоги готовы' : ''}` : clash.has(String(seg.event.id)) ? `Накладка · ${hint(seg.event as CalEvent)}` : hint(seg.event as CalEvent)}
               >
                 <span className="cal-event-time">
                   {seg.continuesFrom ? '↑ ' : ''}{hhmm(seg.event.startsAt)}–{hhmm(seg.event.endsAt)}
@@ -735,6 +880,8 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
                   )}
                 </span>
                 <span className="cal-event-title">{seg.event.title}</span>
+                {(seg.event as CalEvent).call?.summaryReady && <span className="cal-event-sub">итоги готовы</span>}
+                {(seg.event as CalEvent).call?.live && <span className="cal-event-sub">идёт сейчас</span>}
                 {/*
                   Подпись под названием: место, а если его нет — первая строка описания.
                   Пустая плашка «Встреча» без единого слова о том, что это за встреча, —
@@ -948,6 +1095,8 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
   };
   /** Кто из команды занят в выбранное время и мешает ли это сохранить встречу. */
   const [busyPeople, setBusyPeople] = useState<Record<string, { text: string; blocking: boolean }>>({});
+  /** «Найти время» прямо в форме события (#4892, п. 4). */
+  const [findOpen, setFindOpen] = useState(false);
   const isNew = !value.id;
   const canEdit = isNew || !!value.canEdit;
 
@@ -1153,6 +1302,26 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
             />
           </Field>
         </div>
+
+        {canEdit && !form.allDay && (
+          <button type="button" className="ui-btn ui-btn-outline ui-btn-sm cal-find-btn" onClick={() => setFindOpen(true)}>
+            <Icon name="search" size={14} /> Найти время{form.participantIds.length ? ` для ${form.participantIds.length + 1}` : ''}
+          </button>
+        )}
+        {findOpen && (
+          <CommonTimeDialog
+            meId={meId}
+            initialIds={form.participantIds}
+            initialMinutes={Math.max(15, Math.round((Date.parse(new Date(form.endsAt).toISOString()) - Date.parse(new Date(form.startsAt).toISOString())) / 60000))}
+            exceptEventId={value.id ? String(value.id) : undefined}
+            onClose={() => setFindOpen(false)}
+            onPoll={() => setFindOpen(false)}
+            onPick={(v) => {
+              setFindOpen(false);
+              setForm((f) => ({ ...f, startsAt: isoLocal(new Date(v.startsAt)), endsAt: isoLocal(new Date(v.endsAt)), participantIds: v.participantIds }));
+            }}
+          />
+        )}
 
         <div className="ev-checks">
           <Checkbox checked={form.allDay} disabled={!canEdit}
@@ -1383,6 +1552,17 @@ function EventDialog({ value, people, onClose, onSaved, onStartCall, onRespond, 
         )}
         {!isNew && value.seriesId && <div className="dim cal-small"><Icon name="refresh" size={12} /> Повторяющаяся встреча — при изменении спросим, менять только эту или всю серию</div>}
         {!isNew && value.id && <GoogleFilesBlock entityType="event" entityId={String(value.id)} compact />}
+        {/* #4892, п. 6: карточка встречи = подготовка */}
+        {!isNew && value.id && value.scope !== 'external' && (value.participants?.length ?? 0) > 1 && (
+          <MeetingPrep
+            eventId={String(value.id)}
+            onJoin={(c) => {
+              if (c.publicId) navigate({ section: 'meet', meetId: c.publicId });
+              else if (c.meetRoomId) onStartCall(c.meetRoomId);
+              onClose();
+            }}
+          />
+        )}
         {/* #4787, п. 10–11: цель, связанные задачи, а после созвона — решения и кто что делает */}
         {!isNew && value.id && value.scope !== 'external' && (
           <EventCardPanel eventId={String(value.id)} canEdit={canEdit} past={!!value.endsAt && Date.parse(value.endsAt) < Date.now()} />

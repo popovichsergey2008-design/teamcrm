@@ -1,0 +1,13 @@
+/* #4892, п. 5: встреча из чата — карточка с голосованием */
+.prop-card { margin: 6px 0; max-width: 620px; border: 1px solid var(--accent-line, var(--accent)); border-radius: var(--radius); background: var(--bg-elev); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.prop-card.prop-done { border-color: var(--ok-line, var(--ok)); background: var(--ok-soft); }
+.prop-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.prop-badge { font-size: calc(11px * var(--fs-scale, 1)); padding: 2px 8px; border-radius: 999px; background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-dim); }
+.prop-slots { display: flex; gap: 8px; flex-wrap: wrap; }
+.prop-slot { border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; font: inherit; }
+.prop-slot.mine { background: var(--accent-soft); font-weight: 650; }
+.prop-slot:disabled { cursor: default; opacity: .75; }
+.prop-sub { font-size: var(--fs-sm); color: var(--text-dim); }
+.prop-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.prop-link { background: none; border: 0; padding: 0; color: var(--text-dim); text-decoration: underline; cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+.prop-done .prop-link { color: var(--accent); }
