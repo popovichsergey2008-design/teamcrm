@@ -189,6 +189,17 @@ export function TaskChat({
 
   /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
+  // #4888: правка сообщения — курсор сразу в поле, в конец текста (меню отдаёт фокус кнопке «⋯» — ставим после)
+  useEffect(() => {
+    if (!editing) return;
+    const t = window.setTimeout(() => {
+      const el = composeRef.current?.querySelector('textarea');
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [editing]);
   // Черновик обсуждения задачи — локально и по задаче (ТЗ-9): закрыл карточку, открыл — текст на месте.
   useEffect(() => { if (!editing) writeDraft(`task:${taskId}`, body); }, [taskId, body, editing]); // правка сообщения — не черновик
   /**

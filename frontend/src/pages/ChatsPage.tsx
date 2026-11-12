@@ -592,6 +592,20 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [taskDrafts, setTaskDrafts] = useState<Record<string, MessageTaskDraft>>({});
   /** Какое сообщение сейчас правим и что в поле правки. */
   const [editing, setEditing] = useState<string | null>(null);
+  /*
+    #4888: «Изменить» — сразу печатать. Меню, закрываясь, возвращает фокус своей кнопке
+    «⋯» — поэтому ставим курсор чуть позже него, в конец текста.
+  */
+  useEffect(() => {
+    if (!editing) return;
+    const t = window.setTimeout(() => {
+      const el = document.querySelector<HTMLTextAreaElement>('.chat-edit textarea');
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 60);
+    return () => window.clearTimeout(t);
+  }, [editing]);
   const [editText, setEditText] = useState('');
   /**
    * Прокрутили ленту — меню осталось бы висеть над чужой репликой: закрываем.
