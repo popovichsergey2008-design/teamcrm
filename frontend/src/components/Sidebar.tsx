@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
+import { QevoBotMark } from './QevoBotMark';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
 import { applyOrder, MENU_PREFS_CHANGED, MenuPrefs, moreSections, moveItem } from '../lib/menu-order';
@@ -934,10 +935,7 @@ export function Sidebar({
             aria-label="Помощь и бот"
           >
             {/* #4877: знак QEVO Bot (как в шапке бота) с сердечком заботы — помощь и бот в одном */}
-            <span className="nav-help-ico" aria-hidden="true">
-              <Icon name="robot" size={15} />
-              <span className="nav-help-heart"><Icon name="heart" size={8} /></span>
-            </span>
+            <span className="nav-help-ico" aria-hidden="true"><QevoBotMark size={26} /></span>
             <span className="nav-label">Помощь и бот</span>
             <span className="nav-label nav-help-time">30 сек</span>
           </button>

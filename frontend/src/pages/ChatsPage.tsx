@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { QevoBotMark } from '../components/QevoBotMark';
 import { Avatar } from '../components/Avatar';
 import { Icon } from '../components/Icon';
 import { api, ApiError, QUEUED, Scheduled } from '../lib/api';
@@ -2283,7 +2284,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           className={`chat-row chat-row-section chat-row-anthill${view === 'anthill' ? ' active' : ''}`}
           onClick={() => { setView('anthill'); setThread(null); }}
         >
-          <span className="chat-section-icon anthill-mark" aria-hidden="true"><Icon name="robot" size={15} /></span>
+          <span className="chat-section-icon qevo-bot-wrap" aria-hidden="true"><QevoBotMark size={30} /></span>
           <span className="chat-row-main">
             <span className="chat-row-title">QEVO Bot</span>
             <span className="chat-row-last dim">AI-помощник</span>

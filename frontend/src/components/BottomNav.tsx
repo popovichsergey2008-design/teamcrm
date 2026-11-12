@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { QevoBotMark } from './QevoBotMark';
 import { navigate, Route } from '../lib/router';
 import type { NavCounters } from '../hooks/useNavCounters';
 
@@ -45,7 +46,7 @@ export function BottomNav({ route, unread, counters, onMore }: {
             aria-current={t.match(route) ? 'page' : undefined}
           >
             <span className="bottom-nav-icon">
-              <Icon name={t.icon} size={22} />
+              {t.key === 'bot' ? <QevoBotMark size={24} /> : <Icon name={t.icon} size={22} />}
               {n > 0 && <span className="bottom-nav-badge">{n > 99 ? '99+' : n}</span>}
             </span>
             <span className="bottom-nav-label">{t.label}</span>

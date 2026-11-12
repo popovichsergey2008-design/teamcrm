@@ -27,7 +27,6 @@ import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
 import { Icon } from './components/Icon';
 import { Toasts } from './components/Toasts';
-import { FocusSessionHost } from './components/FocusSessionHost';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
 import { pageTitleFor, TITLE_HINTS_EVENT } from './lib/page-title';
 import { setPageTitle } from './lib/tab-alert';
@@ -122,6 +121,8 @@ const FollowupPopup = lazy(() => import('./components/followup/FollowupPopup'));
 
 // Окна по нажатию — тоже по требованию: на первом экране их нет.
 // экран блокировки — только у включивших код в приложении (бюджет первого экрана)
+// фокус-сессия (стук, конец таймера) — сразу после первого экрана; до этого слушать нечего (бюджет)
+const FocusSessionHost = lazyComponent(() => import('./components/FocusSessionHost').then((m) => m.FocusSessionHost));
 const LockScreen = lazyComponent(() => import('./components/LockScreen').then((m) => m.LockScreen));
 const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
 const NlCommandModal = lazyComponent(() => import('./components/NlCommandModal').then((m) => m.NlCommandModal));

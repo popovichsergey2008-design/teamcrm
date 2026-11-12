@@ -17,3 +17,37 @@
   .anthill-head-acts { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; }
   .anthill-head-acts > * { flex: none; }
 }
+
+/* #4873: вкладки разговоров — как в ChatGPT/браузере: новая беседа — новая вкладка, «+» справа */
+.anthill-convtabs {
+  display: flex; align-items: flex-end; gap: 4px; padding: 6px 10px 0; flex: 0 0 auto;
+  border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none;
+}
+.anthill-convtabs::-webkit-scrollbar { display: none; }
+.anthill-convtab {
+  display: flex; align-items: center; flex: 0 0 auto; max-width: 200px;
+  border: 1px solid transparent; border-bottom: 0; border-radius: 10px 10px 0 0;
+  color: var(--text-dim); margin-bottom: -1px;
+}
+.anthill-convtab:hover { background: var(--hover); color: var(--text); }
+.anthill-convtab.on { background: var(--bg); border-color: var(--border); color: var(--text); font-weight: 600; }
+.anthill-convtab-open {
+  display: flex; align-items: center; gap: 6px; min-width: 0; padding: 7px 4px 7px 10px;
+  background: none; border: 0; color: inherit; font: inherit; font-size: var(--fs-sm); cursor: pointer;
+}
+.anthill-convtab-open span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.anthill-convtab-x {
+  display: grid; place-items: center; width: 20px; height: 20px; margin-right: 6px; flex: none;
+  border: 0; border-radius: 6px; background: none; color: var(--text-dim); cursor: pointer; opacity: .7;
+}
+.anthill-convtab-x:hover { background: var(--hover-2, var(--hover)); color: var(--text); opacity: 1; }
+.anthill-convtab-new {
+  position: sticky; right: 0; box-shadow: -8px 0 8px -2px var(--bg-elev, var(--bg));
+  display: grid; place-items: center; width: 30px; height: 30px; margin: 0 0 3px auto; flex: none;
+  border: 0; border-radius: 50%; background: var(--accent-soft); color: var(--accent); cursor: pointer;
+}
+.anthill-convtab-new:hover { background: var(--accent); color: var(--on-accent, #fff); }
+.anthill-convtabs button:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+
+/* #4874: «Новый разговор» — главная кнопка шапки, заметная с первого взгляда */
+.anthill-new { font-weight: 650; box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent); }

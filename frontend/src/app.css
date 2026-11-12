@@ -4885,7 +4885,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--accent-soft); color: var(--accent);
 }
-.anthill-mark-sm { width: 20px; height: 20px; }
+.chat-section-icon.qevo-bot-wrap { background: none; border: 0; }
 .anthill-title-text { display: flex; flex-direction: column; gap: 0; line-height: 1.25; min-width: 0; }
 .anthill-title-text .dim { font-size: var(--fs-xs); }
 .anthill-head-acts { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }

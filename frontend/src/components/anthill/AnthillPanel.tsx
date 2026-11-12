@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { QevoBotMark } from '../QevoBotMark';
 import { Icon } from '../Icon';
 import { RichText } from '../RichText';
 import { VoiceStatus } from '../VoiceStatus';
@@ -77,6 +78,14 @@ type Live = { status: string; text: string; sources: AnthillSource[] };
 const LAST_SESSION_KEY = 'qevo.bot.session';
 function rememberSession(id: string) { try { localStorage.setItem(LAST_SESSION_KEY, id); } catch { /* без хранилища — откроем самый свежий */ } }
 function lastSession(): string | null { try { return localStorage.getItem(LAST_SESSION_KEY); } catch { return null; } }
+/**
+ * #4873: открытые вкладки разговоров — как в ChatGPT. Новый разговор — новая вкладка;
+ * закрыть вкладку не значит удалить: разговор остаётся в «Истории», его можно открыть снова.
+ */
+const TABS_KEY = 'qevo.bot.tabs';
+const MAX_TABS = 8;
+function readTabs(): string[] { try { const v = JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]'); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } }
+function writeTabs(ids: string[]) { try { localStorage.setItem(TABS_KEY, JSON.stringify(ids)); } catch { /* вкладки — удобство этого устройства */ } }
 
 export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscreen, session }: {
   /** Открыть этот разговор: `/chat/anthill/thread/:id` из уведомления (#4665). */
@@ -102,6 +111,10 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   useEffect(() => { writeDraft(BOT_DRAFT_KEY, draft); }, [draft]);
   const [useCtx, setUseCtx] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [tabs, setTabsState] = useState<string[]>(readTabs);
+  const setTabs = (fn: (ids: string[]) => string[]) => setTabsState((ids) => { const next = fn(ids); writeTabs(next); return next; });
+  // новая вкладка — справа; вкладок больше MAX_TABS — уходит самая старая (разговор цел, он в «Истории»)
+  const addTab = (id: string) => setTabs((ids) => (ids.includes(id) ? ids : [...ids, id].slice(-MAX_TABS)));
   const [votes, setVotes] = useState<Record<string, 1 | -1>>({});
   /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
   const [editing, setEditing] = useState<string | null>(null);
@@ -179,7 +192,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
 
   const openSession = async (id: string) => {
     setSessionId(id); setHistoryOpen(false); setErr('');
-    rememberSession(id);
+    rememberSession(id); addTab(id);
     try { setMessages(await api.anthillMessages(id)); } catch { setMessages([]); }
   };
 
@@ -196,18 +209,30 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
       if (!alive || !list.length) return;
       const last = lastSession();
       const pick = list.find((x) => String(x.id) === last) ?? list[0];
+      // первый раз — три последних разговора вкладками; дальше — что человек сам держит открытым,
+      // без вкладок удалённых разговоров
+      const known = new Set(list.map((x) => String(x.id)));
+      setTabs((ids) => (ids.length ? ids.filter((x) => known.has(x)) : list.slice(0, 3).map((x) => String(x.id)).reverse()));
       void openSession(String(pick.id));
     }).catch(() => undefined);
     return () => { alive = false; };
   }, [session]);
 
+  // активная вкладка — в поле зрения: на телефоне полоса вкладок шире экрана
+  useEffect(() => {
+    document.querySelector('.anthill-convtab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [sessionId, tabs.length]);
+
   const fresh = useCallback(async () => {
+    // открытый разговор ещё пуст — он и есть «новый»: не плодим пустые вкладки
+    if (sessionId && messages.length === 0 && !live) { setQuickShown(false); inputRef.current?.focus(); return sessionId; }
     const s = await api.anthillStart(ctxArg);
-    setSessionId(String(s.id)); setMessages([]); setHistoryOpen(false); setErr('');
-    rememberSession(String(s.id));
+    setSessionId(String(s.id)); setMessages([]); setHistoryOpen(false); setErr(''); setQuickShown(false);
+    rememberSession(String(s.id)); addTab(String(s.id));
     loadSessions();
     return String(s.id);
-  }, [ctxArg, loadSessions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctxArg, loadSessions, sessionId, messages.length, live]);
 
   /*
     Регулярная задача отработала.
@@ -410,7 +435,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
           </button>
         )}
         <span className="anthill-title">
-          <span className="anthill-mark" aria-hidden="true"><Icon name="robot" size={16} /></span>
+          <QevoBotMark size={32} />
           <span className="anthill-title-text">
             <b>QEVO Bot</b>
             <span className="dim">AI-помощник</span>
@@ -419,7 +444,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         <span className="anthill-head-acts">
           {/* #1326: новый разговор — заметной кнопкой; прежние остаются в «Истории» */}
           <button
-            className="ui-btn ui-btn-outline ui-btn-sm"
+            className="ui-btn ui-btn-primary ui-btn-sm anthill-new"
             onClick={() => {
               setTab('chat'); setQuickShown(false);
               fresh().catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось начать новый разговор'));
@@ -439,7 +464,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
             aria-expanded={quickShown}
             title="Быстрый старт: что бот умеет взять на себя"
           >
-            <span className="anthill-mark anthill-mark-sm" aria-hidden="true"><Icon name="robot" size={12} /></span> Что умею
+            <QevoBotMark size={18} /> Что умею
           </button>
           {/* #4807 §5, п. 14: «Помощь и бот» — одна точка помощи: живой инженер отсюда же */}
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => openSupport()} title="Позвать живого инженера службы заботы — ответит за 30 секунд">
@@ -491,6 +516,46 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         {tab === 'admin' && canManage && <AnthillAdmin />}
       </Suspense>
 
+      {tab === 'chat' && (
+        <div className="anthill-convtabs" role="tablist" aria-label="Разговоры с QEVO Bot">
+          {tabs.map((id) => {
+            const s = sessions.find((x) => String(x.id) === id);
+            const title = s && s.messages > 0 ? s.title : 'Новый разговор';
+            const on = id === sessionId;
+            return (
+              <div key={id} className={`anthill-convtab${on ? ' on' : ''}`} role="presentation">
+                <button role="tab" aria-selected={on} className="anthill-convtab-open" onClick={() => { if (!on) void openSession(id); }} title={title}>
+                  <Icon name="chat" size={13} /> <span>{title}</span>
+                </button>
+                <button
+                  className="anthill-convtab-x"
+                  aria-label={`Закрыть вкладку «${title}»`}
+                  title="Закрыть вкладку — разговор останется в «Истории»"
+                  onClick={() => {
+                    const rest = tabs.filter((x) => x !== id);
+                    setTabs(() => rest);
+                    if (on) {
+                      const next = rest[Math.min(tabs.indexOf(id), rest.length - 1)];
+                      if (next) void openSession(next); else { setSessionId(null); setMessages([]); }
+                    }
+                  }}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="anthill-convtab-new"
+            onClick={() => { setTab('chat'); fresh().catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось начать новый разговор')); }}
+            title="Новый разговор — в новой вкладке"
+            aria-label="Новый разговор"
+          >
+            <Icon name="plus" size={15} />
+          </button>
+        </div>
+      )}
+
       {tab === 'chat' && historyOpen && (
         <div className="anthill-history">
           {sessions.length === 0 && <div className="dim anthill-history-empty">Разговоров пока нет.</div>}
@@ -507,6 +572,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
                   api.anthillDelete(String(s.id))
                     .then(() => {
                       if (String(s.id) === sessionId) { setSessionId(null); setMessages([]); }
+                      setTabs((ids) => ids.filter((x) => x !== String(s.id)));
                       loadSessions();
                     })
                     .catch(() => undefined);

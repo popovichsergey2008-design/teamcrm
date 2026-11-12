@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { QevoBotMark } from '../QevoBotMark';
 import type { ReactNode } from 'react';
 import { api, ApiError, request } from '../../lib/api';
 import { useAuth } from '../../state/auth';
@@ -541,7 +542,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
       {showPanel && (
         <section className="wl-bot" role="dialog" aria-label="Qevo-бот">
           <header className="wl-bot-head">
-            <span className="wl-bot-mark" aria-hidden="true"><Icon name="robot" size={18} /></span>
+            <QevoBotMark size={30} />
             <b>Qevo-бот</b>
             <button className="wl-icon-btn" onClick={() => patch({ mini: true })} aria-label="Свернуть" title="Свернуть"><Icon name="minimize" size={15} /></button>
             <button className="wl-icon-btn" onClick={() => setAsking(true)} aria-label="Закрыть Qevo-бота" title="Закрыть"><Icon name="close" size={16} /></button>

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { QevoBotMark } from '../QevoBotMark';
 import type { ReactNode } from 'react';
-import { Icon } from '../Icon';
 
 /**
  * Подсветка места на экране с подсказкой Qevo-бота рядом (#4620): строка создания
@@ -99,7 +99,7 @@ export function Spot({ selector, wait, passThrough, onTargetClick, children }: {
     <div className={`wl-spot-layer${passThrough ? ' wl-pass' : ''}`}>
       {hole ? <div className="wl-hole" style={hole} aria-hidden="true" /> : <div className="wl-dim" aria-hidden="true" />}
       <div ref={card} className="wl-spot" role="dialog" aria-label="Подсказка Qevo-бота" style={{ top: pos.top, left: pos.left, width: w }}>
-        <div className="wl-spot-who"><span className="wl-bot-mark" aria-hidden="true"><Icon name="robot" size={14} /></span> Qevo-бот</div>
+        <div className="wl-spot-who"><QevoBotMark size={24} /> Qevo-бот</div>
         {children}
       </div>
     </div>
