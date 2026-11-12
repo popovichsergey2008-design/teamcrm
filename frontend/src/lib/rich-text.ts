@@ -35,8 +35,11 @@ const STRIKE = /~~([^~\n]+?)~~/;
  */
 const ITALIC = /(^|[^*A-Za-zА-Яа-яЁё0-9])\*(\S(?:[^*\n]*\S)?)\*(?![*A-Za-zА-Яа-яЁё0-9])/;
 
+/** Скриншот справочника в ответе QEVO Bot (#4879): только из папки справки, только по имени. */
+const HELP_IMG = /!\[([^\]]*)\]\(\/api\/help\/img\/([a-z0-9-]{1,80}\.webp)\)/;
+
 const INLINE = new RegExp(
-  `(${IMG.source})|(${LINK.source})|(${BOLD.source})|(${STRIKE.source})|(${ITALIC.source})`,
+  `(${IMG.source})|(${LINK.source})|(${BOLD.source})|(${STRIKE.source})|(${ITALIC.source})|(${HELP_IMG.source})`,
 );
 
 /** Обычный текст: ссылки кликаются, упоминания подсвечены — как в переписке. */
@@ -65,6 +68,8 @@ export function inlineToHtml(text: string): string {
       out += `<strong>${inlineToHtml(m[8])}</strong>`;
     } else if (m[9]) {
       out += `<s>${inlineToHtml(m[10])}</s>`;
+    } else if (m[14]) {
+      out += `<img class="help-shot" data-help-img="${esc(m[16])}" alt="${esc(m[15])}">`;
     } else {
       // курсив: захваченный символ перед звёздочкой возвращаем в текст
       out += plain(m[12]) + `<em>${inlineToHtml(m[13])}</em>`;

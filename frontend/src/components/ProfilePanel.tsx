@@ -10,6 +10,7 @@ import { isNativeShell } from '../platform';
 import { LOCK_POLICIES, LockPolicy, readLockPolicy, writeLockPolicy } from '../lib/app-lock';
 import { browserTimezone, listTimezones } from '../lib/timezones';
 import { Avatar } from './Avatar';
+import { AuthedMedia } from './AuthedMedia';
 import { ThemeSwitch } from './ThemeSwitch';
 import { FontSizeSwitch } from './FontSizeSwitch';
 import { DatePicker } from './DatePicker';
@@ -62,10 +63,25 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
     и оставалось навсегда. Поле показываем владельцу — им становится тот, кто создал
     пространство; остальные видят название в панели и менять его не должны.
   */
-  const { user, organizations, renameOrg } = useAuth();
+  const { user, organizations, renameOrg, setOrgLogo } = useAuth();
   const isOwner = user?.role === 'owner';
   const currentOrgName = organizations.find((o) => o.tenantId === user?.tenantId)?.name ?? '';
   const [orgName, setOrgName] = useState('');
+  // #4875: логотип компании — в шапке слева вместо буквы; раньше загрузить его можно было только в онбординге
+  const orgLogo = organizations.find((o) => o.tenantId === user?.tenantId)?.logoFileId ?? null;
+  const logoInput = useRef<HTMLInputElement>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const pickLogo = async (f: File | undefined) => {
+    if (!f) return;
+    setLogoBusy(true);
+    try { setOrgLogo((await api.uploadLogo(f)).logoFileId); }
+    catch (e) { flash(e instanceof ApiError ? e.message : 'Логотип не загрузился'); }
+    finally { setLogoBusy(false); }
+  };
+  const dropLogo = async () => {
+    setLogoBusy(true);
+    try { await api.clearLogo(); setOrgLogo(null); } catch { /* останется прежний */ } finally { setLogoBusy(false); }
+  };
   useEffect(() => { setOrgName(currentOrgName); }, [currentOrgName]);
   const saveOrgName = async () => {
     const next = orgName.trim();
@@ -252,6 +268,24 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
                 </div>
                 <span className="dim" style={{ fontSize: 12 }}>
                   Это название видят все участники — в панели слева и в письмах. Менять его может только создатель пространства.
+                </span>
+              </div>
+            )}
+            {isOwner && (
+              <div className="field">
+                <label>Логотип компании</label>
+                <div className="profile-org-row" style={{ alignItems: 'center' }}>
+                  {orgLogo
+                    ? <AuthedMedia bare fileId={orgLogo} name="Логотип компании" mime="image/png" className="nav-ws-logo is-img" />
+                    : <span className="nav-ws-logo" aria-hidden="true">{(currentOrgName.trim().charAt(0) || 'Q').toUpperCase()}</span>}
+                  <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={logoBusy} onClick={() => logoInput.current?.click()}>
+                    <Icon name="upload" size={14} /> {orgLogo ? 'Заменить' : 'Загрузить'}
+                  </button>
+                  {orgLogo && <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={logoBusy} onClick={() => void dropLogo()}>Убрать</button>}
+                  <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden onChange={(e) => { void pickLogo(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+                </div>
+                <span className="dim" style={{ fontSize: 12 }}>
+                  Стоит в панели слева рядом с названием и на страницах для гостей. Не загружен — показываем первую букву названия.
                 </span>
               </div>
             )}

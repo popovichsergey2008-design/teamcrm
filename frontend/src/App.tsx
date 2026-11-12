@@ -42,7 +42,6 @@ import { openSupport, SupportDock } from './components/support/SupportDock';
 import { platform } from './platform';
 import { useAppLock } from './hooks/useAppLock';
 import { useDeviceRegistration } from './hooks/useDeviceRegistration';
-import { LockScreen } from './components/LockScreen';
 import { useMobileConfig } from './hooks/useMobileConfig';
 import { openInboxItem, useMobileInbox } from './hooks/useMobileInbox';
 import { useNotificationCenter } from './hooks/useNotificationCenter';
@@ -122,6 +121,8 @@ const SetupNames = lazy(() => import('./components/auth/SetupNames'));
 const FollowupPopup = lazy(() => import('./components/followup/FollowupPopup'));
 
 // Окна по нажатию — тоже по требованию: на первом экране их нет.
+// экран блокировки — только у включивших код в приложении (бюджет первого экрана)
+const LockScreen = lazyComponent(() => import('./components/LockScreen').then((m) => m.LockScreen));
 const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
 const NlCommandModal = lazyComponent(() => import('./components/NlCommandModal').then((m) => m.NlCommandModal));
 const InboxPanel = lazyComponent(() => import('./components/InboxPanel').then((m) => m.InboxPanel));

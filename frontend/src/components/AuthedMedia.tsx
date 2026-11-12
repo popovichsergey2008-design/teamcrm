@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 /**
  * Картинка или видео из хранилища — с токеном.
@@ -8,13 +8,17 @@ import { useEffect, useState } from 'react';
  * показываем его. Ссылку освобождаем при размонтировании — иначе на длинной ленте
  * вложений память течёт.
  */
-export function AuthedMedia({ fileId, name, mime, className, onOpen }: {
+export function AuthedMedia({ fileId, name, mime, className, onOpen, bare, fallback }: {
   fileId: string;
   name: string;
   mime: string;
   className?: string;
   /** Нажатие — обычно «открыть во весь экран». Без него медиа не кликается. */
   onOpen?: (p: { url: string; name: string; mime: string }) => void;
+  /** Просто картинка, без кнопки: для мест внутри другой кнопки (логотип в шапке, #4875). */
+  bare?: boolean;
+  /** Что показать, пока грузится или если не загрузилось (только с bare). */
+  fallback?: ReactNode;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -32,6 +36,7 @@ export function AuthedMedia({ fileId, name, mime, className, onOpen }: {
     return () => { dead = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [fileId]);
 
+  if (bare) return url && !failed ? <img className={className} src={url} alt="" aria-hidden="true" draggable={false} /> : <>{fallback ?? null}</>;
   if (failed) return <span className="dim">Не удалось загрузить «{name}»</span>;
   if (!url) return <span className={`media-skeleton ${className ?? ''}`} aria-hidden="true" />;
 

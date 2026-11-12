@@ -23,6 +23,8 @@ interface AuthState {
   createOrg: (name: string) => Promise<void>;
   /** Переименовать текущее пространство (только создатель): панель обновится сразу. */
   renameOrg: (name: string) => Promise<void>;
+  /** Логотип пространства поменялся (#4875) — шапка слева берёт его сразу, без перезахода. */
+  setOrgLogo: (logoFileId: string | null) => void;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -141,6 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizations((list) => list.map((o) => (o.tenantId === r.tenantId ? { ...o, name: r.name } : o)));
   };
 
+  const setOrgLogo = (logoFileId: string | null) => {
+    setOrganizations((list) => list.map((o) => (o.tenantId === user?.tenantId ? { ...o, logoFileId } : o)));
+  };
+
   const logout = async () => {
     // Телефон снимается с учёта до выхода: после выхода токена уже нет (ТЗ-9)
     const device = registeredDeviceId();
@@ -159,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       user, organizations, loading, login, register, applySession,
-      reloadUser: async () => { const me = await api.me().catch(() => null); if (me) setUser(me); }, logout, switchOrg, createOrg, renameOrg,
+      reloadUser: async () => { const me = await api.me().catch(() => null); if (me) setUser(me); }, logout, switchOrg, createOrg, renameOrg, setOrgLogo,
       mfaPending: !!mfaToken, completeMfa, cancelMfa: () => setMfaToken(null),
     }}>
       {children}

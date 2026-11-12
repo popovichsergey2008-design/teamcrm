@@ -430,11 +430,16 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
           </button>
           <button
             className={`ui-btn ui-btn-ghost ui-btn-sm${quickShown ? ' active' : ''}`}
-            onClick={() => { setTab('chat'); setQuickShown((v) => !v); }}
+            onClick={() => {
+              setTab('chat');
+              // #4876: подсказки встают в начало ленты, а лента стоит внизу — без прокрутки
+              // казалось, что кнопка ничего не делает
+              setQuickShown((v) => { if (!v) requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: 'smooth' })); return !v; });
+            }}
             aria-expanded={quickShown}
             title="Быстрый старт: что бот умеет взять на себя"
           >
-            <Icon name="sparkles" size={14} /> Что умею
+            <span className="anthill-mark anthill-mark-sm" aria-hidden="true"><Icon name="robot" size={12} /></span> Что умею
           </button>
           {/* #4807 §5, п. 14: «Помощь и бот» — одна точка помощи: живой инженер отсюда же */}
           <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => openSupport()} title="Позвать живого инженера службы заботы — ответит за 30 секунд">

@@ -676,7 +676,7 @@ export function Sidebar({
               align="start"
               trigger={(
                 <button className="nav-ws" title={`Пространство: ${orgName}`}>
-                  {orgLogo ? <AuthedMedia fileId={orgLogo} name={orgName} mime="image/png" className="nav-ws-logo" /> : <span className="nav-ws-logo" aria-hidden="true">{orgName.trim().charAt(0).toUpperCase()}</span>}
+                  {(() => { const letter = <span className="nav-ws-logo" aria-hidden="true">{orgName.trim().charAt(0).toUpperCase()}</span>; return orgLogo ? <AuthedMedia bare fileId={orgLogo} name={orgName} mime="image/png" className="nav-ws-logo is-img" fallback={letter} /> : letter; })()}
                   <span className="nav-label nav-ws-text"><b>{orgName} <Icon name="chevron-down" size={12} /></b><span>пространство</span></span>
                 </button>
               )}
@@ -933,7 +933,11 @@ export function Sidebar({
             title="Помощь и бот: QEVO Bot ответит сразу, инженер — за 30 секунд"
             aria-label="Помощь и бот"
           >
-            <span className="nav-help-ico"><Icon name="heart" size={15} /></span>
+            {/* #4877: знак QEVO Bot (как в шапке бота) с сердечком заботы — помощь и бот в одном */}
+            <span className="nav-help-ico" aria-hidden="true">
+              <Icon name="robot" size={15} />
+              <span className="nav-help-heart"><Icon name="heart" size={8} /></span>
+            </span>
             <span className="nav-label">Помощь и бот</span>
             <span className="nav-label nav-help-time">30 сек</span>
           </button>

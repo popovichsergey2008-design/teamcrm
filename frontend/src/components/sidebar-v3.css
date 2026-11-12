@@ -2,6 +2,8 @@
 .nav-ws-row { display: flex; align-items: center; gap: 4px; min-height: 36px; }
 .nav-ws { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 2px 4px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); cursor: pointer; text-align: left; font: inherit; }
 .nav-ws:hover { background: var(--hover); }
+/* загруженный логотип — сам по себе, без цветной плитки: у прозрачных знаков она просвечивала (#4875) */
+.nav-ws-logo.is-img { background: transparent; object-fit: contain; }
 .nav-ws-logo { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 8px; background: var(--accent); color: var(--on-fill); font-weight: 700; object-fit: cover; overflow: hidden; }
 .nav-ws-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
 .nav-ws-text b { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -20,7 +22,9 @@
 .nav-more-btn { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .nav-more-body { display: flex; flex-direction: column; gap: 2px; padding-left: 8px; }
 .nav-help { width: 100%; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
-.nav-help-ico { display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 7px; background: var(--ok-soft, var(--accent-soft)); color: var(--ok); }
+.nav-help-ico { position: relative; display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.nav-help-heart { position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 13px; height: 13px; border-radius: 50%; background: var(--fill-danger); color: var(--on-fill); box-shadow: 0 0 0 2px var(--bg-side, var(--bg)); }
+.nav-help-heart .icon { fill: currentColor; }
 .nav-help-time { margin-left: auto; color: var(--ok); font-size: calc(11.5px * var(--fs-scale)); font-weight: 600; }
 .nav-user-more { margin-left: auto; color: var(--text-mut); display: inline-flex; }
 .sbl-cw-mini { margin: 0 auto 6px; }

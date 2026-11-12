@@ -2565,12 +2565,14 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 /*
   Кнопка «вниз» — как в мессенджерах (задача #1362).
 
-  Висит над лентой у правого края, чуть выше поля ввода; число на ней — сколько
-  пришло, пока человек читал старое. Позиционируется от контейнера переписки, а не
-  от самой ленты: внутри прокручиваемой области она уезжала бы вместе с прокруткой.
+  Висит у правого края внизу ленты; число на ней — сколько пришло, пока человек
+  читал старое. Держится липким «причалом» нулевой высоты в конце ленты: так она
+  всегда над нижней кромкой ленты и не наезжает на строку ответа/правки над полем
+  ввода (#4885), какой бы высоты та ни была.
 */
+.chat-jump-dock { position: sticky; bottom: 0; height: 0; flex: 0 0 0; margin-top: -4px; align-self: stretch; z-index: 6; }
 .chat-jump {
-  position: absolute; right: 18px; bottom: 96px; z-index: 6;
+  position: absolute; right: 0; bottom: 12px;
   display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%;
   background: var(--bg-elev); color: var(--text); border: 1px solid var(--border-2);
   box-shadow: var(--shadow); cursor: pointer;
@@ -2582,7 +2584,6 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   display: grid; place-items: center; border-radius: 9px;
   background: var(--fill-info); color: #fff; font-size: var(--fs-xs); font-weight: 600;
 }
-@media (max-width: 720px) { .chat-jump { bottom: calc(96px + var(--safe-bottom)); } }
 .chat-empty { margin: auto; }
 
 /*
@@ -4884,6 +4885,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--accent-soft); color: var(--accent);
 }
+.anthill-mark-sm { width: 20px; height: 20px; }
 .anthill-title-text { display: flex; flex-direction: column; gap: 0; line-height: 1.25; min-width: 0; }
 .anthill-title-text .dim { font-size: var(--fs-xs); }
 .anthill-head-acts { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }

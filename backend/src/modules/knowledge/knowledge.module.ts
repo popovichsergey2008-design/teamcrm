@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HelpImageController } from './help-image.controller';
 import { AiModule } from '../ai/ai.module';
 import { FilesModule } from '../files/files.module';
 import { KnowledgeController } from './knowledge.controller';
@@ -10,7 +11,7 @@ import { MemoryIndexer } from './memory-indexer.service';
 
 @Module({
   imports: [AiModule, FilesModule],
-  controllers: [KnowledgeController],
+  controllers: [KnowledgeController, HelpImageController],
   providers: [KnowledgeService, KnowledgeRepository, RegulationsService, HandbookService, MemoryIndexer],
   exports: [KnowledgeService, HandbookService, MemoryIndexer],
 })

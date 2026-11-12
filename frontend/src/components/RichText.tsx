@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { mdToHtml } from '../lib/rich-text';
 import { fetchBlob } from './AuthedMedia';
+import { apiUrl } from '../lib/origin';
 
 /**
  * Подставить содержимое картинкам `img[data-file-id]`.
@@ -29,6 +30,11 @@ export function hydrateImages(
         img.onclick = () => onOpen({ url, name: img.alt || 'снимок', mime: blob.type || 'image/*' });
       }
     }).catch(() => { img.alt = `Не удалось загрузить «${img.alt}»`; });
+  });
+  // скриншоты справочника (#4879): открыты без входа; в приложении сервер на другом адресе — отсюда apiUrl
+  root.querySelectorAll<HTMLImageElement>('img[data-help-img]:not([src])').forEach((img) => {
+    img.onerror = () => img.remove();
+    img.src = apiUrl(`/api/help/img/${img.dataset.helpImg}`);
   });
   return () => { dead = true; urls.forEach((u) => URL.revokeObjectURL(u)); };
 }

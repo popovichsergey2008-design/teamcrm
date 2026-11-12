@@ -24,7 +24,7 @@ interface ChatOption {
 export function GuestLinkButton({ chats = [], chatId, compact, label: caption, openKey = 0 }: {
   /** Чаты для выбора: ссылка подписывается разговором, ради которого выдана. */
   chats?: ChatOption[];
-  /** Открыли из конкретного чата — он и предлагается по умолчанию. */
+  /** Открыли из конкретного чата — он первым в списке, но сам не выбирается (#4884). */
   chatId?: string | null;
   compact?: boolean;
   /** Подпись задаёт место: в тесной панели рядом с «Созвоном» хватает одного слова. */
@@ -34,7 +34,12 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption, o
 }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState('');
-  const [forChat, setForChat] = useState(chatId ?? '');
+  /**
+   * #4884: по умолчанию — без привязки. Раньше подставлялся открытый чат (например, личный
+   * с Константином), и гость видел ссылку «от разговора с Константином». Чат выбирают вручную;
+   * открытый — первым в списке.
+   */
+  const [forChat, setForChat] = useState('');
   const [ttl, setTtl] = useState('24');
   /**
    * Когда встреча (datetime-local, по часам сотрудника). Пусто — ссылка открыта сразу.
@@ -49,12 +54,16 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption, o
   const [err, setErr] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setForChat(chatId ?? ''); }, [chatId]);
+  const ordered = chatId ? [...chats.filter((c) => c.id === chatId), ...chats.filter((c) => c.id !== chatId)] : chats;
   useEffect(() => { if (openKey > 0) setOpen(true); }, [openKey]);
 
   useEffect(() => {
     if (!open) return;
     const outside = (e: MouseEvent) => {
+      // списки выбора и календарь рисуются поверх страницы (портал) — щелчок в них не «мимо окна»;
+      // иначе выбор пункта закрывал окно и «Константина нельзя убрать» (#4884)
+      const t = e.target as Element | null;
+      if (t?.closest?.('.ui-positioner, .ui-popup, [role="listbox"], [role="dialog"]:not(.guest-link-pop)')) return;
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('mousedown', outside);
@@ -119,7 +128,7 @@ export function GuestLinkButton({ chats = [], chatId, compact, label: caption, o
               {chats.length > 0 && (
                 <OptionSelect className="input" style={{ marginTop: 6 }} value={forChat} onChange={(e) => setForChat(e.target.value)}>
                   <option value="">— без привязки к чату —</option>
-                  {chats.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  {ordered.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
                 </OptionSelect>
               )}
               <label className="guest-link-when">
