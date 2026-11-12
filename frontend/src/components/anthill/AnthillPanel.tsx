@@ -201,7 +201,6 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     хранились на сервере, но окно каждый раз открывалось пустым. Теперь — последний
     открытый разговор (или самый свежий), а «Новый разговор» начинает чистый.
   */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (session) { void openSession(session); return; }
     let alive = true;
@@ -216,6 +215,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
       void openSession(String(pick.id));
     }).catch(() => undefined);
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   // активная вкладка — в поле зрения: на телефоне полоса вкладок шире экрана
