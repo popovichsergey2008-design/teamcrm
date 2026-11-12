@@ -35,6 +35,10 @@ export function hydrateImages(
   root.querySelectorAll<HTMLImageElement>('img[data-help-img]:not([src])').forEach((img) => {
     img.onerror = () => img.remove();
     img.src = apiUrl(`/api/help/img/${img.dataset.helpImg}`);
+    if (onOpen) {
+      img.style.cursor = 'zoom-in';
+      img.onclick = () => onOpen({ url: img.src, name: img.alt || 'снимок', mime: 'image/webp' });
+    }
   });
   return () => { dead = true; urls.forEach((u) => URL.revokeObjectURL(u)); };
 }

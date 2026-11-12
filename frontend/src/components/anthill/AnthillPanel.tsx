@@ -7,6 +7,7 @@ import { api, ApiError } from '../../lib/api';
 import type { AnthillAction, AnthillAttachment, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
 import { shrinkImage } from '../../lib/image-shrink';
 import './anthill-attach.css';
+import { Lightbox } from '../LightboxLazy';
 import { QuickStart } from './QuickStart';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
@@ -111,6 +112,8 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   useEffect(() => { writeDraft(BOT_DRAFT_KEY, draft); }, [draft]);
   const [useCtx, setUseCtx] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  /** Скриншот из ответа — крупно, по щелчку (как вложения в чатах). */
+  const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
   const [tabs, setTabsState] = useState<string[]>(readTabs);
   const setTabs = (fn: (ids: string[]) => string[]) => setTabsState((ids) => { const next = fn(ids); writeTabs(next); return next; });
   // новая вкладка — справа; вкладок больше MAX_TABS — уходит самая старая (разговор цел, он в «Истории»)
@@ -605,7 +608,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         {messages.map((m) => (
           <div key={m.id} className={`anthill-msg anthill-${m.role}`}>
             {m.role === 'assistant'
-              ? <RichText text={m.content} className="anthill-body" />
+              ? <RichText text={m.content} className="anthill-body" onOpenImage={setPreview} />
               : <div className="anthill-body">{m.content}</div>}
 
             {m.citations.length > 0 && (
@@ -811,6 +814,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         </div>
       </div>
       )}
+      {preview && <Lightbox items={[{ url: preview.url, name: preview.name, mime: preview.mime }]} index={0} onClose={() => setPreview(null)} />}
     </section>
   );
 }
