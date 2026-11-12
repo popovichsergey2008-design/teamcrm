@@ -153,10 +153,10 @@ export class TelegramBotRepository {
     );
   }
 
-  /** Пробный период пространства: конец, начислен ли бонус, оплачено ли (тогда о пробном молчим). */
-  trialOf(tenantId: string): Promise<{ trial_ends_at: Date | null; trial_bonus_days: number; paid: boolean } | null> {
+  /** Пробный период пространства: конец и оплачено ли (тогда о пробном молчим). */
+  trialOf(tenantId: string): Promise<{ trial_ends_at: Date | null; paid: boolean } | null> {
     return this.db.one(
-      `SELECT COALESCE(s.trial_ends_at, t.trial_ends_at) AS trial_ends_at, t.trial_bonus_days,
+      `SELECT COALESCE(s.trial_ends_at, t.trial_ends_at) AS trial_ends_at,
               (s.current_period_end IS NOT NULL OR COALESCE(s.complimentary, FALSE) OR t.is_platform) AS paid
          FROM tenants t LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id WHERE t.id = $1`, [tenantId],
     );

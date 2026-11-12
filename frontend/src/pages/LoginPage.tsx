@@ -99,8 +99,8 @@ export function LoginPage() {
 
         <div className="error-text">{error}</div>
 
-        {/* ТЗ 10.11: как на сайте — 14 дней без условий */}
-        {mode === 'register' && <p className="dim" style={{ fontSize: 13, margin: '0 0 8px' }}>14 дней бесплатно, без условий</p>}
+        {/* #4778, дословно: как на сайте — 14 дней */}
+        {mode === 'register' && <p className="dim" style={{ fontSize: 13, margin: '0 0 8px' }}>14 дней бесплатно</p>}
 
         <button className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy || (mode === 'register' && !agreed)} type="submit">
           {busy ? '...' : mode === 'login' ? 'Войти' : 'Создать'}

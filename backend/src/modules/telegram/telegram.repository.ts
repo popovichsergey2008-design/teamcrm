@@ -27,22 +27,6 @@ export class TelegramRepository {
     );
   }
 
-  /**
-   * +7 дней пробного за регистрацию в Telegram-боте (#4779) — один раз на пространство,
-   * только пока идёт пробный период: не оплачено, не «вечное», срок не продлевал вендор.
-   * Начислили — новый конец пробного; нет — null.
-   */
-  async grantTrialBonus(tenantId: string, days: number): Promise<Date | null> {
-    const row = await this.db.one<{ trial_ends_at: Date }>(
-      `UPDATE tenants t SET trial_bonus_days = $2::int, trial_ends_at = t.trial_ends_at + make_interval(days => $2::int), updated_at = now()
-        WHERE t.id = $1 AND t.trial_bonus_days = 0 AND t.trial_ends_at > now() AND NOT t.is_platform
-          AND NOT EXISTS (SELECT 1 FROM tenant_subscriptions s WHERE s.tenant_id = t.id
-                           AND (s.current_period_end IS NOT NULL OR s.complimentary OR s.trial_ends_at IS NOT NULL))
-        RETURNING t.trial_ends_at`, [tenantId, days],
-    );
-    return row?.trial_ends_at ?? null;
-  }
-
   async linkAccount(tenantId: string, userId: string, telegramUserId: string, codeId: string) {
     return this.db.withTransaction(async (client) => {
       await client.query(`UPDATE telegram_link_codes SET used_at=now() WHERE id=$1`, [codeId]);

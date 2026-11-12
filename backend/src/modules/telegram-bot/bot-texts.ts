@@ -22,14 +22,10 @@ export function appButton(text: string, url: string): Button {
 }
 
 export const BOT_NAME = 'QEVO';
-// #4779, п. 15.1–15.2: условие 7 + 7 — в профиле бота (ставит setupProfile через Bot API)
-// ТЗ 10.11: без «+7 дней» — на сайте и в приложении везде 14 дней без условий
+// #4778: без «+7 дней» — на сайте и в приложении везде 14 дней (ставит setupProfile через Bot API)
 export const BOT_DESCRIPTION = 'Голосовые и переписка → задачи с ТЗ за 2 секунды.';
 export const BOT_SHORT_DESCRIPTION = 'Голосовые и переписка → задачи с ТЗ за 2 секунды.';
 
-/** #4779, п. 15.6: сразу после регистрации в боте. */
-export const bonusGranted = (until: string) => `Готово, +7 дней начислены. Пробный период до ${until}.`;
-export const BONUS_ALREADY = 'Бонус +7 дней за регистрацию здесь уже начислен этому пространству — повторно он не даётся.';
 export const BOT_COMMANDS = [
   { command: 'start', description: 'Начать' },
   { command: 'example', description: 'Проверить на готовом примере' },
@@ -59,17 +55,15 @@ export function welcome(base: string): { text: string; markup: Keyboard } {
 }
 
 /** Привязанному сотруднику /start — приветствие, а не дейлик. */
-export function welcomeBack(name: string | null, daysLeft: number | null, base: string, bonusAvailable = false): { text: string; markup: Keyboard } {
+export function welcomeBack(name: string | null, daysLeft: number | null, base: string): { text: string; markup: Keyboard } {
   return {
     text: [
       `С возвращением${name ? `, ${name}` : ''}! Ваш QEVO на связи.`,
       'Перешлите сообщение клиента или надиктуйте поручение — поставлю задачу на доску. Дейлик — командой /daily.',
-      // #4779, п. 15.5: сколько реально осталось у этого пространства; бонус не получен — сказать
+      // #4779, п. 15.5: сколько реально осталось у этого пространства
       ...(daysLeft !== null ? [`Пробный период: ${daysLeftText(daysLeft)}.`] : []),
-      ...(bonusAvailable ? ['Зарегистрируйтесь здесь и получите ещё 7 дней.'] : []),
     ].join('\n'),
     markup: rows(
-      ...(bonusAvailable ? [cb('Зарегистрироваться: +7 дней', 'b:bn')] : []),
       cb('Открыть мой QEVO', 'b:op'), appButton('Доска в Telegram (Mini App)', `${base}/tg/board`),
     ),
   };
@@ -134,12 +128,10 @@ export function alreadyHas(): { text: string; markup: Keyboard } {
 }
 
 /** Шаг 3 ТЗ: пространство создано, вопрос о размере команды. */
-export function created(taskTitle: string | null, project: string | null, taskUrl: string | null = null, bonusUntil: string | null = null): { text: string; markup: Keyboard } {
+export function created(taskTitle: string | null, project: string | null, taskUrl: string | null = null): { text: string; markup: Keyboard } {
   return {
     text: [
       'Ваше рабочее пространство создано!',
-      // #4779, п. 15.6: бонус начисляется сразу за регистрацию здесь
-      ...(bonusUntil ? [bonusGranted(bonusUntil)] : []),
       ...(taskTitle && project ? [`Задача «${taskTitle}» уже на доске «${project}».`] : []),
       'Чтобы я настроил шаблоны под вас, укажите размер вашей команды:',
     ].join('\n'),

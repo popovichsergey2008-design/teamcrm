@@ -130,7 +130,7 @@ export function openOutside(wa: TgWebApp | null, url: string): void {
 /**
  * «Начать бесплатно» в демо-доске (#4779, п. 13.3): просим бота начать регистрацию в
  * чате (он спросит название рабочей зоны) и закрываем Mini App. Сбой сети — всё равно
- * закрываем: в чате есть кнопка «Зарегистрироваться: +7 дней».
+ * закрываем: в чате бот сам предложит зарегистрироваться.
  */
 export async function startFree(wa: TgWebApp | null): Promise<void> {
   if (wa?.initData) {

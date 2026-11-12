@@ -11,7 +11,7 @@ import { StandupService } from '../standup/standup.service';
 import { TasksService } from '../tasks/tasks.service';
 import { InvitesService } from '../team/invites.service';
 import { TelegramSender } from '../telegram/telegram.sender';
-import { linkReply, TelegramService, trialDay } from '../telegram/telegram.service';
+import { linkReply, TelegramService } from '../telegram/telegram.service';
 import { UsersRepository } from '../users/users.repository';
 import { CARD_PROMPT, cardByRules, cardFromModel, cardText, DemoCard, deadlineIso, exampleCard } from './bot-demo-rules';
 import {
@@ -22,8 +22,8 @@ import * as T from './bot-texts';
 import { TelegramBotRepository } from './telegram-bot.repository';
 import { TelegramBotWorkService } from './telegram-bot-work.service';
 
-/** Пробный период (#4779): 7 дней сразу + 7 за регистрацию здесь — один раз на пространство. */
-const TRIAL_DAYS = 14; // ТЗ 10.11: 14 дней без условий
+/** Пробный период (#4778): 14 дней сразу, без условий. */
+const TRIAL_DAYS = 14; // #4778: 14 дней сразу, без «+7 за бота»
 /** Сколько ждём модель на демо: дольше человек в чате не ждёт — дальше правила. */
 const MODEL_TIMEOUT_MS = 6000;
 /** Оценка расхода: gpt-4o-mini на одну карточку и быстрая расшифровка за минуту. */
@@ -42,7 +42,7 @@ const INVALID_LOGIN = 'Ссылка входа недействительна и
  * привязанный кодом из CRM, работает как раньше — дейлик, клиенты по ссылке c_…
  * (#1525) и копии уведомлений не трогаются. Непривязанный — гость с сайта: демо
  * «голос/текст → карточка задачи» без записи в CRM, затем пространство в один клик
- * по Telegram ID, пробный период 7 + 7 и вход без пароля.
+ * по Telegram ID, пробный период 14 дней и вход без пароля.
  *
  * Демо отвечает синхронно, внутри вебхука: очередь добавила бы секунды к «за 2 секунды».
  */
@@ -153,8 +153,7 @@ export class TelegramBotService {
     if (!own) return this.say(who.chatId, T.welcome(this.base));
     const [person, trial] = await Promise.all([this.repo.roleOf(own.tenantId, own.userId), this.repo.trialOf(own.tenantId)]);
     const days = person?.role_code === 'owner' && !trial?.paid ? trialDaysLeft(trial?.trial_ends_at) : null;
-    const bonus = false; // ТЗ 10.11: бонус «+7 за бота» убран
-    return this.say(who.chatId, T.welcomeBack(who.firstName, days, this.base, bonus));
+    return this.say(who.chatId, T.welcomeBack(who.firstName, days, this.base));
   }
 
   private async onButton(who: Who, data: string, startedAt: number, cbMessageId: number | null = null): Promise<void> {
@@ -172,7 +171,8 @@ export class TelegramBotService {
       case 'tm': return this.teamSize(who, TEAM_SIZES[arg] ?? null);
       case 'in': return this.invite(who);
       case 'op': return this.openLink(who);
-      case 'bn': return this.bonus(who);
+      // #4778: старая кнопка «Зарегистрироваться: +7 дней» в прежних сообщениях — просто приветствие
+      case 'bn': return this.onStart(who, await this.ownSpace(who.tgId));
       default: return;
     }
   }
@@ -328,8 +328,6 @@ export class TelegramBotService {
     await this.repo.linkIfFree(tenantId, userId, who.tgId);
     await this.repo.startTrial(tenantId, TRIAL_DAYS, 'telegram_bot');
     await this.repo.setSpace(who.tgId, tenantId, userId);
-    // ТЗ 10.11: бонуса за регистрацию здесь больше нет — 14 дней сразу (startTrial выше)
-    const bonusUntil: Date | null = null;
 
     const demo = /^\d+$/.test(demoId) && demoId !== '0' ? await this.repo.demoOf(who.tgId, demoId) : null;
     const card = demo?.card?.title ? demo.card : null;
@@ -358,16 +356,7 @@ export class TelegramBotService {
       // пространство уже есть — без первой задачи человек проживёт, без входа нет
       this.log.warn(`первый проект ${tenantId}: ${(e as Error).message}`);
     }
-    return this.say(who.chatId, T.created(title, title ? projectName : null, taskId ? `${this.base}/tg/task/${taskId}` : null,
-      bonusUntil ? trialDay(bonusUntil) : null));
-  }
-
-  /** «Зарегистрироваться: +7 дней» у привязанного (#4779, п. 15.5): бонус пространству, один раз. */
-  private async bonus(who: Who): Promise<void> {
-    const own = await this.ownSpace(who.tgId);
-    if (!own) return this.say(who.chatId, T.consent(this.base, '0'));
-    const until = await this.telegram.grantTrialBonus();
-    return this.say(who.chatId, { text: until ? T.bonusGranted(trialDay(until)) : T.BONUS_ALREADY });
+    return this.say(who.chatId, T.created(title, title ? projectName : null, taskId ? `${this.base}/tg/task/${taskId}` : null));
   }
 
   private async teamSize(who: Who, size: string | null): Promise<void> {
@@ -375,7 +364,7 @@ export class TelegramBotService {
     if (!own) return this.say(who.chatId, { text: T.NO_SPACE });
     if (size) {
       const prev = await this.repo.setTeamSize(who.tgId, size);
-      // бонус +7 теперь за саму регистрацию (#4779), здесь — только заявка с размером команды
+      // здесь — только заявка с размером команды
       if (prev === null) {
         await this.leads.create({
           source: 'telegram', team: size, ip: 'telegram', ...this.contact(who),

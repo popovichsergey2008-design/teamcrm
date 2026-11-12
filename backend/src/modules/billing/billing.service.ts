@@ -130,18 +130,12 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Пробный период 7 + 7 (#4779): сколько из первых 7 дней осталось и начислен ли бонус
-   * за Telegram-бота. Только для пространств по новой схеме (есть начало пробного).
+   * Пробный период (#4778): 14 дней сразу, бонуса «+7 за Telegram-бота» больше нет.
+   * Только для пространств по новой схеме (есть начало пробного).
    */
   private trialOut(row: TenantSubRow | null, eff: Effective) {
     if (eff.status !== 'TRIAL' || !row?.trial_started_at) return null;
-    // ТЗ 10.11: 14 дней без условий — бонуса за бота больше нет (bonusDays 0: экран его не предлагает)
-    const firstEnds = new Date(new Date(row.trial_started_at).getTime() + TRIAL_DAYS * 86_400_000);
-    return {
-      baseDays: TRIAL_DAYS, bonusDays: 0,
-      bonusGranted: Number(row.trial_bonus_days ?? 0) > 0,
-      firstEnds, until: eff.until,
-    };
+    return { baseDays: TRIAL_DAYS, until: eff.until };
   }
 
   private planOut(p: PlanRow) {

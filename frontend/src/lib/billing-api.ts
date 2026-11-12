@@ -20,8 +20,8 @@ export interface BillingView {
   payments: { id: string; plan: string; amount: number; status: string; kind: string; createdAt: string; paidAt: string | null; periodEnd: string | null; months?: number; test?: boolean }[];
   configured: boolean;
   testMode: boolean;
-  /** #4779: пробный 7 + 7 — первые 7 дней и бонус за регистрацию в Telegram-боте. */
-  trial: { baseDays: number; bonusDays: number; bonusGranted: boolean; firstEnds: string; until: string | null } | null;
+  /** #4778: пробный период — 14 дней сразу, без условий. */
+  trial: { baseDays: number; until: string | null } | null;
   /** «Пригласить команду · +1 мес»: сколько пришло (без владельца), сколько нужно, начислен ли месяц. */
   teamBonus: { need: number; months: number; invited: number; grantedAt: string | null; until: string | null } | null;
 }
