@@ -726,13 +726,16 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     if (!picked.length) return;
     setErr('');
     let ok = 0;
-    for (const f of picked) {
-      try { await api.uploadAttachment(task.id, f); setFileCount((n) => n + 1); ok++; }
-      catch (e) { setErr(e instanceof ApiError ? `${f.name}: ${e.message}` : `Не удалось приложить ${f.name}`); }
+    // #4887: в уже созданной задаче файл — ещё и сообщением в чат задачи (как в Битриксе),
+    // во вкладку «Файлы» он попадает тоже; десять — предел одного сообщения
+    for (let i = 0; i < picked.length; i += 10) {
+      const part = picked.slice(i, i + 10);
+      try { await api.addCommentFile(task.id, part, ''); setFileCount((n) => n + part.length); ok += part.length; }
+      catch (e) { setErr(e instanceof ApiError ? `${part.map((f) => f.name).join(', ')}: ${e.message}` : `Не удалось приложить ${part.map((f) => f.name).join(', ')}`); }
     }
     onRefresh();
     // #4664: «Файл приложен» только о том, что действительно долетело
-    if (ok) toastSaved('Файл приложен', ok > 1 ? `${ok} шт. — во вкладке «Файлы»` : picked.length === 1 ? picked[0].name : '1 шт. — во вкладке «Файлы»');
+    if (ok) toastSaved('Файл приложен', ok > 1 ? `${ok} шт. — в чате задачи и во вкладке «Файлы»` : picked.length === 1 ? picked[0].name : '1 шт. — в чате задачи и во вкладке «Файлы»');
   };
 
   const userOptions = (empty: string) => [
@@ -1804,18 +1807,19 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
     if (!picked.length) return;
     setErr(''); setDone('');
     const failed: string[] = [];
-    for (const f of picked) {
-      setBusyName(f.name);
-      // по одному и по порядку: параллельная отправка рвётся на середине,
-      // и понять, какой файл не долетел, потом нельзя
+    // #4887: файл в созданной задаче — сообщением в чат (виден в переписке) и во «Файлах»;
+    // пачками по десять — столько берёт одно сообщение, сервер грузит их по порядку
+    for (let i = 0; i < picked.length; i += 10) {
+      const part = picked.slice(i, i + 10);
+      setBusyName(part.map((f) => f.name).join(', '));
       // #4664: причина рядом с именем — «не загрузились» без «почему» не исправить
-      try { await api.uploadAttachment(taskId, f); } catch (e) { failed.push(e instanceof ApiError ? `${f.name} (${e.message})` : f.name); }
+      try { await api.addCommentFile(taskId, part, ''); } catch (e) { failed.push(e instanceof ApiError ? `${part.map((f) => f.name).join(', ')} (${e.message})` : part.map((f) => f.name).join(', ')); }
     }
     setBusyName('');
     await reload();
     onRefresh();
     if (failed.length) setErr(`Не загрузились: ${failed.join(', ')}. Попробуйте ещё раз.`);
-    else setDone(picked.length === 1 ? `Файл «${picked[0].name}» прикреплён` : `Прикреплено файлов: ${picked.length}`);
+    else setDone(picked.length === 1 ? `Файл «${picked[0].name}» прикреплён — он и в чате задачи` : `Прикреплено файлов: ${picked.length} — они и в чате задачи`);
   };
   // файлы за авторизацией: тянем blob с токеном, картинку показываем в попапе, остальное скачиваем
   /** Какое вложение сейчас открывается и на сколько процентов (-1 — размер неизвестен). */
