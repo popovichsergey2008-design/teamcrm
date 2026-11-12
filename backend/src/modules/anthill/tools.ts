@@ -28,6 +28,9 @@ import { PulseService } from '../radar/pulse.service';
 import { classify, digestText, unansweredText } from './chat-digest-rules';
 import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
 
+/** Почты нет — не одна строка «подключите», а путь по шагам со снимками (заказчик, 12.11). */
+const MAIL_OFF = 'Почта не подключена — разобрать письма нельзя. Объясни человеку подробно, как подключить, и вставь оба снимка: 1) в левом меню «Ещё» → «Личный кабинет» → карточка «Почта»; 2) выбрать сервис (Gmail, Яндекс, Mail.ru, Outlook или свой сервер), ввести адрес почты и пароль приложения → «Подключить». Пароль приложения — не обычный пароль: Gmail — «Аккаунт Google → Безопасность → Двухэтапная аутентификация → Пароли приложений»; Яндекс — «Яндекс ID → Безопасность → Пароли приложений»; Mail.ru — «Настройки → Безопасность → Пароли для внешних приложений». Письма видит только он сам; бот ничего не отправляет без его кнопки — черновики ложатся в «Черновики» ящика. После подключения пусть повторит просьбу.\n![«Ещё» → «Личный кабинет» → карточка «Почта»](/api/help/img/bs-mail-1.webp)\n![«Почта»: сервис, адрес, пароль приложения → «Подключить»](/api/help/img/bs-mail-2.webp)';
+
 /**
  * Инструменты QEVO Bot (ТЗ-6, разд. 48).
  *
@@ -1317,7 +1320,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       description: 'Разбор моей почты: непрочитанное за 3 дня по категориям — важно, требуют действия, от клиентов, счета, к сведению, рассылки. Для «что в почте», «есть важные письма?», «разбери почту». Номера писем (#N) — для mail_read и ответа.',
       params: {},
       async run(ctx) {
-        if (!(await mail.hasMailbox(ctx.tenantId, ctx.user.userId))) return { text: 'Почта не подключена. Подключить ящик: «Настройки → Почта».', sources: [] };
+        if (!(await mail.hasMailbox(ctx.tenantId, ctx.user.userId))) return { text: MAIL_OFF, sources: [] };
         const text = await mail.triage(ctx.tenantId, ctx.user.userId);
         return { text: text ?? 'Непрочитанных писем за 3 дня нет.', sources: [] };
       },
