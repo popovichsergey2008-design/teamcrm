@@ -7,6 +7,7 @@ import { createHash, randomBytes } from 'crypto';
 
 export type Route =
   | { kind: 'bot_callback'; data: string }
+  | { kind: 'focus_callback'; data: string }
   | { kind: 'standup_callback' }
   | { kind: 'client_start' }
   | { kind: 'link_code'; code: string }
@@ -38,6 +39,7 @@ export function routeUpdate(update: any, linked: boolean): Route {
   const cb = update?.callback_query;
   if (cb) {
     const data = String(cb.data ?? '');
+    if (data.startsWith('f:')) return { kind: 'focus_callback', data };
     return data.startsWith('b:') ? { kind: 'bot_callback', data } : { kind: 'standup_callback' };
   }
   const msg = update?.message;

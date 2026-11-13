@@ -13,6 +13,7 @@ import { getSocket } from '../lib/socket';
 import { showToast } from '../lib/notifications';
 import { feedback } from '../lib/feedback';
 import { TaskChanges } from './pulse/TaskChanges';
+import { focusApi } from './focus/focus-api';
 import { DateInput } from '../components/DateInput';
 
 /**
@@ -79,7 +80,9 @@ export function PulsePage() {
   /** #1573: цифры вердикта кликабельны — список за цифрой */
   const [drill, setDrill] = useState<'stuck' | 'decisions' | null>(null);
 
+  const [focusCount, setFocusCount] = useState<number | null>(null);
   const load = useCallback(() => {
+    void focusApi.decisions().then((r) => setFocusCount(r.count)).catch(() => undefined);
     api.pulse().then((d) => { setData(d); setErr(''); }).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать «Пульс»'));
   }, []);
   useEffect(() => {
@@ -87,9 +90,17 @@ export function PulsePage() {
     const socket = getSocket();
     const on = () => load();
     socket.on('radar.changed', on);
+    // решение в Фокусе сразу меняет счётчик и индекс здесь (#4891, п. 13)
+    socket.on('focus.day.updated', on);
+    window.addEventListener('teamcrm:tasks-changed', on);
+    const vis = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', vis);
     // раз в две минуты, пока экран на виду: задачи меняются, а «Пульс» — снимок
     const t = window.setInterval(() => { if (!document.hidden) load(); }, 120_000);
-    return () => { socket.off('radar.changed', on); window.clearInterval(t); };
+    return () => {
+      socket.off('radar.changed', on); socket.off('focus.day.updated', on);
+      window.removeEventListener('teamcrm:tasks-changed', on); document.removeEventListener('visibilitychange', vis); window.clearInterval(t);
+    };
   }, [load]);
 
   const notProblem = async (kind: string, ref: string, reason: string) => {
@@ -201,8 +212,11 @@ export function PulsePage() {
         {/* 2. Решения */}
         <section className="pulse-card pulse-span">
           <div className="pulse-card-head">
-            <h3>Требуют вашего решения — {data.decisions.length}</h3>
-            {data.decisions.length > 0 && <Button size="sm" variant="primary" onClick={() => setTriage(0)}>Разобрать всё</Button>}
+            {/* #4891, п. 13: одно число с Фокусом; разбор — в Фокусе дня */}
+            <h3>Требуют вашего решения — {focusCount ?? data.decisions.length}</h3>
+            {((focusCount ?? 0) > 0 || data.decisions.length > 0) && (
+              <Button size="sm" variant="primary" onClick={() => { try { sessionStorage.setItem('teamcrm.focusReview', '1'); } catch { /* без флага откроется просто Фокус */ } navigate({ section: 'focus' }); }}>Начать разбор в Фокусе</Button>
+            )}
           </div>
           {data.decisions.length === 0 && <div className="dim">Решений от вас никто не ждёт.</div>}
           {data.decisions.slice(0, 5).map((d) => (

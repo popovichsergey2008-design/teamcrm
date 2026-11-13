@@ -1,3 +1,4 @@
+import { focusTelegramButton } from '../../common/focus-telegram-hook';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PoolClient } from 'pg';
@@ -97,6 +98,13 @@ export class TelegramBotService {
       return this.standup.handleTelegramUpdate(update);
     }
     if (route.kind === 'client_start') return this.standup.handleTelegramUpdate(update);
+    // план дня: «✓ Принять» (#4891, п. 12) — принимает модуль Фокуса через реестр
+    if (route.kind === 'focus_callback') {
+      this.answer(update.callback_query);
+      const chatId = String(update?.callback_query?.message?.chat?.id ?? from?.id);
+      const text = actor ? await focusTelegramButton(String(actor.tenant_id), String(actor.user_id), route.data) : 'Сначала привяжите Telegram в QEVO: Личный кабинет → «Открыть бота».';
+      return this.say(chatId, { text });
+    }
     // привязанный сотрудник (этап 4): пересылка/поручение → задача, дейлик — по правилу staffIntent
     if (route.kind === 'staff' && actor) {
       try {

@@ -279,3 +279,9 @@
 .fd-chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .fd-close-start { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-weight: 600; }
 @media (max-width: 600px) { .fp-rp-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* #4891, волна 3 */
+.fp-streak { font-size: 12px; padding: 3px 9px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.fp-habit { display: flex; flex-direction: column; gap: 12px; }
+.fp-habit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fp-habit-ch { display: inline-flex; align-items: center; gap: 4px; }

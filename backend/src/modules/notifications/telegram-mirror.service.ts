@@ -93,6 +93,25 @@ export class TelegramMirror {
   }
 
   /**
+   * Сообщение с кнопками (#4891, п. 12: план дня «✓ Принять» / «Открыть в Qevo»). Та же
+   * настройка дублей в Telegram; в тишине «Завершить день» — молчим.
+   */
+  async pushButtons(tenantId: string, userId: string, text: string, keyboard: unknown[][]): Promise<boolean> {
+    if (!this.sender.enabled || !userId || !text.trim()) return false;
+    try {
+      if (!(await this.repo.prefEnabled(tenantId, userId, MIRROR_EVENT_KEY))) return false;
+      if (await this.inbox.isQuiet(tenantId, userId)) return false;
+      const chatId = await this.telegram.chatIdOf(tenantId, userId);
+      if (!chatId) return false;
+      await this.sender.sendMessage(chatId, text, { inline_keyboard: keyboard });
+      return true;
+    } catch (e) {
+      this.log.warn(`сообщение с кнопками в Telegram не ушло: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
    * Голосовой бриф (ТЗ-21, решение 11.10): голосом — только если приватность push в
    * компании «полностью». Голос не замаскировать: в нём имена клиентов и проектов, а
    * Telegram — чужой сервер. Иначе — ничего (текстовый бриф уходит своим путём).
@@ -153,6 +172,8 @@ export class TelegramMirror {
    */
   async mirror(row: MailRow): Promise<void> {
     if (!this.sender.enabled || !row.user_id || row.tg_sent_at) return;
+    // план дня и итоги недели Фокус шлёт в Telegram сам, с кнопками (#4891) — без дубля письма
+    if (row.event_key?.startsWith('focus.')) return;
     try {
       if (!(await this.repo.prefEnabled(row.tenant_id, row.user_id, MIRROR_EVENT_KEY))) return;
       if (await this.inbox.silent(row.tenant_id, row.user_id, row.event_key)) return;

@@ -25,6 +25,7 @@ import { ReviewRun } from './focus/ReviewRun';
 import { Replan } from './focus/Replan';
 import { Agreements } from './focus/Agreements';
 import { FirstDay } from './focus/FirstDay';
+import { HabitSettings, WeekCard } from './focus/Habit';
 import { dur, focusApi, PlusDay } from './focus/focus-api';
 import { useAuth } from '../state/auth';
 import { helloName } from '../lib/hello-name';
@@ -130,11 +131,23 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     return () => window.removeEventListener('teamcrm:focus-done', onDone);
   }, []);
   const phase = plus?.phase ?? 'day';
-  // мягкое напоминание в конце рабочего дня ведёт сюда с ?close=1 (#4891, п. 10)
+  // #4891, п. 12: мягкая серия, настройки плана утром, итоги недели (пятница или ?week=1)
+  const [streak, setStreak] = useState(0);
+  const [habitOpen, setHabitOpen] = useState(false);
+  const [weekOpen, setWeekOpen] = useState(() => new Date().getDay() === 5 && new Date().getHours() >= 15);
+  const [wantReview, setWantReview] = useState(false);
+  useEffect(() => { if (active) void focusApi.streak().then((r) => setStreak(r.days)).catch(() => undefined); }, [active, day.plan.status]);
+  // мягкое напоминание в конце дня ведёт сюда с ?close=1 (п. 10), итоги недели — с ?week=1,
+  // Пульс — «Начать разбор в Фокусе» (п. 13)
   useEffect(() => {
-    if (!active || !/[?&]close=1/.test(window.location.search)) return;
-    setClosing(true);
-    try { window.history.replaceState(window.history.state, '', window.location.pathname); } catch { /* адрес останется — не страшно */ }
+    if (!active) return;
+    const q = window.location.search;
+    let fromPulse = false;
+    try { fromPulse = sessionStorage.getItem('teamcrm.focusReview') === '1'; sessionStorage.removeItem('teamcrm.focusReview'); } catch { /* без хранилища — только по адресу */ }
+    if (/[?&]close=1/.test(q)) setClosing(true);
+    if (/[?&]week=1/.test(q)) setWeekOpen(true);
+    if (/[?&]review=1/.test(q) || fromPulse) setWantReview(true);
+    if (q) try { window.history.replaceState(window.history.state, '', window.location.pathname); } catch { /* адрес останется — не страшно */ }
   }, [active]);
   const briefOn = !!day.brief && day.brief.enabled;
 
@@ -500,6 +513,12 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const plusDecisions = (backlog ?? []).filter((c) => c.kind !== 'task');
   useEffect(() => { if (plus && (plus.decisions > 0 || plus.capacity.reviewsMin > 0) && backlog === null) void loadBacklog(); }, [plus, backlog, loadBacklog]);
   const reviewsSlot = plus?.timeline.find((t) => t.kind === 'reviews');
+  useEffect(() => {
+    if (!wantReview) return;
+    if (backlog === null) { void loadBacklog(); return; }
+    setWantReview(false);
+    if (plusDecisions.length) setRunList(plusDecisions);
+  }, [wantReview, backlog, loadBacklog, plusDecisions]);
   const mainItem = plus?.main ? top.find((i) => i.id === plus.main!.itemId) : undefined;
 
   const closeDayBlock = day.closeDay.workdayClosedUntil ? (
@@ -528,6 +547,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
               <b>{doneCount} / {top.length}</b> <span className="dim">главных</span>
             </div>
           )}
+          {streak > 1 && <span className="fp-streak" title="Выходные и отпуск серию не прерывают, один пропущенный день — тоже">{streak} {plural(streak, 'день', 'дня', 'дней')} с планом</span>}
+          {plus && <Button variant="ghost" size="sm" aria-label="План утром и итоги недели" title="План утром и итоги недели" onClick={() => setHabitOpen(true)}><Icon name="bell" size={14} /></Button>}
           <Button variant={zen ? 'secondary' : 'outline'} size="sm" aria-pressed={zen} title="Только главное: тройка, начатая работа и таймер" onClick={toggleZen}>
             <Icon name={zen ? 'eye' : 'eye-off'} size={14} /> {zen ? 'Выйти из Дзена' : 'Дзен-режим'}
           </Button>
@@ -562,6 +583,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       )}
 
       {phase === 'evening' && closeDayBlock}
+      {weekOpen && <div className="fd-secondary"><WeekCard onClose={() => setWeekOpen(false)} /></div>}
+      {plus && <HabitSettings open={habitOpen} onClose={() => setHabitOpen(false)} workStart={plus.workStart} />}
 
       {/* #4891, п. 1–2: утро — бриф, ёмкость дня, таймлайн; принятый план — полоса и таймлайн остаются */}
       {plus && (phase === 'morning' || proposed || plus.dayOff) && (

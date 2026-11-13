@@ -8,6 +8,7 @@ import { DbService } from '../../database/db.service';
 import { AppException } from '../../common/http/app-exception';
 import { FocusPlusService } from './focus-plus.service';
 import { FocusWave2Service } from './focus-wave2.service';
+import { FocusHabitService } from './focus-habit.service';
 
 class NoteDto {
   @IsOptional() @IsString() @MaxLength(500) nextStep?: string | null;
@@ -62,13 +63,20 @@ class FirstDayDto {
   @IsString() @MinLength(3) @MaxLength(1500) text!: string;
 }
 
+class HabitDto {
+  @IsOptional() @IsBoolean() planOn?: boolean;
+  @IsOptional() @IsString() @MaxLength(5) planAt?: string | null;
+  @IsOptional() @IsArray() @ArrayMaxSize(3) @IsIn(['telegram', 'email', 'push'], { each: true }) channels?: ('telegram' | 'email' | 'push')[];
+  @IsOptional() @IsBoolean() weekOn?: boolean;
+}
+
 /** «Фокус дня» #4891: план по часам, ёмкость, перегруз, оценки, шаги, проверки. */
 @ApiTags('focus')
 @ApiBearerAuth()
 @Controller('focus/plus')
 @Roles('owner', 'manager', 'member')
 export class FocusPlusController {
-  constructor(private readonly svc: FocusPlusService, private readonly w2: FocusWave2Service, private readonly db: DbService) {}
+  constructor(private readonly svc: FocusPlusService, private readonly w2: FocusWave2Service, private readonly habit: FocusHabitService, private readonly db: DbService) {}
 
   private v(u: AuthUser) { return { tenantId: u.tenantId, userId: u.userId, role: u.role }; }
 
@@ -168,4 +176,26 @@ export class FocusPlusController {
 
   @Post('first-day/accept')
   firstDayAccept(@CurrentUser() u: AuthUser, @Body() dto: PlacementsDto) { return this.w2.firstDayAccept(this.v(u), dto.placements); }
+
+  // ---------- волна 3 ----------
+
+  /** п. 12: время и каналы плана утром и итогов недели — всё выключается. */
+  @Get('habit/prefs')
+  habitPrefs(@CurrentUser() u: AuthUser) { return this.habit.prefs(this.v(u)); }
+
+  @Put('habit/prefs')
+  saveHabitPrefs(@CurrentUser() u: AuthUser, @Body() dto: HabitDto) { return this.habit.savePrefs(this.v(u), dto); }
+
+  @Get('habit/streak')
+  streak(@CurrentUser() u: AuthUser) { return this.habit.streak(this.v(u)); }
+
+  @Get('habit/week')
+  week(@CurrentUser() u: AuthUser) { return this.habit.week(this.v(u)); }
+
+  /** п. 13: «Ждут вашего решения» — то же число, что в Фокусе, для Пульса. */
+  @Get('decisions')
+  async decisions(@CurrentUser() u: AuthUser) {
+    const d = await this.svc.day(this.v(u));
+    return { count: d.enabled ? d.decisions : 0 };
+  }
 }

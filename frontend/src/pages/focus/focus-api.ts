@@ -43,6 +43,8 @@ export interface CloseSummary2 {
   secondaryLeft: number; quietDefault: boolean;
   remaining: { id: string; kind: string; taskId: string | null; title: string | null; done: string[]; nextStep: string | null }[];
 }
+export interface HabitPrefs { planOn: boolean; planAt: string | null; channels: ('telegram' | 'email' | 'push')[]; weekOn: boolean }
+export interface WeekSummary { deepMin: number; prevMin: number; compare: string; results: string[]; bestTime: string | null; interruptions: string | null; streak: number; text: string }
 export interface TaskNote { nextStep: string | null; nextStepSource: 'saved' | 'checklist' | null; result: string | null; stepsDone: string[]; aiEstimateMin: number | null }
 
 export const focusApi = {
@@ -74,6 +76,12 @@ export const focusApi = {
   firstDay: (b: { workStart: string; workEnd: string; text: string }) =>
     request<{ created: string[]; proposal: { taskId: string; title: string; startsAt: string; endsAt: string }[]; day: PlusDay }>('POST', '/focus/plus/first-day', b),
   firstDayAccept: (placements: { taskId: string; startsAt: string; endsAt: string }[]) => request<PlusDay>('POST', '/focus/plus/first-day/accept', { placements }),
+  // волна 3
+  habitPrefs: () => request<HabitPrefs>('GET', '/focus/plus/habit/prefs'),
+  saveHabitPrefs: (b: Partial<HabitPrefs>) => request<HabitPrefs>('PUT', '/focus/plus/habit/prefs', b),
+  streak: () => request<{ days: number }>('GET', '/focus/plus/habit/streak'),
+  week: () => request<WeekSummary>('GET', '/focus/plus/habit/week'),
+  decisions: () => request<{ count: number }>('GET', '/focus/plus/decisions'),
 };
 
 export const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
