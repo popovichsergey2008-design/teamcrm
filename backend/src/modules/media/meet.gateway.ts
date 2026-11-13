@@ -698,6 +698,7 @@ export class MeetGateway implements OnModuleInit {
           // позвали — значит, войдёт без стука, даже если примет вызов позже
           room.allowed.add(String(target));
           this.ringing.add(room.id, String(target));
+          (room.rang ??= new Set()).add(String(target));
           this.toUser(c.tenantId, String(target), 'meet.incoming-call', {
             meeting_id: room.id, project_id: room.projectId,
             caller_id: c.userId, caller_name: c.displayName,
@@ -718,6 +719,7 @@ export class MeetGateway implements OnModuleInit {
       case 'meet.decline': {
         if (!room || typeof p.caller_id !== 'string') return;
         this.ringing.stop(room.id, c.userId);
+        (room.declined ??= new Set()).add(c.userId);
         this.toUser(c.tenantId, p.caller_id, 'meet.declined', { meeting_id: room.id, user_id: c.userId });
         return;
       }
@@ -1233,7 +1235,9 @@ export class MeetGateway implements OnModuleInit {
       // все разошлись, кнопку «стоп» никто не нажал — дописываем сами,
       // иначе ffmpeg остался бы висеть, а запись пропала
       await this.finishRecording(room, c.isGuest ? null : c.userId);
-      void this.callLog.ended(room.tenantId, room.id);
+      void this.callLog.ended(room.tenantId, room.id, {
+        chatId: room.chatId ?? null, startedBy: room.startedBy, rang: !!room.rang?.size, declined: !!room.declined?.size,
+      });
       this.media.closeRoom(room.id);
     }
   }

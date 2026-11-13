@@ -64,9 +64,11 @@ const STATE_LABEL: Record<string, string> = {
  */
 export interface CallEnd { roomId: string; recorded: boolean; last: boolean }
 
-export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest = false, withCamera = false, onClose }: {
+export function CallPanel({ meetingId, inviteUserIds = [], calleeLabel, guest, supportGuest = false, withCamera = false, onClose }: {
   meetingId: string;
   inviteUserIds?: string[];
+  /** #4907: кого вызываем — имя собеседника или название чата, для «Вызываем…». */
+  calleeLabel?: string;
   /**
    * Войти сразу с камерой — «видеозвонок» против «позвонить».
    *
@@ -89,12 +91,26 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
   const isGuest = !!guest;
   const [state, setState] = useState<'connecting' | 'connected' | 'reconnecting' | 'closed'>('connecting');
   const [peers, setPeers] = useState<Peer[]>([]);
+  /*
+    #4907: пока никто не подошёл — гудки и «Вызываем…» вместо чёрного экрана. Через минуту
+    без ответа — «Не отвечает»; отклонил или занят — сказано сразу. Вошёл первый — тишина.
+  */
+  const calling = inviteUserIds.length > 0 && peers.length === 0 && !isGuest;
+  const [dial, setDial] = useState<'ringing' | 'declined' | 'busy' | 'noanswer'>('ringing');
+  const declinedBy = useRef(new Set<string>());
+  useEffect(() => {
+    if (!calling) return;
+    setDial('ringing');
+    declinedBy.current.clear();
+    const t = window.setTimeout(() => setDial((d) => (d === 'ringing' ? 'noanswer' : d)), 60_000);
+    return () => window.clearTimeout(t);
+  }, [calling]);
   // Гудки звонящему: позвали людей, а в комнате пока никого. Вошёл первый — тишина.
   useEffect(() => {
-    if (inviteUserIds.length > 0 && peers.length === 0 && !isGuest) startRingback();
+    if (calling && dial === 'ringing') startRingback();
     else stopRingback();
     return () => stopRingback();
-  }, [inviteUserIds.length, peers.length, isGuest]);
+  }, [calling, dial]);
   const [tracks, setTracks] = useState<RemoteTrack[]>([]);
   const [micOn, setMicOn] = useState(true);
   /*
@@ -497,6 +513,12 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
           },
           onHostNotified: (ok) => setNotified(ok ? 'sent' : 'later'),
           onError: setErr,
+          // #4907: отклонили все, кого звали, — вызов закончен; занят — тоже сразу
+          onDeclined: (uid) => {
+            declinedBy.current.add(uid);
+            if (inviteUserIds.every((id) => declinedBy.current.has(String(id)))) setDial('declined');
+          },
+          onPeerBusy: () => { if (inviteUserIds.length <= 1) setDial('busy'); },
         }, String(guest?.userId ?? user?.id ?? ''));
         client.current = c;
         if (rejoin > 0) {
@@ -1167,7 +1189,26 @@ export function CallPanel({ meetingId, inviteUserIds = [], guest, supportGuest =
               )}
             </div>
           ) : (
-            <div className="call-grid">{peopleTiles}</div>
+            <div className="call-grid" style={calling ? { position: 'relative' } : undefined}>
+              {peopleTiles}
+              {calling && (
+                <div role="status" aria-live="polite" style={{
+                  position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
+                  paddingTop: '18%', gap: 10, color: '#fff', textAlign: 'center', pointerEvents: 'none',
+                }}>
+                  <Icon name={dial === 'ringing' ? 'phone' : 'phone-off'} size={28} />
+                  <div style={{ fontSize: 20, fontWeight: 650 }}>
+                    {dial === 'ringing' ? `Вызываем${calleeLabel ? ` ${calleeLabel}` : ''}…`
+                      : dial === 'declined' ? 'Звонок отклонён'
+                        : dial === 'busy' ? 'Собеседник в другом созвоне'
+                          : 'Не отвечает'}
+                  </div>
+                  <div style={{ fontSize: 14, opacity: 0.8 }}>
+                    {dial === 'ringing' ? 'Идут гудки — у собеседника звонит' : 'В чат придёт запись о пропущенном звонке — можно оставить сообщение'}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
         )}

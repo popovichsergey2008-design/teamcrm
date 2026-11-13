@@ -239,7 +239,8 @@ let backStop: ReturnType<typeof setTimeout> | null = null;
 function ringbackOnce(): void {
   const audio = context();
   if (!audio) return;
-  note(audio.currentTime, 425, 1.0, 0.08);
+  // #4907: громче — тихий гудок не слышали и думали, что звонок не идёт
+  note(audio.currentTime, 425, 1.0, 0.22);
 }
 
 export function startRingback(): void {

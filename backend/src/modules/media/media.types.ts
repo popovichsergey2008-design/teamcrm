@@ -111,6 +111,9 @@ export interface MeetingRoom {
    * именно гость — и тогда без этого поля запись оказалась бы без автора.
    */
   startedBy: string | null;
+  /** #4907: кого звали из этой комнаты и кто отклонил — для записи «пропущенный / отклонён». */
+  rang?: Set<string>;
+  declined?: Set<string>;
   router: MsRouter;
   participants: Map<string, Participant>;
   startedAt: number;

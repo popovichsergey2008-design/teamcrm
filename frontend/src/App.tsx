@@ -253,6 +253,8 @@ export function App() {
   // созвон: id комнаты, в которой мы сейчас, и список идущих в организации
   const [callId, setCallId] = useState<string | null>(null);
   const [callInvite, setCallInvite] = useState<string[]>([]);
+  // #4907: кого вызываем — для «Вызываем Константина…» в окне звонка
+  const [callLabel, setCallLabel] = useState<string | undefined>(undefined);
   /** Видеозвонок: камера включается сразу. Комната та же — разница только в этом. */
   const [callCamera, setCallCamera] = useState(false);
   // Идёт созвон — ОС не должна усыпить приложение (ТЗ-9, волна 7); в браузере это ничего не делает.
@@ -573,6 +575,7 @@ export function App() {
       // разговор, а не осядет в разделе встреч, куда надо специально пойти.
       const room = await api.startCall(chat.projectId ?? undefined, chat.withAi === true, chat.id);
       setCallInvite(chat.memberIds);
+      setCallLabel(chat.title);
       setCallId(room.id);
     } catch { /* недоступность медиа покажет само окно звонка */ }
   };
@@ -748,7 +751,7 @@ export function App() {
         {callId && (
           <Suspense fallback={null}><CallPanel
             meetingId={callId}
-            inviteUserIds={callInvite}
+            inviteUserIds={callInvite} calleeLabel={callLabel}
             withCamera={callCamera}
             onClose={() => { setCallId(null); setCallInvite([]); setCallCamera(false); }}
           /></Suspense>
@@ -991,7 +994,7 @@ export function App() {
       {callId && (
         <Suspense fallback={null}><CallPanel
           meetingId={callId}
-          inviteUserIds={callInvite}
+          inviteUserIds={callInvite} calleeLabel={callLabel}
           withCamera={callCamera}
           onClose={(end) => {
             setCallId(null); setCallInvite([]); setCallCamera(false);

@@ -45,6 +45,9 @@ export interface MeetEvents {
   onNotice?: (message: string) => void;
   /** #4782: позвали человека в глубоком фокусе — вызов не ушёл, звонок попал в его сводку. */
   onPeerFocus?: (userId: string, until: string | null) => void;
+  /** #4907: вызванный отклонил звонок или занят в другом созвоне — звонящему видно сразу. */
+  onDeclined?: (userId: string) => void;
+  onPeerBusy?: (userId: string) => void;
   onAiInvited?: () => void;
   /** Гостю: стучимся, ждём впуска (hostPresent — есть ли кому впускать). */
   onGuestWaiting?: (hostPresent: boolean, hostCalled: boolean) => void;
@@ -440,7 +443,12 @@ export class MeetClient {
 
       case 'meet.peer-busy':
         // не молчим: иначе непонятно, почему человек «не берёт трубку»
-        this.ev.onError('Собеседник сейчас в другом созвоне — вызов ему не ушёл');
+        if (this.ev.onPeerBusy) this.ev.onPeerBusy(String(p.user_id));
+        else this.ev.onError('Собеседник сейчас в другом созвоне — вызов ему не ушёл');
+        return;
+
+      case 'meet.declined':
+        this.ev.onDeclined?.(String(p.user_id));
         return;
 
       case 'meet.guest-waiting':
