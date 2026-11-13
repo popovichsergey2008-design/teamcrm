@@ -251,7 +251,10 @@ describe('QEVO Bot (e2e)', () => {
       instruction: 'дай список просроченных задач по всем проектам',
       schedule: 'каждый понедельник в 9:00',
     }).expect(201)).body.data;
-    expect(task).toMatchObject({ status: 'active', label: 'каждый понедельник в 9:00' });
+    // #4893: время — с поясом расписания («каждый понедельник в 9:00 МСК»)
+    expect(task).toMatchObject({ status: 'active' });
+    expect(task.label).toMatch(/^каждый понедельник в 9:00 (МСК|UTC[+−]\d+(\.\d)?)$/);
+    expect(task.nextRunLabel).toMatch(/в 9:00 /);
     expect(new Date(task.nextRunAt).getTime()).toBeGreaterThan(Date.now());
 
     // «когда-нибудь» расписанием не является — просим сказать по-человечески

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../Icon';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, request } from '../../lib/api';
 import type { AnthillResponse } from '../../lib/api';
 import { OptionSelect } from '../ui/option-select';
 import { confirmAction } from '../ui/dialog';
@@ -87,11 +87,9 @@ export function AnthillResponses() {
       {err && <div className="error-text">{err}</div>}
 
       {rows.length === 0 && !adding && (
-        <div className="anthill-empty">
-          <div className="anthill-empty-title">Быстрых ответов пока нет</div>
-          <div className="dim">Заведите первый — например, «vpn» и ссылку на инструкцию. Дальше бот ответит сам.</div>
-        </div>
+        <div className="dim">Своих быстрых ответов пока нет — заведите первый, например «vpn» и ссылку на инструкцию. Ниже — частые вопросы, на которые бот уже отвечает.</div>
       )}
+      <TeamFaq />
 
       {rows.map((row) => (
         <div key={row.id} className={`anthill-card anthill-resp${row.enabled ? '' : ' anthill-task-paused'}`}>
@@ -150,6 +148,36 @@ function EditResponse({ row, onSave, onCancel }: {
         <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void onSave({ trigger: v.trigger.trim(), answer: v.answer.trim(), auto: v.auto }); }}>Сохранить</button>
         <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onCancel}>Не менять</button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Частые вопросы команды (#4893, направление 14): база ответов QEVO (#4837), на которые
+ * бот отвечает сразу, — чтобы вкладка «Ответы» не была пустой и было видно, что он знает.
+ */
+function TeamFaq() {
+  const [list, setList] = useState<{ id: string; segment: string; question: string; answer: string }[] | null>(null);
+  const [q, setQ] = useState('');
+  useEffect(() => { void request<NonNullable<typeof list>>('GET', '/anthill/faq').then(setList).catch(() => setList([])); }, []);
+  if (!list?.length) return null;
+  const found = q.trim().length >= 2 ? list.filter((x) => `${x.question} ${x.answer}`.toLowerCase().includes(q.trim().toLowerCase())) : list;
+  const groups = [...new Set(found.map((x) => x.segment))];
+  return (
+    <div className="anthill-group">
+      <div className="anthill-group-head">Частые вопросы — бот отвечает сразу ({list.length})</div>
+      <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск по вопросам" aria-label="Поиск по частым вопросам" />
+      {groups.map((g) => (
+        <details key={g} className="anthill-card">
+          <summary>{g} · {found.filter((x) => x.segment === g).length}</summary>
+          {found.filter((x) => x.segment === g).map((x) => (
+            <details key={x.id} style={{ margin: '6px 0' }}>
+              <summary>{x.question}</summary>
+              <div className="dim" style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>{x.answer}</div>
+            </details>
+          ))}
+        </details>
+      ))}
     </div>
   );
 }

@@ -1083,7 +1083,7 @@ const STATUS_OF: Record<string, string> = {
   web_search: 'Ищу в интернете…', read_url: 'Открываю страницу…',
   find_slots: 'Ищу свободное время…', my_events: 'Смотрю календарь…',
   my_day: 'Собираю ваш день…', time_audit: 'Считаю неделю…',
-  chat_digest: 'Разбираю переписку…', unanswered: 'Ищу, кто не ответил…',
+  chat_digest: 'Разбираю переписку…', staff_reports: 'Собираю отчёты сотрудников…', unanswered: 'Ищу, кто не ответил…',
   team_pulse: 'Смотрю пульс команды…', mail_inbox: 'Разбираю почту…', mail_search: 'Ищу в почте…', mail_read: 'Читаю письмо…',
 };
 

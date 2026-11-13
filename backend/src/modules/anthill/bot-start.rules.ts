@@ -72,3 +72,59 @@ export function buildCards(f: StartFacts, c: Connections): StartCard[] {
   if (!c.mail) first.push({ id: 'mail', text: 'Подключите почту — разберу входящие и подготовлю ответы', button: 'Подключить', action: { kind: 'connect', source: 'mail' } });
   return first.slice(0, 4);
 }
+
+// ── п. 10: матрица Эйзенхауэра ──
+
+export type Quadrant = 'do' | 'plan' | 'delegate' | 'drop';
+export interface MatrixTask {
+  id: string; title: string; projectName: string | null; deadlineAt: Date | null; priority: string | null;
+  updatedAt: Date; blocksOthers: boolean;
+}
+
+/**
+ * Квадрант задачи — правилами, без модели: срочно = срок до конца завтра или просрочено;
+ * важно = высокий приоритет или на задаче стоят другие. Старые без движения (30+ дней,
+ * не срочные и не важные) — кандидаты «Закрыть».
+ */
+export function quadrantOf(t: MatrixTask, now: Date): Quadrant {
+  const urgent = !!t.deadlineAt && t.deadlineAt.getTime() <= now.getTime() + 2 * 86_400_000;
+  const important = t.priority === 'high' || t.priority === 'urgent' || t.priority === 'critical' || t.blocksOthers;
+  if (urgent && important) return 'do';
+  if (important) return 'plan';
+  if (urgent) return 'delegate';
+  return 'drop';
+}
+
+export const isStale = (t: MatrixTask, now: Date) => now.getTime() - t.updatedAt.getTime() > 30 * 86_400_000;
+
+// ── п. 11: бот за неделю ──
+
+export interface WeekCounts { summaries: number; meetingTasks: number; meetings: number; mail: number; tasks: number; reminders: number }
+/** Методика оценки: сколько минут человек тратил бы сам на одно такое действие. */
+export const MINUTES: Record<keyof WeekCounts, { min: number; what: string }> = {
+  summaries: { min: 10, what: 'сводка или разбор (собрать данные из задач, чатов и встреч)' },
+  meetingTasks: { min: 4, what: 'задача из встречи (переслушать запись, сформулировать, поставить)' },
+  meetings: { min: 5, what: 'поставленная встреча (найти время всех участников, разослать)' },
+  mail: { min: 3, what: 'разобранное письмо или черновик ответа' },
+  tasks: { min: 3, what: 'поставленная задача (название, исполнитель, срок, чек-лист)' },
+  reminders: { min: 1, what: 'напоминание' },
+};
+
+export function weekMinutes(c: WeekCounts): number {
+  return (Object.keys(MINUTES) as (keyof WeekCounts)[]).reduce((n, k) => n + c[k] * MINUTES[k].min, 0);
+}
+
+export function weekText(c: WeekCounts): string {
+  const m = weekMinutes(c);
+  const parts = [
+    c.summaries ? `${c.summaries} ${plural(c.summaries, 'сводка', 'сводки', 'сводок')}` : '',
+    c.meetingTasks ? `${c.meetingTasks} ${plural(c.meetingTasks, 'задача', 'задачи', 'задач')} из встреч` : '',
+    c.meetings ? `${c.meetings} ${plural(c.meetings, 'встреча поставлена', 'встречи поставлены', 'встреч поставлено')}` : '',
+    c.mail ? `${c.mail} ${plural(c.mail, 'письмо разобрано', 'письма разобрано', 'писем разобрано')}` : '',
+    c.tasks ? `${c.tasks} ${plural(c.tasks, 'задача поставлена', 'задачи поставлены', 'задач поставлено')}` : '',
+    c.reminders ? `${c.reminders} ${plural(c.reminders, 'напоминание', 'напоминания', 'напоминаний')}` : '',
+  ].filter(Boolean);
+  if (!parts.length) return 'За неделю бот ещё ничего за вас не сделал — поручите первое дело.';
+  const saved = m >= 60 ? `${Math.floor(m / 60)} ч ${m % 60 ? `${m % 60} мин` : ''}`.trim() : `${m} мин`;
+  return `Бот за неделю: ${parts.join(' · ')}. Это примерно ${saved} вашего времени.`;
+}

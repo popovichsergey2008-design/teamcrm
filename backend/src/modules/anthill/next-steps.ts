@@ -69,6 +69,21 @@ export function nextSteps(input: {
     if (out.length) return out;
   }
 
+  // п. 9: сводка отчётов — напомнить, кто не прислал; риски в задачи; Excel; каждый день
+  if (tools.has('staff_reports')) {
+    const f = input.findings.find((x) => x.startsWith('[staff_reports]')) ?? '';
+    const missing = /Не прислали: ([^.\n]+)/.exec(f)?.[1];
+    if (missing) add({ kind: 'prompt', label: 'Напомнить', prompt: `Напомни тем, кто не прислал отчёт (${missing}), — короткое вежливое сообщение каждому, покажи карточками.` });
+    add({ kind: 'prompt', label: 'Создать задачи по рискам', prompt: 'По рискам из этой сводки отчётов предложи задачи — каждую карточкой на подтверждение.' });
+    add({ kind: 'download', label: 'Скачать в Excel', format: 'xlsx' });
+    add({ kind: 'schedule', label: 'Включить каждый день', title: 'Сводка отчётов сотрудников', instruction: 'Сведи вчерашние отчёты сотрудников в одну сводку: по человеку — что сделано, статус, кто не прислал.', phrase: 'по будням в 9:30' });
+    return out;
+  }
+  // п. 8: «Найти в Qevo» — по найденному: спросить о статусе, поставить срок
+  if (tools.has('global_search') || tools.has('search_meetings') || tools.has('search_messages')) {
+    add({ kind: 'fill', label: 'Спросить о статусе', text: 'Спроси о статусе у ' });
+    add({ kind: 'fill', label: 'Поставить срок', text: 'Поставь срок по задаче #' });
+  }
   if ([...tools].some((t) => MESSAGES.has(t))) {
     add({ kind: 'prompt', label: 'Подготовить черновики ответов', prompt: 'Подготовь черновики ответов на сообщения, которые ждут меня. Ничего не отправляй — покажи каждое карточкой.' });
     add({ kind: 'prompt', label: 'Договорённости → задачи', prompt: 'Найди в этих сообщениях договорённости и предложи по каждой задачу — карточками на подтверждение.' });

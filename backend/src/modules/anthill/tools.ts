@@ -10,6 +10,7 @@ import { FeedService } from '../feed/feed.service';
 import { AnthillRepository, Source } from './anthill.repository';
 import { ClientsService } from '../clients/clients.service';
 import { nextRun, parseSchedule, runLabel, scheduleLabel, tzLabel } from './schedule-ru';
+import { csvNote, isReport, reportsText, sheetCsvUrl, summarize } from './staff-reports';
 import { FilesService } from '../files/files.service';
 import { ForecastService } from '../forecast/forecast.service';
 import { AnthillAdminService } from './anthill-admin.service';
@@ -1147,6 +1148,39 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       },
     },
     {
+      // #4893, п. 9: вчерашние отчёты сотрудников — одной сводкой
+      name: 'staff_reports', kind: 'read',
+      description: 'Сводка ежедневных отчётов сотрудников за день: по человеку — что сделано, статус «по плану» или «риски», ссылки на Google-таблицы (читает, если доступ открыт), кто не прислал. Для «сведи отчёты сотрудников», «что в отчётах за вчера», «кто не прислал отчёт». chat — часть названия чата или отдела (необязательно), day — «вчера» (по умолчанию) или «сегодня».',
+      params: { chat: 'чат или отдел (необязательно)', day: 'вчера | сегодня' },
+      async run(ctx, p) {
+        const tz = ctx.timezone || 'Europe/Moscow';
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(ctx.now);
+        const back = /сегодн/i.test(str(p.day, 20)) ? 0 : 1;
+        const day = new Date(Date.parse(`${today}T12:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+        const [y, m, d] = day.split('-').map(Number);
+        const from = new Date(toUtcDay(y, m, d, tz));
+        const to = new Date(from.getTime() + 86_400_000);
+        const chat = str(p.chat, 80) || null;
+        const { rows, members } = await repo.reportMessages(ctx.tenantId, ctx.user.userId, from, to, chat);
+        const reports = rows.filter((r) => chat || isReport({ body: r.body, chatTitle: r.chat_title }))
+          .map((r) => ({ authorId: r.author_id, author: r.author, body: r.body, chatTitle: r.chat_title, at: r.created_at }));
+        const people = summarize(reports);
+        const sent = new Set(people.map((x) => x.authorId));
+        const missing = members.filter((x) => !sent.has(x.id)).map((x) => x.name);
+        const notes = new Map<string, string>();
+        for (const link of [...new Set(people.flatMap((x) => x.sheets))].slice(0, 5)) {
+          const url = sheetCsvUrl(link);
+          if (!url) continue;
+          try {
+            const page = await safeFetch(url, { maxBytes: 300_000, timeoutMs: 6000, types: /text\/(csv|plain)/ });
+            if (page.status === 200) notes.set(link, csvNote(page.body));
+          } catch { /* доступа нет — так и скажем в сводке */ }
+        }
+        const label = back ? 'вчера' : 'сегодня';
+        return { text: reportsText(people, missing, label, notes), sources: [] };
+      },
+    },
+    {
       name: 'chat_digest', kind: 'read',
       description: 'Что в переписке требует внимания: непрочитанное за двое суток — критично (срочные слова), ждут вашего ответа (вопрос в личке, упоминание), к сведению (числом). Для «что пропустил в чатах», «кому надо ответить», «что срочного в переписке».',
       params: {},
@@ -1620,4 +1654,12 @@ async function webSearch(key: string, query: string): Promise<{ title: string; u
   } catch {
     return [];
   }
+}
+
+/** Полночь дня в поясе — моментом UTC (для «отчёты за вчера»). */
+function toUtcDay(y: number, m: number, d: number, tz: string): number {
+  const guess = Date.UTC(y, m - 1, d);
+  const shown = new Date(new Date(guess).toLocaleString('en-US', { timeZone: tz }));
+  const utc = new Date(new Date(guess).toLocaleString('en-US', { timeZone: 'UTC' }));
+  return guess - (shown.getTime() - utc.getTime());
 }

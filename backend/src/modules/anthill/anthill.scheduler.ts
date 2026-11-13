@@ -4,6 +4,7 @@ import { ChatsService } from '../chats/chats.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { AnthillRepository } from './anthill.repository';
 import { BotDelivery } from './bot-delivery.service';
+import { BotStartService } from './bot-start.service';
 import { BriefService } from './brief.service';
 import { nextRun, Schedule } from './schedule-ru';
 
@@ -41,6 +42,7 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
     private readonly repo: AnthillRepository,
     private readonly delivery: BotDelivery,
     private readonly briefs: BriefService,
+    private readonly botStart: BotStartService,
   ) {}
 
   onModuleInit(): void {
@@ -61,6 +63,8 @@ export class AnthillScheduler implements OnModuleInit, OnModuleDestroy {
     await this.reminders().catch((e) => this.log.warn(`напоминания: ${(e as Error).message}`));
     await this.briefs.tick().catch((e) => this.log.warn(`сводки: ${(e as Error).message}`));
     await this.briefs.meetingTick().catch((e) => this.log.warn(`справки перед встречей: ${(e as Error).message}`));
+    // #4893, п. 11: по понедельникам — «Бот за неделю»
+    await this.botStart.weeklyTick().catch((e) => this.log.warn(`бот за неделю: ${(e as Error).message}`));
     try {
       const due = await this.anthill.scheduleDue();
       for (const row of due) {

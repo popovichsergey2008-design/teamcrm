@@ -11,6 +11,7 @@ import { AnthillService, PageContext } from './anthill.service';
 import { CustomResponsesService } from '../chats/custom-responses.service';
 import { AgentLimits, AnthillAdminService } from './anthill-admin.service';
 import { BotStartService } from './bot-start.service';
+import qaBase from '../support/qa-base.data.json';
 import { nextRun, parseSchedule, runLabel, scheduleLabel, tzLabel } from './schedule-ru';
 import { AnthillRepository } from './anthill.repository';
 import { BriefService } from './brief.service';
@@ -423,6 +424,29 @@ export class AnthillController {
   @Post('scenarios/:id/run')
   scenarioRun(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.botStart.scenarioRun(u.tenantId, u.userId, id);
+  }
+
+  /**
+   * #4893, направление 14: вкладка «Ответы» не пустая — частые вопросы из базы команды
+   * (лист «Приложение», #4837). Вопросы, на которые команда ещё не ответила, не показываем.
+   */
+  @Get('faq')
+  faq() {
+    return (qaBase as { id: string; segment: string; question: string; answer: string; handoff: boolean }[])
+      .filter((e) => !e.handoff && !/^A-28[0-5]$/.test(e.id))
+      .map((e) => ({ id: e.id, segment: e.segment.replace(/^\d+\.\s*/, ''), question: e.question, answer: e.answer }));
+  }
+
+  /** #4893, п. 10: мои задачи матрицей Эйзенхауэра. */
+  @Get('matrix')
+  matrix(@CurrentUser() u: AuthUser) {
+    return this.botStart.matrix(u.tenantId, u.userId);
+  }
+
+  /** #4893, п. 11: что бот сделал за неделю и сколько времени это сэкономило. */
+  @Get('week')
+  week(@CurrentUser() u: AuthUser) {
+    return this.botStart.week(u.tenantId, u.userId);
   }
 
   @Get('scenarios/popular')

@@ -10,3 +10,11 @@ CREATE TABLE IF NOT EXISTS bot_scenario_runs (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_bot_scenario_runs_tenant ON bot_scenario_runs (tenant_id, created_at);
+
+-- п. 11: «Бот за неделю» — карточка приходит раз в неделю, по одной на неделю
+CREATE TABLE IF NOT EXISTS bot_week_sends (
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    week    DATE NOT NULL,
+    sent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, week)
+);

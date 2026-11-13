@@ -85,6 +85,7 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   team_pulse: { ...READ, permission: 'radar.view' },
   news_today: READ,
   chat_digest: { ...READ, permission: 'chat.view' },
+  staff_reports: { ...READ, permission: 'chat.view' },
   unanswered: { ...READ, permission: 'chat.view' },
   time_audit: READ,
   my_events: READ,

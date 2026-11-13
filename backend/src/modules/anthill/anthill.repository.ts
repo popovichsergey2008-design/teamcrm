@@ -131,6 +131,33 @@ export class AnthillRepository {
     ) as Promise<MessageRow>;
   }
 
+  /**
+   * #4893, п. 9: сообщения за день в чатах, где есть человек (кроме его собственных), —
+   * кандидаты в отчёты; и участники групп-отчётов — чтобы назвать, кто не прислал.
+   * chat — часть названия чата или отдела: тогда только он.
+   */
+  async reportMessages(tenantId: string, userId: string, from: Date, to: Date, chat: string | null) {
+    const rows = await this.db.many<{ author_id: string; author: string; body: string; chat_title: string | null; created_at: Date }>(
+      `SELECT m.author_id::text, u.full_name AS author, m.body, c.title AS chat_title, m.created_at
+         FROM chat_messages m
+         JOIN chats c ON c.id = m.chat_id
+         JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $2
+         JOIN users u ON u.id = m.author_id
+        WHERE m.tenant_id = $1 AND m.author_id <> $2 AND m.created_at >= $3 AND m.created_at < $4
+          AND m.deleted_at IS NULL AND length(m.body) > 15
+          AND ($5::text IS NULL OR c.title ILIKE '%' || $5 || '%')
+        ORDER BY m.created_at LIMIT 800`,
+      [tenantId, userId, from, to, chat]);
+    const members = await this.db.many<{ id: string; name: string }>(
+      `SELECT DISTINCT u.id::text, u.full_name AS name
+         FROM chats c JOIN chat_members cm ON cm.chat_id = c.id JOIN users u ON u.id = cm.user_id
+         JOIN chat_members me ON me.chat_id = c.id AND me.user_id = $2
+        WHERE c.tenant_id = $1 AND c.kind <> 'dm' AND u.is_active AND u.id <> $2
+          AND (CASE WHEN $3::text IS NULL THEN c.title ILIKE '%отч_т%' ELSE c.title ILIKE '%' || $3 || '%' END)`,
+      [tenantId, userId, chat]);
+    return { rows, members };
+  }
+
   async setMessageButtons(messageId: string, buttons: unknown[]): Promise<void> {
     await this.db.query(`UPDATE ai_messages SET buttons=$2::jsonb WHERE id=$1`, [messageId, JSON.stringify(buttons)]);
   }

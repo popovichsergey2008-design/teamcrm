@@ -3,7 +3,8 @@ import { DbService } from '../../database/db.service';
 import { stageSql } from '../tasks/responsibility';
 import { BriefService } from './brief.service';
 import { classify } from './chat-digest-rules';
-import { buildCards, Connections, inMonth, StartCard, StartFacts } from './bot-start.rules';
+import { BotDelivery } from './bot-delivery.service';
+import { buildCards, Connections, inMonth, isStale, MatrixTask, MINUTES, quadrantOf, StartCard, StartFacts, WeekCounts, weekMinutes, weekText } from './bot-start.rules';
 
 /**
  * Стартовый экран QEVO Bot (#4893, п. 1): вместо десяти одинаковых для всех разделов —
@@ -15,7 +16,7 @@ import { buildCards, Connections, inMonth, StartCard, StartFacts } from './bot-s
 export class BotStartService {
   private readonly log = new Logger('BotStart');
 
-  constructor(private readonly db: DbService, private readonly briefs: BriefService) {}
+  constructor(private readonly db: DbService, private readonly briefs: BriefService, private readonly delivery: BotDelivery) {}
 
   async connections(tenantId: string, userId: string): Promise<Connections> {
     const r = await this.db.one<{ mail: boolean; google: boolean; caldav: boolean; telegram: boolean }>(
@@ -96,5 +97,73 @@ export class BotStartService {
       `SELECT scenario_id AS id, count(DISTINCT user_id)::int AS n FROM bot_scenario_runs
         WHERE tenant_id = $1 AND created_at > now() - interval '30 days'
         GROUP BY scenario_id ORDER BY n DESC, count(*) DESC LIMIT 5`, [tenantId]);
+  }
+
+  // ── п. 10: матрица Эйзенхауэра ──
+
+  /** Мои открытые задачи по квадрантам — правилами; перенести между квадратами можно на экране. */
+  async matrix(tenantId: string, userId: string) {
+    const rows = await this.db.many<{ id: string; title: string; project_name: string | null; deadline_at: Date | null; priority: string | null; updated_at: Date; blocks: boolean; project_id: string }>(
+      `SELECT t.id::text, t.title, p.name AS project_name, t.deadline_at, t.priority, t.updated_at, t.project_id::text,
+              EXISTS (SELECT 1 FROM task_links l JOIN tasks o ON o.id = l.task_id AND o.closed_at IS NULL WHERE l.depends_on_id = t.id) AS blocks
+         FROM tasks t JOIN projects p ON p.id = t.project_id
+        WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.closed_at IS NULL AND t.deleted_at IS NULL AND NOT p.is_demo
+        ORDER BY t.deadline_at NULLS LAST, t.updated_at DESC LIMIT 60`, [tenantId, userId]);
+    const now = new Date();
+    return rows.map((r) => {
+      const t: MatrixTask = { id: r.id, title: r.title, projectName: r.project_name, deadlineAt: r.deadline_at, priority: r.priority, updatedAt: r.updated_at, blocksOthers: r.blocks };
+      return { id: r.id, title: r.title, projectId: r.project_id, projectName: r.project_name, deadlineAt: r.deadline_at, priority: r.priority, quadrant: quadrantOf(t, now), stale: isStale(t, now) };
+    });
+  }
+
+  // ── п. 11: бот за неделю ──
+
+  /** Что бот сделал за 7 дней — из того же журнала действий, что «Как бот действует» в Настройках. */
+  async week(tenantId: string, userId: string) {
+    const r = await this.db.one<{ tasks: number; meetings: number; mail: number; reminders: number; summaries: number; meeting_tasks: number }>(
+      `SELECT
+         (SELECT count(*)::int FROM ai_tool_actions a WHERE a.tenant_id = $1 AND a.user_id = $2 AND a.status = 'done' AND a.created_at > now() - interval '7 days' AND a.tool = 'create_task') AS tasks,
+         (SELECT count(*)::int FROM ai_tool_actions a WHERE a.tenant_id = $1 AND a.user_id = $2 AND a.status = 'done' AND a.created_at > now() - interval '7 days' AND a.tool = 'create_event') AS meetings,
+         (SELECT count(*)::int FROM ai_tool_actions a WHERE a.tenant_id = $1 AND a.user_id = $2 AND a.status = 'done' AND a.created_at > now() - interval '7 days' AND a.tool LIKE 'mail\_%') AS mail,
+         (SELECT count(*)::int FROM ai_tool_actions a WHERE a.tenant_id = $1 AND a.user_id = $2 AND a.status = 'done' AND a.created_at > now() - interval '7 days' AND a.tool = 'create_reminder') AS reminders,
+         (SELECT count(*)::int FROM ai_messages m JOIN ai_sessions s ON s.id = m.session_id
+           WHERE s.tenant_id = $1 AND s.user_id = $2 AND m.role = 'assistant' AND m.created_at > now() - interval '7 days'
+             AND m.tools::text ~ '"(chat_digest|team_pulse|staff_reports|time_audit|news_today|my_day|mail_inbox|whats_missed|get_meeting)"') AS summaries,
+         (SELECT count(*)::int FROM meeting_task_drafts d JOIN tasks t ON t.id = d.task_id
+           WHERE d.tenant_id = $1 AND d.status = 'applied' AND t.created_by = $2 AND t.created_at > now() - interval '7 days') AS meeting_tasks`,
+      [tenantId, userId]);
+    const c: WeekCounts = { summaries: r?.summaries ?? 0, meetingTasks: r?.meeting_tasks ?? 0, meetings: r?.meetings ?? 0, mail: r?.mail ?? 0, tasks: r?.tasks ?? 0, reminders: r?.reminders ?? 0 };
+    const used = await this.db.many<{ scenario_id: string }>(`SELECT DISTINCT scenario_id FROM bot_scenario_runs WHERE tenant_id = $1 AND user_id = $2`, [tenantId, userId]);
+    return {
+      counts: c, minutes: weekMinutes(c), text: weekText(c),
+      method: (Object.keys(MINUTES) as (keyof WeekCounts)[]).map((k) => ({ key: k, minutes: MINUTES[k].min, what: MINUTES[k].what })),
+      used: used.map((u) => u.scenario_id),
+    };
+  }
+
+  /** Понедельник, 9:00–10:00 по поясу человека: карточка «Бот за неделю» в «Заметки» и Telegram. */
+  async weeklyTick(): Promise<number> {
+    const users = await this.db.many<{ tenant_id: string; user_id: string; tz: string | null }>(
+      `SELECT DISTINCT s.tenant_id::text, s.user_id::text, u.timezone AS tz
+         FROM ai_sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.updated_at > now() - interval '14 days' AND u.is_active`);
+    let sent = 0;
+    for (const u of users) {
+      const zone = u.tz || 'Europe/Moscow';
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'short', hour: '2-digit', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(new Date()).map((p) => [p.type, p.value]));
+      if (parts.weekday !== 'Mon' || Number(parts.hour) !== 9) continue;
+      const week = `${parts.year}-${parts.month}-${parts.day}`;
+      const claimed = await this.db.one<{ week: string }>(
+        `INSERT INTO bot_week_sends (user_id, week) VALUES ($1, $2::date) ON CONFLICT DO NOTHING RETURNING week::text`, [u.user_id, week]);
+      if (!claimed) continue;
+      try {
+        const w = await this.week(u.tenant_id, u.user_id);
+        if (!w.minutes) continue;
+        await this.delivery.send(u.tenant_id, u.user_id, { eventKey: 'anthill.week', title: 'QEVO Bot за неделю', body: `${w.text}\nЧто ещё поручить — откройте QEVO Bot.` });
+        sent++;
+      } catch (e) { this.log.warn(`бот за неделю ${u.user_id}: ${(e as Error).message}`); }
+    }
+    return sent;
   }
 }

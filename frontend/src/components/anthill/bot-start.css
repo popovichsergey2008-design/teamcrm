@@ -35,3 +35,26 @@
 .bs-acts { display: flex; flex-wrap: wrap; gap: 8px; }
 /* кнопки следующего шага под ответом (п. 4) — в главном куске, коротко */
 .anthill-next { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.bs-pilots { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--bg-elev); }
+.bs-pilot { display: flex; align-items: flex-start; gap: 10px; padding: 6px 2px; cursor: pointer; }
+.bs-pilot input { margin-top: 3px; }
+.bs-pilot-text { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.bs-pilot-text .dim { font-size: 12px; }
+.bs-pilot.is-off { opacity: .6; cursor: default; }
+.bs-note { font-size: 12px; margin-top: 4px; }
+.bs-week { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 14px; }
+.bs-link { all: unset; cursor: pointer; color: var(--accent); font-size: 13px; }
+.bs-method { margin: 0; padding-left: 18px; font-size: 13px; }
+/* п. 10: матрица Эйзенхауэра */
+.bm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.bm-q { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elev); border-top: 3px solid var(--border-2); }
+.bm-do { border-top-color: var(--danger); } .bm-plan { border-top-color: var(--accent); } .bm-delegate { border-top-color: var(--warn); }
+.bm-head { display: flex; flex-direction: column; }
+.bm-head .dim { font-size: 12px; }
+.bm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 40px; }
+.bm-task { display: flex; flex-direction: column; padding: 6px 8px; border-radius: 8px; background: var(--bg-elev-2); cursor: grab; font-size: 13px; }
+.bm-task .dim { font-size: 11px; }
+.bm-task-title { all: unset; cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.bm-task-title:hover { color: var(--accent); }
+.bm-acts { margin-top: auto; }
+@media (max-width: 640px) { .bm-grid { grid-template-columns: minmax(0, 1fr); } }

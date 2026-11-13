@@ -6,6 +6,9 @@ import { navigate } from '../../lib/router';
 import { toastSaved } from '../../lib/notifications';
 import { botApi, StartCard, StartScreen } from './bot-api';
 import { buildPrompt, CATALOG, Direction, dirStatus, needMet, Scenario, START_CHIPS, STATUS_LABEL } from './bot-catalog';
+import { BotAutopilots } from './BotAutopilots';
+import { BotMatrix } from './BotMatrix';
+import { request } from '../../lib/api';
 import './bot-start.css';
 
 export interface BotStartProps {
@@ -28,7 +31,15 @@ export default function BotStart(p: BotStartProps) {
   const [screen, setScreen] = useState<StartScreen | null>(null);
   const [catalog, setCatalog] = useState<string | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
-  useEffect(() => { void botApi.start().then(setScreen).catch(() => undefined); }, []);
+  const [matrix, setMatrix] = useState(false);
+  // п. 11: «Бот за неделю» — числа из журнала действий бота, методика — по ссылке
+  const [week, setWeek] = useState<{ text: string; minutes: number; method: { key: string; minutes: number; what: string }[]; used: string[] } | null>(null);
+  const [method, setMethod] = useState(false);
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    void botApi.start().then(setScreen).catch(() => undefined);
+    void request<NonNullable<typeof week>>('GET', '/anthill/week').then(setWeek).catch(() => undefined);
+  }, []);
   const conn = { mail: !!screen?.connections.mail, calendar: !!screen?.connections.calendar, web: !!screen?.web };
 
   const onCard = (c: StartCard) => {
@@ -49,6 +60,7 @@ export default function BotStart(p: BotStartProps) {
     if (s.action === 'focus-review') { try { sessionStorage.setItem('teamcrm.focusReview', '1'); } catch { /* */ } navigate({ section: 'focus' }); return; }
     if (s.action === 'pulse') { navigate({ section: 'radar' }); return; }
     if (s.action === 'fill') { p.onFill(s.prompt); return; }
+    if (s.action === 'matrix') { void botApi.ran(s.id).catch(() => undefined); setMatrix(true); return; }
     if (!needMet(s.needs, conn) && s.needs === 'mail') { p.onConnectMail(buildPrompt(s, defaults(s))); return; }
     setScenario(s);
   };
@@ -76,7 +88,24 @@ export default function BotStart(p: BotStartProps) {
         ))}
         <button type="button" className="bs-chip bs-chip-all" onClick={() => setCatalog('')}>Все возможности →</button>
       </div>
-      {catalog !== null && <Catalog focus={catalog} conn={conn} onPick={pick} onClose={() => setCatalog(null)} />}
+      {week && week.minutes > 0 && (
+        <section className="bs-week" aria-label="Бот за неделю">
+          <div>{week.text}</div>
+          <div className="bs-acts">
+            <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { setFresh(true); setCatalog(''); }}>Что ещё поручить?</button>
+            <button type="button" className="fp-link bs-link" aria-expanded={method} onClick={() => setMethod((v) => !v)}>Как считали</button>
+          </div>
+          {method && (
+            <ul className="bs-method dim">
+              {week.method.map((m) => <li key={m.key}>{m.what} — {m.minutes} мин</li>)}
+              <li>Числа — из журнала действий бота («Настройки» → «Как бот действует»), за последние 7 дней.</li>
+            </ul>
+          )}
+        </section>
+      )}
+      {screen && <BotAutopilots web={conn.web} onPreview={setScenario} />}
+      {matrix && <BotMatrix onClose={() => setMatrix(false)} onPrompt={(t) => { setMatrix(false); p.onPrompt(t); }} />}
+      {catalog !== null && <Catalog focus={catalog} conn={conn} onPick={pick} onClose={() => { setCatalog(null); setFresh(false); }} onPilot={(s) => { setCatalog(null); setScenario(s); }} unused={fresh ? week?.used ?? [] : null} />}
       {scenario && (
         <Preview scenario={scenario} onClose={() => setScenario(null)}
           onRun={(text) => { setScenario(null); void botApi.ran(scenario.id).catch(() => undefined); p.onPrompt(text); }}
@@ -89,8 +118,11 @@ export default function BotStart(p: BotStartProps) {
 const defaults = (s: Scenario) => Object.fromEntries((s.params ?? []).map((x) => [x.key, x.def ?? (x.options ? x.options[0] : '')]));
 
 /** «Все возможности» (п. 6): направления со статусом, поиск, популярное в компании. */
-function Catalog({ focus, conn, onPick, onClose }: {
+function Catalog({ focus, conn, onPick, onClose, onPilot, unused }: {
   focus: string; conn: { mail: boolean; calendar: boolean; web: boolean }; onPick: (s: Scenario) => void; onClose: () => void;
+  onPilot: (s: Scenario) => void;
+  /** «Что ещё поручить?» (п. 11): сценарии, которыми человек ещё не пользовался. */
+  unused?: string[] | null;
 }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState<string | null>(focus || null);
@@ -119,6 +151,13 @@ function Catalog({ focus, conn, onPick, onClose }: {
           <div className="bs-scns">{found.length ? found.map(row) : <div className="dim">Ничего не нашлось — спросите бота своими словами.</div>}</div>
         ) : (
           <>
+            {unused && (
+              <section>
+                <div className="bs-sub">Ещё не пробовали</div>
+                <div className="bs-scns">{all.filter(({ s }) => s.wow && !unused.includes(s.id)).slice(0, 8).map(row)}</div>
+              </section>
+            )}
+            {!focus && !unused && <BotAutopilots web={conn.web} onPreview={onPilot} />}
             {pop.length > 0 && (
               <section>
                 <div className="bs-sub">Популярное в вашей компании</div>
@@ -173,6 +212,7 @@ function Preview({ scenario: s, onRun, onFill, onClose }: {
       await botApi.addSchedule({ title: s.schedule!.title, instruction: text, schedule: phrase });
       void botApi.ran(s.id).catch(() => undefined);
       toastSaved('Включено', `${sched?.label ?? phrase} · первый выпуск ${sched?.firstRun ?? ''}`);
+      window.dispatchEvent(new Event('teamcrm:bot-schedules'));
       onClose();
     } catch (e) { toastSaved('Не получилось', e instanceof ApiError ? e.message : ''); }
     finally { setBusy(false); }
