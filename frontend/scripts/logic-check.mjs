@@ -2058,6 +2058,23 @@ test('#4894: после правки курсор возвращается ту�
   assert.equal(editFocusTarget(['10'], null), 'feed', 'отмена без сообщения — в ленту');
 });
 
+test('#4909: поиск на доске — число целиком, без ссылок, с причиной', async () => {
+  const { searchHit, findIn, matches } = await load('lib/board-filter.ts');
+  const base = { mode: 'off', userId: '1' };
+  const t = (id, title, description = '') => ({ id, title, description });
+  assert.equal(searchHit(t('1232', 'Написать 50 текстов для нового сайта'), '50')?.where, 'title', 'в названии');
+  assert.equal(searchHit(t('1201', 'правки статей', 'https://docs.google.com/document/d/11Pr3dY50tC8h6N/edit'), '50'), null, 'цифры внутри ссылки — не совпадение');
+  assert.equal(searchHit(t('9', 'Отчёт', 'см. [док](https://x.ru/50) и ![](/api/files/50)'), '50'), null, 'адрес markdown-ссылки — тоже');
+  assert.equal(searchHit(t('9', 'Бюджет 1500'), '50'), null, 'число целиком: 50 ≠ 1500');
+  const d = searchHit(t('9', 'Отчёт', 'нужно сделать 50 карточек до пятницы'), '50');
+  assert.equal(d?.where, 'description', 'в описании');
+  assert.ok(d.snippet.includes('50 карточек'), 'отрывок с совпадением');
+  assert.equal(searchHit(t('50', 'Любая'), '#50')?.where, 'id', 'по номеру');
+  assert.deepEqual(findIn('Написать 50 текстов', '50'), { at: 9, len: 2 }, 'позиция для подсветки');
+  assert.equal(findIn('Правка СТАТЕЙ', 'статей')?.at, 7, 'без учёта регистра');
+  assert.equal(matches(t('1201', 'правки статей', 'https://docs.google.com/d/Y50x'), { ...base, search: '50' }), false, 'фильтр доски не берёт «правки статей»');
+});
+
 let failed = 0;
 for (const [name, fn] of cases) {
   try {

@@ -121,11 +121,41 @@ function quickMatch(task: TaskLike, k: QuickKey, o: FilterOpts, stage?: string):
 }
 
 function searchMatch(task: TaskLike, q: string): boolean {
+  return !q.trim() || searchHit(task, q) !== null;
+}
+
+/** Где в тексте найдено: позиция и длина. Число ищем целиком: «50» не находит «1500». */
+export function findIn(text: string, q: string): { at: number; len: number } | null {
   const s = q.trim().toLowerCase();
-  if (!s) return true;
+  if (!s) return null;
+  const t = text.toLowerCase();
+  const digits = /^\d+$/.test(s);
+  for (let i = t.indexOf(s); i >= 0; i = t.indexOf(s, i + 1)) {
+    if (digits && (/\d/.test(t[i - 1] ?? '') || /\d/.test(t[i + s.length] ?? ''))) continue;
+    return { at: i, len: s.length };
+  }
+  return null;
+}
+
+// ссылки в описании не ищем: «50» внутри адреса документа — не повод показывать задачу (#4909)
+const URLS = /(https?:\/\/|www\.)\S+/gi;
+
+/**
+ * #4909: почему задача попала в выдачу — по номеру, в названии или в описании (с отрывком).
+ * null — не подходит. Отрывок из описания показываем на карточке, иначе непонятно, «при чём тут 50».
+ */
+export function searchHit(task: TaskLike, q: string): { where: 'id' | 'title' | 'description'; snippet?: string } | null {
+  const s = q.trim();
+  if (!s) return null;
   const num = s.replace(/^#/, '');
-  if (/^\d+$/.test(num) && String(task.id ?? '') === num) return true;
-  return (task.title ?? '').toLowerCase().includes(s) || (task.description ?? '').toLowerCase().includes(s);
+  if (/^\d+$/.test(num) && String(task.id ?? '') === num) return { where: 'id' };
+  if (findIn(task.title ?? '', s)) return { where: 'title' };
+  const text = (task.description ?? '').replace(/\]\([^)]*\)/g, ']').replace(URLS, ' ').replace(/\s+/g, ' ');
+  const hit = findIn(text, s);
+  if (!hit) return null;
+  const from = Math.max(0, hit.at - 30);
+  const to = Math.min(text.length, hit.at + hit.len + 40);
+  return { where: 'description', snippet: `${from > 0 ? '…' : ''}${text.slice(from, to).trim()}${to < text.length ? '…' : ''}` };
 }
 
 function roleMatch(task: TaskLike, role: TaskView, userId: string): boolean {

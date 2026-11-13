@@ -9,7 +9,7 @@ import { COL_DND, TASK_DND } from '../lib/board-dnd';
 import { Button } from './ui/button';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { cardStatus, dueText, initials, nextStep, splitDone, stageAge, staleDays, daysWord } from '../lib/board-card';
-import { PAUSED_STAGES } from '../lib/board-filter';
+import { findIn, PAUSED_STAGES, searchHit } from '../lib/board-filter';
 
 interface Props {
   column: BoardColumn;
@@ -42,6 +42,8 @@ interface Props {
   hiddenLabels?: Set<string>;
   /** Свёрнута ли колонка — запоминается на человека и проект. */
   collapsed?: boolean;
+  /** #4909: текущий поиск — показываем все найденные (и в «Готово», и в свёрнутых) и подсвечиваем совпадение. */
+  search?: string;
   onToggleCollapse?: (columnId: string) => void;
   /** Мягкий порог «в работе на человека» (#4798 §14). */
   wipLimit?: number | null;
@@ -82,6 +84,7 @@ export function ColumnView({
   me = '',
   hiddenLabels,
   collapsed = false,
+  search = '',
   onToggleCollapse,
   wipLimit,
   detail = false,
@@ -118,7 +121,9 @@ export function ColumnView({
   const isDoneCol = stageNow === 'done';
   const crowded = !isFirst && !isDoneCol && column.tasks.length > 15;
   const split = useMemo(() => (isDoneCol ? splitDone(column.tasks) : { recent: column.tasks, older: [] }), [isDoneCol, column.tasks]);
-  const shown = isDoneCol && !showOlder ? split.recent : column.tasks;
+  // #4909: при поиске «Готово» не прячет найденное за «Показать более ранние»
+  const searching = !!search.trim();
+  const shown = isDoneCol && !showOlder && !searching ? split.recent : column.tasks;
   // место среди показанных → место среди задач колонки (часть «Готово» свёрнута)
   const realIndex = (i: number) => (shown === column.tasks ? i : i < shown.length ? column.tasks.indexOf(shown[i]) : column.tasks.length);
   // порог «в работе»: больше N задач у одного человека в этой колонке — мягко подсветить
@@ -157,7 +162,7 @@ export function ColumnView({
     if (taskId) onMoveTask(taskId, column.id, realIndex(index));
   };
 
-  if (collapsed) {
+  if (collapsed && !(searching && column.tasks.length)) {
     // Свёрнутая колонка — узкая полоса с названием и числом; принимает карточки как обычная.
     return (
       <div
@@ -332,9 +337,10 @@ export function ColumnView({
             moveTargets={columns?.filter((c) => c.id !== column.id)}
             onMoveTo={(columnId) => onMoveTask(t.id, columnId, columns?.find((c) => c.id === columnId)?.count ?? 0)}
             detail={detail}
+            search={search}
           />
         ))}
-        {isDoneCol && split.older.length > 0 && (
+        {isDoneCol && split.older.length > 0 && !searching && (
           <Button variant="ghost" size="sm" className="col-older" onClick={() => setShowOlder((v) => !v)}>
             {showOlder ? 'Скрыть более ранние' : `Показать более ранние (${split.older.length})`}
           </Button>
@@ -366,8 +372,10 @@ function TaskCard({
   moveTargets,
   onMoveTo,
   detail = false,
+  search = '',
 }: {
   detail?: boolean;
+  search?: string;
   task: Task;
   me: string;
   stage: string;
@@ -503,7 +511,8 @@ function TaskCard({
             </span>
           )}
         </div>
-        <div className="task-title kc-title">{task.title}</div>
+        <div className="task-title kc-title"><Marked text={task.title} q={search} /></div>
+        <SearchWhy task={task} q={search} />
         <div className="kc-line3">
           <span className="kc-ava" style={{ background: avatarColor(task.assignee_id) }} aria-label={assigneeName ? `Исполнитель: ${assigneeName}` : 'Исполнитель не назначен'}>{assigneeName ? initials(assigneeName) : '—'}</span>
           {status
@@ -537,13 +546,14 @@ function TaskCard({
       </div>
       <div className="task-title">
         {task.risk_level && !paused && <span className={`risk-dot risk-${task.risk_level}`} title={`Риск срока: ${task.risk_level}`} />}
-        {task.title}
+        <Marked text={task.title} q={search} />
         {!!task.unread && (
           <span className="task-unread" title={`Новое для вас: ${task.unread} изменений с вашего последнего просмотра (не просрочка)`}>
             {task.unread > 99 ? '99+' : task.unread}
           </span>
         )}
       </div>
+      <SearchWhy task={task} q={search} />
       <div className="kc-people">
         <span className="kc-who" title={assigneeName ? `Исполнитель: ${assigneeName}` : 'Исполнитель не назначен'}>
           <span className={`kc-dot${assigneeName ? '' : ' is-empty'}`} aria-hidden="true" />
@@ -589,4 +599,24 @@ function avatarColor(id: string | null | undefined): string {
 function fileWord(n: number): string {
   const m10 = n % 10; const m100 = n % 100;
   return m10 === 1 && m100 !== 11 ? 'файл' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'файла' : 'файлов';
+}
+
+/** #4909: найденный фрагмент — подсвечен, чтобы было видно, почему карточка в выдаче. */
+const MARK: React.CSSProperties = { background: '#ffe58a', color: '#1f2328', borderRadius: 3, padding: '0 1px' };
+
+function Marked({ text, q }: { text: string; q: string }) {
+  const hit = q.trim() ? findIn(text, q) : null;
+  if (!hit) return <>{text}</>;
+  return <>{text.slice(0, hit.at)}<mark style={MARK}>{text.slice(hit.at, hit.at + hit.len)}</mark>{text.slice(hit.at + hit.len)}</>;
+}
+
+/** Совпадение не в названии — строкой под ним: «в описании: …» или «по номеру». */
+function SearchWhy({ task, q }: { task: Task; q: string }) {
+  const hit = q.trim() ? searchHit(task, q) : null;
+  if (!hit || hit.where === 'title') return null;
+  return (
+    <div className="dim" style={{ fontSize: 12, lineHeight: 1.35, margin: '2px 0', overflowWrap: 'anywhere' }}>
+      {hit.where === 'id' ? 'найдено по номеру' : <>в описании: <Marked text={hit.snippet ?? ''} q={q} /></>}
+    </div>
+  );
 }

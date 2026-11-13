@@ -1070,6 +1070,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                     hiddenLabels={hiddenLabels}
                     wipLimit={board.project.wip_limit ?? null}
                     detail={ui.detail}
+                    search={query.search}
                     onQuickAdd={async (columnId, title) => {
                       try {
                         const created = await api.createTask({ projectId: String(board.project.id), title, columnId: String(columnId), confirmedWithoutTags: true });
