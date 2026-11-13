@@ -20,7 +20,7 @@ export function TeamBonusBlock({ bonus, canInvite, onChanged }: {
   const [inviteOpen, setInviteOpen] = useState(false);
   // #4863: ссылка для знакомой команды через сайт — qevo.one/?ref=<код>, код уходит в регистрацию
   const [ref, setRef] = useState<{ url: string; joined: number } | null>(null);
-  useEffect(() => { void request<{ url: string; joined: number }>('GET', '/account/referral-link').then(setRef).catch(() => undefined); }, []);
+  useEffect(() => { void request<{ url: string; joined: number }>('GET', '/me/referral-link').then(setRef).catch(() => undefined); }, []);
   const copy = async () => {
     if (!ref) return;
     try { await navigator.clipboard.writeText(ref.url); toastSaved('Ссылка скопирована', ref.url); }
