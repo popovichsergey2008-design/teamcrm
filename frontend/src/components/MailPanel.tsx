@@ -5,6 +5,7 @@ import type { MailAccount, MailCategory, MailMessage, MailProvider } from '../li
 import { overlayProps } from '../lib/overlay';
 import { Select } from './ui/select';
 import { confirmAction } from './ui/dialog';
+import { clearMailReturn, MailConnectCard, readMailReturn } from './mail/MailConnectCard';
 
 const PROVIDER_LABEL: Record<string, string> = {
   gmail: 'Gmail', yandex: 'Яндекс Почта', mailru: 'Mail.ru', outlook: 'Outlook / Microsoft 365', custom: 'Другой сервер (IMAP)',
@@ -23,7 +24,8 @@ const CATEGORY: { key: MailCategory | 'all'; label: string }[] = [
 /**
  * Личная почта (ТЗ-18, §8.1–8.2).
  *
- * Ящик подключается паролем приложения; письма забираются раз в 5 минут и
+ * Ящик подключается кнопкой почтовика — Яндекс, Google, Mail.ru (#4893, п. 2); пароль
+ * приложения с инструкцией — только под «Другая почта». Письма забираются раз в 5 минут и
  * разбираются по категориям правилами. Ответить можно через QEVO Bot: «ответь на
  * письмо #N» — черновик ляжет в «Черновики» ящика, отправка — только по кнопке.
  * Ящик личный: его письма не видит никто, включая владельца организации.
@@ -38,6 +40,19 @@ export function MailPanel({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({ provider: 'gmail', email: '', password: '', imapHost: '', imapPort: '993', smtpHost: '', smtpPort: '465' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // #4893: форма с паролем приложения прячется под «Другая почта»; ?other=1 — сразу она (ссылка из карточки бота)
+  const [other, setOther] = useState(() => new URLSearchParams(window.location.search).get('other') === '1');
+  // возврат от почтовика (mail_connected=…): карточка уже прочла его на первой отрисовке — из адреса убираем
+  const [ret] = useState(() => readMailReturn());
+  useEffect(() => {
+    if (ret) clearMailReturn();
+    // ?other=1 тоже убираем: navigate переносит запрос адреса на следующие экраны
+    const u = new URL(window.location.href);
+    if (u.searchParams.has('other')) {
+      u.searchParams.delete('other');
+      window.history.replaceState(window.history.state, '', u.pathname + u.search + u.hash);
+    }
+  }, [ret]);
 
   const load = useCallback(() => {
     api.mailAccounts().then((a) => { setAccounts(a); if (!a.length) setAdding(true); }).catch(() => setAccounts([]));
@@ -59,6 +74,7 @@ export function MailPanel({ onClose }: { onClose: () => void }) {
       });
       setForm((f) => ({ ...f, email: '', password: '' }));
       setAdding(false);
+      setOther(false);
       load();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось подключить ящик'); }
     finally { setBusy(false); }
@@ -109,9 +125,13 @@ export function MailPanel({ onClose }: { onClose: () => void }) {
             <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(true)}><Icon name="plus" size={13} /> Подключить ящик</button>
           )}
 
-          {adding && (
+          {(adding || ret) && (
+            <MailConnectCard from="settings" onConnected={load} onOtherMail={() => { setAdding(true); setOther(true); }} />
+          )}
+
+          {adding && other && (
             <div className="anthill-card">
-              <div className="anthill-group-head">Подключить ящик</div>
+              <div className="anthill-group-head">Другая почта — паролем приложения</div>
               <Select
                 ariaLabel="Почтовик"
                 value={form.provider}
@@ -138,7 +158,7 @@ export function MailPanel({ onClose }: { onClose: () => void }) {
                 <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy || !form.email.trim() || !form.password} onClick={() => { void connect(); }}>
                   {busy ? 'Проверяю вход…' : 'Подключить'}
                 </button>
-                {!!accounts?.length && <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setAdding(false)}>Отмена</button>}
+                <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { setOther(false); if (accounts?.length) setAdding(false); }}>Отмена</button>
               </div>
             </div>
           )}

@@ -13,6 +13,21 @@ import nodemailer from 'nodemailer';
 export interface MailServer {
   email: string; username: string; password: string;
   imapHost: string; imapPort: number; smtpHost: string; smtpPort: number;
+  /** Вход кнопкой (#4893): короткий access-токен почтовика вместо пароля — вход по XOAUTH2. */
+  accessToken?: string | null;
+}
+
+/**
+ * Чем входить в IMAP. С токеном imapflow сам выберет OAUTHBEARER или XOAUTH2 по
+ * возможностям сервера; пароль при этом не передаём вовсе — его у такого ящика нет.
+ */
+export function imapAuth(s: MailServer): { user: string; pass: string } | { user: string; accessToken: string } {
+  return s.accessToken ? { user: s.username, accessToken: s.accessToken } : { user: s.username, pass: s.password };
+}
+
+/** То же для SMTP: nodemailer шлёт XOAUTH2 при type 'OAuth2' и готовом accessToken. */
+export function smtpAuth(s: MailServer): { user: string; pass: string } | { type: 'OAuth2'; user: string; accessToken: string } {
+  return s.accessToken ? { type: 'OAuth2', user: s.username, accessToken: s.accessToken } : { user: s.username, pass: s.password };
 }
 
 export interface FetchedMail {
@@ -56,7 +71,7 @@ export async function assertPublicHost(host: string, port: number, kind: 'imap' 
 function imap(s: MailServer): ImapFlow {
   return new ImapFlow({
     host: s.imapHost, port: s.imapPort, secure: s.imapPort === 993,
-    auth: { user: s.username, pass: s.password },
+    auth: imapAuth(s),
     logger: false, socketTimeout: TIMEOUT_MS, greetingTimeout: TIMEOUT_MS, connectionTimeout: TIMEOUT_MS,
   } as any);
 }
@@ -64,14 +79,18 @@ function imap(s: MailServer): ImapFlow {
 function smtp(s: MailServer) {
   return nodemailer.createTransport({
     host: s.smtpHost, port: s.smtpPort, secure: s.smtpPort === 465,
-    auth: { user: s.username, pass: s.password },
+    auth: smtpAuth(s) as any,
     connectionTimeout: TIMEOUT_MS, greetingTimeout: TIMEOUT_MS, socketTimeout: TIMEOUT_MS,
   });
 }
 
 /** Человеческие слова вместо кодов почтовика: «AUTHENTICATIONFAILED» человеку ничего не скажет. */
-export function humanMailError(e: unknown): string {
+export function humanMailError(e: unknown, oauth = false): string {
   const msg = String((e as any)?.responseText ?? (e as any)?.response ?? (e as Error)?.message ?? e);
+  // у ящика, подключённого кнопкой, пароля нет — про пароль приложения ему говорить нельзя
+  if (oauth && /auth|login|credentials|535|534|invalid/i.test(msg)) {
+    return 'Почтовик не пустил по входу через кнопку. Проверьте, что в настройках почты включён доступ по IMAP (у Яндекса — «Почтовые программы»), и подключите ещё раз.';
+  }
   if (/auth|login|credentials|password|535|534|invalid/i.test(msg)) return 'Почтовый сервер не принял логин или пароль. Нужен пароль приложения, а не обычный пароль от почты.';
   if (/disabled|not enabled|imap.*(off|disabled)/i.test(msg)) return 'В ящике выключен доступ по IMAP — включите его в настройках почты.';
   if (/timeout|timed out|ETIMEDOUT|ECONNREFUSED|EHOSTUNREACH|ENOTFOUND/i.test(msg)) return 'Почтовый сервер не отвечает. Проверьте адрес и порт.';
@@ -86,12 +105,12 @@ export async function verify(s: MailServer): Promise<void> {
     await c.logout();
   } catch (e) {
     try { c.close(); } catch { /* уже закрыт */ }
-    throw new Error(humanMailError(e));
+    throw new Error(humanMailError(e, !!s.accessToken));
   }
   try {
     await smtp(s).verify();
   } catch (e) {
-    throw new Error(`Чтение работает, отправка — нет. ${humanMailError(e)}`);
+    throw new Error(`Чтение работает, отправка — нет. ${humanMailError(e, !!s.accessToken)}`);
   }
 }
 

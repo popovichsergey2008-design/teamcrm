@@ -158,3 +158,27 @@ export function nextRun(s: Schedule, after: Date, tz: string | null): Date {
   // Сюда не добраться: за 400 суток встречается любой день месяца и любой день недели.
   return new Date(after.getTime() + DAY_MS);
 }
+
+/** Пояс подписью: «МСК» для Москвы, иначе «UTC+2». */
+export function tzLabel(tz: string | null, at = new Date()): string {
+  const zone = tz || 'Europe/Moscow';
+  if (zone === 'Europe/Moscow') return 'МСК';
+  const h = Math.round(offsetMs(at, zone) / 3_600_000 * 10) / 10;
+  return `UTC${h >= 0 ? '+' : '−'}${Math.abs(h)}`;
+}
+
+/**
+ * Когда запуск — в поясе расписания, а не сервера и не браузера (#4893): «сегодня в 18:00
+ * МСК», «завтра в 9:00 UTC+2», «пн, 17 ноября в 18:00 МСК». Раньше карточка писала время
+ * сервера, а вкладка — браузера, и 18:00 по расписанию превращалось в 22:00.
+ */
+export function runLabel(at: Date, tz: string | null, now = new Date()): string {
+  const zone = tz || 'Europe/Moscow';
+  const day = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  const time = new Intl.DateTimeFormat('ru-RU', { timeZone: zone, hour: 'numeric', minute: '2-digit' }).format(at);
+  const today = day(now);
+  const tomorrow = day(new Date(now.getTime() + DAY_MS));
+  const which = day(at) === today ? 'сегодня' : day(at) === tomorrow ? 'завтра'
+    : new Intl.DateTimeFormat('ru-RU', { timeZone: zone, weekday: 'short', day: 'numeric', month: 'long' }).format(at);
+  return `${which} в ${time} ${tzLabel(zone, at)}`;
+}

@@ -1,0 +1,16 @@
+/* Почта кнопкой (#4893): карточка подключения в чате бота и в «Настройки → Почта». */
+.mail-connect {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev);
+}
+.mail-connect p { margin: 0; }
+.mail-connect-title, .mail-connect-done { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); font-weight: 600; }
+.mail-connect-done svg { color: var(--ok); flex: none; }
+.mail-connect-sub, .mail-connect-note { font-size: var(--fs-sm); color: var(--text-mut); line-height: 1.45; }
+.mail-connect-sum { font-size: var(--fs-md); line-height: 1.45; }
+.mail-connect-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.mail-connect-row > .ui-btn { flex: 1 1 0; min-width: 96px; justify-content: center; }
+.mail-connect-other { align-self: flex-start; }
+@media (max-width: 480px) {
+  .mail-connect-row > .ui-btn { flex: 1 1 100%; }
+}

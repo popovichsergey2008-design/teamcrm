@@ -1,0 +1,37 @@
+/* #4893: стартовый экран QEVO Bot, каталог и предпросмотр — ленивым куском */
+.bs { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; }
+.bs-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.bs-card { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elev); min-height: 92px; }
+.bs-card-text { font-weight: 600; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+.bs-card .ui-btn { align-self: flex-start; }
+.bs-skel { background: var(--bg-elev-2); border-color: transparent; }
+.bs-example { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); padding: 4px 2px; }
+.bs-example:hover { color: var(--accent); }
+.bs-example:focus-visible, .bs-chip:focus-visible, .bs-scn:focus-visible, .bs-dir-head:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 8px; }
+.bs-chips, .bs-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.bs-chip { all: unset; cursor: pointer; padding: 5px 11px; border-radius: 99px; border: 1px solid var(--border); background: var(--bg-elev); font-size: 13px; }
+.bs-chip:hover { border-color: var(--accent-line); }
+.bs-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.bs-chip-all { color: var(--accent); }
+.bs-cat { display: flex; flex-direction: column; gap: 10px; }
+.bs-sub { font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); margin: 4px 0; }
+.bs-dir { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.bs-dir-head { all: unset; cursor: pointer; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.bs-dir-head:hover { background: var(--hover); }
+.bs-dir-title { flex: 1; font-weight: 600; }
+.bs-status { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: var(--bg-elev-2); color: var(--text-dim); white-space: nowrap; }
+.bs-status.ok { color: var(--ok); }
+.bs-status.connect, .bs-badge.connect { color: var(--warn); }
+.bs-status.plan, .bs-badge.plan { color: var(--text-dim); }
+.bs-scns { display: flex; flex-direction: column; padding: 2px 6px 8px; }
+.bs-scn { all: unset; cursor: pointer; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; font-size: 14px; }
+.bs-scn:hover { background: var(--hover); }
+.bs-scn-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bs-badge { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--bg-elev-2); color: var(--text-dim); white-space: nowrap; }
+.bs-prev { display: flex; flex-direction: column; gap: 12px; }
+.bs-param { display: flex; flex-direction: column; gap: 6px; }
+.bs-sched { display: flex; flex-direction: column; gap: 10px; }
+.bs-sched-info { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--bg-elev-2); font-size: 14px; overflow-wrap: anywhere; }
+.bs-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+/* кнопки следующего шага под ответом (п. 4) — в главном куске, коротко */
+.anthill-next { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

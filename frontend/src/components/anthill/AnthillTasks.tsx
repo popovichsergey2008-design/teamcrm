@@ -213,7 +213,7 @@ export function AnthillTasks({ onOpenSession }: { onOpenSession?: (sessionId: st
                 </div>
                 <div className="dim anthill-task-what">{row.instruction}</div>
                 <div className="dim anthill-task-meta">
-                  {row.status === 'active' && row.nextRunAt && <span><Icon name="clock" size={11} /> следующий: {stampLabel(row.nextRunAt)}</span>}
+                  {row.status === 'active' && row.nextRunAt && <span><Icon name="clock" size={11} /> следующий: {row.nextRunLabel ?? stampLabel(row.nextRunAt)}</span>}
                   {row.status === 'paused' && <span className="ui-badge ui-badge-neutral">на паузе</span>}
                   {row.lastRunAt && <span>· последний: {stampLabel(row.lastRunAt)}</span>}
                   {row.runs > 0 && <span>· запусков: {row.runs}</span>}

@@ -6,6 +6,8 @@ export interface AccountRow {
   id: string; tenant_id: string; user_id: string; provider: string; email: string; username: string;
   imap_host: string; imap_port: number; smtp_host: string; smtp_port: number; secret_enc: string;
   status: string; last_error: string | null; last_sync_at: Date | null; last_uid: string; uid_validity: string | null; created_at: Date;
+  /** #4893: password — пароль приложения в secret_enc; oauth — в secret_enc refresh-токен, вход XOAUTH2. */
+  auth_kind: 'password' | 'oauth'; oauth_provider: string | null; oauth_access_enc: string | null; oauth_expires_at: Date | null;
 }
 
 export interface MessageRow {
@@ -39,10 +41,60 @@ export class MailboxRepository {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (user_id, email) DO UPDATE SET
          provider=$3, username=$5, imap_host=$6, imap_port=$7, smtp_host=$8, smtp_port=$9, secret_enc=$10,
-         status='ok', last_error=NULL
+         status='ok', last_error=NULL, auth_kind='password', oauth_provider=NULL, oauth_access_enc=NULL, oauth_expires_at=NULL
        RETURNING *`,
       [i.tenantId, i.userId, i.provider, i.email, i.username, i.imapHost, i.imapPort, i.smtpHost, i.smtpPort, i.secretEnc],
     ) as Promise<AccountRow>;
+  }
+
+  /**
+   * Ящик, подключённый кнопкой (#4893). Тот же адрес, что был на пароле приложения, —
+   * переводим на вход по токену, письма и метка забора остаются.
+   */
+  upsertOAuthAccount(i: {
+    tenantId: string; userId: string; provider: string; oauthProvider: string; email: string;
+    imapHost: string; imapPort: number; smtpHost: string; smtpPort: number;
+    refreshEnc: string; accessEnc: string; expiresIn: number;
+  }): Promise<AccountRow> {
+    return this.db.one<AccountRow>(
+      `INSERT INTO mail_accounts (tenant_id, user_id, provider, email, username, imap_host, imap_port, smtp_host, smtp_port, secret_enc,
+                                  auth_kind, oauth_provider, oauth_access_enc, oauth_expires_at)
+       VALUES ($1,$2,$3,$4,$4,$5,$6,$7,$8,$9,'oauth',$10,$11, now() + make_interval(secs => $12))
+       ON CONFLICT (user_id, email) DO UPDATE SET
+         provider=$3, username=$4, imap_host=$5, imap_port=$6, smtp_host=$7, smtp_port=$8, secret_enc=$9,
+         auth_kind='oauth', oauth_provider=$10, oauth_access_enc=$11, oauth_expires_at=now() + make_interval(secs => $12),
+         status='ok', last_error=NULL
+       RETURNING *`,
+      [i.tenantId, i.userId, i.provider, i.email, i.imapHost, i.imapPort, i.smtpHost, i.smtpPort, i.refreshEnc,
+        i.oauthProvider, i.accessEnc, i.expiresIn],
+    ) as Promise<AccountRow>;
+  }
+
+  /** Свежий access-токен после обновления; почтовик мог выдать и новый refresh — тогда меняем и его. */
+  async saveAccessToken(id: string, accessEnc: string, expiresIn: number, refreshEnc?: string | null): Promise<void> {
+    await this.db.query(
+      `UPDATE mail_accounts SET oauth_access_enc=$2, oauth_expires_at=now() + make_interval(secs => $3),
+              secret_enc = COALESCE($4, secret_enc)
+        WHERE id=$1`,
+      [id, accessEnc, expiresIn, refreshEnc ?? null],
+    );
+  }
+
+  /** Доступ отозван у почтовика: забор остановится до нового входа (ошибочные ящики пробуем лишь раз в час). */
+  async markOAuthBroken(id: string, why: string): Promise<void> {
+    await this.db.query(
+      `UPDATE mail_accounts SET status='error', last_error=$2, oauth_access_enc=NULL WHERE id=$1`, [id, why.slice(0, 500)],
+    );
+  }
+
+  /** Сколько писем за последние дни по категориям — всех, не только непрочитанных: «214 писем · важно 6». */
+  async categoryCounts(tenantId: string, userId: string, sinceDays: number): Promise<Partial<Record<MailCategory, number>>> {
+    const rows = await this.db.many<{ category: MailCategory; n: number }>(
+      `SELECT category, count(*)::int AS n FROM mail_messages
+        WHERE tenant_id=$1 AND user_id=$2 AND sent_at > now() - make_interval(days => $3::int) GROUP BY category`,
+      [tenantId, userId, sinceDays],
+    );
+    return Object.fromEntries(rows.map((r) => [r.category, Number(r.n)]));
   }
 
   async removeAccount(tenantId: string, userId: string, id: string): Promise<boolean> {

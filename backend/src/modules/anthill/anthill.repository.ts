@@ -11,6 +11,8 @@ export interface SessionRow {
 export interface MessageRow {
   id: string; session_id: string; role: string; content: string;
   citations: unknown[] | null; tools: unknown[] | null; action_id: string | null; created_at: Date;
+  /** #4893, п. 4: кнопки следующего шага под ответом. */
+  buttons?: unknown[] | null;
 }
 export interface ActionRow {
   id: string; tenant_id: string; session_id: string | null; user_id: string; tool: string;
@@ -111,7 +113,7 @@ export class AnthillRepository {
   // ── сообщения ──
   messages(sessionId: string, limit = 200): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
-      `SELECT id, session_id, role, content, citations, tools, action_id, created_at
+      `SELECT id, session_id, role, content, citations, tools, action_id, created_at, buttons
          FROM ai_messages WHERE session_id=$1 ORDER BY id DESC LIMIT $2`,
       [sessionId, limit],
     ).then((rows) => rows.reverse());
@@ -127,6 +129,19 @@ export class AnthillRepository {
       [i.tenantId, i.sessionId, i.role, i.content, i.citations ? JSON.stringify(i.citations) : null,
         i.tools ? JSON.stringify(i.tools) : null, i.actionId ?? null, i.model ?? null],
     ) as Promise<MessageRow>;
+  }
+
+  async setMessageButtons(messageId: string, buttons: unknown[]): Promise<void> {
+    await this.db.query(`UPDATE ai_messages SET buttons=$2::jsonb WHERE id=$1`, [messageId, JSON.stringify(buttons)]);
+  }
+
+  /** Сообщение бота для выгрузки — только из своего разговора. */
+  ownMessage(tenantId: string, userId: string, messageId: string) {
+    return this.db.one<{ content: string; created_at: Date }>(
+      `SELECT m.content, m.created_at FROM ai_messages m JOIN ai_sessions s ON s.id = m.session_id
+        WHERE m.id = $3 AND m.role = 'assistant' AND s.tenant_id = $1 AND s.user_id = $2`,
+      [tenantId, userId, messageId],
+    );
   }
 
   async setMessageAction(messageId: string, actionId: string): Promise<void> {

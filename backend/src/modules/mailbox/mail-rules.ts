@@ -81,6 +81,34 @@ export function mailBriefLine(counts: Partial<Record<MailCategory, number>>): st
   return parts.length ? `Почта (непрочитанное): ${parts.join(', ')}` : null;
 }
 
+/**
+ * Первый результат после подключения (#4893): «214 писем · важно 6 · можно не читать 202».
+ * Важно — срочное и от важных людей; можно не читать — рассылки и «к сведению»; всё
+ * остальное (просьбы, клиенты, счета) — «ждут ответа». Три числа, чтобы с первого
+ * экрана было видно, что секретарь уже разобрал ящик.
+ */
+export function firstSummary(counts: Partial<Record<MailCategory, number>>): {
+  total: number; important: number; action: number; skip: number; text: string;
+} {
+  const n = (c: MailCategory) => Number(counts[c] ?? 0);
+  const important = n('critical');
+  const action = n('action') + n('client') + n('invoice');
+  const skip = n('fyi') + n('newsletter');
+  const total = important + action + skip;
+  const text = total
+    ? [`${total} ${plural(total, 'письмо', 'письма', 'писем')}`, `важно ${important}`, ...(action ? [`ждут ответа ${action}`] : []), `можно не читать ${skip}`].join(' · ')
+    : 'За последние 3 дня писем нет';
+  return { total, important, action, skip, text };
+}
+
+function plural(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
 /** Адреса почтовиков: пароль приложения — единственный способ без регистрации у каждого. */
 export const PROVIDERS: Record<string, { imap: [string, number]; smtp: [string, number]; hint: string }> = {
   gmail: { imap: ['imap.gmail.com', 993], smtp: ['smtp.gmail.com', 465], hint: 'Нужен пароль приложения: Аккаунт Google → Безопасность → Двухэтапная аутентификация → Пароли приложений.' },

@@ -52,6 +52,11 @@ export interface ToolPolicy {
    * участниками. Такое никогда не выполняется само — решение заказчика 07.10.
    */
   affectsOthers: boolean | ((p: Params) => boolean);
+  /**
+   * Всегда карточкой «Включить / Отмена», что бы ни стояло в автономности (#4893, п. 3):
+   * регулярная задача работает без человека неделями — включает её только он сам.
+   */
+  alwaysConfirm?: boolean;
 }
 
 const READ: ToolPolicy = { risk: 'read', group: 'read', affectsOthers: false };
@@ -85,7 +90,7 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   my_events: READ,
 
   create_reminder: { risk: 'low_write', group: 'self', affectsOthers: false },
-  create_scheduled_task: { risk: 'low_write', group: 'self', affectsOthers: false },
+  create_scheduled_task: { risk: 'low_write', group: 'self', affectsOthers: false, alwaysConfirm: true },
   create_skill: { risk: 'low_write', group: 'self', affectsOthers: false },
   remember: { risk: 'low_write', group: 'self', affectsOthers: false },
 
@@ -170,6 +175,6 @@ export function decide(tool: string, params: Params, autonomy: Autonomy): Autono
   const pol = policyOf(tool);
   if (pol.group === 'read') return 'auto';
   const mode = autonomy[pol.group];
-  if (mode === 'auto' && (affectsOthers(tool, params) || pol.risk === 'destructive')) return 'confirm';
+  if (mode === 'auto' && (affectsOthers(tool, params) || pol.risk === 'destructive' || pol.alwaysConfirm)) return 'confirm';
   return mode;
 }

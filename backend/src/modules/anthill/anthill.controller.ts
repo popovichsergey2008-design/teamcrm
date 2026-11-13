@@ -10,6 +10,9 @@ import { AppException } from '../../common/http/app-exception';
 import { AnthillService, PageContext } from './anthill.service';
 import { CustomResponsesService } from '../chats/custom-responses.service';
 import { AgentLimits, AnthillAdminService } from './anthill-admin.service';
+import { BotStartService } from './bot-start.service';
+import { nextRun, parseSchedule, runLabel, scheduleLabel, tzLabel } from './schedule-ru';
+import { AnthillRepository } from './anthill.repository';
 import { BriefService } from './brief.service';
 
 class ContextDto {
@@ -111,6 +114,9 @@ class MemoryPatchDto {
   @IsString() @MinLength(2) @MaxLength(160) title!: string;
   @IsString() @MinLength(2) @MaxLength(600) content!: string;
 }
+class SchedulePreviewDto {
+  @IsString() @MaxLength(200) schedule!: string;
+}
 class ScheduleDto {
   @IsString() @MinLength(2) @MaxLength(160) title!: string;
   @IsString() @MinLength(5) @MaxLength(2000) instruction!: string;
@@ -144,7 +150,19 @@ export class AnthillController {
     private readonly responses: CustomResponsesService,
     private readonly admin: AnthillAdminService,
     private readonly briefs: BriefService,
+    private readonly botStart: BotStartService,
+    private readonly repo: AnthillRepository,
   ) {}
+
+  /** #4893, п. 1: стартовый экран — карточки по данным человека, пример вопроса, подключения. */
+  @Get('start')
+  async startScreen(@CurrentUser() u: AuthUser) {
+    const [screen, web] = await Promise.all([
+      this.botStart.start(u.tenantId, u.userId, await this.repo.userTz(u.tenantId, u.userId)),
+      this.anthill.webAvailable(u.tenantId),
+    ]);
+    return { ...screen, web, tz: await this.repo.userTz(u.tenantId, u.userId) };
+  }
 
   /*
     Настройки агента и расход (разд. 52–53).
@@ -255,6 +273,15 @@ export class AnthillController {
     } finally {
       if (!closed) res.end();
     }
+  }
+
+  /** #4893, п. 4: «Скачать в Excel» — ответ бота таблицей. */
+  @Get('messages/:id/export.xlsx')
+  async exportXlsx(@CurrentUser() u: AuthUser, @Param('id') id: string, @Res() res: Response) {
+    const f = await this.anthill.exportXlsx(u.tenantId, u.userId, id);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${f.name}"`);
+    res.send(f.buffer);
   }
 
   /** Прогон из нескольких шагов (ТЗ-18): подтвердить все оставшиеся шаги разом. */
@@ -378,6 +405,29 @@ export class AnthillController {
   @Get('schedules')
   schedules(@CurrentUser() u: AuthUser) {
     return this.anthill.schedules(u.tenantId, u.userId);
+  }
+
+  /**
+   * #4893, п. 3: предпросмотр регулярной задачи до «Включить» — расписание с поясом и
+   * когда будет первый выпуск. Ничего не создаёт.
+   */
+  @Post('schedules/preview')
+  async previewSchedule(@CurrentUser() u: AuthUser, @Body() dto: SchedulePreviewDto) {
+    const sched = parseSchedule(dto.schedule);
+    if (!sched) throw AppException.validation('Не понял расписание — например, «по будням в 18:00»');
+    const tz = await this.repo.userTz(u.tenantId, u.userId);
+    return { label: `${scheduleLabel(sched)} ${tzLabel(tz)}`, firstRun: runLabel(nextRun(sched, new Date(), tz), tz), tz: tz || 'Europe/Moscow' };
+  }
+
+  /** #4893, п. 6: запуск сценария каталога и «Популярное в вашей компании». */
+  @Post('scenarios/:id/run')
+  scenarioRun(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.botStart.scenarioRun(u.tenantId, u.userId, id);
+  }
+
+  @Get('scenarios/popular')
+  popular(@CurrentUser() u: AuthUser) {
+    return this.botStart.popular(u.tenantId);
   }
 
   @Post('schedules')

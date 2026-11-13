@@ -9,7 +9,7 @@ import { WorkloadGuardService } from '../workload/workload.service';
 import { FeedService } from '../feed/feed.service';
 import { AnthillRepository, Source } from './anthill.repository';
 import { ClientsService } from '../clients/clients.service';
-import { nextRun, parseSchedule, scheduleLabel } from './schedule-ru';
+import { nextRun, parseSchedule, runLabel, scheduleLabel, tzLabel } from './schedule-ru';
 import { FilesService } from '../files/files.service';
 import { ForecastService } from '../forecast/forecast.service';
 import { AnthillAdminService } from './anthill-admin.service';
@@ -30,7 +30,11 @@ import { classify, digestText, unansweredText } from './chat-digest-rules';
 import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
 
 /** Почты нет — не одна строка «подключите», а путь по шагам со снимками (заказчик, 12.11). */
-const MAIL_OFF = 'Почта не подключена — разобрать письма нельзя. Объясни человеку подробно, как подключить, и вставь оба снимка: 1) в левом меню «Ещё» → «Личный кабинет» → карточка «Почта»; 2) выбрать сервис (Gmail, Яндекс, Mail.ru, Outlook или свой сервер), ввести адрес почты и пароль приложения → «Подключить». Пароль приложения — не обычный пароль: Gmail — «Аккаунт Google → Безопасность → Двухэтапная аутентификация → Пароли приложений»; Яндекс — «Яндекс ID → Безопасность → Пароли приложений»; Mail.ru — «Настройки → Безопасность → Пароли для внешних приложений». Письма видит только он сам; бот ничего не отправляет без его кнопки — черновики ложатся в «Черновики» ящика. После подключения пусть повторит просьбу.\n![«Ещё» → «Личный кабинет» → карточка «Почта»](/api/help/img/bs-mail-1.webp)\n![«Почта»: сервис, адрес, пароль приложения → «Подключить»](/api/help/img/bs-mail-2.webp)';
+/*
+  #4893, п. 2: почты нет — не инструкция с паролем приложения, а кнопка «Подключить почту»
+  под ответом (Яндекс, Google, Mail.ru — 20 секунд). После входа бот сам выполнит просьбу.
+*/
+export const MAIL_OFF = 'Почта не подключена. Скажи одной короткой фразой: подключить можно кнопкой «Подключить почту» ниже — через Яндекс, Google или Mail.ru за 20 секунд, без пароля приложения, а после подключения ты сам выполнишь эту просьбу. Не пиши инструкций и не упоминай пароль приложения.';
 
 /**
  * Инструменты QEVO Bot (ТЗ-6, разд. 48).
@@ -694,7 +698,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const title = str(p.title, 160) || clip(instruction, 60);
         const first = nextRun(sched, ctx.now, ctx.timezone ?? null);
         return {
-          text: `Делать регулярно?\nЗадача: ${title}\nЧто делать: ${instruction}\nКогда: ${scheduleLabel(sched)}\nПервый запуск: ${first.toLocaleString('ru-RU')}`,
+          text: `Включить регулярную задачу?\nЗадача: ${title}\nЧто делать: ${instruction}\nКогда: ${scheduleLabel(sched)} ${tzLabel(ctx.timezone ?? null)}\nПервый выпуск: ${runLabel(first, ctx.timezone ?? null, ctx.now)}\nКуда придёт: чат «Заметки» и Telegram, если он привязан`,
           params: { title, instruction, schedule: sched },
         };
       },
@@ -716,7 +720,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         if (!title || instruction.length < 5) throw new Error('Нужны название и что делать при запуске');
         const first = nextRun(sched, ctx.now, ctx.timezone ?? null);
         return {
-          text: `Делать регулярно?\nЗадача: ${title}\nЧто делать: ${instruction}\nКогда: ${scheduleLabel(sched)}\nПервый запуск: ${first.toLocaleString('ru-RU')}`,
+          text: `Включить регулярную задачу?\nЗадача: ${title}\nЧто делать: ${instruction}\nКогда: ${scheduleLabel(sched)} ${tzLabel(ctx.timezone ?? null)}\nПервый выпуск: ${runLabel(first, ctx.timezone ?? null, ctx.now)}\nКуда придёт: чат «Заметки» и Telegram, если он привязан`,
           params: { title, instruction, schedule: sched },
         };
       },
@@ -728,7 +732,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           schedule: sched, nextRunAt: nextRun(sched, ctx.now, ctx.timezone ?? null),
         });
         return {
-          text: `Буду делать ${scheduleLabel(sched)}: «${row.title}». Задача видна во вкладке «Задачи» — там же пауза и правка.`,
+          text: `Включено: ${scheduleLabel(sched)} ${tzLabel(ctx.timezone ?? null)} — «${row.title}». Первый выпуск ${runLabel(nextRun(sched, ctx.now, ctx.timezone ?? null), ctx.timezone ?? null, ctx.now)}. Пауза и правка — во вкладке «Задачи».`,
           output: { scheduleId: String(row.id) },
           sources: [],
         };

@@ -14,6 +14,7 @@ import { ForecastModule } from '../forecast/forecast.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
 import { AnthillController } from './anthill.controller';
+import { BotStartService } from './bot-start.service';
 import { AnthillRepository } from './anthill.repository';
 import { AnthillService } from './anthill.service';
 import { AnthillScheduler } from './anthill.scheduler';
@@ -48,7 +49,7 @@ import { BriefService } from './brief.service';
     FeedModule,
   ],
   controllers: [AnthillController],
-  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery, BriefRepository, BriefService],
+  providers: [AnthillService, AnthillRepository, AnthillScheduler, AnthillAdminService, IntegrationCryptoService, BotDelivery, BriefRepository, BriefService, BotStartService],
   // AnthillRepository наружу: служба заботы заводит агенту сессию под каждый разговор,
   // чтобы первая линия помнила нить, а не отвечала с чистого листа каждый раз.
   exports: [AnthillService, AnthillRepository, BotDelivery],

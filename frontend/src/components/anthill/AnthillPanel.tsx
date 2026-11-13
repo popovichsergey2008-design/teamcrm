@@ -4,11 +4,10 @@ import { Icon } from '../Icon';
 import { RichText } from '../RichText';
 import { VoiceStatus } from '../VoiceStatus';
 import { api, ApiError } from '../../lib/api';
-import type { AnthillAction, AnthillAttachment, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
+import type { AnthillAction, AnthillAttachment, AnthillButton, AnthillContext, AnthillMessage, AnthillSession, AnthillSkill, AnthillSource } from '../../lib/api';
 import { shrinkImage } from '../../lib/image-shrink';
 import './anthill-attach.css';
 import { Lightbox } from '../LightboxLazy';
-import { QuickStart } from './QuickStart';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { stampLabel } from '../../lib/chat-text';
@@ -20,11 +19,20 @@ import { stampLabel } from '../../lib/chat-text';
 /** Черновик вопроса боту — в общем хранилище черновиков переписки, как у чата `anthill`. */
 const BOT_DRAFT_KEY = 'chat:anthill';
 
+/** Главная кнопка карточки — словами действия (#4893, п. 4): «Включить», «Поставить и пригласить». */
+const CONFIRM_LABEL: Record<string, string> = {
+  create_scheduled_task: 'Включить', create_event: 'Поставить и пригласить', send_message: 'Отправить',
+  mail_send: 'Отправить', create_reminder: 'Напомнить', add_comment: 'Отправить',
+};
 const AnthillTasks = lazy(() => import('./AnthillTasks').then((m) => ({ default: m.AnthillTasks })));
 const AnthillMemory = lazy(() => import('./AnthillMemory').then((m) => ({ default: m.AnthillMemory })));
 const AnthillSkills = lazy(() => import('./AnthillSkills').then((m) => ({ default: m.AnthillSkills })));
 const AnthillResponses = lazy(() => import('./AnthillResponses').then((m) => ({ default: m.AnthillResponses })));
 const AnthillAdmin = lazy(() => import('./AnthillAdmin').then((m) => ({ default: m.AnthillAdmin })));
+// #4893: стартовый экран, каталог и предпросмотр — своим куском, первый экран за них не платит
+const BotStart = lazy(() => import('./BotStart'));
+const BotSchedule = lazy(() => import('./BotStart').then((m) => ({ default: m.ScheduleFromAnswer })));
+const MailConnectCard = lazy(() => import('../mail/MailConnectCard').then((m) => ({ default: m.MailConnectCard })));
 import { useAuth } from '../../state/auth';
 import { getSocket } from '../../lib/socket';
 import { showNotification, showToast } from '../../lib/notifications';
@@ -143,6 +151,10 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   const [err, setErr] = useState('');
   /** #1326: быстрый старт поверх идущего разговора — по кнопке в шапке. */
   const [quickShown, setQuickShown] = useState(false);
+  // #4893, п. 2: сценарию нужна почта — карточка «Яндекс / Google / Mail.ru» с исходной просьбой
+  const [mailCard, setMailCard] = useState<{ resume?: string } | null>(null);
+  // п. 4: «Присылать это каждый будний день в 9:00?» — предпросмотр расписания
+  const [scheduleAsk, setScheduleAsk] = useState<Extract<AnthillButton, { kind: 'schedule' }> | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
   const busy = live !== null;
   const feedRef = useRef<HTMLDivElement>(null);
@@ -285,6 +297,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     show();
     let pending: { id: string; tool: string; preview: string; fields?: AnthillAction['fields']; values?: Record<string, string> } | null = null;
     let landed = false;
+    let buttons: AnthillButton[] = [];
     const steps: AnthillMessage[] = [];
     const land = (messageId: string) => {
       if (landed) return;
@@ -295,6 +308,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         action: pending
           ? { id: pending.id, tool: pending.tool, status: 'pending', output: null, fields: pending.fields ?? [], values: pending.values ?? {} }
           : null,
+        buttons,
       }, ...steps]);
     };
 
@@ -303,6 +317,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
       onDelta: (t) => { acc.text += t; acc.status = ''; show(); },
       onSources: (s) => { acc.sources = s; show(); },
       onAction: (a) => { pending = a; },
+      onButtons: (b) => { buttons = b; },
       // шаги прогона встают после вступления — копим, пока вступление не легло в ленту
       onStep: (s) => {
         steps.push({
@@ -325,6 +340,37 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     setLive(null);
     loadSessions();
   };
+  /** Заготовка в строку ввода: человек дописывает и отправляет сам. */
+  const fillDraft = (t: string) => { setQuickShown(false); setDraft(t); window.setTimeout(() => inputRef.current?.focus(), 0); };
+  /** Кнопка следующего шага (#4893, п. 4). Пишущее бот всё равно покажет карточкой. */
+  const onNext = async (messageId: string, b: AnthillButton) => {
+    if (b.kind === 'prompt') { void send(b.prompt); return; }
+    if (b.kind === 'fill') { fillDraft(b.text); return; }
+    if (b.kind === 'schedule') { setScheduleAsk(b); return; }
+    if (b.kind === 'link') { navigate(b.href); return; }
+    if (b.kind === 'connect_mail') { setMailCard({ resume: b.resume }); return; }
+    try {
+      const blob = await api.authedBlob(`/api/anthill/messages/${messageId}/export.xlsx`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `qevo-bot-${new Date().toISOString().slice(0, 10)}.xlsx`; a.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) { showToast({ kind: 'info', title: 'Не получилось', body: e instanceof ApiError ? e.message : 'Попробуйте ещё раз' }); }
+  };
+  // #4893, п. 2: вернулись после входа в почту — сразу выполняем исходную просьбу, повторять не нужно
+  useEffect(() => {
+    if (!/[?&]mail_connected=/.test(window.location.search)) return;
+    void import('../mail/MailConnectCard').then(async (m) => {
+      const r = m.readMailReturn();
+      m.clearMailReturn();
+      if (!r) return;
+      if (!r.connected) { setMailCard({ resume: r.resume ?? undefined }); setErr(r.error || 'Почту подключить не удалось'); return; }
+      setMailCard(null);
+      const first = await m.waitFirstSummary().catch(() => null);
+      if (first?.text) showToast({ kind: 'saved', title: 'Почта подключена', body: first.text });
+      if (r.resume) void sendRef.current(r.resume);
+    });
+  }, []);
   // #4620: вопрос из подсказки обучения или Qevo-бота первого запуска (lib/bot-ask) — сразу в работу
   const sendRef = useRef(send);
   sendRef.current = send;
@@ -592,17 +638,29 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
 
       {tab === 'chat' && (
       <div className="chat-feed anthill-feed" ref={feedRef}>
-        {quickShown && messages.length > 0 && (
+        {((quickShown && messages.length > 0) || (messages.length === 0 && !live)) && (
           <div className="anthill-empty">
-            <QuickStart onPick={(p) => { setQuickShown(false); void send(p); }} />
+            <Suspense fallback={null}>
+              <BotStart
+                onPrompt={(t) => { setQuickShown(false); void send(t); }}
+                onFill={fillDraft}
+                onVoice={() => { setQuickShown(false); if (!voice.recording) voice.toggle(); }}
+                onConnectMail={(resume) => { setQuickShown(false); setMailCard({ resume }); }}
+              />
+            </Suspense>
+            {messages.length === 0 && context && <div className="dim">Под рукой {ctxLine} — можно спросить «что здесь осталось сделать?»</div>}
           </div>
         )}
-        {messages.length === 0 && !live && (
-          <div className="anthill-empty">
-            <div className="anthill-empty-title">Спросите о задачах, чатах и митах — или попросите сделать</div>
-            <QuickStart onPick={(p) => { void send(p); }} />
-            {context && <div className="dim">Под рукой {ctxLine} — можно спросить «что здесь осталось сделать?»</div>}
-          </div>
+
+        {mailCard && (
+          <Suspense fallback={null}>
+            <MailConnectCard resume={mailCard.resume} />
+          </Suspense>
+        )}
+        {scheduleAsk && (
+          <Suspense fallback={null}>
+            <BotSchedule ask={scheduleAsk} onClose={() => setScheduleAsk(null)} onRun={(t) => { setScheduleAsk(null); void send(t); }} />
+          </Suspense>
         )}
 
         {messages.map((m) => (
@@ -628,12 +686,22 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
               </div>
             )}
 
+            {m.role === 'assistant' && !!m.buttons?.length && !m.action && (
+              <div className="anthill-next" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {m.buttons.map((b) => (
+                  <button key={b.label} type="button" className="ui-btn ui-btn-outline ui-btn-sm" disabled={busy} onClick={() => void onNext(m.id, b)}>
+                    {b.kind === 'download' && <Icon name="download" size={13} />}{b.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {m.action && (
               <div className="anthill-action">
                 {m.action.status === 'pending' && (
                   <>
                     <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'confirm'); }}>
-                      <Icon name="check" size={13} /> Создать
+                      <Icon name="check" size={13} /> {CONFIRM_LABEL[m.action.tool] ?? 'Создать'}
                     </button>
                     {m.action.fields.length > 0 && (
                       <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing((cur) => (cur === m.id ? null : m.id))}>

@@ -1571,6 +1571,8 @@ export const api = {
       /** Шаг прогона — готовое сообщение с карточкой; introId — вступление, после которого он встаёт. */
       onStep?: (s: { introId: string; message: { id: string; content: string; action: AnthillAction | null } }) => void;
       onDone?: (d: { messageId: string }) => void; onError?: (m: string) => void;
+      /** #4893, п. 4: кнопки следующего шага под ответом. */
+      onButtons?: (b: AnthillButton[]) => void;
     },
     /** #4726: вложения, уже прочитанные ботом (anthillAttach) */
     attachments?: AnthillAttachment[],
@@ -1610,6 +1612,7 @@ export const api = {
             else if (ev === 'sources') on.onSources?.(data.sources ?? []);
             else if (ev === 'action') on.onAction?.(data.action);
             else if (ev === 'step') on.onStep?.(data);
+            else if (ev === 'buttons') on.onButtons?.(data.buttons ?? []);
             else if (ev === 'done') on.onDone?.(data);
             else if (ev === 'error') on.onError?.(data.text ?? data.message);
           }
@@ -3434,13 +3437,24 @@ export interface AnthillSchedule {
   label: string;
   status: 'active' | 'paused' | 'done' | string;
   nextRunAt: string | null; lastRunAt: string | null;
+  /** #4893: «сегодня в 18:00 МСК» — в поясе расписания, а не браузера */
+  nextRunLabel?: string | null;
   lastResult: string | null; lastError: string | null;
   runs: number; sessionId: string | null;
 }
 export interface AnthillMessage {
   id: string; role: 'user' | 'assistant'; content: string; citations: AnthillSource[]; createdAt: string;
   action: AnthillAction | null;
+  buttons?: AnthillButton[];
 }
+/** #4893, п. 4: кнопка следующего шага — просьба боту, заготовка, регулярное, файл, переход. */
+export type AnthillButton =
+  | { kind: 'prompt'; label: string; prompt: string }
+  | { kind: 'fill'; label: string; text: string }
+  | { kind: 'schedule'; label: string; title: string; instruction: string; phrase: string }
+  | { kind: 'download'; label: string; format: 'xlsx' }
+  | { kind: 'link'; label: string; href: string }
+  | { kind: 'connect_mail'; label: string; resume: string };
 
 export interface ReportQuery { from: string; to: string; projectId?: string; userId?: string }
 export interface ReportKpi {

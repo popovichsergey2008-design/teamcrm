@@ -100,6 +100,14 @@ x-api-env: &api-env
   GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
   GOOGLE_PICKER_API_KEY: ${GOOGLE_PICKER_API_KEY:-}
   GOOGLE_PROJECT_NUMBER: ${GOOGLE_PROJECT_NUMBER:-}
+  # #4893 почта кнопкой: вход в ящик через Яндекс и Mail.ru по OAuth (Gmail — тем же
+  # GOOGLE_OAUTH_*). Пусто — кнопка есть, но объясняет «ещё не включено» и ведёт в «Другая почта».
+  # Адрес возврата по умолчанию — APP_BASE_URL/api/mailbox/oauth/callback.
+  YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
+  YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
+  MAILRU_OAUTH_CLIENT_ID: ${MAILRU_OAUTH_CLIENT_ID:-}
+  MAILRU_OAUTH_CLIENT_SECRET: ${MAILRU_OAUTH_CLIENT_SECRET:-}
+  MAIL_OAUTH_REDIRECT_URI: ${MAIL_OAUTH_REDIRECT_URI:-}
   TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
   # Push на телефоны (ТЗ-9): сервисный аккаунт проекта Firebase, JSON или base64.
   # Не задан — push выключен, ящик уведомлений работает как прежде.

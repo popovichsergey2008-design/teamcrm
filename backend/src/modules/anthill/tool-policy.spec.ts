@@ -28,6 +28,8 @@ describe('tool-policy', () => {
 
   it('по умолчанию сам выполняется только «для себя»', () => {
     expect(decide('create_reminder', {}, DEFAULT_AUTONOMY)).toBe('auto');
+    // #4893: регулярная задача — всегда «Включить / Отмена», даже при «auto»
+    expect(decide('create_scheduled_task', {}, DEFAULT_AUTONOMY)).toBe('confirm');
     expect(decide('create_event', {}, DEFAULT_AUTONOMY)).toBe('confirm');
     expect(decide('search_tasks', {}, DEFAULT_AUTONOMY)).toBe('auto');
   });

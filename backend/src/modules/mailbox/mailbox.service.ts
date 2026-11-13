@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
 import { assertPublicHost, fetchNew, MailServer, saveDraft, send, verify } from './mail-client';
-import { categorize, MailCategory, mailBriefLine, PROVIDERS, triageText } from './mail-rules';
+import { MailOAuthService } from './mail-oauth.service';
+import { categorize, firstSummary, MailCategory, mailBriefLine, PROVIDERS, triageText } from './mail-rules';
 import { AccountRow, MailboxRepository, MessageRow } from './mailbox.repository';
 
 export interface ConnectInput {
@@ -15,7 +16,8 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 /**
  * Личная почта сотрудника в QEVO (ТЗ-18, §8.1–8.2).
  *
- * Подключение — паролем приложения по IMAP/SMTP; письма забираются раз в 5 минут и
+ * Подключение — кнопкой почтовика по OAuth (#4893, mail-oauth.service) или паролем
+ * приложения по IMAP/SMTP («Другая почта»); письма забираются раз в 5 минут и
  * разбираются правилами по категориям. Ответ бот готовит черновиком в папку
  * «Черновики» самого ящика; отправка — только по подтверждению человека.
  */
@@ -23,7 +25,11 @@ const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/;
 export class MailboxService {
   private readonly log = new Logger('Mailbox');
 
-  constructor(private readonly repo: MailboxRepository, private readonly crypto: IntegrationCryptoService) {}
+  constructor(
+    private readonly repo: MailboxRepository,
+    private readonly crypto: IntegrationCryptoService,
+    private readonly oauth: MailOAuthService,
+  ) {}
 
   providers() {
     return Object.entries(PROVIDERS).map(([id, p]) => ({ id, imapHost: p.imap[0], imapPort: p.imap[1], smtpHost: p.smtp[0], smtpPort: p.smtp[1], hint: p.hint }));
@@ -68,11 +74,11 @@ export class MailboxService {
     return { deleted: true };
   }
 
-  private server(a: AccountRow): MailServer {
-    return {
-      email: a.email, username: a.username, password: this.crypto.decrypt(a.secret_enc),
-      imapHost: a.imap_host, imapPort: a.imap_port, smtpHost: a.smtp_host, smtpPort: a.smtp_port,
-    };
+  /** Как войти в ящик: паролем приложения или (#4893) свежим access-токеном почтовика. */
+  private async server(a: AccountRow): Promise<MailServer> {
+    const box = { email: a.email, username: a.username, imapHost: a.imap_host, imapPort: a.imap_port, smtpHost: a.smtp_host, smtpPort: a.smtp_port };
+    if (a.auth_kind === 'oauth') return { ...box, password: '', accessToken: await this.oauth.accessToken(a) };
+    return { ...box, password: this.crypto.decrypt(a.secret_enc) };
   }
 
   /** Забрать новые письма одного ящика и разобрать их. */
@@ -80,7 +86,7 @@ export class MailboxService {
     let added = 0;
     try {
       const vip = new Set(await this.repo.vipEmails(String(a.user_id)));
-      const r = await fetchNew(this.server(a), Number(a.last_uid), a.uid_validity !== null ? Number(a.uid_validity) : null);
+      const r = await fetchNew(await this.server(a), Number(a.last_uid), a.uid_validity !== null ? Number(a.uid_validity) : null);
       if (a.uid_validity !== null && Number(a.uid_validity) !== r.uidValidity) await this.repo.resetMessages(String(a.id));
       for (const m of r.mails) {
         // своё же письмо (копия себе, ответ из другого клиента) — не повод для сводки
@@ -128,6 +134,28 @@ export class MailboxService {
     return triageText(rows.map((r) => ({ id: String(r.id), fromName: r.from_name, fromEmail: r.from_email, subject: r.subject, category: r.category, reason: r.reason })));
   }
 
+  /**
+   * Первый результат сразу после подключения (#4893): «214 писем · важно 6 · можно не
+   * читать 202» за 3 дня. Ящик ещё ни разу не забран — pending: экран подождёт и спросит снова.
+   */
+  async firstSummary(tenantId: string, userId: string) {
+    const accounts = await this.repo.accounts(tenantId, userId);
+    if (!accounts.length) return { connected: false, pending: false, ...firstSummary({}) };
+    const pending = accounts.some((a) => a.status === 'ok' && !a.last_sync_at);
+    return { connected: true, pending, ...firstSummary(await this.repo.categoryCounts(tenantId, userId, 3)) };
+  }
+
+  /**
+   * Первый забор сразу после входа кнопкой — но браузер на возврате ждёт не дольше
+   * нескольких секунд: большой ящик дозаберётся в фоне, а сводка покажет «ещё считаю».
+   */
+  async syncSoon(accountId: string, waitMs = 6000): Promise<void> {
+    const a = await this.repo.byId(accountId);
+    if (!a) return;
+    const run = this.syncAccount(a).catch(() => undefined);
+    await Promise.race([run, new Promise((r) => setTimeout(r, waitMs).unref?.())]);
+  }
+
   async briefLine(userId: string): Promise<string | null> {
     return mailBriefLine(await this.repo.unreadCounts(userId));
   }
@@ -166,7 +194,7 @@ export class MailboxService {
   async draft(tenantId: string, userId: string, p: { replyTo?: string | null; to?: string | null; subject?: string | null; text: string }) {
     const { account, mail } = await this.outgoing(tenantId, userId, p);
     try {
-      const folder = await saveDraft(this.server(account), mail);
+      const folder = await saveDraft(await this.server(account), mail);
       return { folder, to: mail.to, subject: mail.subject, account: account.email };
     } catch (e) {
       throw AppException.conflict(`Черновик не сохранился: ${(e as Error).message}`);
@@ -176,7 +204,7 @@ export class MailboxService {
   async send(tenantId: string, userId: string, p: { replyTo?: string | null; to?: string | null; subject?: string | null; text: string }) {
     const { account, mail } = await this.outgoing(tenantId, userId, p);
     try {
-      await send(this.server(account), mail, account.provider === 'gmail');
+      await send(await this.server(account), mail, account.provider === 'gmail');
       return { to: mail.to, subject: mail.subject, account: account.email };
     } catch (e) {
       throw AppException.conflict(`Письмо не ушло: ${(e as Error).message}`);
@@ -193,7 +221,7 @@ export class MailboxService {
 function view(a: AccountRow) {
   return {
     id: String(a.id), provider: a.provider, email: a.email, status: a.status, lastError: a.last_error,
-    lastSyncAt: a.last_sync_at, imapHost: a.imap_host, smtpHost: a.smtp_host,
+    lastSyncAt: a.last_sync_at, imapHost: a.imap_host, smtpHost: a.smtp_host, auth: a.auth_kind ?? 'password',
   };
 }
 
