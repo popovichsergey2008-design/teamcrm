@@ -282,3 +282,16 @@
 .cal-agent-row .cal-pill { margin-left: 0; }
 .cal-agent-time { width: auto; }
 .cal-team-row { display: grid; grid-template-columns: minmax(90px, 160px) 1fr auto; gap: 10px; align-items: center; font-size: var(--fs-sm); }
+
+/* 13.11: страница календаря прокручивается целиком, сетка — почти на весь экран по высоте,
+   на экранах уже 1440 px панели ассистента уходят под сетку, чтобы она не была узкой */
+.calendar-page.cal-v2 { overflow-y: auto; }
+.cal-v2 .cal-body { flex: 0 0 auto; }
+.cal-v2 .cal-main { min-height: 0; }
+.cal-v2 .cal-grid { flex: none; height: max(560px, calc(100vh - 96px)); }
+.cal-v2 .cal-month, .cal-v2 .cal-list { min-height: max(560px, calc(100vh - 96px)); }
+.cal-side { flex: 0 0 270px; position: sticky; top: 0; align-self: flex-start; max-height: calc(100vh - 32px); }
+@media (max-width: 1440px) {
+  .cal-body.with-plan { flex-direction: column; }
+  .cal-body.with-plan .cal-side { flex: 0 0 auto; position: static; max-height: none; overflow: visible; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; width: 100%; }
+}
