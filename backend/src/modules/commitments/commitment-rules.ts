@@ -22,11 +22,20 @@ const VERBS = [
   'поправлю', 'добавлю', 'загружу', 'выложу', 'согласую', 'соберу', 'оформлю', 'обновлю', 'разберусь', 'займусь',
   'подключу', 'настрою', 'починю', 'завершу', 'сдам', 'отвечу', 'покажу', 'сверю', 'посчитаю', 'оплачу', 'договорюсь',
   'созвонюсь', 'организую', 'назначу', 'забронирую', 'закажу', 'распечатаю', 'подпишу', 'опубликую', 'протестирую',
+  'напомню', 'дошлю', 'довезу', 'привезу', 'запишу', 'сниму', 'смонтирую', 'нарисую',
 ];
 const VERB_RE = new RegExp(`${before}(я\\s+)?(?:(?:сегодня|завтра|сейчас|потом|вечером|утром)\\s+)?(${VERBS.join('|')})${after}`, 'iu');
 const TAKE_RE = new RegExp(`${before}(беру(?:\\s+на\\s+себя)?|возьму\\s+на\\s+себя|это\\s+на\\s+мне|за\\s+мной)${after}`, 'iu');
 /** «Сейчас покажу», «щас поправлю», «давайте ещё раз покажу» — действие прямо сейчас. */
 const IMMEDIATE_RE = new RegExp(`${before}(?:(?:прямо\\s+)?сейчас|щас|счас)\\s+(?:я\\s+)?(?:[${L}]+\\s+)?(?:${VERBS.join('|')})${after}|${before}(?:${VERBS.join('|')})\\s+(?:сейчас|щас)${after}|${before}(?:ещ[её]\\s+раз|снова)\\s+покажу${after}`, 'iu');
+/**
+ * #4895: обещание результата без «я»: «будут готовы несколько сегодня», «будет готово к пятнице».
+ * Только со сроком — «будет готово» без срока слишком часто про чужую работу.
+ */
+const READY_RE = new RegExp(`${before}(?:будет|будут)\\s+(?:[${L}]+\\s+){0,2}?готов[аоы]?${after}`, 'iu');
+/** Частые опечатки в сроках: «завра» — это «завтра». */
+const fixTypos = (t: string) => t.replace(/(?<![\p{L}])(?:завра|зватра|завтро|заавтра)(?![\p{L}])/giu, 'завтра');
+
 /** То, что делает обещание не обещанием. */
 const HEDGE_RE = new RegExp(`${before}(если|может|можно|наверное|возможно|попробую|постараюсь|хотел\\s+бы|хотела\\s+бы|не\\s+знаю|вряд\\s+ли)${after}`, 'iu');
 const NEG_RE = new RegExp(`${before}не\\s+(?:${VERBS.join('|')}|беру|возьму|смогу|успею)${after}`, 'iu');
@@ -54,11 +63,12 @@ function sentenceAround(text: string, index: number): string {
  * и «до пятницы» считаются от его часов, а не от сервера.
  */
 export function detectCommitment(raw: string, local: { date: string; hour: number; minute: number; isoDow: number }): Detected | null {
-  const text = String(raw ?? '').trim();
+  const text = fixTypos(String(raw ?? '').trim());
   if (text.length < 5 || text.length > 2000) return null;
   // цитата и пересланное — чужие слова (§16)
   const own = text.split('\n').filter((l) => !l.trim().startsWith('>')).join('\n');
-  const m = VERB_RE.exec(own) ?? TAKE_RE.exec(own);
+  const ready = READY_RE.exec(own);
+  const m = VERB_RE.exec(own) ?? TAKE_RE.exec(own) ?? (ready && parseDeadline(sentenceAround(own, ready.index), local) ? ready : null);
   if (!m) return null;
   const sentence = sentenceAround(own, m.index);
   if (sentence.endsWith('?')) return null;

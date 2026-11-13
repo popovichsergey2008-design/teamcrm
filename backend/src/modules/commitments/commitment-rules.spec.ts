@@ -95,3 +95,19 @@ describe('правки 27.10 по живым ложным срабатывани
     expect(detectCommitment('Сейчас не успеваю, скину смету к вечеру', MON)).not.toBeNull();
   });
 });
+
+describe('#4895: обещание результата и опечатки', () => {
+  const local = { date: '2026-11-11', hour: 10, minute: 51, isoDow: 3 };
+  it('«будут готовы несколько сегодня, завра напомнт» — обещание со сроком сегодня', () => {
+    const d = detectCommitment('будут готовы несколько сегодня, завра напомнт', local);
+    expect(d).not.toBeNull();
+    expect(d?.deadline).not.toBeNull();
+  });
+  it('«будет готово» без срока — не обещание', () => {
+    expect(detectCommitment('макет будет готов, когда дизайнер вернётся', local)).toBeNull();
+  });
+  it('«завра пришлю» — завтра', () => {
+    const d = detectCommitment('завра пришлю смету', local);
+    expect(d?.deadline && d.deadline.kind === 'local' ? d.deadline.date : null).toBe('2026-11-12');
+  });
+});
