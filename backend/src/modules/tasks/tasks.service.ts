@@ -1,4 +1,5 @@
 import { stripPasteJunk } from '../../common/text/paste-junk';
+import { withShotsItem } from './checklist-shots';
 import { WorkloadGuardService } from '../workload/workload.service';
 import { ConfirmSource } from '../nl/auto-task';
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -8,7 +9,7 @@ import { SecurityService } from '../security/security.service';
 import { inScope, scopeOf } from '../security/permissions';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { RealtimeService } from '../realtime/realtime.service';
-import { TaskRow, TasksRepository, TransitionSource } from './tasks.repository';
+import { DecisionSnapshot, TaskRow, TasksRepository, TransitionSource } from './tasks.repository';
 import { TaskActivityRepository } from './task-activity.repository';
 import { ruleOf, TaskRecurrenceRepository } from './task-recurrence.repository';
 import { describeRule, nextRun, normalizeRule } from './recurrence';
@@ -314,7 +315,8 @@ export class TasksService {
       directions: [...new Set(dto.directions ?? [])],
     });
     // Чек-лист, если задачу собрали заранее — голосом или из встречи.
-    if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, dto.checklist);
+    // #4889: к проверкам — обязательный пункт про скриншоты «было» и «стало»
+    if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, withShotsItem(dto.checklist));
 
     // Соисполнители и наблюдатели — с первой минуты: дописывать их потом руками
     // значит забыть половину.
@@ -848,6 +850,49 @@ export class TasksService {
     if (task.closed_at) throw AppException.conflict('Результат уже принят', { reason: 'decided' });
     this.assertCanDecide(task, actor);
     return this.sendBack(tenantId, task, actor, reason);
+  }
+
+  /**
+   * #4890, п. 4: «Неактуально — закрыть» в разборе решений. Закрывает задачу так же,
+   * как приёмка (в «Готово» и closed_at), но в истории — «закрыта как неактуальная»,
+   * а не «работа принята». Решает тот же человек, что и приёмку.
+   */
+  async closeIrrelevant(tenantId: string, id: string, actor: { userId: string; role: string }, note?: string | null): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Task not found');
+    if (task.closed_at) throw AppException.conflict('Задача уже закрыта', { reason: 'decided' });
+    this.assertCanDecide(task, actor);
+    const columns = await this.projects.listColumns(tenantId, task.project_id);
+    const done = columns.find((c) => isDoneColumn(c.name));
+    if (done && task.column_id !== done.id) await this.repo.move(tenantId, String(task.id), done.id, 0, done.name);
+    await this.repo.closeTask(tenantId, String(task.id));
+    await this.repo.clearApproval(tenantId, String(task.id));
+    await this.repo.stampTransition(tenantId, String(task.id), actor.userId, 'MANUAL').catch(() => undefined);
+    const logId = await this.activity.log(tenantId, String(task.id), actor.userId, 'closed_irrelevant', { note: note?.slice(0, 300) ?? null });
+    const updated = (await this.repo.findById(tenantId, String(task.id)))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    void this.notify.taskStatusChanged(tenantId, String(task.id), actor.userId, done?.name ?? 'Готово', true, logId);
+    return updated;
+  }
+
+  /**
+   * #4890, п. 6: «Отменить» после решения в разборе — задача возвращается ровно туда,
+   * где была: колонка и место в ней, этап приёмки, отметки «сдал / вернули / окно
+   * доработки» (их ставит триггер ТЗ-30 — поэтому восстанавливаем вторым запросом).
+   */
+  async restoreDecision(tenantId: string, id: string, actor: { userId: string; role: string }, snap: DecisionSnapshot, action: string): Promise<TaskRow> {
+    const task = await this.repo.findById(tenantId, id);
+    if (!task) throw AppException.notFound('Задача не найдена — возможно, её удалили');
+    this.assertCanDecide(task, actor);
+    if (snap.column_id && String(task.column_id) !== String(snap.column_id)) {
+      await this.repo.move(tenantId, id, String(snap.column_id), Number(snap.position ?? 0), String(snap.status ?? ''));
+    }
+    await this.repo.restoreDecisionMarks(tenantId, id, snap);
+    await this.repo.stampTransition(tenantId, id, actor.userId, 'MANUAL').catch(() => undefined);
+    await this.activity.log(tenantId, id, actor.userId, 'decision_undone', { action });
+    const updated = (await this.repo.findById(tenantId, id))!;
+    this.realtime.emit(tenantId, updated.project_id, 'task.updated', updated as any);
+    return updated;
   }
 
   private async closeAccepted(tenantId: string, task: TaskRow, actor: { userId: string; role: string }): Promise<TaskRow> {
