@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { FocusModule } from '../focus/focus.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { DecisionQueueModule } from '../decision-queue/decision-queue.module';
 import { FocusBriefController } from './focus-brief.controller';
 import { FocusBriefRepository } from './focus-brief.repository';
 import { FocusBriefScheduler } from './focus-brief.scheduler';
@@ -13,7 +14,7 @@ import { StandupService } from './standup.service';
  * ИИ и файлы, а «Фокус дня» нужен им самим — к экрану он подключается сам (attachBrief).
  */
 @Module({
-  imports: [FocusModule, TasksModule, ProjectsModule],
+  imports: [FocusModule, TasksModule, ProjectsModule, DecisionQueueModule],
   controllers: [FocusBriefController],
   providers: [FocusBriefService, FocusBriefRepository, FocusBriefScheduler, StandupService],
   exports: [FocusBriefService, StandupService],

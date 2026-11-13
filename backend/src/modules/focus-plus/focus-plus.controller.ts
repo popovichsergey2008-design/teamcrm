@@ -9,6 +9,7 @@ import { AppException } from '../../common/http/app-exception';
 import { FocusPlusService } from './focus-plus.service';
 import { FocusWave2Service } from './focus-wave2.service';
 import { FocusHabitService } from './focus-habit.service';
+import { DecisionQueueService } from '../decision-queue/decision-queue.service';
 
 class NoteDto {
   @IsOptional() @IsString() @MaxLength(500) nextStep?: string | null;
@@ -76,7 +77,7 @@ class HabitDto {
 @Controller('focus/plus')
 @Roles('owner', 'manager', 'member')
 export class FocusPlusController {
-  constructor(private readonly svc: FocusPlusService, private readonly w2: FocusWave2Service, private readonly habit: FocusHabitService, private readonly db: DbService) {}
+  constructor(private readonly svc: FocusPlusService, private readonly w2: FocusWave2Service, private readonly habit: FocusHabitService, private readonly db: DbService, private readonly queue: DecisionQueueService) {}
 
   private v(u: AuthUser) { return { tenantId: u.tenantId, userId: u.userId, role: u.role }; }
 
@@ -192,10 +193,9 @@ export class FocusPlusController {
   @Get('habit/week')
   week(@CurrentUser() u: AuthUser) { return this.habit.week(this.v(u)); }
 
-  /** п. 13: «Ждут вашего решения» — то же число, что в Фокусе, для Пульса. */
+  /** #4890, п. 13: «Ждут вашего решения» — одна функция (DecisionQueueService), то же число везде. */
   @Get('decisions')
   async decisions(@CurrentUser() u: AuthUser) {
-    const d = await this.svc.day(this.v(u));
-    return { count: d.enabled ? d.decisions : 0 };
+    return { count: await this.queue.count(this.v(u)) };
   }
 }

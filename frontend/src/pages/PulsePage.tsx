@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import './pulse.css';
 import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
@@ -7,95 +7,80 @@ import { Badge } from '../components/ui/badge';
 import { Dialog } from '../components/ui/dialog';
 import { Select } from '../components/ui/select';
 import { api, ApiError } from '../lib/api';
-import type { PulseActionType, PulseSummary } from '../lib/api';
+import type { PulseActionType } from '../lib/api';
 import { navigate } from '../lib/router';
 import { getSocket } from '../lib/socket';
 import { showToast } from '../lib/notifications';
 import { feedback } from '../lib/feedback';
-import { TaskChanges } from './pulse/TaskChanges';
-import { focusApi } from './focus/focus-api';
 import { DateInput } from '../components/DateInput';
+import { TaskChanges } from './pulse/TaskChanges';
+import { effectText, ForecastRow as FRow, LoadRow, MainCardView, pulseApi, PulseScreen, StepView } from './pulse/pulse-api';
+import { DecisionListDialog, PassportDialog } from './pulse/Passport';
+import { MessageDialog } from './pulse/MessageDialog';
+import { BalanceDialog } from './pulse/BalanceDialog';
+import { HandoffDialog } from './pulse/HandoffDialog';
+import { StaleDialog } from './pulse/StaleDialog';
+import { Ring, Trial } from './pulse/Trial';
+import { WeeklyDialog } from './pulse/WeeklyDialog';
+import { decisionsApi } from './focus/decisions-api';
 
 /**
- * «Пульс команды» как командный центр руководителя (ТЗ-19).
- *
- * Экран отвечает на пять вопросов: здоровы ли процессы, где главный затык, что ждёт
- * моего решения, что будет, если ничего не менять, что можно исправить сейчас. Все
- * цифры считает сервер правилами; каждое действие — предпросмотр и подтверждение.
+ * «Пульс команды» по ТЗ #4890: руководитель за 10 секунд понимает, что не так, кто должен
+ * действовать и что сделать прямо сейчас. Сверху вниз: индекс и тренд → «Главное — у вас»
+ * → разбор решений (в Фокусе) → три шага с эффектом → нагрузка → прогноз → история.
+ * Каждый блок подписан «сейчас» или «за 7 дней»; любое число — с паспортом по нажатию.
+ * Своего списка решений здесь нет: разбор живёт в «Фокусе дня» (п. 13).
  */
 
-type Data = PulseSummary;
-type Bottleneck = Data['bottlenecks'][number];
+type Full = Extract<PulseScreen, { mode: 'full' }>;
+type Metric = 'decisions' | 'index' | 'team_review' | 'bottlenecks';
 
-const ZONE_TITLE: Record<Data['health']['zone'], string> = { healthy: 'Здорово', attention: 'Внимание', risk: 'Риск', critical: 'Критично' };
-/**
- * #1574: «25 критично» читали как «25 критичных задач». Это индекс здоровья 0–100,
- * поэтому у каждой его части — что она меряет, её вес и вклад в итог.
- */
-const COMPONENT_WEIGHT: Record<keyof Data['health']['components'], number> = {
-  delivery: 0.25, deadlines: 0.2, flow: 0.2, capacity: 0.2, velocity: 0.15,
-};
-const COMPONENT_HINT: Record<keyof Data['health']['components'], string> = {
-  delivery: 'Сколько задач закрыто за 30 дней против заведённых за те же 30 дней. 100 — закрыли не меньше, чем завели.',
-  deadlines: 'Доля задач со сроком, которые не просрочены. Минус за долгие просрочки и за просроченные срочные задачи.',
-  flow: 'Доля задач, которые двигаются. Минус за задачи без движения и за застрявшие на проверке.',
-  capacity: 'Равномерность нагрузки: минус 15 за каждого выше нормы, 5 — за близкого к норме, 2 — за задачу без исполнителя.',
-  velocity: 'Закрыто за эту неделю против прошлой. Тот же темп — 75, вдвое быстрее — 100, вдвое медленнее — 50.',
-};
-const ZONE_RANGE = 'до 50 — критично, 50–69 — риск, 70–84 — внимание, от 85 — здорово';
-const COMPONENT_TITLE: Record<keyof Data['health']['components'], string> = {
-  delivery: 'Закрываем столько, сколько приходит', deadlines: 'Сроки', flow: 'Движение задач', capacity: 'Загрузка', velocity: 'Скорость',
-};
-const ACTION_TITLE: Record<PulseActionType, string> = {
-  TASK_NUDGE: 'Спросить статус', REVIEW_REMINDER: 'Напомнить о проверке', TASK_REASSIGN: 'Переназначить',
-  TASK_RESCHEDULE: 'Сдвинуть срок', TASK_CREATE_MEETING: 'Созвон', TASK_FOCUS: 'В мой Фокус', PUBLISH_NEWS: 'Опубликовать',
-};
-const DECISION_TITLE: Record<string, string> = {
-  approval: 'Согласование', review: 'Проверить работу', deadline_shift: 'Просят перенести срок', no_assignee: 'Назначить исполнителя',
-  blocked: 'Блокер', client: 'Клиент ждёт', meeting: 'Итоги встречи',
-};
-const BAND_TITLE = { available: 'свободен', normal: 'норма', high: 'высокая', overloaded: 'выше нормы' } as const;
-const NOT_PROBLEM: { key: string; label: string }[] = [
-  { key: 'not_stuck', label: 'Задача не зависла' }, { key: 'load_wrong', label: 'Нагрузка посчитана неверно' },
-  { key: 'not_critical', label: 'Срок не критичен' }, { key: 'outdated', label: 'Риск неактуален' }, { key: 'other', label: 'Другое' },
-];
-
-const dateRu = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '—');
-const ago = (iso: string) => {
-  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000);
-  return h < 48 ? `${Math.max(1, h)} ч` : `${Math.floor(h / 24)} дн.`;
+const ACTION_TITLE: Partial<Record<PulseActionType, string>> = { TASK_REASSIGN: 'Назначить исполнителя' };
+const LABEL_TONE: Record<LoadRow['label'], 'danger' | 'warn' | 'ok' | 'neutral'> = { reviews: 'danger', overdue: 'warn', spare: 'ok', normal: 'neutral' };
+const plural = (n: number, one: string, few: string, many: string) => {
+  const a = n % 100; const b = n % 10;
+  return a > 10 && a < 20 ? many : b === 1 ? one : b > 1 && b < 5 ? few : many;
 };
 
-/** Прогрев по наведению на пункт меню — сводка тяжелее прочих экранов. */
-export function prefetchPulse() { void api.pulse().catch(() => undefined); }
+/** Прогрев по наведению на пункт меню — экран тяжелее прочих. */
+export function prefetchPulse() { void pulseApi.screen().catch(() => undefined); }
+
+/** Пульс → Фокус: сразу в режим разбора решений (п. 13). */
+export function startReviewInFocus(ref = 'pulse') {
+  try { sessionStorage.setItem('teamcrm.focusReview', '1'); } catch { /* без флага — по адресу */ }
+  void pulseApi.event('run_started', ref).catch(() => undefined);
+  navigate('/focus?review=1');
+}
 
 export function PulsePage() {
-  const [data, setData] = useState<Data | null>(null);
+  const [data, setData] = useState<PulseScreen | null>(null);
   const [err, setErr] = useState('');
-  const [why, setWhy] = useState(false);
-  const [action, setAction] = useState<null | { type: PulseActionType; taskId?: string; title?: string; text?: string }>(null);
-  const [rebalanceFor, setRebalanceFor] = useState<string | null>(null);
-  const [triage, setTriage] = useState<number | null>(null);
-  const [allBottlenecks, setAllBottlenecks] = useState(false);
-  /** #1573: цифры вердикта кликабельны — список за цифрой */
-  const [drill, setDrill] = useState<'stuck' | 'decisions' | null>(null);
+  const [passport, setPassport] = useState<Metric | null>(null);
+  const [list, setList] = useState(false);
+  const [formula, setFormula] = useState(false);
+  const [message, setMessage] = useState<null | { userId: string; kind: 'overdue' | 'review'; taskIds?: string[] }>(null);
+  const [balance, setBalance] = useState<null | { userId: string; taskIds?: string[]; toId?: string | null }>(null);
+  const [handoff, setHandoff] = useState<null | { fromId: string; toId?: string | null; count?: number }>(null);
+  const [stale, setStale] = useState(false);
+  const [assign, setAssign] = useState(false);
+  const [action, setAction] = useState<null | { type: PulseActionType; taskId: string; title: string }>(null);
+  const [allSteps, setAllSteps] = useState(false);
+  const [weekly, setWeekly] = useState(false);
+  const [history, setHistory] = useState(false);
 
-  const [focusCount, setFocusCount] = useState<number | null>(null);
   const load = useCallback(() => {
-    void focusApi.decisions().then((r) => setFocusCount(r.count)).catch(() => undefined);
-    api.pulse().then((d) => { setData(d); setErr(''); }).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать «Пульс»'));
+    pulseApi.screen().then((d) => { setData(d); setErr(''); }).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать «Пульс»'));
   }, []);
   useEffect(() => {
     load();
     const socket = getSocket();
     const on = () => load();
     socket.on('radar.changed', on);
-    // решение в Фокусе сразу меняет счётчик и индекс здесь (#4891, п. 13)
+    // решение в Фокусе сразу меняет счётчик и индекс здесь (п. 13)
     socket.on('focus.day.updated', on);
     window.addEventListener('teamcrm:tasks-changed', on);
     const vis = () => { if (!document.hidden) load(); };
     document.addEventListener('visibilitychange', vis);
-    // раз в две минуты, пока экран на виду: задачи меняются, а «Пульс» — снимок
     const t = window.setInterval(() => { if (!document.hidden) load(); }, 120_000);
     return () => {
       socket.off('radar.changed', on); socket.off('focus.day.updated', on);
@@ -103,488 +88,383 @@ export function PulsePage() {
     };
   }, [load]);
 
-  const notProblem = async (kind: string, ref: string, reason: string) => {
-    await api.pulseFeedback(kind, ref, reason).catch(() => undefined);
-    showToast({ kind: 'saved', title: 'Скрыто на неделю', body: 'Спасибо — по таким отметкам правила становятся точнее' });
-    load();
+  const loadPassport = useMemo(() => (passport === 'decisions' ? () => decisionsApi.passport() : () => pulseApi.passport(passport ?? 'index')), [passport]);
+  const openPassport = (m: Metric) => { setPassport(m); void pulseApi.event('passport_opened', m).catch(() => undefined); };
+  const num = (m: Metric, children: ReactNode) => (
+    <button type="button" className="pp-num" onClick={() => openPassport(m)} title="Что за число">{children}</button>
+  );
+
+  const runStep = (s: StepView) => {
+    switch (s.kind) {
+      case 'nudge': if (s.userId) setMessage({ userId: s.userId, kind: 'overdue', taskIds: s.taskIds }); break;
+      case 'remind_review': if (s.userId) setMessage({ userId: s.userId, kind: 'review' }); break;
+      case 'stale': setStale(true); break;
+      case 'balance': if (s.userId) setBalance({ userId: s.userId, taskIds: s.taskIds, toId: s.toId }); break;
+      case 'assign': setAssign(true); break;
+      default: break;
+    }
   };
+
+  const head = (
+    <div className="page-head">
+      <h2><Icon name="chart" size={18} /> Пульс команды</h2>
+      {data && <span className="dim">обновлено {new Date(data.generatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>}
+      <Button variant="ghost" size="sm" onClick={() => setWeekly(true)} aria-label="«Пульс недели» в Telegram" title="«Пульс недели» в Telegram"><Icon name="bell" size={14} /></Button>
+      <Button variant="ghost" size="sm" onClick={load} aria-label="Обновить"><Icon name="refresh" size={14} /></Button>
+    </div>
+  );
 
   if (!data) {
     return (
       <div className="page pulse-page">
-        <div className="page-head"><h2><Icon name="chart" size={18} /> Пульс команды</h2></div>
+        {head}
         {err ? <div className="error-text">{err}</div> : <SkeletonList rows={8} />}
       </div>
     );
   }
 
-  const h = data.health;
-  const top = data.bottlenecks[0];
-  const shownBottlenecks = allBottlenecks ? data.bottlenecks : data.bottlenecks.slice(0, 6);
-  const forecasts = data.allProjects.filter((p) => p.open > 0).sort((a, b) => (b.forecast.missChance ?? -1) - (a.forecast.missChance ?? -1) || (b.forecast.delayDays ?? -999) - (a.forecast.delayDays ?? -999));
+  if (data.mode === 'trial') {
+    return (
+      <div className="page pulse-page">
+        {head}
+        <Trial steps={data.trial.steps} done={data.trial.done} daysLeft={data.trial.trialDaysLeft} />
+        {weekly && <WeeklyDialog onClose={() => setWeekly(false)} />}
+      </div>
+    );
+  }
+
+  const d: Full = data;
+  const h = d.head;
+  const assignGroup = d.steps.groups.find((g) => g.key === 'none:assign');
+  const staleProjects = d.forecast.stale;
 
   return (
     <div className="page pulse-page">
-      <div className="page-head">
-        <h2><Icon name="chart" size={18} /> Пульс команды</h2>
-        <span className="dim">обновлено {new Date(data.generatedAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
-        <Button variant="ghost" size="sm" onClick={load} aria-label="Обновить"><Icon name="refresh" size={14} /></Button>
+      {head}
+
+      {/* 1–2. Шапка: индекс с трендом + «Главное — у вас» */}
+      <div className="pulse-top">
+        <section className={`pulse-card pulse-index pz-${h.zone}`} aria-label="Индекс здоровья команды">
+          <button type="button" className="pulse-ring-btn" onClick={() => openPassport('index')} aria-label={`Индекс здоровья ${h.display} из 100 — что за число`}>
+            <Ring value={h.display} zone={h.zone} size={112} />
+          </button>
+          <div className="pulse-index-text">
+            <div className="pulse-cap">Индекс здоровья · {h.zoneTitle} · сейчас</div>
+            <div className="pulse-headline">{h.headline}</div>
+            <div className="pulse-trend">
+              <span className={h.trend7 > 0 ? 'is-up' : h.trend7 < 0 ? 'is-down' : ''}>{h.trend7 > 0 ? '▲' : h.trend7 < 0 ? '▼' : '='} {effectText(h.trend7)} за 7 дней</span>
+              {h.speed && <span> · {h.speed}</span>}
+            </div>
+            <div className="pulse-spark" role="img" aria-label={`Индекс за 8 недель: ${h.series.map((x) => Math.round(x)).join(', ')}`}>
+              {h.series.map((v, i) => (
+                <i key={i} className={i === h.series.length - 1 ? 'is-now' : ''} style={{ height: `${Math.max(8, Math.min(100, v))}%` }} title={`${Math.round(v)}`} />
+              ))}
+            </div>
+            <div className="dim pulse-small">индекс за 8 недель · <button type="button" className="pulse-inline-link" onClick={() => setFormula(true)}>из чего складывается</button></div>
+          </div>
+        </section>
+        <MainCard main={d.main} canAct={d.can.act} onStart={() => startReviewInFocus('pulse_main')} onPassport={() => openPassport('decisions')}
+          onRemind={(id) => setMessage({ userId: id, kind: 'review' })} onHandoff={(x) => setHandoff(x)} onStep={runStep} />
       </div>
 
-      {/* 1. Вердикт */}
-      <section className={`pulse-card pulse-verdict pz-${h.zone}`}>
-        <div className="pulse-score" aria-label={`Индекс здоровья команды ${h.score} из 100: ${ZONE_TITLE[h.zone].toLowerCase()}`}
-          title={`Индекс здоровья команды: ${h.score} из 100. Это не число задач. Шкала: ${ZONE_RANGE}.`}>
-          <svg viewBox="0 0 64 64" aria-hidden="true">
-            <circle cx="32" cy="32" r="28" className="pulse-ring-bg" />
-            <circle cx="32" cy="32" r="28" className="pulse-ring" strokeDasharray={`${(h.score / 100) * 175.9} 175.9`} />
-          </svg>
-          <b>{h.score}</b>
-          <span>из 100</span>
+      {/* 3. Разбор решений — только кнопка в Фокус, своего списка здесь нет (п. 13) */}
+      <section className="pulse-card pulse-run" aria-label="Разбор решений">
+        <div className="pulse-card-head">
+          <h3>Разбор решений <span className="dim pulse-sub">· сейчас</span></h3>
         </div>
-        <div className="pulse-verdict-text">
-          <div className="pulse-index-cap">Индекс здоровья команды — {ZONE_TITLE[h.zone].toLowerCase()}</div>
-          <div className="pulse-headline">{data.verdict.headline}</div>
-          {data.verdict.lines.map((l) => (
-            <p key={l}>
-              {/* #1573: «застряли 50 задач» и «принять 38 решений» — открывают список за цифрой */}
-              {l.split(/(застряли \d+|принять \d+)/).map((part, i) => {
-                const m = /^(застряли|принять) (\d+)$/.exec(part);
-                const kind = m?.[1] === 'застряли' ? (data.verdict.stuck ? 'stuck' : null) : m ? 'decisions' : null;
-                if (!m || !kind) return part;
-                return (
-                  <span key={i}>
-                    {m[1]}{' '}
-                    <button className="pulse-drill" onClick={() => setDrill(kind)}
-                      title={kind === 'stuck' ? 'Показать застрявшие задачи' : 'Показать решения'}>{m[2]}</button>
-                  </span>
-                );
-              })}
-            </p>
-          ))}
-          <div className="dim pulse-sources">
-            Основано на: {data.verdict.sources.projects} проектах · {data.verdict.sources.tasks} открытых задачах ·
-            {' '}{data.verdict.sources.people} сотрудниках · скорость {data.verdict.sources.last7} против {data.verdict.sources.prev7}
+        {d.decisions.count > 0 ? (
+          <div className="pulse-run-row">
+            <span>Ждут вашего решения: <b>{num('decisions', d.decisions.count)}</b> · по одной карточке, пачками по {d.decisions.take} · ≈ {d.decisions.etaMin} мин</span>
+            <Button variant="primary" size="sm" onClick={() => startReviewInFocus('pulse_run')}>Начать разбор в Фокусе →</Button>
           </div>
-          <div className="pulse-acts">
-            <Button size="sm" variant="ghost" onClick={() => setWhy((v) => !v)} aria-expanded={why}>Из чего {h.score} из 100?</Button>
-            {top && data.can.act && (
-              <Button size="sm" variant="primary" onClick={() => setAction({ type: top.actions[0], taskId: top.taskId, title: top.title })}>
-                Разрулить главное: #{top.taskId}
-              </Button>
-            )}
-          </div>
-          {why && (
-            <div className="pulse-why">
-              <div className="dim">
-                {h.score} — индекс здоровья команды по шкале от 0 до 100, а не число задач. Шкала: {ZONE_RANGE}.
-                Индекс складывается из пяти частей, каждая тоже от 0 до 100:
-              </div>
-              {(Object.keys(h.components) as (keyof typeof h.components)[]).map((k) => (
-                <div key={k} className="pulse-why-row">
-                  <span>
-                    {COMPONENT_TITLE[k]} <span className="dim">· вес {Math.round(COMPONENT_WEIGHT[k] * 100)}%</span>
-                    <small className="dim pulse-why-hint">{COMPONENT_HINT[k]}</small>
-                  </span>
-                  <span className="pulse-bar"><i style={{ width: `${h.components[k]}%` }} className={h.components[k] >= 85 ? 'ok' : h.components[k] >= 70 ? 'mid' : 'bad'} /></span>
-                  <b title={`${h.components[k]} из 100, вклад в индекс +${Math.round(h.components[k] * COMPONENT_WEIGHT[k] * 10) / 10}`}>{h.components[k]}</b>
-                </div>
-              ))}
-              <div className="dim">
-                Итог ({h.version}): {(Object.keys(h.components) as (keyof typeof h.components)[])
-                  .map((k) => `${h.components[k]}×${Math.round(COMPONENT_WEIGHT[k] * 100)}%`).join(' + ')} = {h.score} из 100.
-              </div>
-            </div>
-          )}
-        </div>
+        ) : <div className="dim">Решений от вас сейчас никто не ждёт.</div>}
       </section>
 
-      {/* победы — не только проблемы (§70) */}
-      {data.victories.length > 0 && (
-        <section className="pulse-card pulse-win">
-          <Icon name="sparkles" size={16} />
-          <div className="pulse-win-text">{data.victories.map((v) => <div key={v}>{v}</div>)}</div>
-          {data.can.publish && <Button size="sm" onClick={() => setAction({ type: 'PUBLISH_NEWS', text: data.victories.join('\n') })}>Опубликовать победу</Button>}
-        </section>
-      )}
-
-      <div className="pulse-grid">
-        {/* 2. Решения */}
-        <section className="pulse-card pulse-span">
-          <div className="pulse-card-head">
-            {/* #4891, п. 13: одно число с Фокусом; разбор — в Фокусе дня */}
-            <h3>Требуют вашего решения — {focusCount ?? data.decisions.length}</h3>
-            {((focusCount ?? 0) > 0 || data.decisions.length > 0) && (
-              <Button size="sm" variant="primary" onClick={() => { try { sessionStorage.setItem('teamcrm.focusReview', '1'); } catch { /* без флага откроется просто Фокус */ } navigate({ section: 'focus' }); }}>Начать разбор в Фокусе</Button>
-            )}
+      {/* 4. Три шага с наибольшим эффектом */}
+      <section className="pulse-card" aria-label="Три шага с наибольшим эффектом">
+        <div className="pulse-card-head">
+          <h3>{d.steps.top.length >= 3 ? '3 шага' : 'Шаги'} с наибольшим эффектом</h3>
+          <span className="dim">из {num('bottlenecks', d.steps.total)} {plural(d.steps.total, 'узкого места', 'узких мест', 'узких мест')} · сейчас</span>
+        </div>
+        {d.steps.top.length === 0 && <div className="dim">Узких мест, где можно помочь одним шагом, нет.</div>}
+        {d.steps.top.map((s) => (
+          <div key={s.key} className="pulse-step">
+            <div className="pulse-step-text">
+              <b>{s.title}</b>
+              <span className="dim pulse-small">{s.detail}</span>
+            </div>
+            <span className={`pulse-effect${s.effect > 0 ? '' : ' is-zero'}`} title="Сколько добавит индексу, если шаг сделан — по формуле индекса">индекс {effectText(s.effect)}</span>
+            {d.can.act && <Button size="sm" variant="primary" onClick={() => runStep(s)}>{s.button}</Button>}
           </div>
-          {data.decisions.length === 0 && <div className="dim">Решений от вас никто не ждёт.</div>}
-          {data.decisions.slice(0, 5).map((d) => (
-            <div key={d.id} className="pulse-row">
-              <Badge tone={d.urgent || d.kind === 'blocked' ? 'danger' : d.kind === 'client' ? 'warn' : 'neutral'}>{DECISION_TITLE[d.kind] ?? d.kind}</Badge>
-              <button className="pulse-link" onClick={() => openDecision(d)}>{d.title}</button>
-              <span className="dim">{d.who ? `${d.who} · ` : ''}ждёт {ago(d.since)}</span>
+        ))}
+        {d.steps.total > 0 && (
+          <button type="button" className="pulse-inline-link" onClick={() => setAllSteps(true)}>Показать все — сгруппированы по людям</button>
+        )}
+      </section>
+
+      {/* 5. Нагрузка */}
+      <LoadCard rows={d.load} canBalance={d.can.rebalance} onBalance={(id) => setBalance({ userId: id })} />
+
+      {/* 6. Прогноз */}
+      <section className="pulse-card" aria-label="Прогноз сроков">
+        <div className="pulse-card-head">
+          <h3>Прогноз сроков <span className="dim pulse-sub">· сейчас</span></h3>
+          <span className="dim">по темпу последних 4 недель · это прогноз, а не план</span>
+        </div>
+        {d.forecast.rows.length === 0 && !staleProjects.length && <div className="dim">Открытых проектов с движением нет.</div>}
+        <ForecastList rows={d.forecast.rows} onSaved={load} />
+        {staleProjects.length > 0 && (
+          <div className="pulse-stale">
+            <div>
+              <b>{staleProjects.length} {plural(staleProjects.length, 'проект стоит', 'проекта стоят', 'проектов стоят')} 4+ недели</b> — прогноз не построить
+              <div className="dim pulse-small">{staleProjects.slice(0, 8).map((p) => p.name).join(', ')}{staleProjects.length > 8 ? ` и ещё ${staleProjects.length - 8}` : ''}</div>
             </div>
-          ))}
-        </section>
-
-        {/* 3. Узкие места */}
-        <section className="pulse-card">
-          <div className="pulse-card-head"><h3>Узкие места — {data.bottlenecks.length}</h3></div>
-          {data.bottlenecks.length === 0 && <div className="dim">Критичных узких мест нет.</div>}
-          {shownBottlenecks.map((b) => (
-            <BottleneckRow key={b.taskId} b={b} canAct={data.can.act}
-              onAction={(type) => setAction({ type, taskId: b.taskId, title: b.title })}
-              onNotProblem={(reason) => { void notProblem('bottleneck', b.taskId, reason); }} />
-          ))}
-          {data.bottlenecks.length > 6 && (
-            <Button size="sm" variant="ghost" onClick={() => setAllBottlenecks((v) => !v)}>{allBottlenecks ? 'Свернуть' : `Показать все (${data.bottlenecks.length})`}</Button>
-          )}
-        </section>
-
-        {/* 4. Загрузка */}
-        <section className="pulse-card">
-          <div className="pulse-card-head"><h3>Загрузка</h3><span className="dim">по задачам, не по часам</span></div>
-          {data.workload.length === 0 && <div className="dim">Открытых задач у команды нет.</div>}
-          {data.workload.map((w) => (
-            <div key={w.id} className={`pulse-load pb-${w.band}`}>
-              <div className="pulse-load-top">
-                <b>{w.name}</b>{!w.available && <Badge tone="outline">в отпуске</Badge>}
-                <span className="pulse-load-pct">{w.pct}%</span>
-              </div>
-              <span className="pulse-bar"><i style={{ width: `${Math.min(100, w.pct)}%` }} /></span>
-              <div className="dim pulse-load-meta">
-                {/* ТЗ-30: просрочено — только то, что сейчас на человеке; сданное — отдельно */}
-                {w.active} в работе · {w.urgent} срочных · {w.overdue} просрочено у него{w.submitted ? ` · передано на проверку ${w.submitted}` : ''}{w.returned ? ` · возвращено на доработку ${w.returned}` : ''}{w.reviews ? ` · проверить ${w.reviews}` : ''}{w.meetingHours ? ` · встречи ${w.meetingHours} ч` : ''}
-                {' '}· {BAND_TITLE[w.band]} · риск задержек {w.risk}
-              </div>
-              <div className="pulse-acts">
-                {w.band === 'overloaded' && data.can.rebalance && <Button size="sm" onClick={() => setRebalanceFor(w.id)}>Балансировать</Button>}
-                {data.can.editNorms && <NormEdit userId={w.id} norm={w.norm} onSaved={load} />}
-              </div>
-            </div>
-          ))}
-        </section>
-
-        {/* 5. Прогноз */}
-        <section className="pulse-card pulse-span">
-          <div className="pulse-card-head"><h3>Прогноз сроков</h3><span className="dim">по темпу последних 4 недель</span></div>
-          {forecasts.length === 0 && <div className="dim">Открытых проектов нет.</div>}
-          {forecasts.slice(0, 8).map((p) => <ForecastRow key={p.id} p={p} onSaved={load} />)}
-        </section>
-
-        {/* 6. Скорость */}
-        <section className="pulse-card">
-          <div className="pulse-card-head"><h3>Скорость</h3></div>
-          <div className="pulse-velocity">
-            <b>{data.velocity.last7}</b>
-            <span>против {data.velocity.prev7}</span>
-            {data.velocity.delta !== null && <Badge tone={data.velocity.delta >= 0 ? 'ok' : 'warn'}>{data.velocity.delta > 0 ? '+' : ''}{data.velocity.delta}%</Badge>}
+            <Button size="sm" variant="primary" onClick={() => setStale(true)}>Разобрать</Button>
           </div>
-          <div className="dim">{data.velocity.label}: эта неделя против прошлой</div>
-        </section>
+        )}
+        {d.forecast.noData.length > 0 && (
+          <div className="dim pulse-small">Ещё {d.forecast.noData.length} {plural(d.forecast.noData.length, 'проект', 'проекта', 'проектов')} без закрытых задач за 4 недели, но с движением — прогноз появится после первых закрытий: {d.forecast.noData.slice(0, 5).join(', ')}{d.forecast.noData.length > 5 ? '…' : ''}</div>
+        )}
+      </section>
 
-        {/* 7. Проекты под риском */}
-        <section className="pulse-card">
-          <div className="pulse-card-head"><h3>Проекты под риском</h3></div>
-          {data.projects.filter((p) => p.risk.level !== 'low').length === 0 && <div className="dim">Все проекты в допустимом диапазоне.</div>}
-          {data.projects.filter((p) => p.risk.level !== 'low').map((p) => (
-            <div key={p.id} className="pulse-row pulse-project">
-              <Badge tone={p.risk.level === 'high' ? 'danger' : 'warn'}>{p.risk.level === 'high' ? 'Высокий' : 'Средний'}</Badge>
-              <button className="pulse-link" onClick={() => navigate({ section: 'projects', projectId: p.id })}>{p.name}</button>
-              <span className="dim">готово {p.progress}% · просрочено {p.overdue} · без движения {p.stuck}{p.forecast.delayDays && p.forecast.delayDays > 0 ? ` · опоздание ${p.forecast.delayDays} дн.` : ''}</span>
+      {/* 7. История переходов — свёрнута, по умолчанию 7 дней */}
+      <section className="pulse-card" aria-label="История переходов">
+        <button type="button" className="pulse-collapse" aria-expanded={history} onClick={() => setHistory((v) => !v)}>
+          <Icon name={history ? 'chevron-down' : 'chevron-right'} size={14} /> <b>История переходов</b> <span className="dim">· за 7 дней · по журналу, а не по текущему статусу</span>
+        </button>
+        {history && <TaskChanges initialPreset="d7" embedded />}
+      </section>
+
+      {passport && (
+        <PassportDialog load={loadPassport} onClose={() => setPassport(null)}
+          onOpenList={passport === 'decisions' ? () => { setPassport(null); setList(true); } : undefined} />
+      )}
+      {list && <DecisionListDialog onClose={() => setList(false)} onStart={() => startReviewInFocus('pulse_list')} />}
+      {formula && (
+        <Dialog open onOpenChange={(o) => { if (!o) setFormula(false); }} size="lg" title={`Из чего складывается индекс ${h.display}`}
+          description="Формула и веса прежние. Каждая часть — 40% уровня и 60% динамики к собственной базе команды за прошлые 4–8 недель (50 — как обычно): любое улучшение двигает индекс.">
+          {h.formula.components.map((c) => (
+            <div key={c.key} className="pulse-why-row">
+              <span>
+                {c.title} <span className="dim">· вес {Math.round(c.weight * 100)}%</span>
+                <small className="dim pulse-why-hint">{c.hint} Сейчас {String(c.cur).replace('.', ',')}, обычно {String(c.base).replace('.', ',')}. Уровень {Math.round(c.level)}, динамика {Math.round(c.dynamics)}.</small>
+              </span>
+              <span className="pulse-bar"><i style={{ width: `${c.value}%` }} className={c.value >= 70 ? 'ok' : c.value >= 55 ? '' : 'mid'} /></span>
+              <b>{Math.round(c.value)}</b>
             </div>
           ))}
-        </section>
-
-        {/* 8. Изменения по задачам (ТЗ-32): в тест, возвраты, готово, переоткрыто — и кто двигал */}
-        <TaskChanges />
-      </div>
-
-      {action && <ActionDialog action={action} people={data.workload} onClose={() => setAction(null)} onDone={load} />}
-      {drill === 'stuck' && data.verdict.stuck && (
-        <Dialog open onOpenChange={(o) => { if (!o) setDrill(null); }} size="lg"
-          title={`Узкое место — ${data.verdict.stuck.title}: ${data.verdict.stuck.count}`}>
-          {data.verdict.stuck.items.map((b) => (
-            <BottleneckRow key={b.taskId} b={b} canAct={data.can.act}
-              onAction={(type) => { setDrill(null); setAction({ type, taskId: b.taskId, title: b.title }); }}
-              onNotProblem={(reason) => { void notProblem('bottleneck', b.taskId, reason); }} />
-          ))}
-          {data.verdict.stuck.count > data.verdict.stuck.items.length && (
-            <div className="dim">Показаны первые {data.verdict.stuck.items.length} из {data.verdict.stuck.count}.</div>
-          )}
+          <div className="dim pulse-small">{h.formula.text}</div>
+          <div className="dim pulse-small">Зоны: от 70 — здорово, 55–69 — норма, 40–54 — зона риска, до 40 — нужна помощь. Версия формулы: {h.version}.</div>
         </Dialog>
       )}
-      {drill === 'decisions' && (
-        <Dialog open onOpenChange={(o) => { if (!o) setDrill(null); }} size="lg"
-          title={`Требуют вашего решения — ${data.decisions.length}`}
-          footer={data.decisions.length > 0 ? <Button variant="primary" onClick={() => { setDrill(null); setTriage(0); }}>Разобрать по одному</Button> : undefined}>
-          {data.decisions.map((d) => (
-            <div key={d.id} className="pulse-row">
-              <Badge tone={d.urgent || d.kind === 'blocked' ? 'danger' : d.kind === 'client' ? 'warn' : 'neutral'}>{DECISION_TITLE[d.kind] ?? d.kind}</Badge>
-              <button className="pulse-link" onClick={() => { setDrill(null); openDecision(d); }}>{d.title}</button>
-              <span className="dim">{d.who ? `${d.who} · ` : ''}ждёт {ago(d.since)}</span>
+      {allSteps && (
+        <Dialog open onOpenChange={(o) => { if (!o) setAllSteps(false); }} size="lg" title={`Все узкие места — ${d.steps.total}`} description="Сгруппированы по людям · сейчас">
+          {d.steps.groups.map((g) => {
+            const step = d.steps.top.find((x) => x.key === g.stepKey) ?? null;
+            return (
+              <div key={g.key} className="pulse-group">
+                <div className="pulse-group-head">
+                  <b>{g.me ? `${g.name} (вы)` : g.name}</b> <span className="dim">· {g.count}</span>
+                  {g.me && g.items.some((i) => i.type === 'WAITING_REVIEW') && <Button size="sm" variant="primary" onClick={() => { setAllSteps(false); startReviewInFocus('pulse_all'); }}>Начать разбор в Фокусе →</Button>}
+                  {!g.me && g.stepKey && d.can.act && (
+                    <Button size="sm" variant="primary" onClick={() => {
+                      setAllSteps(false);
+                      if (step) runStep(step);
+                      else if (g.stepKey?.startsWith('nudge:') && g.userId) setMessage({ userId: g.userId, kind: 'overdue' });
+                      else if (g.stepKey?.startsWith('review:') && g.userId) setMessage({ userId: g.userId, kind: 'review' });
+                      else if (g.stepKey === 'assign') setAssign(true);
+                    }}>{g.stepKey === 'assign' ? 'Назначить' : 'Подготовить сообщение'}</Button>
+                  )}
+                </div>
+                {g.items.slice(0, 12).map((i) => (
+                  <div key={i.taskId} className="pulse-row">
+                    <Badge tone={i.type === 'OVERDUE' || i.type === 'BLOCKED' ? 'danger' : 'warn'}>{i.typeTitle}</Badge>
+                    <button type="button" className="pulse-link" onClick={() => { setAllSteps(false); navigate({ section: 'projects', projectId: i.projectId, taskId: i.taskId }); }}>#{i.taskId} {i.title}</button>
+                    <span className="dim pulse-small">{i.why} · {i.projectName}</span>
+                  </div>
+                ))}
+                {g.count > 12 && <div className="dim pulse-small">и ещё {g.count - 12}</div>}
+              </div>
+            );
+          })}
+        </Dialog>
+      )}
+      {assign && assignGroup && (
+        <Dialog open onOpenChange={(o) => { if (!o) setAssign(false); }} size="md" title={`Без исполнителя — ${assignGroup.count}`}>
+          {assignGroup.items.map((i) => (
+            <div key={i.taskId} className="pulse-row">
+              <button type="button" className="pulse-link" onClick={() => { setAssign(false); navigate({ section: 'projects', projectId: i.projectId, taskId: i.taskId }); }}>#{i.taskId} {i.title}</button>
+              <Button size="sm" variant="outline" onClick={() => setAction({ type: 'TASK_REASSIGN', taskId: i.taskId, title: i.title })}>Назначить</Button>
             </div>
           ))}
         </Dialog>
       )}
-      {rebalanceFor && <RebalanceDialog userId={rebalanceFor} onClose={() => setRebalanceFor(null)} onDone={load} />}
-      {triage !== null && data.decisions[triage] && (
-        <Dialog open onOpenChange={(o) => { if (!o) setTriage(null); }} title={`Решение ${triage + 1} из ${data.decisions.length}`} size="md"
-          footer={(
-            <>
-              <Button variant="ghost" onClick={() => { void notProblem('decision', data.decisions[triage].id, 'other'); setTriage(triage + 1 < data.decisions.length ? triage + 1 : null); }}>Не проблема</Button>
-              {data.decisions[triage].taskId && data.can.act && (
-                <Button variant="ghost" onClick={() => setAction({ type: 'TASK_FOCUS', taskId: data.decisions[triage].taskId!, title: data.decisions[triage].title })}>В мой Фокус</Button>
-              )}
-              <Button onClick={() => openDecision(data.decisions[triage])}>Открыть</Button>
-              <Button variant="primary" onClick={() => setTriage(triage + 1 < data.decisions.length ? triage + 1 : null)}>{triage + 1 < data.decisions.length ? 'Дальше' : 'Готово'}</Button>
-            </>
-          )}>
-          <Badge tone="neutral">{DECISION_TITLE[data.decisions[triage].kind]}</Badge>
-          <div className="pulse-headline">{data.decisions[triage].title}</div>
-          <div className="dim">{data.decisions[triage].who ? `${data.decisions[triage].who} · ` : ''}ждёт {ago(data.decisions[triage].since)}{data.decisions[triage].dueAt ? ` · срок ${dateRu(data.decisions[triage].dueAt)}` : ''}</div>
-        </Dialog>
-      )}
+      {action && <ActionDialog action={action} people={d.load} onClose={() => setAction(null)} onDone={load} />}
+      {message && <MessageDialog {...message} onClose={() => setMessage(null)} onSent={load} />}
+      {balance && <BalanceDialog {...balance} onClose={() => setBalance(null)} onDone={load} />}
+      {handoff && <HandoffDialog {...handoff} onClose={() => setHandoff(null)} onDone={load} />}
+      {stale && <StaleDialog projects={staleProjects} onClose={() => setStale(false)} onChanged={load} />}
+      {weekly && <WeeklyDialog onClose={() => setWeekly(false)} />}
     </div>
   );
 }
 
-function openDecision(d: PulseSummary['decisions'][number]) {
-  if (d.clientId) navigate({ section: 'clients', clientId: d.clientId });
-  else if (d.taskId && d.projectId) navigate({ section: 'projects', projectId: d.projectId, taskId: d.taskId });
-  else if (d.kind === 'meeting') navigate({ section: 'chat', view: 'meetings' });
-  else if (d.kind === 'approval') navigate({ section: 'focus' });
-}
-
-function BottleneckRow({ b, canAct, onAction, onNotProblem }: {
-  b: Bottleneck; canAct: boolean; onAction: (t: PulseActionType) => void; onNotProblem: (reason: string) => void;
+/** «Главное — у вас» (п. 2): одна главная проблема, кто пробка, последствия, цена и эффект. */
+function MainCard({ main, canAct, onStart, onPassport, onRemind, onHandoff, onStep }: {
+  main: MainCardView; canAct: boolean; onStart: () => void; onPassport: () => void;
+  onRemind: (userId: string) => void; onHandoff: (x: { fromId: string; toId: string; count: number }) => void; onStep: (s: StepView) => void;
 }) {
-  const [menu, setMenu] = useState(false);
+  const label = main.kind === 'me' ? 'Главное — у вас' : main.kind === 'none' ? 'Главное' : 'Главное сейчас';
   return (
-    <div className="pulse-bn">
-      <div className="pulse-bn-top">
-        <Badge tone={b.type === 'OVERDUE' || b.type === 'BLOCKED' ? 'danger' : 'warn'}>{b.typeTitle}</Badge>
-        <button className="pulse-link" onClick={() => navigate({ section: 'projects', projectId: b.projectId, taskId: b.taskId })}>#{b.taskId} {b.title}</button>
+    <section className={`pulse-card pulse-main is-${main.kind}`} aria-label={label}>
+      <div className="pulse-cap pulse-main-cap">{label} · сейчас</div>
+      <div className="pulse-headline">
+        {main.kind === 'me'
+          ? <><button type="button" className="pp-num" onClick={onPassport} title="Что за число">{main.count}</button>{main.title.slice(String(main.count).length)}</>
+          : main.title}
       </div>
-      <div className="dim">{b.why} · {b.assignee ?? 'без исполнителя'} · {b.projectName}</div>
-      <div className="pulse-acts">
-        {canAct && b.actions.slice(0, 3).map((t) => <Button key={t} size="sm" variant={t === b.actions[0] ? 'primary' : 'secondary'} onClick={() => onAction(t)}>{ACTION_TITLE[t]}</Button>)}
-        <Button size="sm" variant="ghost" onClick={() => setMenu((v) => !v)} aria-expanded={menu}>Это не проблема</Button>
-      </div>
-      {menu && (
-        <div className="pulse-reasons">
-          {NOT_PROBLEM.map((r) => <button key={r.key} className="pulse-chip" onClick={() => { setMenu(false); onNotProblem(r.key); }}>{r.label}</button>)}
+      <div className="pulse-main-why">{main.consequence}</div>
+      {(main.cost || main.effect > 0) && (
+        <div className="pulse-main-cost">
+          {main.cost && <span>≈ {main.cost.minutes} минут на {main.cost.take} самых старых →</span>}
+          {main.effect !== 0 && <span className="pulse-effect">индекс {effectText(main.effect)}</span>}
         </div>
       )}
-    </div>
-  );
-}
-
-function NormEdit({ userId, norm, onSaved }: { userId: string; norm: number; onSaved: () => void }) {
-  const [v, setV] = useState(String(norm));
-  const [open, setOpen] = useState(false);
-  if (!open) return <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>Норма: {norm}</Button>;
-  return (
-    <span className="pulse-acts">
-      <input className="input pulse-num" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value)} aria-label="Норма нагрузки в очках" />
-      <Button size="sm" onClick={() => {
-        api.pulseNorm(userId, v.trim() ? Number(v) : null).then(() => { setOpen(false); onSaved(); })
-          .catch((e) => showToast({ kind: 'info', title: 'Не сохранилось', body: e instanceof ApiError ? e.message : '' }));
-      }}>Сохранить</Button>
-    </span>
-  );
-}
-
-function ForecastRow({ p, onSaved }: { p: PulseSummary['allProjects'][number]; onSaved: () => void }) {
-  const [plan, setPlan] = useState(p.targetDate ?? '');
-  const [open, setOpen] = useState(false);
-  const f = p.forecast;
-  const late = f.delayDays !== null && f.delayDays > 0;
-  return (
-    <div className="pulse-fc">
-      <div className="pulse-fc-top">
-        <button className="pulse-link" onClick={() => navigate({ section: 'projects', projectId: p.id })}>{p.name}</button>
-        {late && <Badge tone="danger">+{f.delayDays} дн.</Badge>}
-        {f.stalled && <Badge tone="danger">стоит</Badge>}
-        {f.delayDays !== null && f.delayDays <= 0 && <Badge tone="ok">успевает</Badge>}
-        {/* #1577: вероятность срыва — от темпа и его разброса за 4 недели */}
-        {f.missChance != null && (
-          <span className="dim" title="Вероятность не успеть к плану при нынешнем темпе">
-            риск срыва {f.missChance}%
-          </span>
+      <div className="pulse-acts">
+        {main.kind === 'me' && <Button variant="primary" onClick={onStart}>Начать разбор в Фокусе · {main.cost?.take ?? 10} шт. →</Button>}
+        {main.kind === 'other' && main.who && canAct && <Button variant="primary" onClick={() => onRemind(main.who!.id)}>Напомнить: {main.who.name}</Button>}
+        {main.kind === 'step' && main.step && canAct && <Button variant="primary" onClick={() => onStep(main.step!)}>{main.step.button}</Button>}
+        {main.handoff && canAct && (
+          <Button variant="outline" onClick={() => onHandoff({ fromId: main.handoff!.fromId, toId: main.handoff!.toId, count: main.handoff!.count })}>
+            Передать часть: {main.handoff.toName}
+          </Button>
         )}
       </div>
-      <div className="pulse-fc-grid">
-        <label className="pulse-fc-cell"><span className="dim">План</span>
-          <DateInput type="date" className="input" value={plan} aria-label={`Срок проекта ${p.name}`}
-            onChange={(e) => { setPlan(e.target.value); void api.pulseTarget(p.id, e.target.value || null).then(onSaved).catch(() => undefined); }} />
-        </label>
-        <div className="pulse-fc-cell"><span className="dim">Прогноз</span><b>{f.date ? dateRu(f.date) : 'не назвать'}</b></div>
-        <div className="pulse-fc-cell"><span className="dim">Уверенность</span><b>{f.reliable ? `${f.confidence}%` : 'мало данных'}</b></div>
-        <div className="pulse-fc-cell"><span className="dim">Осталось</span><b>{p.open}</b></div>
+    </section>
+  );
+}
+
+/** Нагрузка (п. 9): метки вместо процентов; «По часам» — только из оценок, с покрытием. */
+function LoadCard({ rows, canBalance, onBalance }: { rows: LoadRow[]; canBalance: boolean; onBalance: (id: string) => void }) {
+  const [tab, setTab] = useState<'tasks' | 'hours'>('tasks');
+  return (
+    <section className="pulse-card" aria-label="Нагрузка">
+      <div className="pulse-card-head">
+        <h3>Нагрузка <span className="dim pulse-sub">· сейчас</span></h3>
+        <span className="view-switch" role="tablist" aria-label="Как считать">
+          <button type="button" role="tab" aria-selected={tab === 'tasks'} className={`view-btn ${tab === 'tasks' ? 'active' : ''}`} onClick={() => setTab('tasks')}>По задачам</button>
+          <button type="button" role="tab" aria-selected={tab === 'hours'} className={`view-btn ${tab === 'hours' ? 'active' : ''}`} onClick={() => setTab('hours')}>По часам (по оценкам)</button>
+        </span>
       </div>
-      <div className="dim">Причины: {f.factors.join(' · ')}</div>
-      {p.catchUp.length > 0 && (
-        <>
-          <Button size="sm" variant="ghost" onClick={() => setOpen((v) => !v)} aria-expanded={open}>Что сделать, чтобы успеть?</Button>
-          {open && <ol className="pulse-plan">{p.catchUp.map((s) => <li key={s}>{s}</li>)}</ol>}
-        </>
-      )}
+      {rows.length === 0 && <div className="dim">Открытых задач у команды нет.</div>}
+      {rows.map((r) => {
+        const parts = tab === 'tasks'
+          ? [r.reviews ? `ждут проверки ${r.reviews}` : '', `в работе ${r.active}`, r.urgent ? `срочных ${r.urgent}` : '', r.overdue ? `просрочено ${r.overdue}` : '', r.returned ? `вернули на доработку ${r.returned}` : '', r.submitted ? `сдано на проверку ${r.submitted}` : ''].filter(Boolean)
+          : [r.hours.line];
+        return (
+          <div key={r.id} className="pulse-load-row">
+            <div className="pulse-load-main">
+              <div><b>{r.name}</b> <Badge tone={LABEL_TONE[r.label]}>{r.labelTitle}</Badge>{!r.available && <Badge tone="outline">не на месте</Badge>}</div>
+              <span className="dim pulse-small">{parts.join(' · ')}</span>
+            </div>
+            {canBalance && r.active > 0 && <Button size="sm" variant="outline" onClick={() => onBalance(r.id)}>Балансировать</Button>}
+          </div>
+        );
+      })}
+      <div className="dim pulse-small">
+        Проценты не показываем: «по задачам» — это количество, а не время. Часы — во второй вкладке, только по задачам с оценкой.
+      </div>
+    </section>
+  );
+}
+
+/** Прогноз (п. 10): только проекты с расчётом; дата диапазоном; план — ссылкой «задать». */
+function ForecastList({ rows, onSaved }: { rows: FRow[]; onSaved: () => void }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, 5);
+  return (
+    <>
+      {shown.map((p) => <ForecastItem key={p.id} p={p} onSaved={onSaved} />)}
+      {rows.length > 5 && <button type="button" className="pulse-inline-link" onClick={() => setAll((v) => !v)}>{all ? 'Свернуть' : `Ещё ${rows.length - 5}`}</button>}
+    </>
+  );
+}
+
+function ForecastItem({ p, onSaved }: { p: FRow; onSaved: () => void }) {
+  const [edit, setEdit] = useState(false);
+  const [plan, setPlan] = useState(p.targetDate ?? '');
+  const date = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  const meta = [`осталось ${p.remaining} ${plural(p.remaining, 'задача', 'задачи', 'задач')}`, `темп ${String(p.perWeek).replace('.', ',')} в неделю`,
+    p.stuck ? `${p.stuck} без движения` : '', p.overdue ? `${p.overdue} ${plural(p.overdue, 'просрочена', 'просрочены', 'просрочено')}` : ''].filter(Boolean);
+  return (
+    <div className="pulse-fc2">
+      <div className="pulse-fc2-left">
+        <div>
+          <button type="button" className="pulse-link" onClick={() => navigate({ section: 'projects', projectId: p.id })}>{p.name}</button>
+          {p.risk === 'risk' && <Badge tone="danger">риск</Badge>}
+          {p.risk === 'attention' && <Badge tone="warn">внимание</Badge>}
+        </div>
+        <span className="dim pulse-small">{meta.join(' · ')}</span>
+      </div>
+      <div className="pulse-fc2-right">
+        <b className="pulse-fc2-date">{p.range.text}</b>
+        <span className="dim pulse-small">
+          {p.range.kind === 'approx' ? 'мало данных · ' : ''}
+          {edit ? (
+            <span className="pulse-plan-edit">
+              <DateInput type="date" className="input" value={plan} aria-label={`План проекта ${p.name}`} onChange={(e) => setPlan(e.target.value)} />
+              <Button size="sm" variant="secondary" onClick={() => { void api.pulseTarget(p.id, plan || null).then(() => { setEdit(false); onSaved(); }).catch(() => undefined); }}>Сохранить</Button>
+            </span>
+          ) : p.targetDate ? (
+            <>план: {date(p.targetDate)}{p.late ? ` · позже плана на ${p.late} дн.` : ' · успеваете'} · <button type="button" className="pulse-inline-link" onClick={() => setEdit(true)}>изменить</button></>
+          ) : (
+            <>план: не задан · <button type="button" className="pulse-inline-link" onClick={() => setEdit(true)}>задать</button></>
+          )}
+        </span>
+      </div>
     </div>
   );
 }
 
-/** Любое действие: сначала предпросмотр с сервера, потом подтверждение (§47). */
+/** Назначить исполнителя — сначала предпросмотр с сервера, потом подтверждение (ТЗ-19, §47). */
 function ActionDialog({ action, people, onClose, onDone }: {
-  action: { type: PulseActionType; taskId?: string; title?: string; text?: string };
-  people: PulseSummary['workload']; onClose: () => void; onDone: () => void;
+  action: { type: PulseActionType; taskId: string; title: string }; people: LoadRow[]; onClose: () => void; onDone: () => void;
 }) {
-  const needsPerson = action.type === 'TASK_REASSIGN';
-  const needsDate = action.type === 'TASK_RESCHEDULE';
-  const needsText = action.type === 'PUBLISH_NEWS';
   const [toUserId, setTo] = useState('');
-  const [date, setDate] = useState('');
-  const [text, setText] = useState(action.text ?? '');
   const [pv, setPv] = useState<{ id: string; preview: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const ready = (!needsPerson || toUserId) && (!needsDate || date) && (!needsText || text.trim().length > 4);
-  const sorted = useMemo(() => [...people].sort((a, b) => a.pct - b.pct), [people]);
-
-  const preview = useCallback(async () => {
+  const sorted = useMemo(() => [...people].filter((p) => p.available).sort((a, b) => a.active - b.active), [people]);
+  const preview = async () => {
     setBusy(true); setErr('');
-    try {
-      setPv(await api.pulsePreview({
-        type: action.type, taskId: action.taskId, toUserId: toUserId || undefined,
-        date: date ? new Date(`${date}T18:00:00`).toISOString() : undefined, text: needsText ? text : undefined,
-      }));
-    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось подготовить'); }
+    try { setPv(await api.pulsePreview({ type: action.type, taskId: action.taskId, toUserId })); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось подготовить'); }
     finally { setBusy(false); }
-  }, [action.type, action.taskId, toUserId, date, text, needsText]);
-
-  useEffect(() => { if (!needsPerson && !needsDate && !needsText) void preview(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+  };
   const confirm = async () => {
     if (!pv) return;
     setBusy(true); setErr('');
     try {
       const r = await api.pulseConfirm(pv.id);
-      feedback('action.confirmed');
-      showToast({ kind: 'saved', title: ACTION_TITLE[action.type], body: r.text });
-      onDone(); onClose();
+      feedback('action.confirmed'); showToast({ kind: 'saved', title: ACTION_TITLE[action.type] ?? 'Готово', body: r.text }); onDone(); onClose();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
     finally { setBusy(false); }
   };
-
   return (
     <Dialog open onOpenChange={(o) => { if (!o) { if (pv) void api.pulseReject(pv.id).catch(() => undefined); onClose(); } }}
-      title={ACTION_TITLE[action.type]} description={action.title ? `#${action.taskId} ${action.title}` : undefined}
+      title={ACTION_TITLE[action.type] ?? 'Действие'} description={`#${action.taskId} ${action.title}`}
       footer={(
         <>
           <Button variant="ghost" onClick={() => { if (pv) void api.pulseReject(pv.id).catch(() => undefined); onClose(); }}>Отмена</Button>
-          {!pv && <Button variant="primary" disabled={!ready} loading={busy} onClick={() => { void preview(); }}>Показать, что будет</Button>}
-          {pv && <Button variant="primary" loading={busy} onClick={() => { void confirm(); }}>Подтвердить</Button>}
+          {!pv && <Button variant="primary" disabled={!toUserId} loading={busy} onClick={() => void preview()}>Показать, что будет</Button>}
+          {pv && <Button variant="primary" loading={busy} onClick={() => void confirm()}>Подтвердить</Button>}
         </>
       )}>
-      {needsPerson && !pv && (
+      {!pv && (
         <Select ariaLabel="Кому передать" value={toUserId} onValueChange={setTo} placeholder="Кому передать"
-          options={sorted.filter((p) => p.available).map((p) => ({ value: p.id, label: `${p.name} — загрузка ${p.pct}%` }))} />
+          options={sorted.map((p) => ({ value: p.id, label: `${p.name} · в работе ${p.active}${p.overdue ? `, просрочено ${p.overdue}` : ''}` }))} />
       )}
-      {needsDate && !pv && <DateInput type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Новый срок" />}
-      {needsText && !pv && <textarea className="input pulse-text" rows={4} value={text} onChange={(e) => setText(e.target.value)} aria-label="Текст поста" />}
       {pv && <div className="pulse-preview">{pv.preview}</div>}
-      {busy && !pv && <div className="dim">Готовлю…</div>}
-      {err && <div className="error-text">{err}</div>}
-    </Dialog>
-  );
-}
-
-/**
- * Балансировка (#1575): ИИ предлагает, кому передать, — руководитель решает. У каждой
- * задачи список всех сотрудников: по умолчанию стоит совет ИИ, можно выбрать любого
- * или «не передавать». Нагрузка «было → станет» пересчитывается по выбору сразу.
- */
-function RebalanceDialog({ userId, onClose, onDone }: { userId: string; onClose: () => void; onDone: () => void }) {
-  const [r, setR] = useState<Awaited<ReturnType<typeof api.pulseRebalance>> | null>(null);
-  const [pick, setPick] = useState<Record<string, string>>({});
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    api.pulseRebalance(userId).then((x) => {
-      setR(x);
-      setPick(Object.fromEntries((x.items ?? []).map((i) => [i.taskId, i.toId ?? ''])));
-    }).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось подобрать'));
-  }, [userId]);
-  const close = () => { if (r?.id) void api.pulseReject(r.id).catch(() => undefined); onClose(); };
-  const items = useMemo(() => r?.items ?? [], [r]);
-  const pct = (points: number, norm: number) => Math.round((points / Math.max(norm, 1)) * 100);
-  // нагрузка по текущему выбору — те же очки, что считает сервер
-  const loads = useMemo(() => {
-    const add = new Map<string, number>();
-    let moved = 0;
-    for (const it of items) {
-      const to = pick[it.taskId];
-      if (!to) continue;
-      add.set(to, (add.get(to) ?? 0) + it.cost);
-      moved += it.cost;
-    }
-    return { add, moved, count: items.filter((it) => pick[it.taskId]).length };
-  }, [items, pick]);
-  const changed = items.some((it) => (pick[it.taskId] ?? '') !== (it.toId ?? ''));
-  const options = (allowed: string[] | null) => [
-    { value: '', label: 'Не передавать' },
-    ...(r?.people ?? []).filter((p) => !allowed || allowed.includes(p.id)).map((p) => ({
-      value: p.id,
-      label: `${p.name} · ${pct(p.points + (loads.add.get(p.id) ?? 0), p.norm)}%${p.available ? '' : ' · не на месте'}`,
-    })),
-  ];
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) close(); }} title={`Балансировка${r?.fromName ? `: ${r.fromName}` : ''}`} size="md"
-      footer={(
-        <>
-          <Button variant="ghost" onClick={close}>Отмена</Button>
-          {r?.id && <Button variant="primary" loading={busy} disabled={!loads.count} onClick={async () => {
-            setBusy(true);
-            try {
-              const moves = changed ? items.map((it) => ({ taskId: it.taskId, toId: pick[it.taskId] || null })) : undefined;
-              const x = await api.pulseConfirm(r.id!, moves);
-              feedback('action.confirmed'); showToast({ kind: 'saved', title: 'Балансировка', body: x.text }); onDone(); onClose();
-            } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось'); }
-            finally { setBusy(false); }
-          }}>{loads.count ? `Передать: ${loads.count}` : 'Применить'}</Button>}
-        </>
-      )}>
-      {!r && !err && <div className="dim">Подбираю, кому передать…</div>}
-      {r?.note && <div className="dim">{r.note}</div>}
-      {items.length > 0 && (
-        <>
-          {items.map((it) => (
-            <div key={it.taskId} className="pulse-move">
-              <b>#{it.taskId} {it.title}</b>
-              <Select
-                ariaLabel={`Кому передать #${it.taskId}`}
-                size="sm"
-                className="pulse-move-to"
-                value={pick[it.taskId] ?? ''}
-                onValueChange={(v) => setPick((p) => ({ ...p, [it.taskId]: v }))}
-                options={options(it.allowedIds)}
-              />
-              {it.toId && (
-                <span className="dim">
-                  <Icon name="sparkles" size={11} /> ИИ: {(r?.people ?? []).find((p) => p.id === it.toId)?.name}{it.reason ? ` — ${it.reason}` : ''}
-                </span>
-              )}
-            </div>
-          ))}
-          <div className="pulse-preview">
-            Нагрузка {r?.fromName}: {pct(r?.fromPoints ?? 0, r?.fromNorm ?? 1)}% → {pct((r?.fromPoints ?? 0) - loads.moved, r?.fromNorm ?? 1)}%
-            {(r?.people ?? []).filter((p) => loads.add.has(p.id)).map((p) => (
-              <div key={p.id}>{p.name}: {pct(p.points, p.norm)}% → {pct(p.points + loads.add.get(p.id)!, p.norm)}%</div>
-            ))}
-          </div>
-        </>
-      )}
       {err && <div className="error-text">{err}</div>}
     </Dialog>
   );

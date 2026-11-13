@@ -8,7 +8,11 @@ const MOVE_KINDS = ['moved', 'commented', 'attached', 'checklist', 'updated', 'a
   'approval_returned', 'deadline_shifted', 'participant_added', 'directions', 'label', 'followup_on_track', 'followup_blocked',
   'followup_need_shift', 'via_bot'];
 
-export interface OpenTaskRow extends TaskFact { directions: string[]; projectVisibility: string; createdByName: string | null }
+export interface OpenTaskRow extends TaskFact {
+  directions: string[]; projectVisibility: string; createdByName: string | null;
+  /** #4890: кто принимает работу — назначенный проверяющий, иначе постановщик (как в очереди решений). */
+  deciderId: string | null; deciderName: string | null; estimateHours: number | null;
+}
 
 export interface PersonRow {
   id: string; name: string; role: string; norm: number | null; canReceive: boolean; available: boolean;
@@ -30,6 +34,8 @@ export class PulseRepository {
       `SELECT t.id::text, t.title, t.project_id::text AS "projectId", p.name AS "projectName", p.visibility AS "projectVisibility",
               t.assignee_id::text AS "assigneeId", ua.full_name AS "assigneeName",
               t.created_by::text AS "createdBy", uc.full_name AS "createdByName",
+              COALESCE(t.reviewer_id, t.created_by)::text AS "deciderId", COALESCE(ur.full_name, uc.full_name) AS "deciderName",
+              t.estimate_hours AS "estimateHours",
               COALESCE(t.priority, 'normal') AS priority, t.deadline_at AS "deadlineAt", t.created_at AS "createdAt",
               -- ТЗ-30: этап и личный срок — из единого движка; «на проверке» — и ждущее приёмки, и ждущее клиента
               (${pausedSql('t')}) AS "inReview", ${stageSql('t')} AS stage, COALESCE(t.is_blocked, false) AS "isBlocked",
@@ -43,6 +49,7 @@ export class PulseRepository {
          JOIN projects p ON p.id = t.project_id AND p.status <> 'archived' AND NOT p.is_demo
     LEFT JOIN users ua ON ua.id = t.assignee_id
     LEFT JOIN users uc ON uc.id = t.created_by
+    LEFT JOIN users ur ON ur.id = t.reviewer_id
         WHERE t.tenant_id = $1 AND t.closed_at IS NULL AND t.deleted_at IS NULL
         LIMIT 3000`,
       [tenantId, MOVE_KINDS],
@@ -52,6 +59,7 @@ export class PulseRepository {
       deadlineAt: r.deadlineAt ? new Date(r.deadlineAt) : null, createdAt: new Date(r.createdAt), lastMove: new Date(r.lastMove),
       personalDeadlineAt: r.personalDeadlineAt ? new Date(r.personalDeadlineAt) : null,
       submittedAt: r.submittedAt ? new Date(r.submittedAt) : null, returnedAt: r.returnedAt ? new Date(r.returnedAt) : null,
+      estimateHours: r.estimateHours != null ? Number(r.estimateHours) : null,
     }));
   }
 
@@ -235,6 +243,40 @@ export class PulseRepository {
        ON CONFLICT (project_id, day) DO UPDATE SET plan_date=$3::date, predicted_date=$4::date, confidence=$5, remaining=$6, version=$7`,
       [tenantId, f.projectId, f.planDate, f.predicted ? f.predicted.toISOString().slice(0, 10) : null, f.confidence, f.remaining, f.version],
     );
+  }
+
+  /**
+   * #4890, п. 2: «Передать часть» — проверяющий меняется только у задач, которые всё ещё
+   * ждут проверки у того же человека (за время предпросмотра их могли принять).
+   */
+  async handoffReview(tenantId: string, taskIds: string[], fromId: string, toId: string): Promise<string[]> {
+    if (!taskIds.length) return [];
+    const rows = await this.db.many<{ id: string }>(
+      `UPDATE tasks t SET reviewer_id = $4, updated_at = now()
+        WHERE t.tenant_id = $1 AND t.id = ANY($2::bigint[]) AND t.closed_at IS NULL AND t.deleted_at IS NULL
+          AND COALESCE(t.reviewer_id, t.created_by) = $3 AND (t.assignee_id IS NULL OR t.assignee_id <> $4)
+          AND ${stageSql('t')} IN ('testing', 'review', 'approval')
+        RETURNING t.id::text`,
+      [tenantId, taskIds, fromId, toId],
+    );
+    return rows.map((r) => r.id);
+  }
+
+  /** «Как поймём, что сработало» (#4890): действия из Пульса, отправки и открытия «Пульса недели». */
+  async event(tenantId: string, userId: string | null, kind: string, ref: string | null = null): Promise<void> {
+    await this.db.query(`INSERT INTO pulse_events (tenant_id, user_id, kind, ref) VALUES ($1, $2, $3, $4)`, [tenantId, userId, kind, ref?.slice(0, 64) ?? null]);
+  }
+
+  /** Когда в проекте последний раз что-то менялось — для «стоит 4+ недели» (п. 10). */
+  async projectsLastMove(tenantId: string): Promise<Map<string, Date>> {
+    const rows = await this.db.many<{ id: string; at: Date | null }>(
+      `SELECT p.id::text, max(GREATEST(t.updated_at, t.created_at)) AS at
+         FROM projects p LEFT JOIN tasks t ON t.project_id = p.id AND t.deleted_at IS NULL
+        WHERE p.tenant_id = $1 AND p.status <> 'archived' AND NOT p.is_demo
+        GROUP BY p.id`,
+      [tenantId],
+    );
+    return new Map(rows.filter((r) => r.at).map((r) => [r.id, new Date(r.at!)]));
   }
 
   async setTargetDate(tenantId: string, projectId: string, date: string | null): Promise<boolean> {

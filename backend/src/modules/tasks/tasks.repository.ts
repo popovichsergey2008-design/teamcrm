@@ -68,6 +68,17 @@ export interface TaskRow {
 
 export type { TransitionSource } from '../../common/task-changes/stamp';
 
+/**
+ * #4890, п. 6: состояние задачи до решения в разборе — чтобы «Отменить» вернуло её
+ * ровно туда, где она была (колонка, место, приёмка, отметки ответственности ТЗ-30).
+ */
+export interface DecisionSnapshot {
+  column_id: string | null; position: number | null; status: string | null;
+  closed_at: string | null; approval_state: string | null;
+  approval_requested_at: string | null; approval_requested_by: string | null;
+  submitted_at: string | null; first_submitted_at: string | null; returned_at: string | null; fix_deadline_at: string | null;
+}
+
 @Injectable()
 export class TasksRepository {
   constructor(private readonly db: DbService) {}
@@ -718,6 +729,36 @@ export class TasksRepository {
     await this.db.query(
       `UPDATE tasks SET requires_approval=$3, updated_at=now() WHERE tenant_id=$1 AND id=$2`,
       [tenantId, id, value],
+    );
+  }
+
+  /** Снимок для отмены решения (#4890, п. 6). */
+  async decisionSnapshot(tenantId: string, id: string): Promise<DecisionSnapshot | null> {
+    return this.db.one<DecisionSnapshot>(
+      `SELECT column_id::text, position, status, closed_at, approval_state, approval_requested_at, approval_requested_by::text,
+              submitted_at, first_submitted_at, returned_at, fix_deadline_at
+         FROM tasks WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id],
+    );
+  }
+
+  /**
+   * Вернуть отметки как были. Два запроса: первый меняет этап (closed_at, приёмка) — на
+   * нём срабатывает триггер ответственности и ставит «сдал / вернули» на сейчас; второй
+   * возвращает сами отметки (их колонки триггер не слушает).
+   */
+  async restoreDecisionMarks(tenantId: string, id: string, s: DecisionSnapshot): Promise<void> {
+    await this.db.query(
+      `UPDATE tasks SET closed_at = $3::timestamptz, approval_state = COALESCE($4, 'none'),
+              approval_requested_at = $5::timestamptz, approval_requested_by = $6::bigint, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, s.closed_at, s.approval_state, s.approval_requested_at, s.approval_requested_by],
+    );
+    await this.db.query(
+      `UPDATE tasks SET submitted_at = $3::timestamptz, first_submitted_at = $4::timestamptz,
+              returned_at = $5::timestamptz, fix_deadline_at = $6::timestamptz
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, id, s.submitted_at, s.first_submitted_at, s.returned_at, s.fix_deadline_at],
     );
   }
 

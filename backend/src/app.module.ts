@@ -85,6 +85,7 @@ import { GuestPortalModule } from './modules/guest-portal/guest-portal.module';
 import { ClientsModule } from './modules/clients/clients.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { RadarModule } from './modules/radar/radar.module';
+import { DecisionRunModule } from './modules/decision-run/decision-run.module';
 import { SearchModule } from './modules/search/search.module';
 import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { SecretaryModule } from './modules/secretary/secretary.module';
@@ -213,6 +214,8 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     ClientsModule,
     MailboxModule,
     RadarModule,
+    // #4890: разбор решений по одной карточке в «Фокусе дня»
+    DecisionRunModule,
     SearchModule,
     ApprovalsModule,
     SecretaryModule,

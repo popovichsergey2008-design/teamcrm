@@ -171,11 +171,13 @@ export function pickTop3(scored: Scored[], opts: { freeHours?: number | null } =
   let hours = pins.reduce((s, c) => s + (c.estimateHours ?? 0), 0);
   for (const c of rest) {
     if (out.length >= 3) break;
-    const others = out.filter((x) => x.kind !== 'task').length;
-    if (c.kind !== 'task' && others >= 2 && hasOwn) continue;
-    // #4891, п. 4: проверки чужой работы не занимают места главных результатов — не больше одной,
-    // а согласования — в блоке «Проверки и решения» и в быстрых делах
-    if (hasOwn && c.kind === 'review' && out.some((x) => x.kind === 'review')) continue;
+    /*
+      #4890, п. 13: проверки и согласования — одна очередь решений. В тройке — не больше ОДНОГО
+      места под неё (на экране оно становится «Разобрать N проверок · ≈ M мин» и ведёт в разбор),
+      остальные места — своей работе. Нет своей работы — места остаются свободными, а не
+      заполняются второй и третьей проверкой. Согласования при своей работе — в блоке решений.
+    */
+    if (c.kind !== 'task' && out.some((x) => x.kind !== 'task' && !x.pinned)) continue;
     if (hasOwn && c.kind === 'approval') continue;
     if (opts.freeHours != null && c.estimateHours && hours + c.estimateHours > opts.freeHours && out.length > 0) continue;
     out.push(c);

@@ -6,9 +6,10 @@ import { NavRepository } from './nav.repository';
 import { ApprovalsModule } from '../approvals/approvals.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { FeedModule } from '../feed/feed.module';
+import { DecisionQueueModule } from '../decision-queue/decision-queue.module';
 
 @Module({
-  imports: [ApprovalsModule, CalendarModule, TaskReadsModule, FeedModule],
+  imports: [ApprovalsModule, CalendarModule, TaskReadsModule, FeedModule, DecisionQueueModule],
   controllers: [NavController],
   providers: [NavService, NavRepository],
   exports: [NavService],

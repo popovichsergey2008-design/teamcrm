@@ -21,6 +21,8 @@ import {
   velocityDelta, verdict, victories, zone,
 } from './pulse-rules';
 import { OpenTaskRow, PulseRepository } from './pulse.repository';
+import { DecisionQueueService } from '../decision-queue/decision-queue.service';
+import { TasksRepository } from '../tasks/tasks.repository';
 
 type Actor = { userId: string; role: string; tenantId: string };
 const FALLBACK_TZ = 'Europe/Moscow';
@@ -53,12 +55,17 @@ export class PulseService {
     private readonly push: PushService,
     private readonly telegram: TelegramMirror,
     private readonly realtime: RealtimeService,
+    private readonly queue: DecisionQueueService,
+    private readonly taskRepo: TasksRepository,
   ) {}
 
   private async perms(a: Actor) { return this.security.permissionsOf(a.tenantId, a.userId); }
   private async need(a: Actor, p: Permission, what: string) {
     if (!can(await this.perms(a), p)) throw AppException.forbidden(what);
   }
+
+  /** #4890, п. 13: «ждут вашего решения» — одна функция для всех экранов и бота. */
+  decisionsCount(v: { tenantId: string; userId: string }) { return this.queue.count(v); }
 
   invalidate(tenantId: string) {
     for (const k of this.cache.keys()) if (k.startsWith(`${tenantId}:`)) this.cache.delete(k);
@@ -90,7 +97,10 @@ export class PulseService {
     const byAssignee = new Map<string, OpenTaskRow[]>();
     for (const t of tasks) if (t.assigneeId) (byAssignee.get(t.assigneeId) ?? byAssignee.set(t.assigneeId, []).get(t.assigneeId)!).push(t);
     const reviewsOf = new Map<string, number>();
-    for (const t of tasks) if (t.inReview && t.createdBy && t.createdBy !== t.assigneeId) reviewsOf.set(t.createdBy, (reviewsOf.get(t.createdBy) ?? 0) + 1);
+    // #4890: проверяющий — назначенный, иначе постановщик (как в очереди решений); «ждём клиента» — не его ход
+    for (const t of tasks) {
+      if (t.inReview && t.stage !== 'waiting_external' && t.deciderId && t.deciderId !== t.assigneeId) reviewsOf.set(t.deciderId, (reviewsOf.get(t.deciderId) ?? 0) + 1);
+    }
     const workload = people.map((p) => {
       const mine = byAssignee.get(p.id) ?? [];
       const l = loadPoints({ tasks: mine.filter((t) => !t.inReview), reviewsWaiting: reviewsOf.get(p.id) ?? 0, meetingHoursToday: Math.round(p.meetingHours * 10) / 10 }, now);
@@ -108,11 +118,13 @@ export class PulseService {
       const type = bottleneckType(t, now, overloaded);
       if (!type || dismissed.has(`bottleneck:${t.id}`)) return null;
       return {
-        taskId: t.id, title: t.title, projectId: t.projectId, projectName: t.projectName, assignee: t.assigneeName,
+        taskId: t.id, title: t.title, projectId: t.projectId, projectName: t.projectName, assignee: t.assigneeName, assigneeId: t.assigneeId,
+        reviewerId: type === 'WAITING_REVIEW' ? (t.deciderId ?? null) : null,
         // ТЗ-30: задержка на проверке — у проверяющего (постановщика), не у исполнителя
-        reviewer: type === 'WAITING_REVIEW' ? (t.createdByName ?? null) : null,
+        reviewer: type === 'WAITING_REVIEW' ? (t.deciderName ?? t.createdByName ?? null) : null,
         type, typeTitle: BOTTLENECK_TITLE[type], why: bottleneckWhy(t, type, now), actions: ACTIONS_FOR[type],
         severity: bottleneckSeverity(t, type, now), priority: t.priority,
+        dueAt: (t.personalDeadlineAt ?? t.deadlineAt)?.toISOString() ?? null, submittedAt: t.submittedAt?.toISOString() ?? null,
       };
     }).filter((x): x is NonNullable<typeof x> => !!x).sort((x, y) => y.severity - x.severity);
 
@@ -245,12 +257,23 @@ export class PulseService {
       },
       decisions: decisions.slice(0, 100).map((d) => ({ ...d, since: d.since.toISOString(), dueAt: d.dueAt?.toISOString() ?? null })),
       bottlenecks: bottlenecks.slice(0, 30),
+      // #4890, п. 7: все узкие места — для группировки в три шага и «Показать все» по людям
+      bottleneckTotal: bottlenecks.length,
+      allBottlenecks: bottlenecks.slice(0, 500).map((b) => ({
+        taskId: b.taskId, title: b.title, projectId: b.projectId, projectName: b.projectName, assignee: b.assignee, assigneeId: b.assigneeId,
+        reviewer: b.reviewer, reviewerId: b.reviewerId, type: b.type, typeTitle: b.typeTitle, why: b.why, severity: b.severity,
+        dueAt: b.dueAt, submittedAt: b.submittedAt,
+      })),
       // ТЗ-30: всё сдал на проверку — человек остаётся в списке: «передано на проверку N»
       workload: workload.filter((w) => w.active > 0 || w.meetingHours > 0 || w.reviews > 0 || w.submitted > 0 || w.returned > 0),
       velocity: { last7: stats.last7, prev7: stats.prev7, delta: vDelta, label: 'закрытых задач за 7 дней' },
       victories: wins,
       projects: projectRisks.slice(0, 5),
-      allProjects: projectViews.map((p) => ({ id: p.id, name: p.name, targetDate: p.targetDate, forecast: p.forecast, catchUp: p.catchUp, open: p.open })),
+      allProjects: projectViews.map((p) => ({
+        id: p.id, name: p.name, targetDate: p.targetDate, forecast: p.forecast, catchUp: p.catchUp, open: p.open,
+        // #4890, п. 10: метка риска переезжает в прогноз
+        risk: p.risk, overdue: p.overdue, stuck: p.stuck,
+      })),
       can: await this.perms(a).then((p) => ({
         act: can(p, 'radar.execute_actions'), rebalance: can(p, 'radar.rebalance'), publish: can(p, 'radar.publish_news'),
         editNorms: a.role === 'owner',
@@ -424,9 +447,27 @@ export class PulseService {
           text = done === moves.length ? `Передано задач: ${done}.` : `Передано задач: ${done} из ${moves.length} — остальные не удалось, проверьте права на проекты.`;
           break;
         }
+        case 'HANDOFF_REVIEW': {
+          // #4890, п. 2: «Передать часть» — проверяющим у выбранных задач становится коллега
+          await this.need(a, 'radar.execute_actions', 'Передавать проверки может руководство');
+          const ids = ((x.taskIds as string[]) ?? []).map(String);
+          const moved = await this.repo.handoffReview(a.tenantId, ids, String(x.fromId), String(x.toId));
+          for (const tid of moved) {
+            await this.activity.log(a.tenantId, tid, a.userId, 'reviewer_changed', { from: x.fromId, to: x.toId, via: 'pulse' });
+            const t = await this.taskRepo.findById(a.tenantId, tid).catch(() => null);
+            if (t) this.realtime.emit(a.tenantId, t.project_id, 'task.updated', t as any);
+          }
+          if (moved.length) {
+            await this.notifyMany(a.tenantId, String(x.toId), 'radar.review', 'Вам передали проверки',
+              `${moved.length} ${moved.length === 1 ? 'задача ждёт' : moved.length < 5 ? 'задачи ждут' : 'задач ждут'} вашей проверки — разбор в «Фокусе дня».`);
+          }
+          text = moved.length === ids.length ? `Передано на проверку: ${moved.length} — ${x.toName}.` : `Передано ${moved.length} из ${ids.length}: остальные уже приняты или у них другой проверяющий.`;
+          break;
+        }
         default: throw new Error('Неизвестное действие');
       }
       await this.repo.finishProposal(id, 'completed');
+      void this.repo.event(a.tenantId, a.userId, 'action', p.action_type).catch(() => undefined);
       void this.security.record({ tenantId: a.tenantId, actorId: a.userId, event: 'radar.action.executed', resourceType: 'radar_action', resourceId: id, metadata: { type: p.action_type } }).catch(() => undefined);
       this.invalidate(a.tenantId);
       this.realtime.emitToUsers(a.tenantId, [a.userId], 'radar.changed', { action: p.action_type });
@@ -452,6 +493,13 @@ export class PulseService {
     await this.notify(a.tenantId, userId, 'radar.nudge', 'Как идёт работа?', text, taskId, t.projectId);
   }
 
+  private async notifyMany(tenantId: string, userId: string, eventKey: string, title: string, body: string) {
+    await this.push.personal({ tenantId, userId, eventKey, title, body, path: '/focus?review=1' });
+    await this.telegram.push(tenantId, userId, `${title}
+
+${body}`).catch(() => false);
+  }
+
   private async notify(tenantId: string, userId: string, eventKey: string, title: string, body: string, taskId: string, projectId?: string) {
     const path = projectId ? `/projects/${projectId}/task/${taskId}` : '/focus';
     await this.push.personal({ tenantId, userId, eventKey, title, body, path });
@@ -460,18 +508,25 @@ export class PulseService {
 
   // ── балансировка (§34–36) ──
 
-  async rebalancePreview(a: Actor, fromUserId: string) {
+  async rebalancePreview(a: Actor, fromUserId: string, prefer: { taskIds?: string[]; toId?: string | null } = {}) {
     await this.need(a, 'radar.rebalance', 'Перераспределять нагрузку может руководство');
     const now = new Date();
     const [tasks, people, members] = await Promise.all([
       this.repo.openTasks(a.tenantId), this.repo.people(a.tenantId, now, new Date(now.getTime() + 86_400_000)), this.repo.projectMembers(a.tenantId),
     ]);
     const reviewsOf = new Map<string, number>();
-    for (const t of tasks) if (t.inReview && t.createdBy && t.createdBy !== t.assigneeId) reviewsOf.set(t.createdBy, (reviewsOf.get(t.createdBy) ?? 0) + 1);
+    for (const t of tasks) {
+      if (t.inReview && t.stage !== 'waiting_external' && t.deciderId && t.deciderId !== t.assigneeId) reviewsOf.set(t.deciderId, (reviewsOf.get(t.deciderId) ?? 0) + 1);
+    }
     const cands = people.map((p) => {
       const mine = tasks.filter((t) => t.assigneeId === p.id && !t.inReview);
       const l = loadPoints({ tasks: mine, reviewsWaiting: reviewsOf.get(p.id) ?? 0, meetingHoursToday: 0 }, now);
-      return { id: p.id, name: p.name, points: l.points, norm: p.norm ?? DEFAULT_NORM_POINTS, skills: p.skills, canReceive: p.canReceive, available: p.available, role: p.role };
+      // #4890, п. 9: «было → стало» — в задачах и часах по оценкам, без процентов
+      const hours = mine.reduce((s, t) => s + (t.estimateHours ?? 0), 0);
+      return {
+        id: p.id, name: p.name, points: l.points, norm: p.norm ?? DEFAULT_NORM_POINTS, skills: p.skills, canReceive: p.canReceive, available: p.available, role: p.role,
+        active: l.active, overdue: l.overdue, hours: Math.round(hours * 10) / 10, estimated: mine.filter((t) => t.estimateHours != null).length,
+      };
     });
     const from = cands.find((c) => c.id === String(fromUserId));
     if (!from) throw AppException.notFound('Сотрудник не найден');
@@ -490,33 +545,47 @@ export class PulseService {
       открывается, и передать можно вручную.
     */
     const suggested = new Map(r.moves.map((m) => [m.taskId, m]));
+    // #4890, п. 7: шаг «Передать 3 срочные задачи Глеба Алине» — эти задачи и этот получатель
+    const preferIds = new Set((prefer.taskIds ?? []).map(String));
+    const preferTo = prefer.toId && cands.some((c) => c.id === String(prefer.toId)) ? String(prefer.toId) : null;
+    if (preferIds.size) {
+      suggested.clear();
+      for (const t of movable) {
+        if (!preferIds.has(t.id) || t.inReview) continue;
+        const to = preferTo && (!t.allowed || t.allowed.has(preferTo)) ? preferTo : null;
+        if (to) suggested.set(t.id, { taskId: t.id, title: t.title, toId: to, toName: cands.find((c) => c.id === to)?.name ?? '', reason: 'есть запас, сроки не меняются' });
+      }
+    }
     const order: Record<string, number> = { low: 0, normal: 1, high: 2, urgent: 3 };
     const pool = movable.filter((t) => !t.inReview)
-      .sort((x, y) => Number(suggested.has(y.id)) - Number(suggested.has(x.id))
+      .sort((x, y) => Number(preferIds.has(y.id)) - Number(preferIds.has(x.id)) || Number(suggested.has(y.id)) - Number(suggested.has(x.id))
         || (order[x.priority] ?? 1) - (order[y.priority] ?? 1)
         || (y.deadlineAt?.getTime() ?? Infinity) - (x.deadlineAt?.getTime() ?? Infinity))
       .slice(0, 40);
     const items = pool.map((t) => ({
       taskId: t.id, title: t.title, cost: taskPoints(t, now),
+      hours: tasks.find((x) => x.id === t.id)?.estimateHours ?? null, deadlineAt: t.deadlineAt?.toISOString() ?? null, priority: t.priority,
       toId: suggested.get(t.id)?.toId ?? null, reason: suggested.get(t.id)?.reason ?? null,
       allowedIds: t.allowed ? [...t.allowed] : null,
     }));
     const staff = cands.filter((c) => c.id !== from.id)
-      .map((c) => ({ id: c.id, name: c.name, points: c.points, norm: c.norm, available: c.available }));
+      .map((c) => ({ id: c.id, name: c.name, points: c.points, norm: c.norm, available: c.available, active: c.active, hours: c.hours, estimated: c.estimated }));
     const loads = Object.entries(r.loads).map(([id, v]) => ({ id, name: cands.find((c) => c.id === id)?.name ?? id, ...v }));
-    const preview = r.moves.length
-      ? r.moves.map((m) => `#${m.taskId} «${m.title}»: ${from.name} → ${m.toName}`).join('\n') + `\nНагрузка ${from.name}: ${r.before}% → ${r.after}%`
+    const moves = [...suggested.values()];
+    const preview = moves.length
+      ? moves.map((m) => `#${m.taskId} «${m.title}»: ${from.name} → ${m.toName}`).join('\n') + `\n${from.name}: в работе ${from.active} → ${from.active - moves.length}`
       : `Ручная балансировка: ${from.name}`;
     const p = items.length
       ? await this.repo.createProposal({
         tenantId: a.tenantId, actorId: a.userId, sourceType: 'workload', sourceId: from.id, actionType: 'REBALANCE',
-        payload: { moves: r.moves.map((m) => ({ taskId: m.taskId, toId: m.toId })), taskIds: items.map((x) => x.taskId) }, preview, reason: null,
+        payload: { moves: moves.map((m) => ({ taskId: m.taskId, toId: m.toId })), taskIds: items.map((x) => x.taskId) }, preview, reason: null,
       })
       : null;
     return {
-      id: p?.id ?? null, moves: r.moves, before: r.before, after: r.after, loads, fromName: from.name,
+      id: p?.id ?? null, moves, before: r.before, after: r.after, loads, fromName: from.name,
       fromPoints: from.points, fromNorm: from.norm, items, people: staff,
-      note: r.moves.length ? undefined : (items.length
+      fromActive: from.active, fromOverdue: from.overdue, fromHours: from.hours, fromEstimated: from.estimated,
+      note: moves.length ? undefined : (items.length
         ? 'ИИ не нашёл, кому передать без перегруза: остальные загружены или не работают в этих направлениях. Выберите исполнителя вручную.'
         : 'Передавать нечего: все задачи сотрудника на проверке.'),
     };

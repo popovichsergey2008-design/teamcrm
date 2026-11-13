@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Header, Param, Patch, Post, Query } from '@nestjs/common';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, Roles } from '../../common/auth/decorators';
@@ -7,6 +7,8 @@ import { AuthUser } from '../../common/auth/jwt.types';
 import { RadarService } from './radar.service';
 import { PulseService } from './pulse.service';
 import { ChangesService } from './changes.service';
+import { PulsePlusService } from './pulse-plus.service';
+import { PulseWeeklyService } from './pulse-weekly.service';
 
 class ActionDto {
   @IsIn(['TASK_NUDGE', 'TASK_REASSIGN', 'TASK_RESCHEDULE', 'TASK_CREATE_MEETING', 'REVIEW_REMINDER', 'TASK_FOCUS', 'PUBLISH_NEWS'])
@@ -42,13 +44,92 @@ class ChangesQuery {
   @IsOptional() @IsString() @MaxLength(20) cursor?: string;
 }
 class NormDto { @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(60) norm?: number | null; }
+/** #4890, п. 9: «Балансировать» из шага — эти задачи и этот получатель (всё равно предпросмотр). */
+class RebalanceDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(40) @IsString({ each: true }) taskIds?: string[];
+  @IsOptional() @IsString() @MaxLength(20) toId?: string | null;
+}
+/** #4890, п. 8: одно сообщение на группу задач. */
+class PrepareDto {
+  @IsString() @MaxLength(20) userId!: string;
+  @IsIn(['overdue', 'review']) kind!: 'overdue' | 'review';
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) taskIds?: string[];
+}
+class SendDto extends PrepareDto {
+  @IsString() @MaxLength(4000) text!: string;
+}
+/** #4890, п. 2: «Передать часть». */
+class HandoffDto {
+  @IsString() @MaxLength(20) fromId!: string;
+  @IsOptional() @IsString() @MaxLength(20) toId?: string | null;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(30) count?: number;
+}
+/** #4890, п. 12: «Пульс недели» — выключить или перенести. */
+class WeeklyDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(6) weekday?: number;
+  @IsOptional() @IsString() @MaxLength(5) atTime?: string;
+}
+class EventDto {
+  @IsIn(['weekly_open', 'run_started', 'run_finished', 'passport_opened', 'action']) kind!: string;
+  @IsOptional() @IsString() @MaxLength(64) ref?: string | null;
+}
 
 /** «Пульс команды» — экран руководителя. Рядовому сотруднику он не показывается. */
 @ApiTags('radar')
 @ApiBearerAuth()
 @Controller('radar')
 export class RadarController {
-  constructor(private readonly radar: RadarService, private readonly pulse: PulseService, private readonly changes: ChangesService) {}
+  constructor(
+    private readonly radar: RadarService, private readonly pulse: PulseService, private readonly changes: ChangesService,
+    private readonly plus: PulsePlusService, private readonly weekly: PulseWeeklyService,
+  ) {}
+
+  // ── #4890: «Пульс команды» по новому ТЗ ──
+
+  /** Экран целиком: индекс с трендом, «Главное — у вас», шаги, нагрузка, прогноз (или экран новой команды). */
+  @Get('pulse')
+  pulseScreen(@CurrentUser() u: AuthUser, @Query('tz') tz?: string) {
+    return this.plus.screen(u, tz ? String(tz).slice(0, 64) : null);
+  }
+
+  /** Паспорт числа (п. 3): decisions | index | team_review | bottlenecks. */
+  @Get('passport/:metric')
+  passport(@CurrentUser() u: AuthUser, @Param('metric') metric: string) {
+    return this.plus.passport(u, String(metric).slice(0, 24));
+  }
+
+  /** Готовый текст сообщения по группе задач — ничего не отправляет (п. 8). */
+  @Post('message/prepare')
+  prepare(@CurrentUser() u: AuthUser, @Body() dto: PrepareDto) {
+    return this.plus.prepareMessage(u, dto);
+  }
+
+  /** Отправить — только по нажатию «Отправить» (п. 8). */
+  @Post('message/send')
+  send(@CurrentUser() u: AuthUser, @Body() dto: SendDto) {
+    return this.plus.sendMessage(u, { ...dto, taskIds: dto.taskIds ?? [] });
+  }
+
+  /** «Передать часть» (п. 2): предпросмотр; подтверждение — общим actions/:id/confirm. */
+  @Post('handoff/preview')
+  handoff(@CurrentUser() u: AuthUser, @Body() dto: HandoffDto) {
+    return this.plus.handoffPreview(u, dto);
+  }
+
+  @Get('weekly/prefs')
+  weeklyPrefs(@CurrentUser() u: AuthUser) { return this.weekly.prefs(u); }
+
+  @Patch('weekly/prefs')
+  saveWeekly(@CurrentUser() u: AuthUser, @Body() dto: WeeklyDto) { return this.weekly.savePrefs(u, dto); }
+
+  /** Текст сводки «Пульс недели» — как уйдёт в Telegram. */
+  @Get('weekly/preview')
+  weeklyPreview(@CurrentUser() u: AuthUser) { return this.weekly.compose(u); }
+
+  /** События для метрик ТЗ (переходы из сводки, разборы). */
+  @Post('events')
+  event(@CurrentUser() u: AuthUser, @Body() dto: EventDto) { return this.plus.event(u, dto.kind, dto.ref ?? null); }
 
   /** Сколько задач ушло в тест, вернулось, закрыто, переоткрыто — и кто двигал (ТЗ-32). */
   @Get('changes')
@@ -100,8 +181,8 @@ export class RadarController {
 
   /** Кого и чем разгрузить — предложение с «было → станет», подтверждается как действие. */
   @Post('rebalance/:userId/preview')
-  rebalance(@CurrentUser() u: AuthUser, @Param('userId') userId: string) {
-    return this.pulse.rebalancePreview(u, userId);
+  rebalance(@CurrentUser() u: AuthUser, @Param('userId') userId: string, @Body() dto: RebalanceDto) {
+    return this.pulse.rebalancePreview(u, userId, { taskIds: dto?.taskIds, toId: dto?.toId ?? null });
   }
 
   /** «Это не проблема» — пункт скрывается на неделю, причина копится для правил. */

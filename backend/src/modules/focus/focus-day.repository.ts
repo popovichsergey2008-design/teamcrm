@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { assigneeOwesSql, pausedSql, personalDeadlineSql, stageSql } from '../tasks/responsibility';
 import { Candidate } from './rule-of-3';
+import { deciderSql } from '../decision-queue/decision-queue.repository';
 import { DEFAULT_DAY, WorkDay } from './close-day';
 
 export interface PlanRow {
@@ -145,7 +146,7 @@ export class FocusDayRepository {
            JOIN projects p ON p.id = t.project_id
            JOIN board_columns bc ON bc.id = t.column_id
            LEFT JOIN users ua ON ua.id = t.assignee_id
-          WHERE t.tenant_id = $1 AND t.created_by = $2
+          WHERE t.tenant_id = $1 AND ${deciderSql('t')}
             AND (t.assignee_id IS NULL OR t.assignee_id <> $2)
             AND t.closed_at IS NULL AND t.deleted_at IS NULL AND p.status <> 'archived' AND NOT p.is_demo
             AND ${stageSql('t')} IN ('testing', 'review', 'approval')

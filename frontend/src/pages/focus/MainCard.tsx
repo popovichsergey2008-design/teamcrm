@@ -105,8 +105,9 @@ export function ReviewsBlock({ count, minutes, at, decisions, onStart, onSnoozed
   return (
     <section className="fp-card fp-reviews" aria-label="Проверки и решения">
       <div className="fp-head">
-        <span><b>{count} {count === 1 ? 'проверка' : count < 5 ? 'проверки' : 'проверок'}</b> · ≈ {dur(minutes)}{at ? ` · в ${at}` : ''}</span>
-        {reviews.length > 0 && <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => onStart(reviews)}>Начать разбор</button>}
+        {/* #4890: то же число, что в Пульсе и брифинге; разбор — по одной карточке, пачками по 10 */}
+        <span><b>Ждут вашего решения: {count}</b> · ≈ {dur(minutes)}{at ? ` · блок в ${at}` : ''}</span>
+        {count > 0 && <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => onStart(reviews)}>Начать разбор · {Math.min(10, count)} шт.</button>}
       </div>
       {quick.length > 0 && (
         <div className="fp-quick">

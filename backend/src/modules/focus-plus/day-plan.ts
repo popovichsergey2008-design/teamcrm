@@ -4,6 +4,7 @@
  * между встречами; цифры сходятся арифметически, встречи вычитаются один раз.
  */
 import { freeSlots, Interval, zonedToUtc } from '../calendar/find-time';
+import { DECISION_MINUTES } from '../decision-queue/decision-queue.rules';
 
 const MIN = 60_000;
 
@@ -61,8 +62,11 @@ const union = (list: Interval[]) => {
   return n;
 };
 
-/** Сколько минут на проверки: по 6 минут на штуку, не меньше 15 и не больше 2 ч. */
-export const reviewsMinutes = (n: number) => (n > 0 ? Math.max(15, Math.min(120, Math.round(n * 6 / 5) * 5)) : 0);
+/**
+ * Сколько минут на проверки: та же оценка, что в разборе решений (#4890: 10 решений ≈ 20 минут),
+ * не меньше 15 и не больше 2 ч — одно число и в плане дня, и в Пульсе.
+ */
+export const reviewsMinutes = (n: number) => (n > 0 ? Math.max(15, Math.min(120, Math.round(n * DECISION_MINUTES / 5) * 5)) : 0);
 
 export function dayPlan(input: DayPlanInput): DayPlan {
   const [y, mo, d] = input.date.split('-').map(Number);

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { DecisionQueueService } from '../decision-queue/decision-queue.service';
 import { DbService } from '../../database/db.service';
 import { stageSql } from '../tasks/responsibility';
 import { BriefService } from './brief.service';
@@ -16,7 +17,7 @@ import { buildCards, Connections, inMonth, isStale, MatrixTask, MINUTES, quadran
 export class BotStartService {
   private readonly log = new Logger('BotStart');
 
-  constructor(private readonly db: DbService, private readonly briefs: BriefService, private readonly delivery: BotDelivery) {}
+  constructor(private readonly db: DbService, private readonly briefs: BriefService, private readonly delivery: BotDelivery, private readonly queue: DecisionQueueService) {}
 
   async connections(tenantId: string, userId: string): Promise<Connections> {
     const r = await this.db.one<{ mail: boolean; google: boolean; caldav: boolean; telegram: boolean }>(
@@ -71,7 +72,8 @@ export class BotStartService {
     catch (e) { this.log.warn(`ждут ответа: ${(e as Error).message}`); }
     return {
       meetings: q?.meetings ?? 0, noAgenda: q?.no_agenda ?? 0, firstNoAgenda: q?.first_no_agenda ?? null,
-      decisions: (q?.approvals ?? 0) + (q?.reviews ?? 0), needReply, reports: q?.reports ?? 0,
+      // #4890, п. 13: то же число, что в Фокусе и в Пульсе
+      decisions: await this.queue.count({ tenantId, userId }), needReply, reports: q?.reports ?? 0,
       reportChats: q?.report_chats ?? [], project: q?.project ?? null, members: q?.members ?? 1,
     };
   }

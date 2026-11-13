@@ -46,8 +46,13 @@ export interface BriefFacts {
   submittedWaiting?: number;
   /** своё со сроком сегодня/просроченное, не попавшее в тройку */
   dueOutside: { taskId: string; projectId: string; title: string; overdue: boolean }[];
-  /** ждут его решения: предложения секретаря и согласования */
-  waiting: { proposals: number; approvals: number };
+  /**
+   * ждут его решения. #4890, п. 13: decisions — ОДНО число «ждут вашего решения» (очередь
+   * DecisionQueueService, то же, что в счётчике Фокуса и в Пульсе); предложения секретаря —
+   * отдельной строкой, это не решения по работе команды. Без decisions (старые вызовы) —
+   * как раньше: предложения + согласования.
+   */
+  waiting: { proposals: number; approvals: number; decisions?: number };
   meetingsToday: number;
   firstMeeting: { id: string; title: string; time: string; minutesLeft: number } | null;
   /** обязательные к прочтению объявления, которые он не подтвердил */
@@ -241,13 +246,31 @@ export function composeBrief(f: BriefFacts, length: BriefLength = 'normal'): Com
 
   // ── решения (п. 45): одна строка и кнопка, не ещё один ящик ──
   // #4734: ведёт в «AI-агент → Ждут решения» (/secretary); /focus/inbox — это почтовые каналы, там этих решений нет
-  const waitN = f.waiting.proposals + f.waiting.approvals;
-  if (waitN > 0) {
-    cand.push({
-      weight: f.boss ? 75 : 50, section: 'decide',
-      s: { text: `От вас ждут ${waitN} ${plural(waitN, 'решение', 'решения', 'решений')}.`, refs: [src({ kind: 'decisions', label: `Ждут решения: ${waitN}`, link: '/secretary' })] },
-      action: { kind: 'decisions', label: 'Посмотреть решения', link: '/secretary' },
-    });
+  if (f.waiting.decisions !== undefined) {
+    const n = f.waiting.decisions;
+    if (n > 0) {
+      cand.push({
+        weight: f.boss ? 75 : 50, section: 'decide',
+        s: { text: `Ждут вашего решения: ${n}.`, refs: [src({ kind: 'decisions', label: `Ждут вашего решения: ${n}`, link: '/focus?review=1' })] },
+        action: { kind: 'decisions', label: 'Начать разбор', link: '/focus?review=1' },
+      });
+    }
+    const p = f.waiting.proposals;
+    if (p > 0) {
+      cand.push({
+        weight: 30, section: 'decide',
+        s: { text: `У секретаря ${p} ${plural(p, 'предложение', 'предложения', 'предложений')} для вас.`, refs: [src({ kind: 'decisions', label: `Предложения секретаря: ${p}`, link: '/secretary' })] },
+      });
+    }
+  } else {
+    const waitN = f.waiting.proposals + f.waiting.approvals;
+    if (waitN > 0) {
+      cand.push({
+        weight: f.boss ? 75 : 50, section: 'decide',
+        s: { text: `От вас ждут ${waitN} ${plural(waitN, 'решение', 'решения', 'решений')}.`, refs: [src({ kind: 'decisions', label: `Ждут решения: ${waitN}`, link: '/secretary' })] },
+        action: { kind: 'decisions', label: 'Посмотреть решения', link: '/secretary' },
+      });
+    }
   }
 
   // ── календарь (п. 46) ──

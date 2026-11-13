@@ -21,7 +21,10 @@ import { CloseDayDialog } from './CloseDayDialog';
 import { TeamNow } from './TeamNow';
 import { MorningPlan } from './focus/MorningPlan';
 import { MainCard, ReviewsBlock } from './focus/MainCard';
-import { ReviewRun } from './focus/ReviewRun';
+import { DecisionRun } from './focus/DecisionRun';
+import { DecisionListDialog, PassportDialog } from './pulse/Passport';
+import { decisionsApi } from './focus/decisions-api';
+import { pulseApi } from './pulse/pulse-api';
 import { Replan } from './focus/Replan';
 import { Agreements } from './focus/Agreements';
 import { FirstDay } from './focus/FirstDay';
@@ -116,7 +119,12 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     Фаза дня (утро / день / вечер) решает, что наверху; тройка и её правила — прежние.
   */
   const [plus, setPlus] = useState<PlusDay | null>(null);
-  const [runList, setRunList] = useState<FocusCandidate[] | null>(null);
+  // #4890, пп. 4–6: разбор решений по одной карточке — здесь же, без перехода
+  const [runOpen, setRunOpen] = useState(false);
+  // п. 13: «Ждут вашего решения» — живое число той же функции, что в Пульсе и брифинге
+  const [liveDecisions, setLiveDecisions] = useState<number | null>(null);
+  const [decPassport, setDecPassport] = useState(false);
+  const [decList, setDecList] = useState(false);
   const [doneInfo, setDoneInfo] = useState<null | { title: string | null; minutes: number; progress: { done: number; total: number; deepMin: number }; notified: string | null; next: { itemId: string; taskId: string | null; title: string | null } | null }>(null);
   const loadPlus = useCallback(async () => {
     try { const d = await focusApi.day(); setPlus(d.enabled ? d : null); } catch { /* блоки ТЗ не обязательны для тройки */ }
@@ -147,9 +155,19 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     if (/[?&]close=1/.test(q)) setClosing(true);
     if (/[?&]week=1/.test(q)) setWeekOpen(true);
     if (/[?&]review=1/.test(q) || fromPulse) setWantReview(true);
+    // «Как поймём, что сработало»: переход из «Пульса недели»
+    if (/[?&]src=pulse_week/.test(q)) void pulseApi.event('weekly_open', 'telegram').catch(() => undefined);
     if (q) try { window.history.replaceState(window.history.state, '', window.location.pathname); } catch { /* адрес останется — не страшно */ }
   }, [active]);
   const briefOn = !!day.brief && day.brief.enabled;
+  // брифинг «Начать разбор» и любые кнопки «в разбор» на этом же экране
+  useEffect(() => {
+    const on = () => setRunOpen(true);
+    window.addEventListener('teamcrm:focus-review', on);
+    return () => window.removeEventListener('teamcrm:focus-review', on);
+  }, []);
+  useEffect(() => { setLiveDecisions(null); }, [day.waitingDecision]);
+  const decisionCount = liveDecisions ?? day.waitingDecision;
 
   const apply = (next: FocusToday) => {
     if (next.enabled) setDay(next);
@@ -285,6 +303,25 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   );
 
   const card = (item: FocusItem) => {
+    /*
+      #4890, п. 13: проверки и согласования — одна очередь решений. Если решений больше одного,
+      место в тройке становится «Разобрать N проверок · ≈ M мин» и ведёт в разбор по карточке.
+    */
+    if (item.kind !== 'task' && item.status !== 'done' && decisionCount > 1 && !editing) {
+      const take = Math.min(10, decisionCount);
+      return (
+        <article key={item.id} className={`fd-card${item.rank === 1 ? ' fd-mission' : ''}`} aria-label={`#${item.rank} Разбор решений`}>
+          <div className="fd-card-top"><span className="fd-rank">#{item.rank} {RANK_LABEL[item.rank]}</span></div>
+          <button type="button" className="fd-title" onClick={() => setRunOpen(true)}>
+            <Icon name="check-circle" size={item.rank === 1 ? 18 : 15} /> Разобрать {take} {plural(take, 'проверку', 'проверки', 'проверок')} · ≈ {take * 2} мин
+          </button>
+          <p className="fd-about fd-bundle-sub">Ждут вашего решения: {decisionCount} · самые старые первыми, по одной карточке</p>
+          <div className="fd-actions">
+            <Button variant={item.rank === 1 ? 'primary' : 'outline'} size="sm" onClick={() => setRunOpen(true)}><Icon name="check-circle" size={14} /> Начать разбор</Button>
+          </div>
+        </article>
+      );
+    }
     // #4767: короткое решение или глубокая работа — по оценке; без оценки время выбирает человек
     const size = focusSize(item.kind, item.estimateMin);
     const minutesFor = size.minutes ?? focusMin;
@@ -513,16 +550,12 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   const plusDecisions = (backlog ?? []).filter((c) => c.kind !== 'task');
   useEffect(() => { if (plus && (plus.decisions > 0 || plus.capacity.reviewsMin > 0) && backlog === null) void loadBacklog(); }, [plus, backlog, loadBacklog]);
   const reviewsSlot = plus?.timeline.find((t) => t.kind === 'reviews');
+  // Пульс «Начать разбор в Фокусе», ссылка из «Пульса недели», брифинг — сразу в режим разбора (п. 13)
   useEffect(() => {
     if (!wantReview) return;
-    if (backlog === null) { void loadBacklog(); return; }
     setWantReview(false);
-    // проверки и согласования из тройки — тоже в разбор: «решить своё» здесь целиком
-    const fromTop: FocusCandidate[] = top.filter((i) => i.status === 'active' && i.kind !== 'task' && i.title)
-      .map((i) => ({ key: `${i.kind}:${i.taskId ?? i.approvalId}`, kind: i.kind, taskId: i.taskId, approvalId: i.approvalId ?? null, title: i.title!, projectName: i.projectName ?? null, score: 0, reasons: i.reasons }));
-    const list = [...fromTop, ...plusDecisions.filter((d) => !fromTop.some((t) => t.taskId && t.taskId === d.taskId))];
-    if (list.length) setRunList(list);
-  }, [wantReview, backlog, loadBacklog, plusDecisions, top]);
+    setRunOpen(true);
+  }, [wantReview]);
   const mainItem = plus?.main ? top.find((i) => i.id === plus.main!.itemId) : undefined;
 
   const closeDayBlock = day.closeDay.workdayClosedUntil ? (
@@ -600,7 +633,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
 
       {!plus && day.brief && day.brief.enabled && (
         <div className="fd-secondary">
-          <Suspense fallback={null}><FocusBriefCard initial={day.brief} /></Suspense>
+          <Suspense fallback={null}><FocusBriefCard initial={day.brief} decisions={decisionCount} /></Suspense>
         </div>
       )}
 
@@ -719,13 +752,14 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         </section>
       )}
 
-      {plus && (
-        <ReviewsBlock count={plus.decisions} minutes={plus.capacity.reviewsMin} at={reviewsSlot ? new Date(reviewsSlot.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : null}
-          decisions={plusDecisions} onStart={setRunList} onSnoozed={() => { setBacklog(null); void loadPlus(); }} />
+      {plus && !runOpen && (
+        <ReviewsBlock count={decisionCount} minutes={plus.capacity.reviewsMin} at={reviewsSlot ? new Date(reviewsSlot.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : null}
+          decisions={plusDecisions} onStart={() => setRunOpen(true)} onSnoozed={() => { setBacklog(null); void loadPlus(); void reload(); }} />
       )}
-      {runList && (
-        <ReviewRun items={runList} onOpenTask={(pid, tid) => { if (pid) onOpenTask(pid, tid); else void api.taskBrief(tid).then((t) => onOpenTask(t.projectId, tid)).catch(() => undefined); }}
-          onClose={(changed) => { setRunList(null); if (changed) { setBacklog(null); void reload(); void loadPlus(); } }} />
+      {runOpen && (
+        <DecisionRun boss={boss} onCount={setLiveDecisions}
+          onClose={() => { setRunOpen(false); setBacklog(null); void reload(); void loadPlus(); }}
+          onBackToPulse={() => { setRunOpen(false); navigate({ section: 'radar' }); }} />
       )}
 
       {/* Всё остальное — ниже тройки (ТЗ-27, п. 3): в Дзене прячется. */}
@@ -745,12 +779,17 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <span className="dim"> — работа сдана, срок за вами не числится</span>
         </div>
       )}
-      {day.waitingDecision > 0 && (
-        <button type="button" className="fd-row fd-secondary" aria-expanded={backlogOpen === 'decisions'} onClick={() => setBacklogOpen((v) => (v === 'decisions' ? null : 'decisions'))}>
-          <Icon name="handshake" size={15} /> Ждут вашего решения: <b>{day.waitingDecision}</b>
-          <Icon name={backlogOpen === 'decisions' ? 'chevron-up' : 'chevron-down'} size={14} />
-        </button>
+      {/* #4890, п. 3, 13: то же число и то же определение, что в Пульсе и брифинге; по нажатию — паспорт числа */}
+      {decisionCount > 0 && (
+        <div className="fd-row fd-secondary fd-row-static">
+          <Icon name="handshake" size={15} /> Ждут вашего решения:{' '}
+          <button type="button" className="pp-num" title="Что за число" onClick={() => setDecPassport(true)}><b>{decisionCount}</b></button>
+          {!runOpen && <Button variant="outline" size="sm" onClick={() => setRunOpen(true)}>Начать разбор · {Math.min(10, decisionCount)} шт.</Button>}
+          <Button variant="ghost" size="sm" onClick={() => setDecList(true)}>Список</Button>
+        </div>
       )}
+      {decPassport && <PassportDialog load={decisionsApi.passport} onClose={() => setDecPassport(false)} onOpenList={() => { setDecPassport(false); setDecList(true); }} />}
+      {decList && <DecisionListDialog onClose={() => setDecList(false)} onStart={() => setRunOpen(true)} />}
       <button type="button" className="fd-row fd-secondary" aria-expanded={backlogOpen === 'all'} onClick={() => setBacklogOpen((v) => (v === 'all' ? null : 'all'))}>
         <Icon name="list" size={15} /> Остальные задачи ({day.backlogCount})
         <Icon name={backlogOpen === 'all' ? 'chevron-up' : 'chevron-down'} size={14} />

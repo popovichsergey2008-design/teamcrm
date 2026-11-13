@@ -13,6 +13,7 @@ import { RealtimeService } from '../realtime/realtime.service';
 import { TasksService } from '../tasks/tasks.service';
 import { ProjectsRepository } from '../projects/projects.repository';
 import { WorkloadGuardService } from '../workload/workload.service';
+import { DecisionQueueService } from '../decision-queue/decision-queue.service';
 import { probeBufferSec } from '../meetings/audio.util';
 import { BriefPrefs, FocusBriefRepository, SnapshotRow } from './focus-brief.repository';
 import {
@@ -62,6 +63,7 @@ export class FocusBriefService implements OnModuleInit {
     private readonly tasks: TasksService,
     private readonly projects: ProjectsRepository,
     private readonly workload: WorkloadGuardService,
+    private readonly queue: DecisionQueueService,
   ) {}
 
   onModuleInit(): void {
@@ -213,7 +215,7 @@ export class FocusBriefService implements OnModuleInit {
     const topTaskIds = top.map((i) => i.taskId).filter((x): x is string => !!x);
 
     const learned = await this.repo.notPromises(v.tenantId).catch(() => [] as string[]);
-    const [meetings, postcall, commitments, due, waiting, cal, ann, overloaded, submitted] = await Promise.all([
+    const [meetings, postcall, commitments, due, waiting, cal, ann, overloaded, submitted, decisions] = await Promise.all([
       this.repo.meetingsYesterday(v.tenantId, v.userId, boss, v.role === 'client', yStart, dayStart),
       this.repo.postcallPending(v.tenantId, v.userId),
       this.repo.commitments(v.tenantId, v.userId, yStart, dayEnd),
@@ -223,6 +225,8 @@ export class FocusBriefService implements OnModuleInit {
       this.repo.announcements(v.tenantId, v.userId, v.role === 'owner'),
       preset.teamSignals ? this.workload.overloaded(v.tenantId).catch(() => [] as string[]) : Promise.resolve(null),
       this.repo.submittedWaiting(v.tenantId, v.userId),
+      // #4890, п. 13: то же число, что в счётчике Фокуса и в Пульсе
+      this.queue.count(v),
     ]);
 
     const label = (type: string, at: Date) => {
@@ -245,7 +249,7 @@ export class FocusBriefService implements OnModuleInit {
       })),
       submittedWaiting: submitted,
       dueOutside: due.map((d) => ({ taskId: d.id, projectId: d.project_id, title: d.title, overdue: new Date(d.deadline_at).getTime() < dayStart.getTime() })),
-      waiting: { proposals: waiting.proposals, approvals: waiting.approvals },
+      waiting: { proposals: waiting.proposals, approvals: waiting.approvals, decisions },
       meetingsToday: cal.count,
       firstMeeting: cal.first ? {
         id: cal.first.id, title: cal.first.title, time: hhmm(new Date(cal.first.starts_at), tz),

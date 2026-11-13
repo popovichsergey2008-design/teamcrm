@@ -146,3 +146,91 @@
 .tch-field { border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .tch-field:hover { border-color: var(--accent); }
 .tch-field:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+/* ── #4890: новый порядок экрана ── */
+.pulse-small { font-size: var(--fs-xs); }
+.pulse-sub { font-weight: 400; font-size: var(--fs-sm); }
+.pulse-cap { font-size: var(--fs-xs); color: var(--text-mut); text-transform: uppercase; letter-spacing: .05em; }
+.pulse-inline-link {
+  background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; align-self: flex-start;
+}
+.pulse-inline-link:focus-visible, .pulse-ring-btn:focus-visible, .pulse-collapse:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+.pulse-grow { flex: 1 1 200px; }
+
+/* шапка: индекс + «Главное — у вас» */
+.pulse-top { display: grid; grid-template-columns: 1.35fr 1fr; gap: var(--sp-3); }
+@media (max-width: 900px) { .pulse-top { grid-template-columns: 1fr; } }
+.pulse-index { flex-direction: row; align-items: center; gap: 18px; }
+@media (max-width: 560px) { .pulse-index { flex-direction: column; align-items: flex-start; } }
+.pulse-ring-btn { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; flex: 0 0 auto; }
+.pulse-index .pulse-score b { font-size: 34px; margin-top: 22px; }
+/* зона риска — тёплым, не красным: «Критично» красным первым на экране не показываем (п. 1) */
+.pz-normal .pulse-ring { stroke: var(--health-attention); }
+.pz-help .pulse-ring { stroke: var(--health-risk); }
+.pulse-index-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pulse-trend { font-size: var(--fs-sm); }
+.pulse-trend .is-up { color: var(--ok); font-weight: 600; }
+.pulse-trend .is-down { color: var(--warn); font-weight: 600; }
+.pulse-spark { display: flex; align-items: flex-end; gap: 4px; height: 34px; margin-top: 4px; }
+.pulse-spark i { display: block; width: 16px; border-radius: 3px; background: var(--accent); opacity: .55; }
+.pulse-spark i.is-now { background: var(--ok); opacity: 1; }
+
+.pulse-main { gap: 6px; border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+.pulse-main.is-none { border-color: var(--border); }
+.pulse-main-cap { color: var(--warn); }
+.pulse-main.is-none .pulse-main-cap { color: var(--text-mut); }
+.pulse-main-why { color: color-mix(in srgb, var(--warn) 55%, var(--text)); font-size: var(--fs-sm); }
+.pulse-main.is-none .pulse-main-why { color: var(--text-mut); }
+.pulse-main-cost { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pulse-effect {
+  display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 8px; font-weight: 650; font-size: var(--fs-sm);
+  color: var(--ok); background: color-mix(in srgb, var(--ok) 14%, transparent); white-space: nowrap;
+}
+.pulse-effect.is-zero { color: var(--text-mut); background: var(--bg); }
+
+.pulse-run-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* три шага */
+.pulse-step { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--border); }
+.pulse-step-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+@media (max-width: 600px) { .pulse-step { grid-template-columns: 1fr auto; } .pulse-step-text { grid-column: 1 / -1; } }
+.pulse-group { padding: 8px 0; border-top: 1px solid var(--border); }
+.pulse-group-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.pulse-group-head > button { margin-left: auto; }
+
+/* нагрузка без процентов */
+.pulse-load-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); }
+.pulse-load-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.pulse-load-main .ui-badge { margin-left: 6px; }
+
+/* прогноз */
+.pulse-fc2 { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.pulse-fc2-left { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 260px; }
+.pulse-fc2-left .ui-badge { margin-left: 6px; }
+.pulse-fc2-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; text-align: right; }
+@media (max-width: 600px) { .pulse-fc2-right { align-items: flex-start; text-align: left; } }
+.pulse-fc2-date { font-size: 17px; }
+.pulse-plan-edit { display: inline-flex; gap: 6px; align-items: center; }
+.pulse-stale { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); flex-wrap: wrap; }
+
+.pulse-collapse { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+
+/* сообщение по группе и выбор задач */
+.pulse-pick { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
+.pulse-pick-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.pulse-weekly { display: flex; flex-direction: column; gap: 10px; }
+
+/* экран новой команды */
+.pt-card { flex-direction: row; gap: 24px; }
+@media (max-width: 900px) { .pt-card { flex-direction: column; } }
+.pt-main { flex: 1.6 1 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pt-progress { height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.pt-progress span { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
+.pt-step { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.pt-text { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pt-box { width: 22px; height: 22px; flex: 0 0 auto; border-radius: 6px; border: 2px solid var(--border); display: grid; place-items: center; }
+.pt-step.is-done .pt-box { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+.pt-example { flex: 1 1 0; display: flex; flex-direction: column; gap: 8px; }
+.pt-example-body { display: flex; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
+.pt-example-body p { margin: 0; color: var(--text-mut); }

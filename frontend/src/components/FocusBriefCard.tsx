@@ -37,7 +37,14 @@ export const trackBrief = (e: FocusBriefEvent) => { void api.focusBriefEvent(e).
  * - Нет голоса или он сломался — карточка и экран живут текстом (п. 31–32).
  * - Новое важное днём не переписывает брифинг молча: обновляет человек (п. 40).
  */
-export default function FocusBriefCard({ initial }: { initial: FocusBrief }) {
+/**
+ * #4890, п. 13: брифинг — снимок на день, а «ждут вашего решения» меняется за день. Число в
+ * этой строке подставляется живое — из той же функции, что счётчик Фокуса и Пульс.
+ */
+const liveDecisions = (text: string, n: number | undefined) => (n === undefined ? text
+  : text.replace(/^Ждут вашего решения: \d+\./, n > 0 ? `Ждут вашего решения: ${n}.` : 'Решений от вас сейчас никто не ждёт.'));
+
+export default function FocusBriefCard({ initial, decisions }: { initial: FocusBrief; decisions?: number }) {
   const [brief, setBrief] = useState<FocusBrief>(initial);
   const [step, setStep] = useState(0);
   const [why, setWhy] = useState(false);
@@ -126,6 +133,8 @@ export default function FocusBriefCard({ initial }: { initial: FocusBrief }) {
     if (!link) return;
     trackBrief(ev);
     // #4734: брифинги до 03.11 вели решения в почтовые каналы (/focus/inbox) — их место в «AI-агент → Ждут решения»
+    // #4890: «Начать разбор» — разбор решений здесь же, в Фокусе, без перехода
+    if (link.startsWith('/focus?review=1')) { window.dispatchEvent(new Event('teamcrm:focus-review')); return; }
     navigate(link === '/focus/inbox' ? '/secretary' : link);
   };
 
@@ -184,14 +193,14 @@ export default function FocusBriefCard({ initial }: { initial: FocusBrief }) {
       {head}
       <p className="fb-text">
         {ready.sentences
-          ? ready.sentences.map((s, i) => <span key={i}>{s.text} </span>)
+          ? ready.sentences.map((s, i) => <span key={i}>{liveDecisions(s.text, decisions)} </span>)
           : ready.text}
       </p>
 
       {ready.actions.length > 0 && (
         <div className="fb-actions">
           {ready.actions.map((x) => (
-            <Button key={x.kind} variant="outline" size="sm" onClick={() => go(x.link, 'action_opened')}>{x.kind === 'decisions' ? 'Посмотреть решения' : x.label}</Button>
+            <Button key={x.kind} variant="outline" size="sm" onClick={() => go(x.link, 'action_opened')}>{x.kind === 'decisions' ? (x.link.startsWith('/focus?review=1') ? 'Начать разбор' : 'Посмотреть решения') : x.label}</Button>
           ))}
         </div>
       )}

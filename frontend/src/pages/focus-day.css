@@ -285,3 +285,37 @@
 .fp-habit { display: flex; flex-direction: column; gap: 12px; }
 .fp-habit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .fp-habit-ch { display: inline-flex; align-items: center; gap: 4px; }
+
+/* #4890, пп. 4–6: разбор решений по одной карточке, плашка с «Отменить», итог */
+.dr { gap: 12px; scroll-margin-top: 12px; }
+.dr-small { font-size: 12px; }
+.dr-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dr-head > b { margin-right: auto; }
+.dr-progress { height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.dr-progress span { display: block; height: 100%; background: var(--ok); border-radius: 4px; transition: width .25s; }
+.dr-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); }
+.dr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dr-chip { padding: 2px 9px; border-radius: 999px; font-size: 12px; background: var(--bg-elev); border: 1px solid var(--border); }
+.dr-chip.is-wait { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); }
+.dr-title { font-size: 17px; font-weight: 650; }
+.dr-next { color: var(--warn); }
+.dr-recap { padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--bg-elev); border-radius: 0 8px 8px 0; font-size: 14px; }
+.dr-plate {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--ok) 45%, var(--border)); background: color-mix(in srgb, var(--ok) 10%, var(--bg-elev));
+}
+.dr-plate-ico { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--ok); background: color-mix(in srgb, var(--ok) 18%, transparent); flex: 0 0 auto; }
+.dr-plate-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.dr-summary { display: flex; gap: 20px; align-items: flex-start; }
+@media (max-width: 600px) { .dr-summary { flex-direction: column; } }
+.dr-summary-text { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-width: 0; }
+.dr-cap { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ok); }
+.dr-rows > div { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--border); }
+.dr-ring { position: relative; width: 112px; height: 112px; flex: 0 0 auto; display: grid; place-items: center; text-align: center; }
+.dr-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.dr-ring b { font-size: 30px; line-height: 1; margin-top: 18px; }
+.dr-ring span { font-size: 12px; color: var(--text-mut); margin-bottom: 14px; }
+.dr-ring-bg { fill: none; stroke: var(--border); stroke-width: 6; }
+.dr-ring-fg { fill: none; stroke: var(--ok); stroke-width: 6; stroke-linecap: round; }
+/* тройка дня: одно место под очередь решений (п. 13) */
+.fd-bundle-sub { font-size: 13px; }

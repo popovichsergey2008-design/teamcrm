@@ -62,8 +62,8 @@ export class FocusPlusService {
     const { input } = await this.cal.weekData(v.tenantId, { userId: v.userId, role: v.role }, dayStart, dayStart + DAY);
     const top = [...t.top].sort((a, b) => a.rank - b.rank);
     const notes = await this.notes(v, top.map((i) => i.taskId).filter((x): x is string => !!x));
-    const snoozed = await this.snoozedCount(v);
-    const decisions = Math.max(0, t.waitingDecision - snoozed);
+    // #4890, п. 13: то же число, что в Пульсе и брифинге (отложенные согласования уже вычтены в очереди)
+    const decisions = t.waitingDecision;
     const topTaskIds = new Set(top.map((i) => i.taskId).filter(Boolean) as string[]);
     const otherBlocks = input.blocks
       .filter((b) => !(b.kind === 'task' && top.some((i) => i.calendarBlock && Date.parse(i.calendarBlock.startsAt) === b.start)))
@@ -98,7 +98,8 @@ export class FocusPlusService {
       startWith ? `Вы просили начать с: ${startWith.replace(/[.\s]+$/, '')}.` : '',
       `Сегодня ${hours(Math.max(0, plan.availableMin))} на задачи.`,
       mission ? `Начните с «${shortTitle(mission.title ?? '')}» — это главный результат дня.` : 'Главный результат дня не выбран — выберите задачу.',
-      reviewsSlot ? `Проверки и решения — одним блоком в ${tf(reviewsSlot.start)}.` : '',
+      // #4890, п. 13: то же число, что в счётчике и в Пульсе
+      decisions ? `Ждут вашего решения: ${decisions} — разбор ≈ ${reviewsMinutes(Math.min(decisions, 10))} мин на ${Math.min(decisions, 10)}${reviewsSlot ? `, блок в ${tf(reviewsSlot.start)}` : ''}.` : '',
     ].filter(Boolean).join(' ');
     // что не вошло: задачи без окна и просроченные вне плана
     const overdue = (await this.overdueOutside(v, [...topTaskIds])).map((o) => ({ ...o, title: shortTitle(o.title) }));
@@ -176,12 +177,6 @@ export class FocusPlusService {
          FROM focus_sessions WHERE tenant_id = $1 AND user_id = $2 AND started_at >= $3::timestamptz`,
       [v.tenantId, v.userId, new Date(dayStart).toISOString()]).catch(() => null);
     return Number(r?.min ?? 0);
-  }
-
-  private async snoozedCount(v: Viewer) {
-    const r = await this.db.one<{ n: number }>(
-      `SELECT count(*)::int AS n FROM focus_snoozes WHERE user_id = $1 AND until > now() AND item_key LIKE 'approval:%'`, [v.userId]);
-    return Number(r?.n ?? 0);
   }
 
   private async overdueOutside(v: Viewer, inPlan: string[]) {

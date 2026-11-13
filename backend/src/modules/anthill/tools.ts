@@ -1212,10 +1212,13 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const s = await pulse.summary({ tenantId: ctx.tenantId, userId: ctx.user.userId, role: ctx.user.role }, ctx.timezone ?? null);
         const lines: string[] = [`Индекс здоровья ${s.health.score}/100 (${s.health.zone}). ${s.verdict.headline}.`, ...s.verdict.lines];
         if (s.bottlenecks.length) lines.push('Главные затыки:', ...s.bottlenecks.slice(0, 5).map((b: any) => `— #${b.taskId} «${b.title}»: ${b.typeTitle.toLowerCase()}, ${b.why}, исполнитель ${b.assignee ?? 'не назначен'}`));
+        // #4890, п. 9: без процентов загрузки — числа задач
         const over = s.workload.filter((w: any) => w.pct > 100);
         const free = s.workload.filter((w: any) => w.pct <= 60 && w.available);
-        if (over.length) lines.push(`Выше нормы: ${over.map((w: any) => `${w.name} ${w.pct}%`).join(', ')}. Свободнее всех: ${free.slice(0, 3).map((w: any) => `${w.name} ${w.pct}%`).join(', ') || 'никого'}. Разгрузить — кнопка «Балансировать» в «Пульсе команды».`);
-        if (s.decisions.length) lines.push(`Ждут решения руководителя: ${s.decisions.length}.`);
+        if (over.length) lines.push(`Выше нормы: ${over.map((w: any) => `${w.name} (в работе ${w.active}, просрочено ${w.overdue})`).join(', ')}. Есть запас: ${free.slice(0, 3).map((w: any) => `${w.name} (в работе ${w.active})`).join(', ') || 'никого'}. Разгрузить — кнопка «Балансировать» в «Пульсе команды».`);
+        // #4890, п. 13: одно число «ждут вашего решения» — из той же функции, что в Фокусе и Пульсе
+        const waitN = await pulse.decisionsCount({ tenantId: ctx.tenantId, userId: ctx.user.userId });
+        if (waitN) lines.push(`Ждут вашего решения: ${waitN}. Разбор по одной карточке — в «Фокусе дня».`);
         for (const p of s.allProjects.filter((x: any) => x.forecast.delayDays && x.forecast.delayDays > 0).slice(0, 3)) {
           lines.push(`Проект «${p.name}» опаздывает на ${p.forecast.delayDays} дн. (прогноз ${p.forecast.date}, уверенность ${p.forecast.reliable ? `${p.forecast.confidence}%` : 'низкая'}). Чтобы успеть: ${p.catchUp.join(' ')}`);
         }

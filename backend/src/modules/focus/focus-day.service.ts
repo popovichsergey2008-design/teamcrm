@@ -7,6 +7,7 @@ import { FocusDayRepository, ItemLive, ItemRow, PlanRow } from './focus-day.repo
 import { Candidate, pickTop3, SCORE_VERSION, Scored, scoreCandidate } from './rule-of-3';
 import { closeDayAvailable, nextWorkStart, tomorrowOf, zonedTime } from './close-day';
 import { PresenceService } from '../presence/presence.service';
+import { DecisionQueueService } from '../decision-queue/decision-queue.service';
 import { descriptionText } from '../before-after/before-after.rules';
 
 export type Viewer = { tenantId: string; userId: string; role: string };
@@ -42,6 +43,7 @@ export class FocusDayService {
     private readonly repo: FocusDayRepository,
     private readonly realtime: RealtimeService,
     private readonly presence: PresenceService,
+    private readonly queue: DecisionQueueService,
   ) {}
 
   private briefHook: BriefHook | null = null;
@@ -162,9 +164,10 @@ export class FocusDayService {
 
     const inPlan = new Set(items.map(keyOfItem));
     const rest = scored.filter((c) => !inPlan.has(c.key));
-    const waitingDecision = scored.filter((c) => c.kind !== 'task').length;
-    const [work, workday, waitingReview] = await Promise.all([
+    // #4890, п. 13: «Ждут вашего решения» — одно число на все экраны, из одной функции
+    const [work, workday, waitingReview, waitingDecision] = await Promise.all([
       this.repo.workDay(v.tenantId), this.repo.workdayState(v.tenantId, v.userId), this.repo.waitingReview(v.tenantId, v.userId),
+      this.queue.count(v),
     ]);
     const doneTop = items.filter((i) => i.status === 'done').length;
 

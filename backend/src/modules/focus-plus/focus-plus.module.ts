@@ -5,6 +5,7 @@ import { CalendarPlusModule } from '../calendar-plus/calendar-plus.module';
 import { FocusModule } from '../focus/focus.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { TasksModule } from '../tasks/tasks.module';
+import { DecisionQueueModule } from '../decision-queue/decision-queue.module';
 import { FocusPlusController } from './focus-plus.controller';
 import { FocusPlusService } from './focus-plus.service';
 import { FocusPlusScheduler } from './focus-plus.scheduler';
@@ -13,7 +14,7 @@ import { FocusHabitService } from './focus-habit.service';
 
 /** #4891 ТЗ «Фокус дня»: утро → день → вечер поверх существующего плана дня. */
 @Module({
-  imports: [FocusModule, CalendarModule, CalendarPlusModule, AiModule, TasksModule, NotificationsModule],
+  imports: [FocusModule, CalendarModule, CalendarPlusModule, AiModule, TasksModule, NotificationsModule, DecisionQueueModule],
   controllers: [FocusPlusController],
   providers: [FocusPlusService, FocusWave2Service, FocusHabitService, FocusPlusScheduler],
   exports: [FocusPlusService, FocusWave2Service],

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { DecisionQueueModule } from '../decision-queue/decision-queue.module';
 import { FocusScheduler } from './focus.scheduler';
 import { FocusController } from './focus.controller';
 import { FocusService } from './focus.service';
@@ -10,7 +11,7 @@ import { FocusSessionController } from './focus-session.controller';
 import { FocusSessionService } from './focus-session.service';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, DecisionQueueModule],
   // FocusDayController объявлен ПЕРВЫМ: его путь `focus/today` не должен уйти в чужие маршруты
   controllers: [FocusDayController, FocusSessionController, FocusController],
   providers: [FocusService, FocusDayService, FocusDayRepository, FocusSessionService, FocusScheduler],

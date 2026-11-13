@@ -44,8 +44,9 @@ function range(p: Preset, custom: { from: string; to: string }): { from: string;
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow';
 const time = (iso: string) => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-export function TaskChanges() {
-  const [preset, setPreset] = useState<Preset>('today');
+/** #4890, п. 0: в Пульсе блок свёрнут и по умолчанию показывает 7 дней. */
+export function TaskChanges({ initialPreset = 'today', embedded = false }: { initialPreset?: Preset; embedded?: boolean } = {}) {
+  const [preset, setPreset] = useState<Preset>(initialPreset);
   const [custom, setCustom] = useState(() => ({ from: ymd(new Date()), to: ymd(new Date()) }));
   const [projectId, setProjectId] = useState('');
   const [userId, setUserId] = useState('');
@@ -95,11 +96,13 @@ export function TaskChanges() {
   const label = (k: ChangeKindKey) => data?.kinds.find((x) => x.key === k)?.label ?? k;
 
   return (
-    <section className="pulse-card pulse-span tch">
-      <div className="pulse-card-head">
-        <h3>Изменения по задачам</h3>
-        <span className="dim">по истории переходов, а не по текущему статусу</span>
-      </div>
+    <section className={embedded ? 'tch' : 'pulse-card pulse-span tch'}>
+      {!embedded && (
+        <div className="pulse-card-head">
+          <h3>Изменения по задачам</h3>
+          <span className="dim">по истории переходов, а не по текущему статусу</span>
+        </div>
+      )}
 
       <div className="tch-filters">
         <span className="view-switch" role="group" aria-label="Период">

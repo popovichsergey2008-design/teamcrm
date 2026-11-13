@@ -107,6 +107,12 @@ describe('выбор тройки', () => {
     expect(picked.map((p) => p.key)).toContain(own.key);
   });
 
+  it('#4890, п. 13: и без своей работы — одно место под очередь решений, а не три проверки', () => {
+    const reviews = [1, 2, 3].map((n) => score(task({ kind: 'review', waiting: 3, key: `review:${n}`, deadlineAt: msk('2026-10-06T12:00:00') })));
+    const picked = pickTop3(reviews);
+    expect(picked.filter((p) => p.kind !== 'task')).toHaveLength(1);
+  });
+
   it('три задачи по 5 часов не влезают в 4 свободных часа', () => {
     const big = [1, 2, 3].map(() => score(task({ deadlineAt: msk('2026-10-07T18:00:00'), estimateHours: 5 })));
     expect(pickTop3(big, { freeHours: 4 })).toHaveLength(1);

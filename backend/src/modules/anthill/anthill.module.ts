@@ -1,4 +1,5 @@
 import { FeedModule } from '../feed/feed.module';
+import { DecisionQueueModule } from '../decision-queue/decision-queue.module';
 import { Module } from '@nestjs/common';
 import { ClientsModule } from '../clients/clients.module';
 import { AiModule } from '../ai/ai.module';
@@ -35,6 +36,8 @@ import { BriefService } from './brief.service';
   imports: [
     AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule,
     FilesModule, TaskCardModule, ForecastModule, CalendarModule,
+    // #4890: «ждут вашего решения» — одна очередь на все экраны
+    DecisionQueueModule,
     // База знаний: из неё агент отвечает на вопросы о том, как работает сама система.
     KnowledgeModule,
     // Клиенты (ТЗ-17): «что с Acme?», «кто требует внимания»
