@@ -4,6 +4,7 @@ import { TelegramService } from '../telegram/telegram.service';
 import { MailRow, NotificationsRepository } from './notifications.repository';
 import { InboxRepository } from './inbox.repository';
 import { CHAT_DIRECT_KEY, MIRROR_EVENT_KEY } from './mail.templates';
+import { isImportant } from './inbox-rules';
 import { mirrorText } from './telegram-mirror.text';
 import { RealtimeService } from '../realtime/realtime.service';
 import { DbService } from '../../database/db.service';
@@ -177,6 +178,8 @@ export class TelegramMirror {
     try {
       if (!(await this.repo.prefEnabled(row.tenant_id, row.user_id, MIRROR_EVENT_KEY))) return;
       if (await this.inbox.silent(row.tenant_id, row.user_id, row.event_key)) return;
+      // #4902, п. 1: в Telegram — только важное (упоминания, личное, решения, назначенное, звонки)
+      if (!isImportant(row.event_key) && !(await this.inbox.notifyPrefs(row.tenant_id, row.user_id)).telegramAll) return;
       const chatId = await this.telegram.chatIdOf(row.tenant_id, row.user_id);
       if (!chatId) return; // Telegram не привязан — это норма, а не ошибка
 

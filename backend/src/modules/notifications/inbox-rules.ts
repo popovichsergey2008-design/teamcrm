@@ -48,6 +48,22 @@ export function keysOfKinds(kinds: InboxKind[]): string[] {
 /** «Важное»: решения, упоминания, назначенное мне, созвоны. */
 export const IMPORTANT_KINDS: InboxKind[] = ['decision', 'mention', 'assigned', 'meeting'];
 
+/**
+ * #4902, п. 1: что доходит в режиме «Только важное» — упоминания, личные сообщения,
+ * звонки, решения и вопросы к вам, назначенное и срок сегодня. Остальное — во
+ * «Входящие» и в сводку «Что я пропустил», без push и Telegram.
+ */
+export function isImportant(eventKey: string, opts: { dm?: boolean } = {}): boolean {
+  if (opts.dm || eventKey === 'chat.dm' || eventKey.startsWith('call.') || eventKey === 'focus.knock') return true;
+  return IMPORTANT_KINDS.includes(inboxKind(eventKey));
+}
+
+/** Сейчас тихие часы? Время «ЧЧ:ММ» в поясе человека; через полночь (21:00–09:00) тоже. */
+export function inQuietHours(nowHm: string, from: string | null, to: string | null): boolean {
+  if (!from || !to || from === to) return false;
+  return from < to ? nowHm >= from && nowHm < to : nowHm >= from || nowHm < to;
+}
+
 export interface InboxRowLite {
   id: string;
   event_key: string;

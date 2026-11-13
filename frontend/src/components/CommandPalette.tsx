@@ -61,11 +61,11 @@ const SECTIONS: { title: string; icon: IconName; route: Route; roles?: string[] 
   { title: 'Задачи: все задачи компании', icon: 'building', route: { section: 'tasks', view: 'all' } },
   { title: 'Задачи: что я поручил', icon: 'send', route: { section: 'tasks', view: 'delegated' } },
   { title: 'Проекты и Задачи', icon: 'board', route: { section: 'projects' } },
-  { title: 'Чаты & Созвоны', icon: 'chat', route: { section: 'chat' } },
+  { title: 'Чаты и встречи', icon: 'chat', route: { section: 'chat' } },
   // Спросить ИИ — такой же пункт, как раздел: помощник живёт в чатах, а не в модалке.
   { title: 'Спросить ИИ — QEVO Bot', icon: 'robot', route: { section: 'chat', chatId: 'anthill' } },
   { title: 'Пульс команды', icon: 'chart', route: { section: 'radar' }, roles: ['owner', 'manager'] },
-  { title: 'Встречи — созвоны', icon: 'record', route: { section: 'chat', view: 'meetings' } },
+  { title: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
   { title: 'Настройки и интеграции', icon: 'settings', route: { section: 'settings' } },
   { title: 'Профиль', icon: 'user', route: { section: 'profile' } },
 ];

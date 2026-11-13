@@ -31,6 +31,34 @@ export class AccountService {
     private readonly db: DbService,
   ) {}
 
+  /** #4902, п. 1: режим уведомлений, тихие часы, Telegram — и куда сейчас всё доходит. */
+  async notifyModes(tenantId: string, userId: string) {
+    const r = await this.db.one<{ mode: string; quiet_from: string | null; quiet_to: string | null; telegram_all: boolean; tz: string | null; telegram: boolean; phones: number }>(
+      `SELECT u.notify_mode AS mode, u.quiet_from, u.quiet_to, u.telegram_all, u.timezone AS tz,
+              EXISTS (SELECT 1 FROM telegram_accounts t WHERE t.tenant_id = u.tenant_id AND t.user_id = u.id) AS telegram,
+              (SELECT count(*)::int FROM mobile_devices d WHERE d.user_id = u.id AND d.push_token IS NOT NULL) AS phones
+         FROM users u WHERE u.tenant_id = $1 AND u.id = $2`, [tenantId, userId]);
+    return {
+      mode: r?.mode === 'all' ? 'all' : 'important', quietFrom: r?.quiet_from ?? null, quietTo: r?.quiet_to ?? null,
+      telegramAll: !!r?.telegram_all, timezone: r?.tz || 'Europe/Moscow', telegram: !!r?.telegram, phones: r?.phones ?? 0,
+    };
+  }
+
+  async setNotifyModes(tenantId: string, userId: string, p: { mode?: string; quietFrom?: string | null; quietTo?: string | null; telegramAll?: boolean }) {
+    const hm = (v: string | null | undefined) => (v === undefined ? undefined : v && /^([01]\d|2[0-3]):[0-5]\d$/.test(v) ? v : null);
+    const from = hm(p.quietFrom);
+    const to = hm(p.quietTo);
+    await this.db.query(
+      `UPDATE users SET notify_mode = COALESCE($3, notify_mode),
+              quiet_from = CASE WHEN $4::boolean THEN $5 ELSE quiet_from END,
+              quiet_to = CASE WHEN $6::boolean THEN $7 ELSE quiet_to END,
+              telegram_all = COALESCE($8, telegram_all)
+        WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, userId, p.mode === 'all' || p.mode === 'important' ? p.mode : null,
+        from !== undefined, from ?? null, to !== undefined, to ?? null, p.telegramAll ?? null]);
+    return this.notifyModes(tenantId, userId);
+  }
+
   /**
    * #4863: ссылка «Пригласить команду» для сайта — qevo.one/?ref=<код>. Сайт кладёт код
    * в регистрацию, и мы знаем, какое пространство позвало новую команду. Код один на

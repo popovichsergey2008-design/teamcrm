@@ -109,6 +109,8 @@ export class PushService {
           title: where, body: PushService.previewOf(m.text), path,
         });
         if (!item || !this.fcm.enabled) continue;
+        // #4902, п. 1: «Только важное» — в группах push лишь при упоминании; личные — всегда
+        if (!isDm && !mentioned.has(userId) && (await this.inbox.notifyPrefs(m.tenantId, userId)).mode === 'important') continue;
         if (!(await this.allowChatPush(userId, m.chatId))) continue;
         // глубокая работа или «упоминания — только во Входящие»: сообщение лежит в ящике, телефон молчит
         if (await this.inbox.silent(m.tenantId, userId, mentioned.has(userId) ? 'chat.mention' : 'chat.message')) continue;

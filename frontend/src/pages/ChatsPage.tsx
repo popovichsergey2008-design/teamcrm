@@ -2392,15 +2392,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
         {/* Разрешение спрашиваем по кнопке: непрошеный запрос браузеры глушат,
             и человек больше не сможет его выдать. */}
-        {perm === 'default' && (
-          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-notify-ask"
-                  onClick={async () => setPerm(await requestNotificationPermission())}>
-            <Icon name="bell" size={15} /> Включить уведомления
-          </button>
-        )}
-        {perm === 'denied' && (
+        {/* #4902, п. 1: «Вы можете пропустить звонок» — с кнопкой и подсказкой, куда нажать в браузере */}
+        {perm !== 'granted' && perm !== 'unsupported' && (
           <div className="dim chat-notify-hint">
-            Уведомления запрещены в браузере. Непрочитанное всё равно видно в шапке и в заголовке вкладки.
+            <b>Вы можете пропустить звонок.</b>{' '}
+            {perm === 'default' ? (
+              <button className="ui-btn ui-btn-ghost ui-btn-sm chat-notify-ask" onClick={async () => setPerm(await requestNotificationPermission())}>
+                <Icon name="bell" size={15} /> Включить
+              </button>
+            ) : (
+              <>Уведомления запрещены в браузере: нажмите на значок замка слева от адреса → «Уведомления» → «Разрешить» и обновите страницу.</>
+            )}
           </div>
         )}
 
@@ -2501,6 +2503,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         */}
         {/* у QEVO Bot ссылка гостю и созвон не нужны — на телефоне эта строка ломала его шапку */}
         <div className={`chat-view-head${view === 'anthill' ? ' is-hidden' : ''}`}>
+          {/* #4902 (Борис): «Встречи» — рядом со «Ссылка» и «Созвон», чтобы в меню хватало одного пункта */}
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => navigate({ section: 'chat', view: 'meetings' })} title="Встречи: записи, протоколы, задачи после созвонов">
+            <Icon name="record" size={15} /> Встречи
+          </button>
           <GuestLinkButton
             chats={[...dms, ...groups].map((c) => ({ id: String(c.id), title: c.title ?? 'Чат' }))}
             chatId={activeId ? String(activeId) : null}

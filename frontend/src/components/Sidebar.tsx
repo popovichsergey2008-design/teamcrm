@@ -125,11 +125,13 @@ const MENU: Item[] = [
   },
   {
     section: 'chat',
-    label: 'Чаты & Созвоны',
+    // #4902: «Чаты и встречи» — в раскрытии отдельно «Чаты» и «Встречи»
+    label: 'Чаты и встречи',
     icon: 'chat',
-    hint: 'Личные, групповые и проектные обсуждения, созвоны',
+    hint: 'Личные, групповые и проектные обсуждения, созвоны и встречи с протоколами',
     subs: [
-      { label: 'Встречи — созвоны', icon: 'record', route: { section: 'chat', view: 'meetings' } },
+      { label: 'Чаты', icon: 'chat', route: { section: 'chat' } },
+      { label: 'Встречи', icon: 'record', route: { section: 'chat', view: 'meetings' } },
     ],
   },
   {
@@ -846,7 +848,7 @@ export function Sidebar({
                 {/* подпункты — только у открытого раздела: панель должна оставаться короткой */}
                 {unfolded && subs.map((sub) => (
                   <span key={sub.label}>
-                    {link(sub.route, route.view === sub.route.view, 'nav-sub', sub.label, (
+                    {link(sub.route, route.section === sub.route.section && route.view === sub.route.view, 'nav-sub', sub.label, (
                       <>
                         <Icon name={sub.icon} size={15} />
                         <span className="nav-label">{sub.label}</span>
@@ -854,7 +856,7 @@ export function Sidebar({
                     ))}
                   </span>
                 ))}
-                {/* #1567: идущий созвон — сразу под «Чаты & Созвоны», а не в самом низу под прокруткой */}
+                {/* #1567: идущий созвон — сразу под «Чаты и встречи», а не в самом низу под прокруткой */}
                 {item.section === 'chat' && callWidget}
               </div>
             );

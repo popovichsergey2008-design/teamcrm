@@ -37,6 +37,12 @@ class PasswordDto {
 class NotifyDto {
   @IsObject() prefs!: Record<string, unknown>;
 }
+class NotifyModesDto {
+  @IsOptional() @IsIn(['important', 'all']) mode?: string;
+  @IsOptional() @IsString() @MaxLength(5) quietFrom?: string | null;
+  @IsOptional() @IsString() @MaxLength(5) quietTo?: string | null;
+  @IsOptional() @IsBoolean() telegramAll?: boolean;
+}
 class AvailabilityDto {
   @IsIn(['vacation', 'sick', 'other']) kind!: string;
   @IsDateString() fromDate!: string;
@@ -88,6 +94,17 @@ export class AccountController {
   @Put('ui-prefs')
   uiPrefs(@CurrentUser() u: AuthUser, @Body() dto: NotifyDto) {
     return this.account.setUiPrefs(u.tenantId, u.userId, dto.prefs);
+  }
+
+  /** #4902, п. 1: «Только важное», тихие часы, Telegram — только важное. */
+  @Get('notify-modes')
+  notifyModes(@CurrentUser() u: AuthUser) {
+    return this.account.notifyModes(u.tenantId, u.userId);
+  }
+
+  @Put('notify-modes')
+  setNotifyModes(@CurrentUser() u: AuthUser, @Body() dto: NotifyModesDto) {
+    return this.account.setNotifyModes(u.tenantId, u.userId, dto);
   }
 
   /** #4863: ссылка для сайта «Пригласить команду» — qevo.one/?ref=<код>. */

@@ -123,7 +123,7 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId, onStartCall, inC
       {/* #4732: созвон — прямо из встреч, не уходя в чат; кого звать — выбором людей */}
       {onStartCall && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <div className="drawer-section-title" style={{ margin: 0 }}><Icon name="phone" size={16} /> Встречи — созвоны</div>
+          <div className="drawer-section-title" style={{ margin: 0 }}><Icon name="phone" size={16} /> Встречи</div>
           <span style={{ marginLeft: 'auto' }}>
             <CallStarter disabled={!!inCall} onStart={onStartCall} />
           </span>

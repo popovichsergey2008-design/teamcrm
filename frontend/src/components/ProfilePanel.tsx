@@ -21,6 +21,7 @@ import { initialsOf } from '../lib/initials';
 import { lazyComponent } from '../lib/lazy';
 
 import { InboxPrefs } from './InboxPrefs';
+import { NotifyChannels } from './NotifyChannels';
 import { DateInput } from './DateInput';
 // второй фактор открывают редко — его код (и генератор QR) грузится по первому показу
 const MfaSettings = lazyComponent(() => import('./auth/MfaSettings').then((m) => m.default));
@@ -485,6 +486,7 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
         {tab === 'notify' && (
           <>
             {/* #4807 §6.5, п. 6 */}
+            <NotifyChannels />
             <InboxPrefs />
             <div className="drawer-section-title">Письма</div>
             {NOTIFY_KEYS.map(([k, label]) => (

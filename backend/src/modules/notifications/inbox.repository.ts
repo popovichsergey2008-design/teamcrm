@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
-import { pushAllowed } from './inbox-rules';
+import { inQuietHours, pushAllowed } from './inbox-rules';
 
 export interface InboxRow {
   id: string;
@@ -154,6 +154,19 @@ export class InboxRepository {
    * этом доставляются (ящик, лента, счётчики), но без push и Telegram. Звонки, стук
    * «срочно» и безопасность сюда не смотрят — они проходят всегда.
    */
+  /** #4902, п. 1: режим уведомлений, тихие часы и Telegram — настройки человека. */
+  async notifyPrefs(tenantId: string, userId: string) {
+    const r = await this.db.one<{ mode: string; quiet_from: string | null; quiet_to: string | null; telegram_all: boolean; tz: string | null; now_hm: string }>(
+      `SELECT notify_mode AS mode, quiet_from, quiet_to, telegram_all, timezone AS tz,
+              to_char(now() AT TIME ZONE COALESCE(timezone, 'Europe/Moscow'), 'HH24:MI') AS now_hm
+         FROM users WHERE tenant_id = $1 AND id = $2`, [tenantId, userId]).catch(() => null);
+    return {
+      mode: (r?.mode === 'all' ? 'all' : 'important') as 'all' | 'important',
+      quietFrom: r?.quiet_from ?? null, quietTo: r?.quiet_to ?? null,
+      telegramAll: !!r?.telegram_all, timezone: r?.tz ?? null, nowHm: r?.now_hm ?? '12:00',
+    };
+  }
+
   async isQuiet(tenantId: string, userId: string): Promise<boolean> {
     const row = await this.db.one<{ quiet: boolean }>(
       `SELECT (EXISTS (SELECT 1 FROM focus_sessions s
@@ -172,7 +185,10 @@ export class InboxRepository {
                           AND u.workday_closed_until > now())) AS quiet`,
       [tenantId, userId],
     );
-    return !!row?.quiet;
+    if (row?.quiet) return true;
+    // #4902, п. 1: тихие часы по поясу человека (в команде Москва и Киев)
+    const p = await this.notifyPrefs(tenantId, userId);
+    return inQuietHours(p.nowHm, p.quietFrom, p.quietTo);
   }
 
   /** #4807 §6.5, п. 6: режимы «Входящих» по типам — тип → push / inbox / off. */
