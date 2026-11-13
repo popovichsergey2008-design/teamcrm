@@ -71,8 +71,8 @@ export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWo
         ) : <span className="dim">считаю…</span>}
       </div>
       <div className="fp-acts">
-        <button type="button" className="ui-btn ui-btn-primary" disabled={busy || !card.taskId} onClick={onStart}><Icon name="play" size={14} /> Начать фокус · {minutes} мин</button>
-        <button type="button" className="ui-btn ui-btn-outline" disabled={!card.taskId} onClick={onOpen}>Открыть задачу</button>
+        <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={busy || !card.taskId} onClick={onStart}><Icon name="play" size={14} /> Начать фокус · {minutes} мин</button>
+        <button type="button" className="ui-btn ui-btn-outline ui-btn-md" disabled={!card.taskId} onClick={onOpen}>Открыть задачу</button>
         <DropdownMenu align="start" trigger={<button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Ещё">··· ещё</button>}>
           {onTakeToWork && <MenuItem icon={<Icon name="play" size={14} />} onSelect={onTakeToWork}>Взять в работу</MenuItem>}
           <MenuItem icon={<Icon name="sparkles" size={14} />} onSelect={() => { setShowWhy((v) => !v); onWhy(); }}>Почему эта задача?</MenuItem>

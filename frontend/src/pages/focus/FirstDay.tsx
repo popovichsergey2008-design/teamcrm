@@ -55,7 +55,7 @@ export function FirstDay({ day, onDone }: { day: PlusDay; onDone: (d: PlusDay) =
           <div className="fp-acts">
             <input className="input fp-time" type="time" value={ws} onChange={(e) => setWs(e.target.value)} aria-label="Начало рабочего дня" /> —
             <input className="input fp-time" type="time" value={we} onChange={(e) => setWe(e.target.value)} aria-label="Конец рабочего дня" />
-            <button type="button" className="ui-btn ui-btn-primary" disabled={!ws || !we || ws >= we} onClick={() => setStep(2)}>Дальше</button>
+            <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={!ws || !we || ws >= we} onClick={() => setStep(2)}>Дальше</button>
           </div>
         </>
       )}
@@ -65,9 +65,9 @@ export function FirstDay({ day, onDone }: { day: PlusDay; onDone: (d: PlusDay) =
           <textarea className="input" rows={3} autoFocus value={text} onChange={(e) => setText(e.target.value)}
             placeholder="Например: дописать отчёт для клиента, потом созвон с Иваном и проверить макет" aria-label="Что главное сегодня" />
           <div className="fp-acts">
-            <button type="button" className="ui-btn ui-btn-primary" disabled={busy || text.trim().length < 3} onClick={() => void make()}>{busy ? 'Раскладываю…' : 'Разложить по дню'}</button>
-            {Speech && <button type="button" className="ui-btn ui-btn-outline" aria-pressed={!!listening} onClick={voice}><Icon name="mic" size={14} /> {listening ? 'Стоп' : 'Голосом'}</button>}
-            <button type="button" className="ui-btn ui-btn-ghost" onClick={() => setStep(1)}>Назад</button>
+            <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={busy || text.trim().length < 3} onClick={() => void make()}>{busy ? 'Раскладываю…' : 'Разложить по дню'}</button>
+            {Speech && <button type="button" className="ui-btn ui-btn-outline ui-btn-md" aria-pressed={!!listening} onClick={voice}><Icon name="mic" size={14} /> {listening ? 'Стоп' : 'Голосом'}</button>}
+            <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => setStep(1)}>Назад</button>
           </div>
         </>
       )}
@@ -78,8 +78,8 @@ export function FirstDay({ day, onDone }: { day: PlusDay; onDone: (d: PlusDay) =
             ? proposal.map((p) => <div key={p.taskId} className="fp-tl-row"><span className="fp-tl-time dim">{hm(p.startsAt)}</span><span className="fp-tl-slot task"><b>{p.title}</b></span></div>)
             : <div className="dim fp-small">Задачи созданы; свободных окон сегодня не нашлось — они в тройке дня.</div>}
           <div className="fp-acts">
-            <button type="button" className="ui-btn ui-btn-primary" disabled={busy} onClick={() => void accept()}>Принять план</button>
-            <button type="button" className="ui-btn ui-btn-ghost" onClick={() => navigate({ section: 'calendar' })}><Icon name="calendar" size={14} /> Подключить Google- или Яндекс-календарь</button>
+            <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={busy} onClick={() => void accept()}>Принять план</button>
+            <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => navigate({ section: 'calendar' })}><Icon name="calendar" size={14} /> Подключить Google- или Яндекс-календарь</button>
           </div>
         </>
       )}

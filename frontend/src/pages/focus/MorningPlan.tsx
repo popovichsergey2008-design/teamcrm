@@ -109,10 +109,10 @@ export function MorningPlan({ day, accepted, busy, onDay, onEdit, onRefresh, onR
 
         {!accepted && (
           <div className="fp-acts">
-            <button type="button" className="ui-btn ui-btn-primary" disabled={busy || working} onClick={() => void accept()}>Принять план</button>
-            <button type="button" className="ui-btn ui-btn-outline" onClick={onEdit}>Изменить</button>
-            <button type="button" className="ui-btn ui-btn-outline" disabled={busy} onClick={onRefresh}>Пересмотреть с ИИ</button>
-            <button type="button" className="ui-btn ui-btn-ghost" onClick={listen}><Icon name="play" size={13} /> Прослушать</button>
+            <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={busy || working} onClick={() => void accept()}>Принять план</button>
+            <button type="button" className="ui-btn ui-btn-outline ui-btn-md" onClick={onEdit}>Изменить</button>
+            <button type="button" className="ui-btn ui-btn-outline ui-btn-md" disabled={busy} onClick={onRefresh}>Пересмотреть с ИИ</button>
+            <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" onClick={listen}><Icon name="play" size={13} /> Прослушать</button>
           </div>
         )}
         <button type="button" className="fp-link" aria-expanded={why} onClick={() => setWhy((v) => !v)}>Почему такой план</button>

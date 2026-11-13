@@ -39,13 +39,13 @@ export function ReviewRun({ items, onOpenTask, onClose }: {
         <div className="fp-acts">
           {c.kind === 'approval' ? (
             <>
-              <button type="button" className="ui-btn ui-btn-primary" disabled={busy} onClick={() => void decide(true)}><Icon name="check" size={14} /> Согласовать</button>
-              <button type="button" className="ui-btn ui-btn-outline" disabled={busy} onClick={() => void decide(false)}>Отказать</button>
+              <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={busy} onClick={() => void decide(true)}><Icon name="check" size={14} /> Согласовать</button>
+              <button type="button" className="ui-btn ui-btn-outline ui-btn-md" disabled={busy} onClick={() => void decide(false)}>Отказать</button>
             </>
           ) : c.taskId && (
-            <button type="button" className="ui-btn ui-btn-primary" onClick={() => { onOpenTask(null, c.taskId!); setChanged(true); }}><Icon name="check-circle" size={14} /> Открыть и принять</button>
+            <button type="button" className="ui-btn ui-btn-primary ui-btn-md" onClick={() => { onOpenTask(null, c.taskId!); setChanged(true); }}><Icon name="check-circle" size={14} /> Открыть и принять</button>
           )}
-          <button type="button" className="ui-btn ui-btn-ghost" onClick={next}>{i + 1 >= items.length ? 'Готово' : 'Дальше'}</button>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" onClick={next}>{i + 1 >= items.length ? 'Готово' : 'Дальше'}</button>
         </div>
       </div>
     </Dialog>
