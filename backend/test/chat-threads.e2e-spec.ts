@@ -397,7 +397,9 @@ describe('треды в чатах (e2e)', () => {
 
     // чек-лист из черновика доехал до задачи, а не остался в окне
     const steps = (await http.get(`/api/tasks/${created.taskId}/checklist`).set(O).expect(200)).body.data;
-    expect(steps.length).toBe(2);
+    // #4889: плюс обязательный пункт про скриншоты «было» и «стало»
+    expect(steps.length).toBe(3);
+    expect(steps[2].text).toMatch(/скриншоты «было» и «стало»/);
   }, 60000);
 
   /**

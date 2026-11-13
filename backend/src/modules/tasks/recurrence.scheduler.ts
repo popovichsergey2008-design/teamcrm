@@ -144,6 +144,7 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
       // автор копии — постановщик образца: задача приходит от того же человека,
       // от кого приходила в прошлый раз, а не «от системы»
       template.created_by ? String(template.created_by) : null,
+      { exactChecklist: true },
     );
 
     await this.repo.attachCopy(row.tenant_id, String(created.id), row.id);

@@ -280,6 +280,8 @@ export class TasksService {
        * «Задача поставлена от вас: тег, проект, исполнитель». `source` — откуда.
        */
       aiConfirm?: { userId: string | null | undefined; source: ConfirmSource };
+      /** Копия регулярной задачи: чек-лист переносится как в образце, без добавок (#4889). */
+      exactChecklist?: boolean;
     } = {},
   ): Promise<TaskRow> {
     await this.assertProject(tenantId, dto.projectId);
@@ -316,7 +318,7 @@ export class TasksService {
     });
     // Чек-лист, если задачу собрали заранее — голосом или из встречи.
     // #4889: к проверкам — обязательный пункт про скриншоты «было» и «стало»
-    if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, withShotsItem(dto.checklist));
+    if (dto.checklist?.length) await this.repo.addChecklist(tenantId, task.id, origin.exactChecklist ? dto.checklist : withShotsItem(dto.checklist));
 
     // Соисполнители и наблюдатели — с первой минуты: дописывать их потом руками
     // значит забыть половину.

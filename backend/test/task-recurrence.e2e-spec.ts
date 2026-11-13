@@ -107,7 +107,8 @@ describe('регулярные задачи (e2e)', () => {
     expect(String(copy.recurrence_id)).toBe(String(saved.id));
     // чек-лист переезжает в копию несделанным: рутина повторяется целиком
     const checklist = (await http.get(`/api/tasks/${copy.id}/checklist`).set(H(owner.accessToken)).expect(200)).body.data;
-    expect(checklist.map((i: any) => i.text)).toEqual(['Собрать цифры', 'Свести таблицу']);
+    // #4889: пункт про скриншоты добавился образцу при создании и переехал в копию — без второго экземпляра
+    expect(checklist.map((i: any) => i.text)).toEqual(['Собрать цифры', 'Свести таблицу', 'Приложить скриншоты «было» и «стало» (вкладка «Было/стало»)']);
     expect(checklist.every((i: any) => !i.is_done)).toBe(true);
   });
 
