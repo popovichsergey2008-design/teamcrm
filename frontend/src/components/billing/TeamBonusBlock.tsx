@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { request } from '../../lib/api';
+import { toastSaved } from '../../lib/notifications';
 import { Icon } from '../Icon';
 import { InviteTeamDialog } from '../InviteTeamDialog';
 import { dayMonth } from '../../lib/tg-bonus';
@@ -16,6 +18,14 @@ export function TeamBonusBlock({ bonus, canInvite, onChanged }: {
   onChanged: () => void;
 }) {
   const [inviteOpen, setInviteOpen] = useState(false);
+  // #4863: ссылка для знакомой команды через сайт — qevo.one/?ref=<код>, код уходит в регистрацию
+  const [ref, setRef] = useState<{ url: string; joined: number } | null>(null);
+  useEffect(() => { void request<{ url: string; joined: number }>('GET', '/account/referral-link').then(setRef).catch(() => undefined); }, []);
+  const copy = async () => {
+    if (!ref) return;
+    try { await navigator.clipboard.writeText(ref.url); toastSaved('Ссылка скопирована', ref.url); }
+    catch { window.prompt('Скопируйте ссылку:', ref.url); }
+  };
   const left = Math.max(0, bonus.need - bonus.invited);
   const month = bonus.months === 1 ? 'месяц' : `${bonus.months} мес.`;
   const plus = bonus.months === 1 ? '1 месяц' : `${bonus.months} мес.`;
@@ -43,6 +53,13 @@ export function TeamBonusBlock({ bonus, canInvite, onChanged }: {
             </button>
           )}
         </>
+      )}
+      {ref && (
+        <p className="dim" style={{ margin: '8px 0 0', fontSize: 13 }}>
+          Знакомой команде — ссылка на сайт: <a href={ref.url} target="_blank" rel="noreferrer">{ref.url.replace('https://', '')}</a>{' '}
+          <button type="button" className="link-btn" onClick={() => void copy()}>Скопировать</button>
+          {ref.joined > 0 ? ` · по ней уже зарегистрировались: ${ref.joined}` : ''}
+        </p>
       )}
       {inviteOpen && <InviteTeamDialog onClose={() => setInviteOpen(false)} onDone={() => { setInviteOpen(false); onChanged(); }} />}
     </div>

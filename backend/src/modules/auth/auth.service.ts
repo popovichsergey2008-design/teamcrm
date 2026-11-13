@@ -128,7 +128,7 @@ export class AuthService {
         [tenant.id, dto.email, passwordHash, fullName, account.id, JSON.stringify(prefs)],
       );
       // #4804: источник первой регистрации — для недельного отчёта по площадкам
-      await client.query(SIGNUP_ATTRIBUTION_SQL, attributionParams(account.id, tenant.id, res.rows[0].id, signupAttribution(utm, dto.referrerHost)));
+      await client.query(SIGNUP_ATTRIBUTION_SQL, attributionParams(account.id, tenant.id, res.rows[0].id, signupAttribution(utm, dto.referrerHost, dto.referralCode)));
       // согласие — в той же транзакции: аккаунта без записи о нём быть не должно
       await this.consents.record(
         { tenantId: tenant.id, userId: res.rows[0].id, policy: 'privacy', context: { flow: 'register' } },

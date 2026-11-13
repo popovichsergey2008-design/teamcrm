@@ -27,7 +27,43 @@ export interface NewLead {
   telegramUserId?: string | null;
   /** Строка контакта готова у вызывающего (бот знает ник и ссылку на чат). */
   contactLine?: string;
+  /** #4863: доп. строки заявки сайта — имя, почта, тема, отзыв, переписка с Qevo-ботом. */
+  extra?: string[];
 }
+
+/** Что сайт прислал сверх контакта — короткими строками для дежурного. Без пустых. */
+export function siteExtra(x: {
+  name?: string; topic?: string; email?: string; workspace?: string; role?: string; volume?: string;
+  rating?: number; publicationConsent?: boolean; conversation?: unknown;
+}): string[] {
+  const out: string[] = [];
+  if (x.name?.trim()) out.push(`Имя: ${x.name.trim()}`);
+  if (x.email?.trim()) out.push(`Почта: ${x.email.trim()}`);
+  if (x.workspace?.trim()) out.push(`Пространство: ${x.workspace.trim()}`);
+  if (x.role?.trim()) out.push(`Роль: ${x.role.trim()}`);
+  if (x.volume?.trim()) out.push(`Объём: ${x.volume.trim()}`);
+  if (x.topic?.trim()) out.push(`Тема: ${x.topic.trim()}`);
+  if (x.rating) out.push(`Оценка: ${x.rating} из 5${x.publicationConsent ? ' · можно публиковать' : ''}`);
+  if (Array.isArray(x.conversation)) {
+    const said = x.conversation
+      .filter((m): m is { role: string; text: string } => !!m && typeof m === 'object' && typeof (m as { text?: unknown }).text === 'string')
+      .filter((m) => m.role === 'user')
+      .slice(-4).map((m) => `«${m.text.replace(/\s+/g, ' ').slice(0, 160)}»`);
+    if (said.length) out.push(`Писал(а) Qevo-боту: ${said.join(' · ')}`);
+  }
+  return out;
+}
+
+/** Заголовок заявки сайта по её источнику (#4863). */
+const SITE_TITLE: Record<string, string> = {
+  review: 'Отзыв с сайта',
+  chatbot_support: 'Qevo-бот на сайте: позвать инженера',
+  chatbot_signup_request: 'Qevo-бот на сайте: помочь с регистрацией',
+  chatbot_signup_error: 'Qevo-бот на сайте: регистрация не прошла — помогите',
+  chatbot_migration: 'Qevo-бот на сайте: бесплатный переезд',
+  migration: 'Заявка с сайта: бесплатный переезд',
+  contact: 'Заявка с сайта: написать инженеру',
+};
 
 /** Срок плана переезда, обещанный на сайте: 24 часа от заявки, по Москве. */
 function planDue(now: Date): string {
@@ -42,11 +78,24 @@ function planDue(now: Date): string {
  * что сделать и к какому сроку различаются. Сами ролики и план отправляет человек:
  * написать в Telegram по нику или в WhatsApp бот первым не может.
  */
-export function leadText(l: Pick<NewLead, 'source' | 'from' | 'team' | 'want' | 'message'>, contactLine: string, now = new Date()): string {
+export function leadText(l: Pick<NewLead, 'source' | 'from' | 'team' | 'want' | 'message' | 'extra'>, contactLine: string, now = new Date()): string {
+  const extra = l.extra ?? [];
+  // #4863: заявки сайта со своим сценарием — отзыв, Qevo-бот, «написать инженеру»
+  if (SITE_TITLE[l.source] || l.source.startsWith('chatbot_')) {
+    return [
+      SITE_TITLE[l.source] ?? `Qevo-бот на сайте: ${l.source.replace(/^chatbot_/, '')}`,
+      contactLine,
+      ...extra,
+      l.from ? `Откуда: ${FROM_LABEL[l.from] ?? l.from}` : '',
+      l.team ? `Команда: ${l.team}` : '',
+      l.message?.trim() ? `${l.source === 'review' ? 'Отзыв' : 'Сообщение'}: ${l.message.trim()}` : '',
+    ].filter(Boolean).join('\n');
+  }
   if (l.source === 'support') {
     return [
       'Вопрос с сайта — проверка «ответ за 30 секунд», ответьте сейчас!',
       contactLine,
+      ...extra,
       `Вопрос: ${l.message?.trim() || '—'}`,
     ].join('\n');
   }
@@ -70,7 +119,7 @@ export function leadText(l: Pick<NewLead, 'source' | 'from' | 'team' | 'want' | 
       `Заявка с сайта: план переезда${where}`,
       `Что сделать: план переезда из «${from}» и чек-лист миграции. Обещали за 24 часа — до ${planDue(now)} МСК.`,
     ];
-  return [...todo, `Откуда: ${from}`, `Команда: ${l.team ?? 'не указано'}`, contactLine].join('\n');
+  return [...todo, `Откуда: ${from}`, `Команда: ${l.team ?? 'не указано'}`, contactLine, ...extra].join('\n');
 }
 
 /** #4779, п. 14: канал инженеров, куда сразу падает каждая заявка с сайта и из бота. */
@@ -111,7 +160,8 @@ export class LeadsService {
     await this.db.query(
       `INSERT INTO landing_leads (source, move_from, team_size, contact, page, ip, message, want, tenant_id, telegram_user_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [l.source, l.from ?? null, l.team ?? null, contact, l.page ?? null, l.ip, l.message?.trim() || null, l.want ?? null,
+      [l.source.slice(0, 40), l.from?.slice(0, 120) ?? null, l.team?.slice(0, 60) ?? null, contact, l.page ?? null, l.ip,
+        [l.message?.trim(), ...(l.extra ?? [])].filter(Boolean).join('\n') || null, l.want ?? null,
         l.tenantId ?? null, l.telegramUserId ?? null],
     );
     const text = leadText(l, contactLine);

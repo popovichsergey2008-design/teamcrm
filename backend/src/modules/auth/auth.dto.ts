@@ -51,6 +51,12 @@ export class RegisterDto {
   @MaxLength(300)
   referrerHost?: string;
 
+  /** #4863: код приглашения из ссылки сайта qevo.one/?ref=<код>. Чистит сервис. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  referralCode?: string;
+
   /**
    * #4675: галочка «Я принимаю Политику конфиденциальности». Необязательна для
    * валидатора, чтобы отказ был понятным текстом из сервиса, а не «must be a boolean».

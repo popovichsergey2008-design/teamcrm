@@ -18,6 +18,7 @@ import { AppErrorsModule } from './modules/app-errors/app-errors.module';
 import { AppInstallsModule } from './modules/app-installs/app-installs.module';
 import { SharedSecretsModule } from './modules/shared-secrets/shared-secrets.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { DemoShareModule } from './modules/demo-share/demo-share.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -125,6 +126,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     AppInstallsModule,
     SharedSecretsModule,
     LeadsModule,
+    DemoShareModule,
     AuthModule,
     UsersModule,
     TenantsModule,

@@ -12,6 +12,8 @@ import { PlatformService } from '../platform/platform.service';
 import { QaSwitchService } from '../auth/qa-switch.service';
 import { AccountSecurityService } from '../auth/account-security.service';
 import { assertPasswordStrong } from '../../common/auth/password-policy';
+import { randomInt } from 'crypto';
+import { DbService } from '../../database/db.service';
 
 @Injectable()
 export class AccountService {
@@ -26,7 +28,28 @@ export class AccountService {
     private readonly platform: PlatformService,
     private readonly qa: QaSwitchService,
     private readonly security: AccountSecurityService,
+    private readonly db: DbService,
   ) {}
+
+  /**
+   * #4863: ссылка «Пригласить команду» для сайта — qevo.one/?ref=<код>. Сайт кладёт код
+   * в регистрацию, и мы знаем, какое пространство позвало новую команду. Код один на
+   * пространство, выдаётся при первом запросе; без похожих букв (0/O, 1/I).
+   */
+  async referralLink(tenantId: string) {
+    const ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = (await this.db.one<{ referral_code: string | null }>(`SELECT referral_code FROM tenants WHERE id = $1`, [tenantId]))?.referral_code ?? null;
+    for (let i = 0; !code && i < 5; i++) {
+      const next = Array.from({ length: 7 }, () => ABC[randomInt(ABC.length)]).join('');
+      code = (await this.db.one<{ referral_code: string }>(
+        `UPDATE tenants SET referral_code = $2 WHERE id = $1 AND referral_code IS NULL
+           AND NOT EXISTS (SELECT 1 FROM tenants WHERE referral_code = $2) RETURNING referral_code`, [tenantId, next]))?.referral_code ?? null;
+      if (!code) code = (await this.db.one<{ referral_code: string | null }>(`SELECT referral_code FROM tenants WHERE id = $1`, [tenantId]))?.referral_code ?? null;
+    }
+    if (!code) throw AppException.conflict('Не удалось выдать ссылку — попробуйте ещё раз');
+    const joined = await this.db.one<{ n: number }>(`SELECT count(*)::int AS n FROM signup_attribution WHERE referrer_tenant_id = $1`, [tenantId]);
+    return { code, url: `https://qevo.one/?ref=${code}`, joined: joined?.n ?? 0 };
+  }
 
   async getMe(tenantId: string, userId: string, actorId?: string) {
     const p: any = await this.users.getProfile(tenantId, userId);

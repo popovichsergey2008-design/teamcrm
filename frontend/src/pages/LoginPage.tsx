@@ -5,7 +5,7 @@ import { ApiError } from '../lib/api';
 import { SocialButtons } from '../components/SocialButtons';
 import { lazyComponent } from '../lib/lazy';
 import { PasswordInput } from '../components/auth/PasswordInput';
-import { signupMode, signupReferrer, signupUtm } from '../lib/signup-intent';
+import { signupMode, signupReferralCode, signupReferrer, signupUtm } from '../lib/signup-intent';
 // галочки согласий нужны только при регистрации — первый экран входа без них легче (#4680)
 const PolicyCheck = lazyComponent(() => import('../components/legal/PolicyCheck').then((m) => m.PolicyCheck));
 // «Забыли пароль?» и код второго фактора нужны редко — тоже лениво
@@ -32,7 +32,7 @@ export function LoginPage() {
     try {
       if (mode === 'login') await login(email, password);
       // #4779: имя и название пространства — после входа, здесь только почта и согласия
-      else await register({ email, password, acceptPrivacy: agreed, website, utm: signupUtm(), referrerHost: signupReferrer() });
+      else await register({ email, password, acceptPrivacy: agreed, website, utm: signupUtm(), referrerHost: signupReferrer(), referralCode: signupReferralCode() });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Что-то пошло не так');
     } finally {

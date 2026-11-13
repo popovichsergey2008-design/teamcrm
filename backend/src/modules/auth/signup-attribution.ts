@@ -10,7 +10,17 @@ export interface SignupAttribution {
   medium: string | null;
   campaign: string | null;
   content: string | null;
+  term: string | null;
   referrerHost: string | null;
+  /** #4863: код из ссылки «Пригласить команду» (qevo.one/?ref=<код>) — кто позвал. */
+  referralCode: string | null;
+}
+
+/** Код приглашения: буквы, цифры, «-» и «_», до 40 знаков; остальное не храним. */
+export function referralCodeOf(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim().slice(0, 40);
+  return /^[A-Za-z0-9_-]{3,40}$/.test(s) ? s : null;
 }
 
 const val = (v: unknown): string | null => {
@@ -28,23 +38,27 @@ export function referrerHostOf(raw: unknown): string | null {
   return /^[a-z0-9.-]{1,253}$/.test(host) && host.includes('.') ? host : null;
 }
 
-export function signupAttribution(utm: Record<string, string> | null | undefined, referrer?: unknown): SignupAttribution {
+export function signupAttribution(utm: Record<string, string> | null | undefined, referrer?: unknown, referral?: unknown): SignupAttribution {
   return {
     source: val(utm?.utm_source) ?? 'direct',
     medium: val(utm?.utm_medium),
     campaign: val(utm?.utm_campaign),
     content: val(utm?.utm_content),
+    term: val(utm?.utm_term),
     referrerHost: referrerHostOf(referrer),
+    referralCode: referralCodeOf(referral),
   };
 }
 
 /** Запись при первой регистрации: повтор для того же аккаунта ничего не меняет. */
 export const SIGNUP_ATTRIBUTION_SQL = `
   INSERT INTO signup_attribution (account_id, tenant_id, user_id, signup_utm_source, signup_utm_medium,
-                                  signup_utm_campaign, signup_utm_content, signup_referrer_host)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                  signup_utm_campaign, signup_utm_content, signup_referrer_host,
+                                  signup_utm_term, referral_code, referrer_tenant_id)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::text,
+          (SELECT t.id FROM tenants t WHERE $10::text IS NOT NULL AND upper(t.referral_code) = upper($10::text) AND t.id <> $2::bigint))
   ON CONFLICT (account_id) DO NOTHING`;
 
 export function attributionParams(accountId: unknown, tenantId: unknown, userId: unknown, a: SignupAttribution): unknown[] {
-  return [accountId, tenantId, userId, a.source, a.medium, a.campaign, a.content, a.referrerHost];
+  return [accountId, tenantId, userId, a.source, a.medium, a.campaign, a.content, a.referrerHost, a.term, a.referralCode];
 }

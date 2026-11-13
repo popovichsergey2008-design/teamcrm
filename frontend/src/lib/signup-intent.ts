@@ -5,7 +5,7 @@
  * регистрации: метки уходят с ней на сервер, задача создаётся после знакомства.
  */
 const KEY = 'qevo.signup';
-type Intent = { utm?: Record<string, string>; task?: string; ref?: string; at: number };
+type Intent = { utm?: Record<string, string>; task?: string; ref?: string; code?: string; at: number };
 
 function read(): Intent | null {
   try {
@@ -43,14 +43,18 @@ export const signupMode: 'register' | 'login' | null = (() => {
       if (h && !/(^|\.)qevo\.one$/.test(h)) ref = h;
     } catch { /* без источника */ }
   }
-  if (!Object.keys(utm).length && !task && !ref) return;
+  // #4863: код «Пригласить команду» — сайт добавляет ?ref=<код> к ссылкам на регистрацию
+  const rawCode = (q.get('ref') ?? '').trim();
+  const code = /^[A-Za-z0-9_-]{3,40}$/.test(rawCode) ? rawCode : '';
+  if (!Object.keys(utm).length && !task && !ref && !code) return;
   const prev = read();
-  const next: Intent = { utm: Object.keys(utm).length ? utm : prev?.utm, task: task || prev?.task, ref: ref || prev?.ref, at: Date.now() };
+  const next: Intent = { utm: Object.keys(utm).length ? utm : prev?.utm, task: task || prev?.task, ref: ref || prev?.ref, code: code || prev?.code, at: Date.now() };
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* без хранилища — без меток */ }
 })();
 
 export function signupUtm(): Record<string, string> | undefined { return read()?.utm; }
 export function signupReferrer(): string | undefined { return read()?.ref; }
+export function signupReferralCode(): string | undefined { return read()?.code; }
 export function signupTask(): string | null { return read()?.task ?? null; }
 export function clearSignupTask(): void {
   const v = read();

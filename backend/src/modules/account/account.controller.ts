@@ -90,6 +90,13 @@ export class AccountController {
     return this.account.setUiPrefs(u.tenantId, u.userId, dto.prefs);
   }
 
+  /** #4863: ссылка для сайта «Пригласить команду» — qevo.one/?ref=<код>. */
+  @Get('referral-link')
+  referralLink(@CurrentUser() u: AuthUser) {
+    if (u.role === 'client') throw AppException.forbidden('Приглашать команды могут сотрудники пространства');
+    return this.account.referralLink(u.tenantId);
+  }
+
   @Get('availability')
   listAvailability(@CurrentUser() u: AuthUser) {
     return this.account.listAvailability(u.tenantId, u.userId);
