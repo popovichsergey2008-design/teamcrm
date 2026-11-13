@@ -10,7 +10,7 @@ import { matchUserInText } from '../nl/nl.match';
 import { withinWorkHours } from '../assistant/ping-rules';
 import { ChatsRepository } from '../chats/chats.repository';
 import { RealtimeService } from '../realtime/realtime.service';
-import { acceptedText, askText, shouldAsk } from './ask-rules';
+import { acceptedText, answerFrom, askText, shouldAsk } from './ask-rules';
 import { dedupKeyOf, ExtractedAction, parseAnalysis, RefCatalog, resolveProject } from './analysis-schema';
 import { missingParts, resolveRoles, taskReadiness } from './roles-rules';
 import { autoCreateVerdict, overLimit, quality, undoVerdict } from './policy-rules';
@@ -962,10 +962,10 @@ export class ChatAnalysisService {
     for (const row of await this.repo.awaiting(now)) {
       try {
         const after = await this.repo.messagesAfterQuestion(row.tenant_id, row.chat_id, row.question_message_id);
-        const mine = after.filter((m) => !m.is_ai && m.author_id && String(m.author_id) === String(row.assigner_id));
-        if (!mine.length) continue;
-
-        const text = mine.map((m) => String(m.body ?? '')).join('\n');
+        // #4895: ответ — прямой ответ на вопрос или первая короткая реплика без «?» в течение 3 часов
+        const answer = answerFrom(after, { questionId: row.question_message_id, askedAt: row.asked_at ?? null, authorId: String(row.assigner_id) });
+        if (!answer) continue;
+        const text = answer;
 
         // Изменение ждёт «да» или «оставить» постановщика.
         if (row.action_type === 'change') {

@@ -1,4 +1,4 @@
-import { acceptedText, ASK_MIN_INTENT, askText, shouldAsk } from './ask-rules';
+import { answerFrom, acceptedText, ASK_MIN_INTENT, askText, shouldAsk } from './ask-rules';
 
 const base = {
   type: 'task', status: 'needs_clarification', intentConfidence: 0.95,
@@ -83,5 +83,24 @@ describe('подтверждение ответа', () => {
 describe('отменённое поручение', () => {
   it('о нём не спрашиваем, даже если не хватает проекта', () => {
     expect(shouldAsk({ ...base, missing: ['в разговоре есть отмена', 'проект'] })).toBe(false);
+  });
+});
+
+describe('#4895: что считать ответом на вопрос агента', () => {
+  const asked = new Date('2026-11-12T08:00:00Z');
+  const m = (body: string, min: number, extra: Partial<{ author_id: string; reply_to_id: string; is_ai: boolean }> = {}) => ({
+    author_id: '7', is_ai: false, reply_to_id: null, body, created_at: new Date(asked.getTime() + min * 60_000), ...extra,
+  });
+  it('короткая первая реплика — ответ', () => {
+    expect(answerFrom([m('QEVO, Борис', 5)], { questionId: '1', askedAt: asked, authorId: '7' })).toBe('QEVO, Борис');
+  });
+  it('вопрос другого разговора через полдня с именем — не ответ', () => {
+    expect(answerFrom([m('что-то напоминалка не работает. а у тебя @Boris Chest что-то писало?', 380)], { questionId: '1', askedAt: asked, authorId: '7' })).toBeNull();
+  });
+  it('прямой ответ на вопрос — ответ, даже поздно', () => {
+    expect(answerFrom([m('проект QEVO', 600, { reply_to_id: '1' })], { questionId: '1', askedAt: asked, authorId: '7' })).toBe('проект QEVO');
+  });
+  it('реплика не того человека — не ответ', () => {
+    expect(answerFrom([m('QEVO', 5, { author_id: '8' })], { questionId: '1', askedAt: asked, authorId: '7' })).toBeNull();
   });
 });

@@ -92,6 +92,29 @@ function chatProject(chat: { project_id: string | null; linked_project_id?: stri
   const id = chat.project_id ?? chat.linked_project_id ?? null;
   return id ? String(id) : null;
 }
+/**
+ * Реплика понятна только вместе с соседними (#4895): короткая или начинается со ссылки —
+ * «да, и там же…», «это тоже поправь», «ещё шрифт». Самостоятельная просьба соседей не берёт.
+ */
+/** Описание задачи из чата + само сообщение дословно (если модель его уже не процитировала). */
+export function withSource(description: string, message: string): string {
+  const d = description.trim();
+  const m = message.trim();
+  if (!m || m.length < 12 || d.includes(m.slice(0, 60))) return d;
+  return `${d ? `${d}
+
+` : ''}Сообщение в чате:
+«${m.slice(0, 2000)}»`;
+}
+
+export function referential(text: string): boolean {
+  const t = String(text ?? '').trim().toLowerCase().replace(/ё/g, 'е');
+  if (t.length < 40) return true;
+  // «и ещё мета прописать…» — новая просьба; «и там же…», «это тоже…», «да, …» — продолжение
+  if (/^(да|ок|ага|угу)[\s,.!]/.test(t) && t.length < 90) return true;
+  return /^(?:(?:и|а|да|ок)[\s,]+)?(тоже|также|так же|то же|это|этот|эту|эти|там|туда|его|ее|их|сюда|здесь)[\s,.!:—-]/.test(t);
+}
+
 @Injectable()
 export class ChatTaskDraftService {
   private readonly log = new Logger('ChatTaskDraft');
@@ -413,13 +436,20 @@ export class ChatTaskDraftService {
       .filter((x) => x && x !== base)
       .slice(0, 2)
       .join(' ');
-    // 1–3 реплики перед сообщением (§37): «да, и там же поправь шрифт» без них не значит ничего
-    const before = (await this.repo.before(tenantId, String(draft.message_id), 3).catch(() => []))
-      .reverse().map((b) => `${b.author ?? 'Собеседник'}: ${String(b.body).slice(0, 200)}`).join('; ');
+    /*
+      1–3 реплики перед сообщением (§37): «да, и там же поправь шрифт» без них не значит ничего.
+      #4895: но самостоятельному сообщению они только вредили — модель вливала в задачу соседнюю
+      чужую просьбу («пункт 2» из другого сообщения) или брала заголовок прошлого разговора.
+      Поэтому — только для коротких ссылочных реплик и с явной пометкой «не включать».
+    */
+    const before = referential(base)
+      ? (await this.repo.before(tenantId, String(draft.message_id), 3).catch(() => []))
+        .reverse().map((b) => `${b.author ?? 'Собеседник'}: ${String(b.body).slice(0, 200)}`).join('; ')
+      : '';
     const forParse = [
       base,
-      context ? `(в ответ на: ${context.slice(0, 400)})` : '',
-      before ? `(перед этим в чате: ${before.slice(0, 600)})` : '',
+      context ? `(это ответ на сообщение — только чтобы понять, о чём речь: ${context.slice(0, 400)})` : '',
+      before ? `(контекст переписки — только чтобы понять ссылки «это», «там же»; из него в задачу ничего не добавлять: ${before.slice(0, 600)})` : '',
     ].filter(Boolean).join('\n');
 
     /*
@@ -459,7 +489,8 @@ export class ChatTaskDraftService {
       const t = parsed?.task ?? {};
       patch = {
         title: String(t.title ?? base).slice(0, 255),
-        description: String(t.description ?? ''),
+        // #4895: исходная просьба — в описании дословно: формулировка модели может промахнуться
+        description: withSource(String(t.description ?? ''), base),
         projectId,
         deadline: /^\d{4}-\d{2}-\d{2}$/.test(String(t.deadline ?? '')) ? String(t.deadline) : null,
         priority: String(t.priority ?? 'normal'),

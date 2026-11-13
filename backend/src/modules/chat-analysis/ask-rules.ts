@@ -86,3 +86,29 @@ export function acceptedText(o: {
     ? `Принял: ${got}. Поручение «${o.title}» готово — осталось завести задачу.`
     : `Принял: ${got}. Поручению «${o.title}» всё ещё чего-то не хватает — дооформлю в разборе переписки.`;
 }
+
+/**
+ * Какая реплика — ответ на вопрос агента (#4895).
+ *
+ * Раньше ответом считалась любая реплика автора поручения за три дня после вопроса,
+ * где встретилось имя: «а у тебя @Борис что-то писало?» через полдня дозаполняло старое
+ * поручение и в чат уходило «Принял: исполнитель Борис». Теперь ответ — только:
+ *   * реплика, отвечающая прямо на вопрос (ответ на сообщение);
+ *   * или ПЕРВАЯ реплика автора после вопроса — в течение трёх часов, короткая и без
+ *     вопросительного знака: «QEVO, Пётр» — ответ, «что-то не работает?» — нет.
+ */
+export function answerFrom(
+  after: { author_id: string | null; is_ai: boolean; body: string; created_at: Date; reply_to_id: string | null }[],
+  o: { questionId: string; askedAt: Date | null; authorId: string },
+): string | null {
+  const mine = after.filter((m) => !m.is_ai && m.author_id && String(m.author_id) === String(o.authorId));
+  const direct = mine.filter((m) => m.reply_to_id && String(m.reply_to_id) === String(o.questionId));
+  if (direct.length) return direct.map((m) => String(m.body ?? '')).join('\n');
+  const first = mine[0];
+  if (!first) return null;
+  const body = String(first.body ?? '').trim();
+  const age = o.askedAt ? new Date(first.created_at).getTime() - new Date(o.askedAt).getTime() : 0;
+  if (age > 3 * 3600_000) return null;
+  if (body.length > 120 || body.includes('?')) return null;
+  return body;
+}

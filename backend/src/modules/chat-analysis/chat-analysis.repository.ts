@@ -153,6 +153,8 @@ export interface NamedRow { id: string; name: string }
 
 /** Наблюдение, ждущее ответа на вопрос бота. */
 export interface AwaitingRow {
+  /** Когда задан вопрос: ответ ждём три часа (#4895). */
+  asked_at?: Date | null;
   id: string;
   tenant_id: string;
   chat_id: string;
@@ -665,7 +667,7 @@ export class ChatAnalysisRepository {
               a.question_message_id::text,
               a.intent_confidence, a.project_confidence, a.assigner_confidence, a.assignee_confidence,
               c.kind, COALESCE(c.project_id, c.linked_project_id)::text AS chat_project_id,
-              a.action_type, a.meeting_date::text, a.participant_ids::text[] AS participant_ids, t.timezone
+              a.action_type, a.meeting_date::text, a.participant_ids::text[] AS participant_ids, t.timezone, a.asked_at
          FROM chat_extracted_actions a
          JOIN chats c ON c.id = a.chat_id
          JOIN tenants t ON t.id = a.tenant_id
