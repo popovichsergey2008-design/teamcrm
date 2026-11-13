@@ -18,6 +18,8 @@ import {
   ActionRequest, actionButton, describeAction, isUndoable, normalizeProgress, progressLine, SupportActionKind, validAction,
 } from './support-actions';
 import { humanStatus, wantsHuman } from './support-text';
+import { matchQa, QaEntry } from './qa-match';
+import qaBase from './qa-base.data.json';
 import { MAYBE_SUFFIX, META_RULES, NO_ANSWER_PHRASE, parseAnswer } from './support-ai';
 import { Candidate, pickAgent } from './support-routing';
 import { Actor, canTransition, Status, whyNot } from './support-status';
@@ -62,6 +64,17 @@ import { FileImportService } from '../integrations/file/file-import.service';
  * не молчаливое продление бессрочного пропуска.
  */
 const GRANT_HOURS = 48;
+
+/*
+  База «вопрос — ответ» для первой линии (#4837; собирает scripts/qa-base/build_qa.py).
+
+  Служебные реплики таблицы («Привет», «Спасибо», «Ты бот или человек?», «Вопрос не по
+  теме», «Ответ не помог», «Ответа нет в базе») сюда не берём: в них помощник называет
+  себя «Qevo-ботом», а первая линия у нас — сотрудник по имени (см. answerByAi). Такие
+  реплики модель отыгрывает сама, с учётом разговора.
+*/
+const FAQ_SKIP = new Set(['A-280', 'A-281', 'A-282', 'A-283', 'A-284', 'A-285']);
+const FAQ_BASE: QaEntry[] = (qaBase as QaEntry[]).filter((e) => !FAQ_SKIP.has(e.id));
 
 @Injectable()
 export class SupportDeskService implements OnModuleInit {
@@ -447,12 +460,68 @@ export class SupportDeskService implements OnModuleInit {
     */
     if (conv.ai_mode === 'agent' && !conv.assigned_agent_id) {
       if (fresh) await this.repo.setStatus(tenantId, String(conv.id), 'ai');
-      void this.answerByAi(tenantId, user, String(conv.id), body, ctx ?? null);
+      /*
+        Частый вопрос — готовым ответом из базы заказчика, без модели (#4837).
+
+        Ответ на «как поставить задачу голосом» уже написан и проверен людьми: он
+        приходит сразу, не тратит токены и не меняется от раза к разу. Узнаём вопрос
+        строго (qa-match): не уверены — отвечает модель, как раньше.
+      */
+      const faq = body ? matchQa(body, FAQ_BASE) : null;
+      const answered = faq ? await this.answerByFaq(tenantId, user, String(conv.id), faq.entry) : false;
+      if (!answered) void this.answerByAi(tenantId, user, String(conv.id), body, ctx ?? null);
     } else if (conv.status === 'waiting_user') {
       // человек ответил на «проверьте, пожалуйста» — разговор снова в работе
       await this.repo.setStatus(tenantId, String(conv.id), 'in_progress');
     }
     return this.conversation(tenantId, user, String(conv.id));
+  }
+
+  /**
+   * Ответ из базы «вопрос — ответ» (#4837) — тем же голосом, что и ответ модели.
+   *
+   * Сообщение пишем как ответ помощника (kind 'ai', без автора): человек видит его так
+   * же, как любой ответ первой линии, а «Позвать специалиста» работает как обычно.
+   * Первый ответ в разговоре начинается с приветствия по имени — как у модели, иначе
+   * человек заметит, что «сотрудник» говорит то шаблоном, то живым текстом.
+   *
+   * Вопрос, на который команда ответа ещё не дала (корзина C), — честное «уточню» и
+   * сразу человек: догадка здесь хуже молчания.
+   *
+   * Возвращает false, если ответить не вышло, — тогда отвечает модель.
+   */
+  private async answerByFaq(
+    tenantId: string, user: { userId: string; role: string }, conversationId: string, entry: QaEntry,
+  ): Promise<boolean> {
+    try {
+      const persona = await this.platform.persona();
+      const spokeBefore = (await this.repo.messages(conversationId)).some((m) => m.author_kind === 'ai');
+      const answer = (spokeBefore ? '' : `Здравствуйте! Меня зовут ${persona.name}, я из службы заботы QEVO.\n\n`)
+        + entry.answer;
+      // Что это за обращение — в само обращение, как после ответа модели: по нему маршрутизация.
+      await this.repo.saveAiVerdict(tenantId, conversationId, {
+        confidence: entry.handoff ? 'low' : 'high', intent: 'how_to', skill: null,
+        priority: 'normal', summary: entry.question.slice(0, 200),
+      });
+      const msg = await this.repo.addMessage({ tenantId, conversationId, authorId: null, kind: 'ai', body: answer });
+      await this.repo.markAiResponse(tenantId, conversationId);
+      const after = await this.repo.byId(tenantId, conversationId);
+      if (after) {
+        await this.emit(tenantId, after, 'support.message.created', {
+          conversationId, messageId: String(msg?.id), kind: 'ai', authorId: null,
+        });
+        this.pushClient(tenantId, after, 'reply', 'Служба заботы ответила', answer);
+      }
+      if (entry.handoff) {
+        // «Уточню» уже сказано — сбой передачи не повод отвечать вторым голосом от модели.
+        await this.callHuman(tenantId, user, conversationId, 'faq_handoff')
+          .catch((e) => this.log.warn(`передача по базе ${entry.id}: ${(e as Error).message}`));
+      }
+      return true;
+    } catch (e) {
+      this.log.warn(`ответ из базы ${entry.id} в разговоре ${conversationId}: ${(e as Error).message}`);
+      return false;
+    }
   }
 
   /**
@@ -576,7 +645,7 @@ export class SupportDeskService implements OnModuleInit {
    */
   async callHuman(
     tenantId: string, user: { userId: string; role: string }, id: string,
-    reason: 'requested' | 'low_confidence' | 'ai_error' = 'requested',
+    reason: 'requested' | 'low_confidence' | 'ai_error' | 'faq_handoff' = 'requested',
   ) {
     const conv = await this.repo.byId(tenantId, id);
     if (!conv) throw AppException.notFound('Разговор не найден');
@@ -638,6 +707,7 @@ export class SupportDeskService implements OnModuleInit {
       if (!talk.trim()) return;
       const why = reason === 'low_confidence' ? 'помощник не был уверен в ответе'
         : reason === 'ai_error' ? 'помощник не смог ответить'
+          : reason === 'faq_handoff' ? 'на этот вопрос из базы ответов команда ещё не дала ответа'
           : 'человек попросил специалиста';
       const note = await this.ai.generate(
         tenantId,
