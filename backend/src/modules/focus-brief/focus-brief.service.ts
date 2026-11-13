@@ -22,6 +22,8 @@ import {
 
 /** Сколько раз в день можно синтезировать голос заново — повтор после ошибки и «Обновить». */
 const MAX_AUDIO = 5;
+/** Сбой сети или перегрузка провайдера — стоит повторить; 401/400 — нет. */
+const transientTts = (m: string) => /fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|socket|aborted|timeout|HTTP (?:5\d\d|429)/i.test(m);
 /** Сколько раз в день — «Обновить брифинг» вручную. */
 const MAX_REFRESH = 10;
 const POLISH_TIMEOUT_MS = 20_000;
@@ -274,7 +276,19 @@ export class FocusBriefService implements OnModuleInit {
     if (!(await this.repo.claimAudio(snapshotId, MAX_AUDIO, force || snap.audio_status === 'ready'))) return;
     const done = (status: string) => this.realtime.emitToUsers(v.tenantId, [v.userId], 'focus.brief.audio_ready', { status });
     try {
-      const buf = await this.ai.speak(v.tenantId, script, 'focus_brief_voice', prefs.voice);
+      /*
+        #4864: у нового пространства первый синтез шёл в ту же секунду, что и регистрация, и
+        падал на сетевом сбое до OpenAI («fetch failed») — человек видел ошибку вместо
+        «Прослушать». Сетевые сбои и 5xx/429 повторяем сами: три попытки с паузой.
+      */
+      let buf: Buffer | null = null;
+      for (let attempt = 1; ; attempt++) {
+        try { buf = await this.ai.speak(v.tenantId, script, 'focus_brief_voice', prefs.voice); break; }
+        catch (e) {
+          if (attempt >= 3 || !transientTts((e as Error).message)) throw e;
+          await new Promise((r) => setTimeout(r, attempt * 4000));
+        }
+      }
       if (!buf) {
         // синтеза нет (нет ключа) — это не ошибка: брифинг остаётся текстом
         await this.repo.setAudio(snapshotId, { status: 'off', error: 'Синтез речи не подключён' });
@@ -291,6 +305,11 @@ export class FocusBriefService implements OnModuleInit {
     } catch (e) {
       await this.repo.setAudio(snapshotId, { status: 'failed', error: (e as Error).message.slice(0, 300) });
       done('failed');
+      // сеть так и не ответила — ещё одна попытка через минуту, без нажатия «Повторить»
+      if (transientTts((e as Error).message)) {
+        const t = setTimeout(() => void this.audio(v, snapshotId).catch(() => undefined), 60_000);
+        t.unref?.();
+      }
     }
   }
 

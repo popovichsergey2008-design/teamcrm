@@ -36,10 +36,18 @@ export default function WelcomeHost({ resume = false }: {
   const { user } = useAuth();
   // #4632: бот, начатый раньше (свернул, ушёл, перезагрузил), — сразу он, без слайдов
   const [start] = useState<BotState | null>(() => (resume ? restore(user?.uiPrefs?.welcome?.bot) : null));
-  const [phase, setPhase] = useState<Phase>(start ? 'bot' : 'slides');
+  /*
+    #4864: окно «Откуда переносим задачи?» после обновления страницы открывается снова, с
+    того же шага. Пока его не прошли и не закрыли крестиком, обучение и подсказки разделов
+    ждут (data-tour-hold). Раньше «показано» ставилось при входе в окно — и обновление
+    страницы на этом шаге запускало обучение из 8 шагов вместо бота.
+  */
+  const [careOpen] = useState(() => resume && !!user?.uiPrefs?.welcome?.care);
+  const [phase, setPhase] = useState<Phase>(careOpen ? 'care' : start ? 'bot' : 'slides');
   /** Бот уже начат: уходим к инженеру и возвращаемся — разговор на месте. */
   const [botOn, setBotOn] = useState(!!start);
   const saved = useRef(!!start);
+  const lastBot = useRef<BotState | null>(start);
 
   if (!user || user.role === 'client' || user.platformStaff) return null;
 
@@ -49,9 +57,13 @@ export default function WelcomeHost({ resume = false }: {
     void api.saveUiPrefs({ welcome: { done: true } }).catch(() => undefined);
   };
   /** Где бот остановился — ключ welcome целиком: сервер сливает ui_prefs только верхним уровнем. */
-  const keep = (bot: BotState | null) => {
-    void api.saveUiPrefs({ welcome: bot ? { done: true, bot } : { done: true } }).catch(() => undefined);
+  const keep = (bot: BotState | null, care = false) => {
+    lastBot.current = bot;
+    saved.current = true;
+    void api.saveUiPrefs({ welcome: { done: true, ...(bot ? { bot } : {}), ...(care ? { care: true } : {}) } }).catch(() => undefined);
   };
+  /** Окно «Откуда переносим задачи?» открыто — помним; закрыли или отправили — забываем. */
+  const openCare = () => { keep(botOn ? lastBot.current : null, true); setPhase('care'); };
 
   return (
     <>
@@ -62,7 +74,7 @@ export default function WelcomeHost({ resume = false }: {
           // ТЗ 10.11: бот начат — сразу помним его шаг 1, иначе после обновления страницы на
           // первом шаге бот пропадал, а вместо него открывалось обучение из 8 шагов
           onSelf={() => { saved.current = true; keep(initial()); setBotOn(true); setPhase('bot'); }}
-          onCare={() => { shown(); setPhase('care'); }}
+          onCare={openCare}
           onClose={() => { shown(); setPhase('off'); }}
         />
       )}
@@ -71,14 +83,14 @@ export default function WelcomeHost({ resume = false }: {
           hidden={phase !== 'bot'}
           start={start}
           onSave={keep}
-          onEngineer={() => setPhase('care')}
+          onEngineer={openCare}
           onClose={() => { keep(null); setBotOn(false); setPhase('off'); }}
         />
       )}
       {phase === 'care' && (
         <CareStart
-          onClose={() => setPhase(botOn ? 'bot' : 'off')}
-          onSent={() => { if (botOn) keep(null); setBotOn(false); setPhase('off'); }}
+          onClose={() => { keep(botOn ? lastBot.current : null); setPhase(botOn ? 'bot' : 'off'); }}
+          onSent={() => { keep(null); setBotOn(false); setPhase('off'); }}
         />
       )}
     </>

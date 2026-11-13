@@ -622,7 +622,8 @@ export function App() {
   const tourWanted = useTourWanted();
   // #4632: бот начат и не закрыт — продолжаем его и после перезагрузки
   // настроек ещё нет (#4696) — первый запуск не показываем: неизвестно, пройден ли он
-  const welcome = useWelcome(!user?.uiPrefs || (user.uiPrefs.welcome?.done && !user.uiPrefs.welcome.bot));
+  // #4864: открытое окно «Откуда переносим задачи?» (care) тоже продолжается после перезагрузки
+  const welcome = useWelcome(!user?.uiPrefs || (user.uiPrefs.welcome?.done && !user.uiPrefs.welcome.bot && !user.uiPrefs.welcome.care));
   // #4779: сначала знакомство (имя, пространство), потом первый запуск
   const [namesLater, setNamesLater] = useState(false);
   const needNames = !!user?.uiPrefs?.setupNames && !namesLater;

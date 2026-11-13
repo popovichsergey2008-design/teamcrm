@@ -158,6 +158,9 @@ export class PostcallService implements OnModuleInit {
     const path = `/meetings/${row.meeting_id}/postcall`;
     if (row.owner_id && !row.opened_at) {
       await this.push.personal({ tenantId, userId: String(row.owner_id), eventKey: 'meeting.postcall', title, body: `${body} — разберите`, path }).catch(() => false);
+    } else if (row.owner_id && cut) {
+      // #4864: экран итогов уже открыт, но о лимите пробного периода владелец должен узнать и так
+      await this.push.personal({ tenantId, userId: String(row.owner_id), eventKey: 'meeting.postcall', title, body, path, push: false, toast: true }).catch(() => false);
     }
     for (const p of row.participants ?? []) {
       if (!p.userId || String(p.userId) === String(row.owner_id)) continue;
