@@ -517,8 +517,12 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     if (!wantReview) return;
     if (backlog === null) { void loadBacklog(); return; }
     setWantReview(false);
-    if (plusDecisions.length) setRunList(plusDecisions);
-  }, [wantReview, backlog, loadBacklog, plusDecisions]);
+    // проверки и согласования из тройки — тоже в разбор: «решить своё» здесь целиком
+    const fromTop: FocusCandidate[] = top.filter((i) => i.status === 'active' && i.kind !== 'task' && i.title)
+      .map((i) => ({ key: `${i.kind}:${i.taskId ?? i.approvalId}`, kind: i.kind, taskId: i.taskId, approvalId: i.approvalId ?? null, title: i.title!, projectName: i.projectName ?? null, score: 0, reasons: i.reasons }));
+    const list = [...fromTop, ...plusDecisions.filter((d) => !fromTop.some((t) => t.taskId && t.taskId === d.taskId))];
+    if (list.length) setRunList(list);
+  }, [wantReview, backlog, loadBacklog, plusDecisions, top]);
   const mainItem = plus?.main ? top.find((i) => i.id === plus.main!.itemId) : undefined;
 
   const closeDayBlock = day.closeDay.workdayClosedUntil ? (
