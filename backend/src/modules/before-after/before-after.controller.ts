@@ -38,6 +38,12 @@ export class BeforeAfterController {
     return this.svc.overview(u.tenantId, id, { userId: u.userId, role: u.role });
   }
 
+  /** #4896: есть ли готовый отчёт — для бейджа «1» на вкладке, без сбора материалов. */
+  @Get(':id/before-after/latest')
+  latest(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.svc.latestMeta(u.tenantId, id, { userId: u.userId, role: u.role });
+  }
+
   /** «Проверить было/стало»: отвечает сразу, проверка идёт фоном. */
   @Post(':id/before-after')
   run(@CurrentUser() u: AuthUser, @Param('id') id: string) {

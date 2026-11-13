@@ -4,7 +4,6 @@ import { CLIENTS_ENABLED } from './config';
 import { useAuth } from './state/auth';
 import { api } from './lib/api';
 import { getSocket } from './lib/socket';
-import { LoginPage } from './pages/LoginPage';
 import { isAuthPath } from './lib/signup-intent';
 import { precheckCall } from './lib/call-precheck';
 import { legalKindOf } from './legal';
@@ -70,6 +69,8 @@ import { promptText } from './components/ui/dialog';
 const GuestMeetPage = lazy(() => import('./pages/GuestMeetPage').then((m) => ({ default: m.GuestMeetPage })));
 const OperatorCallPage = lazy(() => import('./pages/OperatorCallPage'));
 // открывают по Ctrl+K и по кнопке — первому экрану они не нужны (бюджет, 02.11)
+// вход нужен только тем, кто не вошёл, — первому экрану вошедшего он ни к чему (бюджет 300 КБ)
+const LoginPage = lazyComponent(() => import('./pages/LoginPage').then((m) => m.LoginPage));
 const CommandPalette = lazyComponent(() => import('./components/CommandPalette').then((m) => m.CommandPalette));
 const SecretaryPanel = lazyComponent(() => import('./components/SecretaryPanel').then((m) => m.SecretaryPanel));
 const GetAppPage = lazy(() => import('./pages/GetAppPage').then((m) => ({ default: m.GetAppPage })));

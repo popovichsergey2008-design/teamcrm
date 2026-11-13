@@ -138,6 +138,14 @@ export class BeforeAfterService {
 
   // ───────────── для экрана ─────────────
 
+  /** #4896: последний отчёт кратко — номер и версия; нет готового — null. */
+  async latestMeta(tenantId: string, taskId: string, viewer: ProjectViewer) {
+    const task = await this.repo.visibleTask(tenantId, taskId, viewer);
+    if (!task) throw AppException.notFound('Задача не найдена');
+    const r = await this.repo.latest(tenantId, taskId);
+    return r && r.status === 'ready' ? { id: String(r.id), version: Number(r.version) } : null;
+  }
+
   /** Вкладка «Было/стало»: последние версии, текущий отчёт и что можно сделать. */
   async overview(tenantId: string, taskId: string, viewer: ProjectViewer) {
     const task = await this.repo.visibleTask(tenantId, taskId, viewer);

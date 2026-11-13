@@ -6,7 +6,7 @@ import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { SaveTemplateDialog } from './SaveTemplateDialog';
 import { GateBlock, HandoffGateDialog, gateFromError } from './HandoffGateDialog';
-import { api, ApiError, QUEUED } from '../lib/api';
+import { api, ApiError, QUEUED, request } from '../lib/api';
 import { enqueueConflict, newChangeId, type QueuedChange } from '../lib/offline-queue';
 import { flushOffline } from '../hooks/useOfflineQueue';
 import { ConflictSheet } from './OfflineBar';
@@ -100,6 +100,30 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   });
   /** «⋯ → Проверить было/стало»: вкладка откроется и сразу запустит проверку. */
   const [checkNow, setCheckNow] = useState(false);
+  /*
+    #4896: ссылка «Открыть „Было/стало“» в чате задачи — сразу на вкладку; бейдж «1» у вкладки,
+    пока готовый отчёт не открыт (что открыто — помним в браузере по номеру отчёта).
+  */
+  const [baId, setBaId] = useState<string | null>(null);
+  const baKey = `teamcrm.baSeen.${task.id}`;
+  const [baSeen, setBaSeen] = useState<string | null>(() => { try { return localStorage.getItem(baKey); } catch { return null; } });
+  useEffect(() => {
+    request<{ id: string } | null>('GET', `/tasks/${task.id}/before-after/latest`).then((r) => setBaId(r?.id ?? null)).catch(() => setBaId(null));
+  }, [task.id, tab]);
+  useEffect(() => {
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ taskId?: string; tab?: Tab }>).detail;
+      if (d?.tab && (!d.taskId || String(d.taskId) === String(task.id))) setTab(d.tab);
+    };
+    window.addEventListener('teamcrm:task-tab', on);
+    return () => window.removeEventListener('teamcrm:task-tab', on);
+  }, [task.id]);
+  useEffect(() => {
+    if (tab !== 'check' || !baId || baSeen === baId) return;
+    setBaSeen(baId);
+    try { localStorage.setItem(baKey, baId); } catch { /* без хранилища бейдж просто вернётся */ }
+  }, [tab, baId, baSeen, baKey]);
+  const baNew = !!baId && baSeen !== baId;
   // #4714: вкладка «Чат» — довести карточку до разговора, а не оставить его под блоком свойств
   const mainRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -752,7 +776,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
     // в 360 точек превращала абзац в двадцать строк, а картинку — в марку.
     { value: 'chat', label: <><Icon name="chat" size={14} /> Чат</> },
     // «Было/стало» (#4657): пункты правок, снимки до и после и вердикт по каждому
-    { value: 'check', label: <><Icon name="eye" size={14} /> Было/стало</> },
+    { value: 'check', label: <><Icon name="eye" size={14} /> Было/стало</>, count: baNew ? 1 : undefined },
   ];
 
   return (
