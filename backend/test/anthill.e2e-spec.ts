@@ -271,7 +271,7 @@ describe('QEVO Bot (e2e)', () => {
     expect(new Date(back.nextRunAt).getTime()).toBeGreaterThan(Date.now());
 
     const moved = (await http$.patch(`/api/anthill/schedules/${task.id}`).set(O).send({ schedule: 'каждую пятницу в 17:00' }).expect(200)).body.data;
-    expect(moved.label).toBe('каждую пятницу в 17:00');
+    expect(moved.label).toBe('каждую пятницу в 17:00 МСК');
 
     const mateEmail = `ab4m_${uniq()}@t.test`;
     await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
