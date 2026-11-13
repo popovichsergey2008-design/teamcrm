@@ -783,6 +783,12 @@ export function Sidebar({
                   <>
                     <Icon name={item.icon} size={18} />
                     <span className="nav-label">{item.label}</span>
+                    {/* #4901: колокольчик у «Входящих» — чтобы не путать их с чатом и входящими сообщениями */}
+                    {item.section === 'inbox' && !collapsed && (
+                      <span aria-hidden="true" style={{ display: 'inline-flex', color: '#f5a524', marginLeft: -4, filter: 'drop-shadow(0 0 3px rgba(245,165,36,.45))' }}>
+                        <Icon name="bell" size={16} />
+                      </span>
+                    )}
                     {home === item.section && !collapsed && (
                       <span className="nav-home" title="Главная страница — открывается при входе">
                         <Icon name="home" size={13} />

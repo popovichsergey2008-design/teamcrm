@@ -1163,8 +1163,15 @@ export class ChatsService {
     const chat = await this.access(tenantId, chatId, user);
     const msg = await this.repo.messageById(messageId);
     if (!msg || String(msg.chat_id) !== String(chatId) || !msg.file_id) throw AppException.notFound('Голосовое не найдено');
-    if (msg.transcript_status === 'running' || (msg.transcript_status === 'ready' && msg.transcript)) {
-      return { status: msg.transcript_status, transcript: msg.transcript ?? null };
+    /*
+      #4903: «Расшифровываю…» висело, и помогало только второе нажатие. Идёт — отдаём статус
+      (экран опрашивает), готово — текст сразу; «идёт» дольше двух минут — расшифровка
+      оборвалась (перезапуск сервера, сбой сети), запускаем заново.
+    */
+    const stale = msg.transcript_status === 'running'
+      && (!msg.transcribed_at || Date.now() - new Date(msg.transcribed_at).getTime() > 120_000);
+    if ((msg.transcript_status === 'running' && !stale) || (msg.transcript_status === 'ready' && msg.transcript)) {
+      return { status: msg.transcript_status, transcript: msg.transcript ?? null, body: msg.body };
     }
     if (!(await this.chatAi.canTranscribe(tenantId))) throw AppException.validation('Расшифровка недоступна: не подключён ИИ для речи');
     const { file, stream } = await this.files.getForDownload(tenantId, String(msg.file_id));

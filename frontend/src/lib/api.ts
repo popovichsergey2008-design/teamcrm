@@ -2501,7 +2501,7 @@ export const api = {
 
   /** «В текст» у голосового (#4719): расшифровка только по просьбе. */
   transcribeChatVoice: (chatId: string, messageId: string) =>
-    request<{ status: string | null; transcript: string | null }>('POST', `/chats/${chatId}/messages/${messageId}/transcribe`),
+    request<{ status: string | null; transcript: string | null; body?: string }>('POST', `/chats/${chatId}/messages/${messageId}/transcribe`),
   /** Реакция на сообщение чата — переключатель: повторное нажатие снимает свою. */
   reactToChatMessage: (chatId: string, messageId: string, emoji: string) =>
     request<{ ok: true }>('POST', `/chats/${chatId}/messages/${messageId}/reactions`, { emoji }),

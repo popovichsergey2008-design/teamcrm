@@ -36,6 +36,8 @@ export interface ChatListItem extends ChatRow {
 export interface MessageRow {
   transcript?: string | null;
   transcript_status?: string | null;
+  /** #4903: когда расшифровка готова — или когда запущена (для перезапуска зависшей). */
+  transcribed_at?: Date | null;
   id: string; chat_id: string; author_id: string | null; author_name: string | null;
   body: string; file_id: string | null; file_name: string | null; content_type: string | null;
   size_bytes: string | null; created_at: Date; edited_at: Date | null;
@@ -487,7 +489,7 @@ export class ChatsRepository {
   messageById(id: string | number): Promise<MessageRow | null> {
     return this.db.one<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.transcribed_at,
               m.thread_root_id, m.reply_count, m.last_reply_at,
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
               m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
@@ -1161,7 +1163,8 @@ export class ChatsRepository {
       `UPDATE chat_messages
           SET transcript_status = CASE WHEN $3::text = 'failed' AND transcript IS NOT NULL THEN transcript_status ELSE $3::text END,
               transcript = COALESCE($4, transcript),
-              transcribed_at = CASE WHEN $3::text = 'ready' THEN now() ELSE transcribed_at END,
+              -- #4903: у «running» — время старта, чтобы зависшую расшифровку можно было перезапустить
+              transcribed_at = CASE WHEN $3::text IN ('ready', 'running') THEN now() ELSE transcribed_at END,
               body = CASE WHEN $4::text IS NOT NULL AND body = $5 THEN $4 ELSE body END
         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
         RETURNING body`,

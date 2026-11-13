@@ -309,11 +309,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   // #4832: открыли чат на виду — его всплывашки и «Пропущенные» больше не нужны
   useEffect(() => { if (activeId && !document.hidden) notifySeen({ chatId: activeId }); }, [activeId]);
   const [messages, setMessages] = useState<Message[]>([]);
+  // #4903: свежая лента для асинхронных обработчиков (опрос расшифровки)
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   // #4794: лента открытого чата — в память, чтобы при возврате показать её сразу
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
   ownFeeds(user?.id);
-  useEffect(() => { if (activeId && messages.length) rememberFeed(activeId, messages); }, [activeId, messages]);
+  // #4900: в память — только хвост переписки. Окно вокруг цитаты/закрепа (hasNewer) туда не
+  // кладём: вернувшись в чат, человек видел это окно как ленту с вырезанным куском до сегодня.
+  useEffect(() => { if (activeId && messages.length && !hasNewer) rememberFeed(activeId, messages); }, [activeId, messages, hasNewer]);
   /** Где в ленте стоит черта: всё чужое от неё и ниже подсвечивается как новое. */
   const unreadIndex = useMemo(
     () => (unreadFrom ? messages.findIndex((m) => String(m.id) === unreadFrom) : -1),
@@ -698,6 +703,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     setMissed(0);
   };
 
+  useEffect(() => { goToLatestRef.current = goToLatest; });
   /** Вернуться к живой ленте: перечитываем хвост и встаём в самый низ. */
   const goToLatest = async () => {
     if (!activeId) return;
@@ -706,7 +712,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       keepScroll.current = true;           // ставим прокрутку сами, ниже
       setMessages(list);
       setHasOlder(list.length >= 50);
-      setHasNewer(false);
+      markWindow(false);
       setMissed(0);
       requestAnimationFrame(() => {
         const el = feedRef.current;
@@ -747,6 +753,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
   // Обработчики сокета читают признак из ref: пересобирать их на каждое изменение незачем.
   useEffect(() => { hasNewerRef.current = hasNewer; }, [hasNewer]);
+  /** «Окно» или хвост — сразу в ref: ответ на отправку может прийти раньше отрисовки (#4900). */
+  const markWindow = (v: boolean) => { hasNewerRef.current = v; setHasNewer(v); };
 
   const onFeedScroll = (el: HTMLDivElement) => {
     // 120 точек — примерно строка-полторы: человек «внизу», даже если чуть отмотал.
@@ -901,7 +909,18 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     [],
   );
 
-  const appendMessage = useCallback((m: Message) => {
+  const goToLatestRef = useRef<() => Promise<void>>(async () => undefined);
+  /*
+    #4900: стоим в окне вокруг старого сообщения (перешли по цитате или закрепу) — подшить
+    новое в конец окна значит показать разговор с дырой: «вчера 11:30» → «сегодня 09:37», а
+    всё между ними вырезано. Своё сообщение — повод вернуться к живой ленте целиком;
+    чужое — только счётчик на «вниз».
+  */
+  const appendMessage = useCallback((m: Message, own = false) => {
+    if (hasNewerRef.current) {
+      if (own) void goToLatestRef.current(); else setMissed((n) => n + 1);
+      return;
+    }
     setMessages((prev) => (prev.some((x) => String(x.id) === String(m.id)) ? prev : [...prev, m]));
   }, []);
 
@@ -1163,7 +1182,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       сразу, а свежая подменяет её, когда придёт; без памяти — как раньше, со скелетом.
     */
     const seen = feedCache.get(id);
-    setActiveId(id); setErr(''); setMessages(seen ?? []); setMsgLoading(!seen); setView('chat');
+    setActiveId(id); setErr(''); setMessages(seen ?? []); setMsgLoading(!seen); setView('chat'); markWindow(false);
     const unreadBefore = chatsRef.current.find((c) => String(c.id) === String(id))?.unread ?? 0;
     try {
       const list = await api.chatMessages(id); // чтение помечается на сервере этим же запросом
@@ -1171,7 +1190,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       if (activeIdRef.current !== id) return;
       setMessages(list);
       setHasOlder(list.length >= 50); // страница полная — значит, выше ещё есть
-      setHasNewer(false);             // это хвост переписки: ниже ничего нет
+      markWindow(false);              // это хвост переписки: ниже ничего нет
       setUnreadFrom(firstUnreadId(list, unreadBefore, user?.id));
       loadPinned(id);
       // Незавершённые черновики задач: по ним рисуются строки под сообщениями.
@@ -1299,13 +1318,38 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     } catch { /* следующая прокрутка попробует снова */ }
     finally { setOlderBusy(false); }
   };
+  /**
+   * «В текст» у голосового (#4903). Раньше ответ сервера не использовался, а текст ждали
+   * только событием — пока оно шло, на экране висело «Расшифровываю…», и помогало лишь
+   * второе нажатие. Теперь готовый текст встаёт сразу из ответа, а пока идёт — спрашиваем
+   * статус раз в 3 секунды (до 2 минут), не надеясь на одно событие.
+   */
+  const transcribeVoice = async (chatId: string, messageId: string) => {
+    const put = (r: { status: string | null; transcript: string | null; body?: string }) => setMessages((list) => list.map((x) => (String(x.id) === messageId
+      ? { ...x, transcript_status: r.status, transcript: r.transcript ?? x.transcript, body: r.body ?? x.body } : x)));
+    put({ status: 'running', transcript: null });
+    try {
+      for (let i = 0; i < 40; i++) {
+        const r = await api.transcribeChatVoice(chatId, messageId);
+        if (r.status !== 'running') { put(r); return; }
+        if (activeIdRef.current !== chatId) return;
+        // событие могло прийти раньше ответа — тогда текст уже на экране
+        const shown = messagesRef.current.find((x) => String(x.id) === messageId);
+        if (shown?.transcript_status === 'ready' && shown.transcript) return;
+        await new Promise((res) => window.setTimeout(res, 3000));
+      }
+    } catch (e) {
+      put({ status: null, transcript: null });
+      showToast({ kind: 'info', title: 'Не расшифровалось', body: e instanceof ApiError ? e.message : 'Попробуйте ещё раз' });
+    }
+  };
   /** Докрутили до низа окна — подшиваем страницу ниже; кончились — лента снова живая. */
   const loadNewer = async () => {
     if (!activeId || newerBusy || !hasNewer || !messages.length) return;
     setNewerBusy(true);
     try {
       const newer = await api.chatMessages(activeId, undefined, String(messages[messages.length - 1].id));
-      if (newer.length < 50) setHasNewer(false);
+      if (newer.length < 50) markWindow(false);
       if (newer.length) {
         keepScroll.current = true;         // низ не приклеиваем: человек читает здесь
         setMessages((prev) => [...prev, ...newer]);
@@ -1391,7 +1435,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       setReplyTo(null);
       // Своё сообщение всегда доматываем: человек нажал «отправить» и ждёт его увидеть.
       atBottomRef.current = true;
-      appendMessage(message);
+      appendMessage(message, true);
       reload();
     } catch (e) {
       // Сети нет — сообщение легло в очередь и висит в ленте с пометкой «ожидает сети»:
@@ -1672,7 +1716,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     if (!activeId) return;
     try {
       const message = await api.chatShare(activeId, kind, id);
-      appendMessage(message);
+      appendMessage(message, true);
       reload();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отправить карточку'); }
   };
@@ -1699,7 +1743,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         два десятка более новых реплик. Значит, ниже есть ещё — и стрелка «вниз»
         обязана вернуть к сегодняшним, а не упереться в край окна.
       */
-      setHasNewer(!hit.threadRootId);
+      markWindow(!hit.threadRootId);
       loadPinned(hit.chatId);
       api.chatContext(hit.chatId).then(setCtx).catch(() => setCtx(null));
       /*
@@ -3206,13 +3250,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             type="button"
                             className="ui-btn ui-btn-ghost ui-btn-sm"
                             title="Расшифровать голосовое в текст"
-                            onClick={() => {
-                              setMessages((list) => list.map((x) => (x.id === m.id ? { ...x, transcript_status: 'running' } : x)));
-                              api.transcribeChatVoice(activeId, String(m.id)).catch((e) => {
-                                setMessages((list) => list.map((x) => (x.id === m.id ? { ...x, transcript_status: null } : x)));
-                                showToast({ kind: 'info', title: 'Не расшифровалось', body: e instanceof ApiError ? e.message : 'Попробуйте ещё раз' });
-                              });
-                            }}
+                            onClick={() => { void transcribeVoice(activeId, String(m.id)); }}
                           >
                             <Icon name="file" size={14} /> В текст
                           </button>
