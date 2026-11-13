@@ -1,0 +1,9 @@
+/* #4902 п. 2: компактная лента — «много пустого места, не помещается информация на экране». Грузится, только когда включено. */
+.chat-feed.is-compact { gap: 0; }
+.chat-feed.is-compact .msg { padding: 0; gap: 6px; }
+.chat-feed.is-compact .chat-msg { padding: 3px 28px 3px 9px; border-radius: 9px; margin-bottom: 1px; box-shadow: none; }
+.chat-feed.is-compact .chat-msg:has(> .msg-wand) { padding-right: 48px; }
+.chat-feed.is-compact .avatar-sm { width: 22px; height: 22px; font-size: 10px; }
+.chat-feed.is-compact .chat-day { margin: 4px 0; }
+.chat-feed.is-compact .chat-author { margin-bottom: 0; font-size: 12px; }
+.chat-feed.is-compact .chat-time { font-size: 10.5px; }

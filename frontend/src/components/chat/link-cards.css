@@ -1,0 +1,19 @@
+/* #4902, п. 3: живые карточки ссылок под сообщением — свой файл в ленивом куске, в первый экран не едет */
+.lc-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; max-width: 560px; }
+.lc-card { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm, 8px); background: var(--bg-elev); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lc-card.lc-done { border-left-color: var(--ok); }
+.lc-card.lc-hidden { flex-direction: row; align-items: center; gap: 6px; color: var(--text-dim); font-size: var(--fs-sm); border-left-color: var(--border); }
+.lc-title { display: flex; align-items: center; gap: 6px; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); text-align: left; cursor: pointer; text-decoration: none; min-width: 0; }
+.lc-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lc-title:hover span { text-decoration: underline; }
+.lc-done .lc-title span { color: var(--text-dim); text-decoration: line-through; }
+.lc-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: var(--fs-sm); color: var(--text-dim); align-items: center; }
+.lc-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.lc-chip { padding: 1px 8px; border-radius: 999px; background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text); }
+.lc-chip-ok { background: var(--ok-soft); border-color: var(--ok-line, var(--ok)); }
+.lc-late { color: var(--danger); }
+.lc-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lc-pick { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lc-pick .ui-input { width: auto; min-width: 0; max-width: 100%; }
+.lc-link { background: none; border: 0; padding: 0; color: var(--text-dim); text-decoration: underline; cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+.lc-err { color: var(--danger); font-size: var(--fs-sm); }

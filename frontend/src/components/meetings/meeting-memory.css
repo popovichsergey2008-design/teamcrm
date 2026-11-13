@@ -1,0 +1,21 @@
+/* #4902, п. 12: карточка прошлой встречи и «Кратко до сих пор» в окне созвона */
+.mmem { display: flex; flex-direction: column; gap: 6px; margin: 0 12px 8px; }
+.mmem-card, .mmem-recap { padding: 8px 12px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line, var(--accent)); display: flex; flex-direction: column; gap: 6px; font-size: calc(13px * var(--fs-scale, 1)); }
+.mmem-recap { background: var(--bg-elev); border-color: var(--border); }
+.mmem-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mmem-close { margin-left: auto; }
+.mmem-dim { color: var(--text-dim); font-size: var(--fs-sm); }
+.mmem-counts { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: baseline; }
+.mmem-n.is-done b { color: var(--ok); }
+.mmem-n.is-review b { color: var(--accent); }
+.mmem-n.is-idle b { color: var(--danger); }
+.mmem-tasks, .mmem-points { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.mmem-task { display: flex; gap: 4px 10px; flex-wrap: wrap; align-items: baseline; }
+.mmem-task-title { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.mmem-task.is-done .mmem-task-title { color: var(--text-dim); text-decoration: line-through; }
+.mmem-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.mmem-points li { overflow-wrap: anywhere; line-height: 1.4; }
+.mmem-stamp { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; padding: 0 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--accent); font: inherit; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; cursor: pointer; }
+.mmem-stamp.is-plain { color: var(--text-dim); cursor: default; }
+.mmem-stamp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 640px) { .mmem { margin: 0 8px 6px; } }

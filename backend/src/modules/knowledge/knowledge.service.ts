@@ -1,3 +1,4 @@
+import { maskSecrets } from '../../common/secrets';
 import { ProjectViewer } from '../../common/access/project-visibility';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
@@ -228,7 +229,8 @@ ${extracted.text}`,
     const parts = groupLines(rows
       .filter((r) => String(r.body ?? '').trim())
       .map((r): Line => ({
-        text: `${r.who}: ${String(r.body).replace(/\s+/g, ' ').trim()}`,
+        // #4902, п. 13: пароль из переписки не попадает в индекс, а значит — ни в поиск, ни в ответы ИИ
+        text: `${r.who}: ${maskSecrets(String(r.body)).replace(/\s+/g, ' ').trim()}`,
         anchor: { chatId: head.chat_id, messageId: r.id }, at: r.created_at, authorId: r.author_id,
       })));
     if (!parts.length) return null;

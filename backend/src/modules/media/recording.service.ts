@@ -86,6 +86,16 @@ export class RecordingService {
     return this.sessions.has(meetingId);
   }
 
+  /**
+   * #4902 п. 12: дорожки идущей записи — для «Кратко до сих пор». Файлы читаются, пока
+   * ffmpeg пишет дальше: благодаря -flush_packets принятое уже на диске.
+   */
+  liveTracks(meetingId: string): { userId: string; displayName: string; file: string; offsetSec: number }[] | null {
+    const s = this.sessions.get(meetingId);
+    if (!s) return null;
+    return [...s.tracks.values()].map((t) => ({ userId: t.userId, displayName: t.displayName, file: t.file, offsetSec: t.offsetSec }));
+  }
+
   recordingInfo(meetingId: string) {
     const s = this.sessions.get(meetingId);
     return s ? { active: true, startedBy: s.startedBy, startedAt: s.startedAt } : { active: false };

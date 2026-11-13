@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { maskSecrets } from '../../common/secrets';
 import { AiService } from '../ai/ai.service';
 import { DbService } from '../../database/db.service';
 import { extractAudioChunks } from '../meetings/audio.util';
@@ -53,7 +54,7 @@ export class ChatsAiService {
     const history = rows.reverse().map((r) => ({
       author: r.is_ai ? 'AI-помощник' : (r.author_name ?? 'система'),
       at: new Date(r.created_at).toLocaleString('ru-RU'),
-      text: String(r.body ?? '').slice(0, 800),
+      text: maskSecrets(String(r.body ?? '')).slice(0, 800),
     }));
 
     // Контекст CRM — проект, задачи, последний мит — приходит от ChatsService уже
@@ -95,7 +96,7 @@ export class ChatsAiService {
       chat: r.chat,
       author: r.author_name ?? 'система',
       at: new Date(r.created_at).toLocaleString('ru-RU'),
-      text: String(r.body ?? '').slice(0, 600),
+      text: maskSecrets(String(r.body ?? '')).slice(0, 600),
     }));
     const text = await this.generate(tenantId, DIGEST_SYSTEM, { history }, 'chat_digest');
     return { text, messages: rows.length };
@@ -142,7 +143,7 @@ export class ChatsAiService {
       question: q,
       found: hits.map((h, i) => ({
         n: i + 1, chat: h.chat, author: h.author_name ?? 'система',
-        at: new Date(h.created_at).toLocaleString('ru-RU'), text: String(h.body ?? '').slice(0, 600),
+        at: new Date(h.created_at).toLocaleString('ru-RU'), text: maskSecrets(String(h.body ?? '')).slice(0, 600),
       })),
     }, 'chat_search');
 
@@ -150,7 +151,7 @@ export class ChatsAiService {
       answer,
       refs: hits.slice(0, 10).map((h) => ({
         messageId: String(h.id), chatId: String(h.chat_id), chat: h.chat,
-        author: h.author_name, at: h.created_at, text: String(h.body ?? '').slice(0, 200),
+        author: h.author_name, at: h.created_at, text: maskSecrets(String(h.body ?? '')).slice(0, 200),
       })),
     };
   }
@@ -179,6 +180,31 @@ export class ChatsAiService {
     } catch (e) {
       this.log.warn(`расшифровка клипа: ${(e as Error).message}`);
       return '';
+    }
+  }
+
+  /**
+   * #4902, п. 14: расшифровка клипа с метками времени (сегменты Whisper verbose_json) —
+   * для «0:42 баг» у записи экрана и кратко у голосового. Куски по 10 минут идут
+   * параллельно: запись до 5 минут — один кусок, и текст готов за один запрос.
+   * Сегментов нет (заглушка, сбой) — обычная расшифровка, без меток.
+   */
+  async transcribeTimed(tenantId: string, buffer: Buffer, fileName: string): Promise<{ text: string; segments: { start: number; end: number; text: string }[]; durationSec: number }> {
+    try {
+      const { chunks, durationSec } = await extractAudioChunks(buffer, fileName);
+      const parts = await Promise.all(chunks.map(async (chunk) => {
+        const segs = await this.ai.transcribeSegments(tenantId, chunk.buffer, chunk.name, Math.min(600, Math.max(0, durationSec - chunk.offsetSec))).catch(() => []);
+        if (segs.length) return { segs: segs.map((s) => ({ start: s.start + chunk.offsetSec, end: s.end + chunk.offsetSec, text: s.text })), text: '' };
+        // без сегментов — хотя бы текст
+        const text = await this.ai.transcribeAudio(tenantId, chunk.buffer, chunk.name).catch(() => '');
+        return { segs: [], text: String(text ?? '').trim() };
+      }));
+      const segments = parts.flatMap((p) => p.segs);
+      const text = parts.map((p) => (p.segs.length ? p.segs.map((s) => s.text).join(' ') : p.text)).filter(Boolean).join(' ').trim();
+      return { text: text.slice(0, 8000), segments, durationSec };
+    } catch (e) {
+      this.log.warn(`расшифровка клипа с метками: ${(e as Error).message}`);
+      return { text: '', segments: [], durationSec: 0 };
     }
   }
 

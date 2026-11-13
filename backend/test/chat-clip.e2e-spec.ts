@@ -39,7 +39,7 @@ describe('Голосовое: расшифровка фоном (e2e)', () => {
   });
   afterAll(async () => { await app?.close(); });
   /** Подмену ИИ снимаем, а перехват событий оставляем на весь набор. */
-  const restoreAi = () => { for (const k of ['canTranscribe', 'transcribe', 'tidyTranscript'] as const) (app.get(ChatsAiService)[k] as any).mockRestore?.(); };
+  const restoreAi = () => { for (const k of ['canTranscribe', 'transcribe', 'transcribeTimed', 'tidyTranscript'] as const) (app.get(ChatsAiService)[k] as any).mockRestore?.(); };
 
   async function setup() {
     const owner = (await http$.post('/api/auth/register')
@@ -56,30 +56,30 @@ describe('Голосовое: расшифровка фоном (e2e)', () => {
     return pred();
   };
 
-  it('#4719: голосовое остаётся голосовым — расшифровка только по «В текст», текст встаёт под ним', async () => {
+  it('#4902 п. 14: голосовое расшифровывается сразу и остаётся голосовым; кратко — событием; «Ответить голосом» — ответом', async () => {
     const { O, dm } = await setup();
     const ai = app.get(ChatsAiService);
     let release: () => void = () => undefined;
     const gate = new Promise<void>((r) => { release = r; });
     jest.spyOn(ai, 'canTranscribe').mockResolvedValue(true);
-    const heard = jest.spyOn(ai, 'transcribe').mockImplementation(async () => { await gate; return 'глеб поправь форму к пятнице'; });
+    const heard = jest.spyOn(ai, 'transcribeTimed').mockImplementation(async () => {
+      await gate;
+      return { text: 'глеб поправь форму к пятнице', segments: [{ start: 0, end: 3, text: 'глеб поправь форму к пятнице' }], durationSec: 3 };
+    });
     jest.spyOn(ai, 'tidyTranscript').mockResolvedValue('Глеб, поправь форму к пятнице.');
 
     const res = (await http$.post(`/api/chats/${dm.id}/clip`).set(O)
       .field('kind', 'voice')
       .attach('file', Buffer.from('voice-bytes'), { filename: 'voice.webm', contentType: 'audio/webm' })
       .expect(201)).body.data;
-    // сразу ИИ не зовётся: голосовое просто голосовое
+    // сообщение — сразу, голосовое остаётся голосовым, расшифровка уже идёт сама
     expect(res.body).toBe('Голосовое сообщение');
-    expect(res.transcript_status).toBeNull();
-    expect(heard).not.toHaveBeenCalled();
+    expect(res.transcript_status).toBe('running');
     expect(events.some((e) => e.event === 'chat.message' && String(e.payload.message.id) === String(res.id))).toBe(true);
 
-    // «В текст»
+    // «В текст», пока идёт, второй расшифровки не запускает
     const t = (await http$.post(`/api/chats/${dm.id}/messages/${res.id}/transcribe`).set(O).expect(201)).body.data;
     expect(t.status).toBe('running');
-    // повторное нажатие, пока идёт, второй расшифровки не запускает
-    await http$.post(`/api/chats/${dm.id}/messages/${res.id}/transcribe`).set(O).expect(201);
     release();
     const ev = await waitFor(() => events.find((e) => e.event === 'chat.message.transcript' && String(e.payload.messageId) === String(res.id) && e.payload.status === 'ready'));
     expect(ev.payload.transcript).toBe('Глеб, поправь форму к пятнице.');
@@ -87,10 +87,22 @@ describe('Голосовое: расшифровка фоном (e2e)', () => {
     const after = (await http$.get(`/api/chats/${dm.id}/messages`).set(O).expect(200)).body.data;
     const list = Array.isArray(after) ? after : after.messages ?? after.items;
     const m = list.find((x: any) => String(x.id) === String(res.id));
-    // само сообщение остаётся голосовым, текст — рядом
     expect(m.body).toBe('Голосовое сообщение');
     expect(m.transcript).toBe('Глеб, поправь форму к пятнице.');
     expect(m.transcript_status).toBe('ready');
+
+    // разбор клипа: реплики с метками, событие и выдача пачкой
+    await waitFor(() => events.find((e) => e.event === 'chat.clip.insight' && String(e.payload.messageId) === String(res.id)));
+    const ins = (await http$.get(`/api/clip-insight?ids=${res.id}`).set(O).expect(200)).body.data;
+    expect(ins.items[0].kind).toBe('voice');
+    expect(ins.items[0].segments.length).toBe(1);
+
+    // «Ответить голосом»: голосовое ответом на это сообщение
+    const answer = (await http$.post(`/api/chats/${dm.id}/clip`).set(O)
+      .field('kind', 'voice').field('replyToId', String(res.id)).field('replyExcerpt', 'Голосовое сообщение')
+      .attach('file', Buffer.from('voice-bytes'), { filename: 'voice.webm', contentType: 'audio/webm' })
+      .expect(201)).body.data;
+    expect(String(answer.reply_to_id)).toBe(String(res.id));
     restoreAi();
   });
 
@@ -98,7 +110,7 @@ describe('Голосовое: расшифровка фоном (e2e)', () => {
     const { O, dm } = await setup();
     const ai = app.get(ChatsAiService);
     jest.spyOn(ai, 'canTranscribe').mockResolvedValue(true);
-    jest.spyOn(ai, 'transcribe').mockResolvedValue('');
+    jest.spyOn(ai, 'transcribeTimed').mockResolvedValue({ text: '', segments: [], durationSec: 0 });
     const res = (await http$.post(`/api/chats/${dm.id}/clip`).set(O)
       .field('kind', 'screen')
       .attach('file', Buffer.from('screen-bytes'), { filename: 'screen.webm', contentType: 'video/webm' })

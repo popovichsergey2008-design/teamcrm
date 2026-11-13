@@ -12,7 +12,8 @@ import { ProjectsPage } from './pages/ProjectsPage';
 import { FocusPage } from './pages/FocusPage';
 import { TasksPage } from './pages/TasksPage';
 import { MY_SCOPE, toScope } from './lib/task-registry-view';
-import { ChatsPage } from './pages/ChatsPage';
+import { ChatsPage } from './pages/chats-lazy';
+import { preloadWhenIdle } from './lib/lazy';
 import { IncomingCallDialog, useIncomingCalls } from './components/IncomingCall';
 import { GuestHostCallCard, useGuestHostCalls } from './components/GuestHostCall';
 import { useCalendarReminders } from './hooks/useCalendarReminders';
@@ -632,6 +633,8 @@ export function App() {
   const needNames = !!user?.uiPrefs?.setupNames && !namesLater;
   // вошли по кнопке сайта /login или /register — дальше «Фокус дня»
   useEffect(() => { if (user && isAuthPath()) navigate('/focus', { replace: true }); }, [user]);
+  // чаты своим куском — подтягиваем в простое, чтобы открывались сразу
+  useEffect(() => { if (user) preloadWhenIdle(ChatsPage); }, [user]);
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе

@@ -326,13 +326,16 @@ export class ChatsController {
   @UseInterceptors(FileInterceptor('file'))
   sendClip(
     @CurrentUser() u: AuthUser, @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File, @Body() body: { kind?: string },
+    @UploadedFile() file: Express.Multer.File, @Body() body: { kind?: string; replyToId?: string; replyExcerpt?: string },
     @Req() req: { socket?: { destroyed?: boolean } },
   ) {
     if (!file) throw AppException.validation('Запись не получена');
+    // #4902 п. 14: «Ответить голосом» — голосовое ответом на сообщение (проверяется в службе)
+    const replyToId = typeof body?.replyToId === 'string' && /^\d{1,19}$/.test(body.replyToId) ? body.replyToId : null;
+    const replyExcerpt = typeof body?.replyExcerpt === 'string' ? body.replyExcerpt.slice(0, 600) : null;
     // «Отменить» у клиента рвёт соединение (#4635): после расшифровки это видно по сокету
     return this.chats.sendClip(u.tenantId, id, u, file, body?.kind === 'screen' ? 'screen' : 'voice',
-      () => req.socket?.destroyed === true);
+      () => req.socket?.destroyed === true, replyToId ? { toId: replyToId, excerpt: replyExcerpt } : undefined);
   }
 
   /** Вопрос помощнику в этом чате: ответ ложится в ту же переписку, при всех. */

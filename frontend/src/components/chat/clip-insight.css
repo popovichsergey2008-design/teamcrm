@@ -1,0 +1,18 @@
+/* #4902, п. 14: кратко, метки времени и задача-баг под голосовым и записью экрана */
+.clipi { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; max-width: 560px; font-size: calc(13px * var(--fs-scale, 1)); }
+.clipi-summary { display: flex; gap: 6px; align-items: baseline; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--accent-soft); overflow-wrap: anywhere; }
+.clipi-summary > svg { flex: none; color: var(--accent); align-self: center; }
+.clipi-marks { display: flex; flex-wrap: wrap; gap: 4px; }
+.clipi-mark { display: inline-flex; gap: 4px; align-items: baseline; max-width: 100%; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.clipi-mark b { font-variant-numeric: tabular-nums; color: var(--accent); }
+.clipi-mark.is-bug { border-color: var(--danger-line, var(--danger)); background: var(--danger-soft); }
+.clipi-mark.is-bug b { color: var(--danger); }
+.clipi-full { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; border-left: 2px solid var(--border); max-height: 320px; overflow: auto; }
+.clipi-ts { padding: 0 4px; border: 0; border-radius: var(--radius-sm); background: var(--bg-elev); color: var(--accent); font: inherit; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; cursor: pointer; }
+.clipi-actions { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.clipi-dim { color: var(--text-dim); font-size: var(--fs-sm); display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.clipi-link { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.clipi-mark:focus-visible, .clipi-ts:focus-visible, .clipi-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clipi-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg-elev); }
+.clipi-field { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-dim); }
+.clipi-field .input { width: 100%; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'; // #4902 п. 15: lazy, Suspense
 import { Avatar } from '../Avatar';
 import { Icon } from '../Icon';
 import { AuthedMedia } from '../AuthedMedia';
@@ -15,6 +15,8 @@ import { initialsOf } from '../../lib/initials';
 import { confirmAction } from '../ui/dialog';
 import { ChatProjectSelect } from './ChatProjectSelect';
 import { MessageText } from '../MessageText';
+// #4902 п. 15: «Клиент в чате» — ссылка без регистрации, открытые клиенту задачи, переезд
+const ClientChatPanel = lazy(() => import('./ClientChatPanel'));
 
 const KIND_LABEL: Record<string, string> = {
   dm: 'Личный диалог', group: 'Групповой чат', channel: 'Канал', project: 'Чат проекта',
@@ -43,7 +45,7 @@ const TABS: { key: Tab; label: string }[] = [
  * одним запросом (`/chats/:id/info`), материалы подгружаются по вкладке; при
  * любой правке чата (`chat.updated`) панель перечитывает себя сама.
  */
-export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteTo, onCall, onMention, onChanged, onLeft, canCall, onTasksOf, onCalendar }: {
+export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteTo, onCall, onMention, onChanged, onLeft, canCall, onTasksOf, onCalendar, openMaterials }: {
   chatId: string;
   meId: string;
   users: User[];
@@ -60,10 +62,12 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
   /** Открыть задачи сотрудника и календарь — переходы делает страница, панель их не знает. */
   onTasksOf: (userId: string) => void;
   onCalendar: () => void;
+  /** #4902 п. 9: открыли вкладкой «Файлы» — материалы сразу развёрнуты. */
+  openMaterials?: boolean;
 }) {
   const [info, setInfo] = useState<ChatInfo | null>(null);
   const [err, setErr] = useState('');
-  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: false, tasks: true, meetings: false, decisions: false, pinned: false, saved: false, history: false });
+  const [open, setOpen] = useState<Record<string, boolean>>({ about: true, members: true, materials: !!openMaterials, tasks: true, meetings: false, decisions: false, pinned: false, saved: false, history: false });
   const toggle = (k: string) => setOpen((o) => ({ ...o, [k]: !o[k] }));
 
   const load = useCallback(() => {
@@ -190,6 +194,13 @@ export function ChatInfoPanel({ chatId, meId, users, onClose, onJumpTo, onWriteT
             <GuestLinksBlock links={info.guestLinks} canRevoke={me.canManageGuests || me.canManage} onChanged={load} />
           )}
         </Section>
+
+        {/* #4902 п. 15: клиент в чате без регистрации — только у внешнего чата */}
+        {chat.kind === 'external' && (
+          <Section title="Клиент в чате" open={open.client ?? true} onToggle={() => setOpen((o) => ({ ...o, client: !(o.client ?? true) }))}>
+            <Suspense fallback={<div className="dim">Загружаю…</div>}><ClientChatPanel chatId={chatId} /></Suspense>
+          </Section>
+        )}
 
         <Section title="Материалы" count={counts.media + counts.files + counts.links + counts.voice + counts.docs} open={open.materials} onToggle={() => toggle('materials')}>
           <MaterialsBlock chatId={chatId} counts={counts} onJumpTo={onJumpTo} />

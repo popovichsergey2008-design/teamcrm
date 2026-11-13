@@ -1,4 +1,5 @@
 import { projectVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
+import { maskSecrets, matchesOutsideSecrets } from '../../common/secrets';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 
@@ -101,7 +102,10 @@ export class SearchRepository {
         ORDER BY msg.created_at DESC
         LIMIT $4`,
       [tenantId, userId, SearchRepository.like(q), limit],
-    );
+    // #4902, п. 13: найдено только внутри пароля — не находка; в выдаче секрет точками
+    ).then((rows) => rows
+      .filter((r) => matchesOutsideSecrets(String(r.body ?? ''), q))
+      .map((r) => ({ ...r, body: maskSecrets(r.body) })));
   }
 
   people(tenantId: string, q: string, limit: number): Promise<PersonHit[]> {

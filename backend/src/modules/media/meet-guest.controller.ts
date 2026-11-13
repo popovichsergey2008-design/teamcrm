@@ -7,6 +7,7 @@ import { AppException } from '../../common/http/app-exception';
 import { ChatsService } from '../chats/chats.service';
 import { GuestLinksService } from './guest-links.service';
 import { MeetGateway } from './meet.gateway';
+import { guestFeed, RawMessage, toGuestMessage } from '../client-chat/client-chat-rules'; // #4902 п. 15
 
 class CreateGuestLinkDto {
   /** Позвать в идущий созвон. Без него выделяется новая комната под эту ссылку. */
@@ -134,14 +135,15 @@ export class MeetGuestController {
   @Public()
   async guestMessages(@Body() dto: { token: string }) {
     const g = await this.guestChat(dto?.token);
-    return this.chats.guestMessages(g.tenantId, g.chatId);
+    // #4902 п. 15: то же правило видимости, что у чата с клиентом, — без ИИ, карточек и пересланного из других чатов
+    return guestFeed(await this.chats.guestMessages(g.tenantId, g.chatId) as unknown as RawMessage[], g.chatId, g.name);
   }
 
   @Post('meet/guest/chat/send')
   @Public()
   async guestSend(@Body() dto: GuestMessageDto) {
     const g = await this.guestChat(dto?.token);
-    return this.chats.guestSend(g.tenantId, g.chatId, g.name, dto.body);
+    return toGuestMessage(await this.chats.guestSend(g.tenantId, g.chatId, g.name, dto.body) as unknown as RawMessage, g.name); // #4902 п. 15
   }
 
   @Post('meet/guest/:token/join')

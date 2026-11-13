@@ -188,7 +188,9 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId, onStartCall, inC
                 */}
                 {m.review_status === 'review_required' && m.review_owner_id && String(m.review_owner_id) !== String(user?.id) && (
                   <span className="ui-badge ui-badge-neutral" title="ИИ разобрал встречу; итоги и задачи подтверждает хозяин встречи">
-                    Итоги у {m.review_owner_name ?? 'хозяина встречи'}
+                    {m.confirm_total > 0
+                      ? `подтверждено ${Math.min(m.confirm_done, m.confirm_total)} из ${m.confirm_total}`
+                      : `Итоги у ${m.review_owner_name ?? 'хозяина встречи'}`}
                   </span>
                 )}
                 {m.review_status === 'review_required' && (!m.review_owner_id || String(m.review_owner_id) === String(user?.id)) && (
@@ -197,7 +199,8 @@ export function MeetingsPage({ onEnterGuestMeet, openMeetingId, onStartCall, inC
                     onClick={(e) => { e.stopPropagation(); navigate({ section: 'chat', view: 'postcall', meetingId: String(m.id) }); }}
                     title="Открыть итоги встречи"
                   >
-                    Итоги не разобраны
+                    {/* #4902, п. 11: каждый подтверждает свои задачи — видно, сколько уже взяли */}
+                    {m.confirm_total > 0 ? `подтверждено ${Math.min(m.confirm_done, m.confirm_total)} из ${m.confirm_total}` : 'Итоги не разобраны'}
                   </button>
                 )}
                 {(m.review_status === 'reviewed' || m.review_status === 'completed') && (

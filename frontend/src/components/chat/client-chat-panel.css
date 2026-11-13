@@ -1,0 +1,17 @@
+/* #4902, п. 15: «Клиент в чате» в «Сведениях» и подсказка статусом — ленивый кусок */
+.ccp { display: flex; flex-direction: column; gap: 8px; }
+.ccp-note { margin: 0; font-size: var(--fs-sm); }
+.ccp-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.ccp-grow { flex: 1; min-width: 0; }
+.ccp-made { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; background: var(--accent-soft); }
+.ccp-url { font-size: var(--fs-sm); overflow-wrap: anywhere; user-select: all; }
+.ccp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ccp-item { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); padding: 4px 0; border-bottom: 1px solid var(--border); }
+.ccp-sub { margin-top: 6px; font-size: var(--fs-sm); }
+.ccp-picker { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.ccp-migr { align-self: flex-start; margin-top: 6px; }
+
+.cch { display: inline-flex; flex-direction: column; gap: 6px; }
+.cch-box { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev); color: var(--text); max-width: 640px; }
+.cch-text { margin: 0; white-space: pre-wrap; }
+.cch-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

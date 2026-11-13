@@ -20,6 +20,7 @@ import { PushService } from '../notifications/push.service';
 import { TelegramMirror } from '../notifications/telegram-mirror.service';
 
 import { runsBackground } from '../../common/process-role';
+import { MeetingMemoryService } from '../meeting-memory/meeting-memory.service';
 const PATH = '/ws/meet';
 
 /**
@@ -108,6 +109,8 @@ export class MeetGateway implements OnModuleInit {
     private readonly mirror: TelegramMirror,
     private readonly trialLimits: TrialLimitsService,
     private readonly callLog: CallLogService,
+    // #4902 п. 12: «Кратко до сих пор»
+    private readonly memory: MeetingMemoryService,
   ) {}
 
   /**
@@ -742,6 +745,26 @@ export class MeetGateway implements OnModuleInit {
         return;
       }
 
+      /**
+       * #4902 п. 12: «Кратко до сих пор» — пересказ для опоздавшего. Здесь, а не в API:
+       * дорожки идущей записи есть только в памяти процесса, где идёт звонок. Ответ —
+       * только спросившему, остальным он не нужен.
+       */
+      case 'meet.recap-so-far': {
+        if (!room || !room.participants.has(c.userId)) return;
+        const rec = this.recording.recordingInfo(room.id);
+        const tracks = this.recording.liveTracks(room.id);
+        const result = await this.memory.soFar({
+          tenantId: room.tenantId, roomId: room.id, userId: c.userId, chatId: room.chatId ?? null, callStartedAt: room.startedAt,
+          recording: rec.active && tracks ? { startedAt: (rec as { startedAt: number }).startedAt, tracks } : null,
+        }).catch((e) => {
+          this.log.warn(`кратко до сих пор ${room!.id}: ${(e as Error).message}`);
+          return null;
+        });
+        this.send(c.ws, 'meet.recap-so-far', { meeting_id: room.id, ...(result ?? { status: 'error', points: [], note: 'Не получилось пересказать — попробуйте ещё раз.' }) });
+        return;
+      }
+
       case 'meet.leave':
         // передумал ждать за дверью — снимаем стук у тех, кто внутри
         if (c.knockRoomId) this.leaveLobby(c);
@@ -843,6 +866,8 @@ export class MeetGateway implements OnModuleInit {
     let room: MeetingRoom;
     try {
       room = await this.media.ensureRoom(c.tenantId, roomId, null);
+      // #4902 п. 15: созвон по ссылке чата (с клиентом) — запись и протокол вернутся в этот чат
+      if (!room.chatId && c.guestLinkId) room.chatId = await this.guests.linkChat(c.tenantId, c.guestLinkId).catch(() => null);
     } catch (e) {
       this.log.warn(`гость не смог открыть комнату ${roomId}: ${(e as Error).message}`);
       return this.send(c.ws, 'meet.error', { message: 'Созвон недоступен' });
@@ -1129,6 +1154,7 @@ export class MeetGateway implements OnModuleInit {
     const author = room.startedBy ?? (actorId && !actorId.startsWith('guest:') ? actorId : null);
     try {
       const tracks = await this.recording.stop(room.id);
+      this.memory.forget(room.id); // #4902 п. 12: разобранные хвосты записи больше не нужны
       if (!tracks.length) return;
       const when = new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
       await this.meetings.ingestCallRecording({

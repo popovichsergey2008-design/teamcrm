@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { EmptyState } from './EmptyState';
 import { Icon } from './Icon';
 import { FileImportPanel } from './FileImportPanel';
@@ -14,10 +14,13 @@ import { overlayProps } from '../lib/overlay';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 
+// Переезд из Slack и Telegram (#4902, п. 4) — отдельным куском: экран открывают раз в жизни компании
+const MigrationImport = lazy(() => import('../pages/migration/MigrationImport'));
+
 /** Интеграции: подключения (Битрикс24) + ключи ИИ + промпты (PromptOps). */
 export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
-  const [tab, setTab] = useState<'file' | 'trello' | 'notion' | 'gdocs' | 'bitrix' | 'yougile' | 'ai' | 'prompts'>('file');
+  const [tab, setTab] = useState<'file' | 'migration' | 'trello' | 'notion' | 'gdocs' | 'bitrix' | 'yougile' | 'ai' | 'prompts'>('file');
   const [conns, setConns] = useState<any[]>([]);
   const [msg, setMsg] = useState('');
   const [form, setForm] = useState({ webhookUrl: '', label: '' });
@@ -50,6 +53,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
           {/* Файл — первым: он работает всегда и без ключей, а остальные источники
               требуют доступа к чужой системе. */}
           <button className={`tab ${tab === 'file' ? 'active' : ''}`} onClick={() => setTab('file')}>Из файла</button>
+          <button className={`tab ${tab === 'migration' ? 'active' : ''}`} onClick={() => setTab('migration')}>Slack и Telegram</button>
           <button className={`tab ${tab === 'trello' ? 'active' : ''}`} onClick={() => setTab('trello')}>Trello</button>
           <button className={`tab ${tab === 'notion' ? 'active' : ''}`} onClick={() => setTab('notion')}>Notion</button>
           <button className={`tab ${tab === 'gdocs' ? 'active' : ''}`} onClick={() => setTab('gdocs')}>Google-доки</button>
@@ -63,6 +67,7 @@ export function IntegrationsPanel({ onClose }: { onClose: () => void }) {
         {tab === 'ai' && <AiSettingsSection />}
         {tab === 'prompts' && <PromptsSection />}
         {tab === 'file' && <FileImportPanel />}
+        {tab === 'migration' && <Suspense fallback={<SkeletonList />}><MigrationImport /></Suspense>}
         {tab === 'trello' && <TrelloPanel />}
         {tab === 'notion' && <NotionPanel />}
         {tab === 'gdocs' && <GdocsPanel />}

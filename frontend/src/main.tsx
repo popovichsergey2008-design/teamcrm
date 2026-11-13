@@ -22,6 +22,8 @@ const TgApp = lazy(() => import('./tg/TgApp'));
 const BookingApp = lazy(() => import('./booking/BookingApp'));
 // согласование результата клиентом (#4798 §19): без входа, своим куском
 const ShareApp = lazy(() => import('./share/ShareApp'));
+// #4902 п. 15: клиент в чате без регистрации — `/cc/<ссылка>`, своим куском
+const ClientChatApp = lazy(() => import('./client-chat/ClientChatApp'));
 
 initTheme(); // до первой отрисовки: иначе тёмная тема мигнёт светлым
 initFontScale(); // тоже до отрисовки: увеличенный шрифт не должен моргать обычным
@@ -71,7 +73,8 @@ async function boot(): Promise<void> {
       {/* шторка Telegram (#4619): своя лёгкая оболочка без входа CRM, отдельным куском */}
       {location.pathname.startsWith('/tg/') ? <ScreenBoundary full><Suspense fallback={null}><TgApp /></Suspense></ScreenBoundary>
         : location.pathname.startsWith('/book/') ? <ScreenBoundary full><Suspense fallback={null}><BookingApp /></Suspense></ScreenBoundary>
-        : location.pathname.startsWith('/r/') ? <ScreenBoundary full><Suspense fallback={null}><ShareApp /></Suspense></ScreenBoundary> : (
+        : location.pathname.startsWith('/r/') ? <ScreenBoundary full><Suspense fallback={null}><ShareApp /></Suspense></ScreenBoundary>
+        : location.pathname.startsWith('/cc/') ? <ScreenBoundary full><Suspense fallback={null}><ClientChatApp /></Suspense></ScreenBoundary> : (
         <AuthProvider>
           <ScreenBoundary full>
             <App />

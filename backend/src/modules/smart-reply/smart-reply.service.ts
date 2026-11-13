@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { maskSecrets } from '../../common/secrets';
 import { AppException } from '../../common/http/app-exception';
 import { DbService } from '../../database/db.service';
 import { AiService } from '../ai/ai.service';
@@ -72,7 +73,8 @@ export class SmartReplyService {
       [chatId, a.userId],
     );
     const messages: LastMessage[] = rows.map((r) => ({
-      id: r.id, authorId: r.author_id, body: r.body, createdAt: new Date(r.created_at), isAi: r.is_ai,
+      // #4902, п. 13: в черновик ответа и модели — без паролей
+      id: r.id, authorId: r.author_id, body: maskSecrets(r.body), createdAt: new Date(r.created_at), isAi: r.is_ai,
       mentionsMe: r.mentions_me, replyToMine: r.reply_to_mine,
     }));
     const need = needsReply({ me: a.userId, chatKind: chat.kind, members: chat.members, messages, now: new Date() });

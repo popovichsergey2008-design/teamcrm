@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { maskSecrets } from '../../common/secrets';
 import { DbService } from '../../database/db.service';
 import { assigneeOwesSql, pausedSql, personalOverdueSql } from '../tasks/responsibility';
 import { BriefMeeting, BriefTask, EveningData, MorningData } from './brief-rules';
@@ -190,7 +191,7 @@ export class BriefRepository {
         ORDER BY m.created_at DESC
         LIMIT 300`,
       [tenantId, userId],
-    ).then((rows) => rows.map((r) => ({ ...r, body: String(r.body ?? '') })));
+    ).then((rows) => rows.map((r) => ({ ...r, body: maskSecrets(String(r.body ?? '')) }))); // #4902, п. 13
   }
 
   /**
@@ -231,7 +232,7 @@ export class BriefRepository {
         ORDER BY days DESC
         LIMIT 20`,
       [tenantId, userId, days],
-    ).then((rows) => rows.map((r) => ({ ...r, days: Number(r.days) })));
+    ).then((rows) => rows.map((r) => ({ ...r, body: maskSecrets(r.body), days: Number(r.days) })));
   }
 
   /** Куда ушла неделя (§7.4): встречи, глубокая работа, трекер, закрытое, просроченное. */

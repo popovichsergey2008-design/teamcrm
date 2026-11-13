@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChatsPage } from '../../pages/ChatsPage';
+import { ChatsPage } from '../../pages/chats-lazy';
 import { useEscape } from '../../hooks/useEscape';
 import { TaskConversation } from '../chat/TaskConversation';
 import { lazyComponent } from '../../lib/lazy';

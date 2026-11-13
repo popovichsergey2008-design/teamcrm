@@ -1,4 +1,5 @@
 import { meetingVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
+import { maskBodies } from '../../common/secrets';
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { activeOverdueSql } from '../tasks/responsibility';
@@ -147,7 +148,7 @@ export class AnthillRepository {
           AND m.deleted_at IS NULL AND length(m.body) > 15
           AND ($5::text IS NULL OR c.title ILIKE '%' || $5 || '%')
         ORDER BY m.created_at LIMIT 800`,
-      [tenantId, userId, from, to, chat]);
+      [tenantId, userId, from, to, chat]).then(maskBodies);
     const members = await this.db.many<{ id: string; name: string }>(
       `SELECT DISTINCT u.id::text, u.full_name AS name
          FROM chats c JOIN chat_members cm ON cm.chat_id = c.id JOIN users u ON u.id = cm.user_id
@@ -672,7 +673,7 @@ export class AnthillRepository {
         WHERE m.tenant_id=$1 AND m.chat_id=$3 AND m.deleted_at IS NULL AND ${AnthillRepository.CHAT_SCOPE}
         ORDER BY m.id DESC LIMIT $4`,
       [tenantId, userId, chatId, limit],
-    ).then((r) => r.reverse());
+    ).then((r) => maskBodies(r.reverse())); // #4902, п. 13: пароли — не в ответы бота
   }
 
   chatTitle(tenantId: string, userId: string, chatId: string) {

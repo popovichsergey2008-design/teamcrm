@@ -32,6 +32,8 @@ import { zonedToUtc } from '../tasks/recurrence';
 import { MeetingPlan } from './meeting-schema';
 
 import { runsBackground } from '../../common/process-role';
+import { maskSecrets } from '../../common/secrets';
+import { cleanSummary, guardProtocol, PRIVACY_PROMPT_RULE } from '../../common/personal-topics';
 /** Записи встреч тяжелее обычных вложений: час видео легко весит сотни мегабайт. */
 const MAX_RECORDING_BYTES = 600 * 1024 * 1024;
 const SUBTITLE_EXT = /\.(vtt|srt)$/i;
@@ -94,6 +96,22 @@ export class MeetingsService implements OnModuleInit {
     tenantId: string; meetingId: string; roomId: string; summary: string | null;
   }) => Promise<void>): void {
     this.sinks.push(fn);
+  }
+
+  /**
+   * #4902, п. 10–11: итоги в чат, личные списки задач, автоповтор ошибки. Служба
+   * итогов подписывается сама (MeetingRecapService) — встречам не нужно её знать,
+   * а ей нужны applyDraft и reanalyze отсюда: прямой импорт дал бы кольцо.
+   */
+  private recap: RecapHooks | null = null;
+
+  useRecap(hooks: RecapHooks): void {
+    this.recap = hooks;
+  }
+
+  /** Обработка упала: автоповтор один раз, потом — карточка с «Повторить». Ошибка здесь ничего не роняет. */
+  private async failed(tenantId: string, meetingId: string): Promise<void> {
+    await this.recap?.onFailed(tenantId, meetingId).catch((e) => this.log.warn(`встреча ${meetingId}: ${(e as Error).message}`));
   }
 
   constructor(
@@ -384,6 +402,8 @@ export class MeetingsService implements OnModuleInit {
         if (!replies.length) {
           await this.repo.setStatus(meeting.id, 'error', 'Речь не распознана — проверьте ключ OpenAI');
           await this.postcall.failRest(input.tenantId, meeting.id);
+          // короткий звонок без речи служба итогов узнает сама и промолчит (#4902)
+          await this.failed(input.tenantId, meeting.id);
           return;
         }
 
@@ -402,9 +422,15 @@ export class MeetingsService implements OnModuleInit {
         await this.postcall.mark(input.tenantId, meeting.id, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'running' });
         this.knowledge.enqueue(input.tenantId, 'meeting', meeting.id);
         // Итог возвращается в тот разговор, из которого созвон начали: иначе половина
-        // договорённостей не доходит до тех, кто в созвоне не был.
-        await this.postCardToChat(input.tenantId, meeting.id, input.chatId ?? null)
-          .catch((e) => this.log.warn(`карточка мита в чат не ушла: ${(e as Error).message}`));
+        // договорённостей не доходит до тех, кто в созвоне не был. #4902: название от ИИ,
+        // карточка итогов с задачами по людям и личные списки задач — службой итогов.
+        if (this.recap) {
+          await this.recap.afterAnalysis(input.tenantId, meeting.id)
+            .catch((e) => this.log.warn(`итоги созвона в чат не ушли: ${(e as Error).message}`));
+        } else {
+          await this.postCardToChat(input.tenantId, meeting.id, input.chatId ?? null)
+            .catch((e) => this.log.warn(`карточка мита в чат не ушла: ${(e as Error).message}`));
+        }
         // Созвон начали из задачи — итог возвращается в её обсуждение тем же путём,
         // что и в чат: разговор по задаче есть работа по ней, а не отдельное событие.
         await this.postCardToTask(input.tenantId, meeting.id, input.taskId ?? null, input.actorId)
@@ -426,8 +452,10 @@ export class MeetingsService implements OnModuleInit {
         await this.postcall.settleFollowup(input.tenantId, meeting.id);
       } catch (e) {
         this.log.warn(`созвон ${meeting.id}: ${(e as Error).message}`);
-        await this.repo.setStatus(meeting.id, 'error', describeFfmpegError(e)).catch(() => undefined);
+        // сбой ИИ — понятным текстом и с «Разобрать заново», как у загруженных записей
+        await this.repo.setStatus(meeting.id, 'error', meetingError(e)).catch(() => undefined);
         await this.postcall.failRest(input.tenantId, meeting.id).catch(() => undefined);
+        await this.failed(input.tenantId, meeting.id);
       }
     })());
 
@@ -545,6 +573,7 @@ export class MeetingsService implements OnModuleInit {
       if (!meeting.file_id && !callTracks.length) {
         await this.repo.setStatus(meetingId, 'error', 'Запись встречи не сохранилась — расшифровать нечего');
         await this.postcall.failRest(tenantId, meetingId);
+        await this.failed(tenantId, meetingId);
         return;
       }
 
@@ -578,6 +607,7 @@ export class MeetingsService implements OnModuleInit {
             ? 'В файле субтитров не нашлось реплик'
             : 'Распознавание вернуло пустой результат — проверьте ключ OpenAI и качество записи');
         await this.postcall.failRest(tenantId, meetingId);
+        await this.failed(tenantId, meetingId);
         return;
       }
       await this.repo.replaceSegments(tenantId, meetingId, replies);
@@ -590,6 +620,7 @@ export class MeetingsService implements OnModuleInit {
       this.log.warn(`meeting ${meetingId} failed: ${(e as Error).message}`);
       await this.repo.setStatus(meetingId, 'error', meetingError(e)).catch(() => undefined);
       await this.postcall.failRest(tenantId, meetingId).catch(() => undefined);
+      await this.failed(tenantId, meetingId);
     }
   }
 
@@ -602,6 +633,10 @@ export class MeetingsService implements OnModuleInit {
     await this.repo.setStatus(meetingId, 'done');
     await this.postcall.mark(tenantId, meetingId, { summary: 'ready', decisions: 'ready', tasks: 'ready', followup: 'skipped' });
     this.knowledge.enqueue(tenantId, 'meeting', meetingId); // стенограмма → корпоративная память
+    // #4902: и после повтора, и для загруженной записи из чата — итоги в чат и личные списки
+    // (повторный разбор дублей не шлёт: карточка каждого вида одна на встречу)
+    await this.recap?.afterAnalysis(tenantId, meetingId)
+      .catch((e) => this.log.warn(`итоги встречи ${meetingId} в чат: ${(e as Error).message}`));
   }
 
   /**
@@ -626,6 +661,7 @@ export class MeetingsService implements OnModuleInit {
       this.log.warn(`meeting ${id} reanalyze failed: ${(e as Error).message}`);
       await this.repo.setStatus(id, 'error', meetingError(e)).catch(() => undefined);
       await this.postcall.failRest(tenantId, id).catch(() => undefined);
+      await this.failed(tenantId, id);
     }));
     return { restarted: true, mode: 'analysis' as const };
   }
@@ -766,7 +802,8 @@ export class MeetingsService implements OnModuleInit {
     const meeting = await this.repo.get(tenantId, meetingId);
     const when = new Date(meeting?.happened_at ?? Date.now())
       .toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' });
-    const text = repliesToText(replies).slice(0, 120_000); // защита от гигантских встреч
+    // #4902, п. 13: пароль, произнесённый или вставленный в созвон, модель не должна даже видеть
+    const text = maskSecrets(repliesToText(replies)).slice(0, 120_000); // защита от гигантских встреч
     const transcript = `Дата встречи: ${when}.\n${roster}${boards}\n${text}`;
 
     /*
@@ -775,13 +812,14 @@ export class MeetingsService implements OnModuleInit {
       как модель разберёт задачи и решения целиком.
     */
     const quick = this.prompts.resolve(tenantId, 'meeting.summary_quick', {}).catch(() => null)
-      .then((prompt) => this.ai.generateWithModel(tenantId, prompt?.body ?? SUMMARY_PROMPT, text.slice(0, 60_000), 'meeting_summary_quick', {
+      .then((prompt) => this.ai.generateWithModel(tenantId, `${prompt?.body ?? SUMMARY_PROMPT}
+${PRIVACY_PROMPT_RULE}`, text.slice(0, 60_000), 'meeting_summary_quick', {
         promptVersionId: prompt?.versionId ?? null, model: prompt?.model, params: prompt?.params,
       }))
       .then(async (r) => {
         // ИИ не ответил — заглушку за итоги не выдаём
         if (r.degraded) return null;
-        const summary = String(r.text ?? '').trim().slice(0, 4000);
+        const summary = cleanSummary(String(r.text ?? '').trim()).slice(0, 4000);
         if (!summary) return null;
         await this.repo.saveSummaryText(tenantId, meetingId, summary);
         await this.postcall.mark(tenantId, meetingId, { summary: 'ready' });
@@ -789,7 +827,8 @@ export class MeetingsService implements OnModuleInit {
       })
       .catch((e) => { this.log.warn(`встреча ${meetingId}: краткие итоги — ${(e as Error).message}`); return null; });
 
-    const answer = await this.ai.generateWithModel(tenantId, MEETING_PROMPT, transcript, 'meeting_analyze');
+    const answer = await this.ai.generateWithModel(tenantId, `${MEETING_PROMPT}
+${PRIVACY_PROMPT_RULE}`, transcript, 'meeting_analyze');
     /*
       Ключ есть, а ИИ не ответил (13.10: кончились деньги на API) — это сбой, а не
       «встреча без задач». Раньше заглушка сохранялась как итог, статус был «готово»,
@@ -805,6 +844,8 @@ export class MeetingsService implements OnModuleInit {
       await this.repo.saveSummary(tenantId, meetingId, quickSummary ?? 'ИИ не смог разобрать встречу. Стенограмма доступна целиком.', [], [], []);
       return;
     }
+    // #4902, п. 13: модель могла ослушаться — секреты маской, личное в риски только нейтрально
+    guardProtocol(value);
 
     // Кто произнёс решение или вопрос — по реплике в этой секунде, а не со слов модели:
     // говорящий у своих созвонов известен достоверно, по дорожке участника.
@@ -1071,6 +1112,17 @@ export class MeetingsService implements OnModuleInit {
     }
 
     await this.repo.markDraftApplied(draftId, task.id);
+    /*
+      #4902, п. 11: исполнитель сам создал свою задачу (экран итогов или «✓ беру») —
+      это и есть подтверждение; в списке встреч она идёт в «подтверждено N из M».
+    */
+    const finalAssignee = patch?.assigneeId !== undefined ? patch.assigneeId : draft.assignee_id;
+    if (!opts.auto && finalAssignee && String(finalAssignee) === String(actorId)) {
+      await this.db.query(
+        `UPDATE meeting_task_drafts SET confirm_state = 'taken', confirmed_at = now(), confirmed_by = $2
+          WHERE id = $1 AND confirm_state IS NULL`, [draftId, actorId],
+      ).catch(() => undefined);
+    }
     await this.applyDraftTags(tenantId, actorId, draft, String(task.id), String(projectId), patch?.tagIds)
       .catch((e) => this.log.warn(`черновик ${draftId}: теги — ${(e as Error).message}`));
     await this.afterDraftApplied(tenantId, actorId, draft, String(task.id), String(projectId), patch?.audio, opts.deferCut === true)
@@ -1112,6 +1164,16 @@ export class MeetingsService implements OnModuleInit {
     }
     await this.repo.markEdited(draftId, editedFields(draft, patch));
     const updated = await this.repo.updateDraft(tenantId, draftId, patch);
+    /*
+      #4902, п. 11: хозяин переназначил задачу (часто — после «не моё»): прежний ответ к
+      новому исполнителю не относится, и тот получает свой личный список.
+    */
+    if (patch.assigneeId !== undefined && String(patch.assigneeId ?? '') !== String(draft.assignee_id ?? '')) {
+      await this.db.query(
+        `UPDATE meeting_task_drafts SET confirm_state = NULL, confirmed_at = NULL, confirmed_by = NULL WHERE id = $1`, [draftId],
+      ).catch(() => undefined);
+      if (patch.assigneeId) void this.recap?.assigneeChanged(tenantId, String(draft.meeting_id)).catch(() => undefined);
+    }
     return updated ?? draft;
   }
 
@@ -1226,6 +1288,13 @@ export function matchTeamMember(team: { id: string; full_name: string }[], hint:
 
   const byPrefix = team.filter((u) => norm(u.full_name).startsWith(needle));
   return byPrefix.length === 1 ? byPrefix[0].id : null;
+}
+
+/** Подписка службы итогов (#4902) на конвейер встреч. */
+export interface RecapHooks {
+  afterAnalysis(tenantId: string, meetingId: string): Promise<void>;
+  onFailed(tenantId: string, meetingId: string): Promise<void>;
+  assigneeChanged(tenantId: string, meetingId: string): Promise<void>;
 }
 
 /** Правка черновика: то, что человек может поменять до создания задачи. */

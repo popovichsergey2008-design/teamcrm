@@ -34,6 +34,8 @@ import { lazyComponent } from '../lib/lazy';
 
 /** Кнопки ответа ИИ у поля (#4639) — ленивые: чат задачи едет в первом экране. */
 const TaskAiReplyBar = lazyComponent(() => import('./TaskAiReplyBar').then((m) => m.TaskAiReplyBar));
+/** #4902 п. 3: ссылка на задачу, встречу, файл — живой карточкой под сообщением. */
+const LinkCards = lazyComponent(() => import('./chat/LinkCards').then((m) => m.default));
 
 /**
  * Цвет имени автора.
@@ -1393,6 +1395,7 @@ export function TaskChat({
                       mark={quoteMark?.id === String(c.id) ? quoteMark.text : null}
                     />
                   )}
+                  {c.body && <LinkCards text={c.body} />}
                   {/* #4896: отчёт «было/стало» — одним щелчком, а не поиском по вкладкам */}
                   {c.is_ai && /вкладке «Было\/стало»/.test(String(c.body ?? '')) && (
                     <button type="button" className="link-btn" onClick={() => window.dispatchEvent(new CustomEvent('teamcrm:task-tab', { detail: { taskId: String(taskId), tab: 'check' } }))}>

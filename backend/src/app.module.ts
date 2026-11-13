@@ -90,6 +90,15 @@ import { ApprovalsModule } from './modules/approvals/approvals.module';
 import { SecretaryModule } from './modules/secretary/secretary.module';
 import { AssistantModule } from './modules/assistant/assistant.module';
 import { ChatsModule } from './modules/chats/chats.module';
+import { ChatPlusModule } from './modules/chat-plus/chat-plus.module';
+import { ChatActionsModule } from './modules/chat-actions/chat-actions.module'; // #4902 пп. 7–8
+import { MeetingMemoryModule } from './modules/meeting-memory/meeting-memory.module'; // #4902 п. 12
+import { ClipInsightModule } from './modules/clip-insight/clip-insight.module'; // #4902 п. 14
+import { ProjectSecretsModule } from './modules/project-secrets/project-secrets.module';
+import { ClientChatModule } from './modules/client-chat/client-chat.module'; // #4902 п. 15
+import { ChatDecisionsModule } from './modules/chat-decisions/chat-decisions.module'; // #4902 п. 9
+import { LinkCardsModule } from './modules/link-cards/link-cards.module';
+import { MigrationImportModule } from './modules/migration-import/migration-import.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarPlusModule } from './modules/calendar-plus/calendar-plus.module';
 import { FocusPlusModule } from './modules/focus-plus/focus-plus.module';
@@ -209,6 +218,15 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     SecretaryModule,
     AssistantModule,
     ChatsModule,
+    ChatPlusModule,
+    ChatActionsModule,
+    MeetingMemoryModule, // #4902 п. 12: прошлая встреча и «Кратко до сих пор»
+    ClipInsightModule, // #4902 п. 14: видео и голос → текст и задачи
+    ProjectSecretsModule,
+    ClientChatModule, // #4902 п. 15: клиент в чате без регистрации
+    ChatDecisionsModule, // #4902 п. 9: вкладка «Решения»
+    LinkCardsModule,
+    MigrationImportModule,
     FeedbackCoreModule,
     FeedbackModule,
   ],

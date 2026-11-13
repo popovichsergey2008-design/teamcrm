@@ -2,6 +2,7 @@ import { meetingVisibleSql, ProjectViewer, viewerParams } from '../../common/acc
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { Reply } from './transcript.util';
+import { SHORT_CALL_SEC } from './meeting-recap-rules';
 
 /** Пункт итогов с источником: текст, секунда записи, кто произнёс. */
 export interface SourcedLine { text: string; sec: number | null; speaker?: string | null; speakerUserId?: string | null }
@@ -102,6 +103,7 @@ export class MeetingsRepository {
     return this.db.many<MeetingRow & {
       drafts_pending: number; tasks_created: number; review_status: string | null;
       review_owner_id: string | null; review_owner_name: string | null;
+      confirm_total: number; confirm_done: number;
     }>(
       `SELECT m.*, (SELECT count(*)::int FROM meeting_task_drafts d
                      WHERE d.meeting_id=m.id AND d.status IN ('pending','failed')) AS drafts_pending,
@@ -113,9 +115,18 @@ export class MeetingsRepository {
               -- «ИИ не разобрал» (19.10), поэтому им показываем, у кого итоги
               (SELECT r.owner_id::text FROM meeting_postcall_reviews r WHERE r.meeting_id = m.id) AS review_owner_id,
               (SELECT u.full_name FROM meeting_postcall_reviews r JOIN users u ON u.id = r.owner_id
-                WHERE r.meeting_id = m.id) AS review_owner_name
+                WHERE r.meeting_id = m.id) AS review_owner_name,
+              -- #4902, п. 11: «подтверждено 7 из 10» вместо «Итоги не разобраны»
+              (SELECT count(*)::int FROM meeting_task_drafts d
+                WHERE d.meeting_id=m.id AND d.status <> 'rejected') AS confirm_total,
+              (SELECT count(*)::int FROM meeting_task_drafts d
+                WHERE d.meeting_id=m.id AND d.status <> 'rejected' AND d.confirm_state = 'taken') AS confirm_done
          FROM meetings m WHERE m.tenant_id=$1
           AND ${meetingVisibleSql('m', { user: '$2', all: '$3', client: '$4' })}
+          -- #4902, п. 10: звонок короче 2 минут без единой реплики — случайный дозвон, не встреча.
+          -- Не удаляем: запись и строка остаются, просто не засоряют список.
+          AND NOT (m.source = 'call' AND m.duration_sec IS NOT NULL AND m.duration_sec < ${SHORT_CALL_SEC}
+                   AND NOT EXISTS (SELECT 1 FROM meeting_segments s WHERE s.meeting_id = m.id))
         ORDER BY m.created_at DESC LIMIT 100`,
       [tenantId, ...viewerParams(viewer)],
     );
@@ -293,10 +304,13 @@ export class MeetingsRepository {
         из переписки. Повторный разбор встречи пересобирает её строки; снятое человеком
         решение при этом не возвращается — он уже сказал, что это не решение.
       */
-      await client.query(
-        `DELETE FROM decisions WHERE tenant_id = $1 AND meeting_id = $2 AND revoked_at IS NULL`,
+      // #4902 п. 9: записанное человеком (created_by) не трогаем, а задачу и «выполнено» у
+      // пересобранных строк переносим по тексту — иначе повторный разбор стирал бы отметки
+      const kept = (await client.query(
+        `DELETE FROM decisions WHERE tenant_id = $1 AND meeting_id = $2 AND revoked_at IS NULL AND created_by IS NULL
+         RETURNING btrim(text) AS text, task_id, done_at, done_by`,
         [tenantId, meetingId],
-      );
+      )).rows.filter((r) => r.task_id || r.done_at);
       // в журнал — с источником (ТЗ-22): секунда записи и кто произнёс
       await client.query(
         `INSERT INTO decisions (tenant_id, project_id, meeting_id, text, decided_at, source_sec, speaker, speaker_user_id)
@@ -310,6 +324,15 @@ export class MeetingsRepository {
         [tenantId, meetingId, decisions.map((d) => d.text), decisions.map((d) => d.sec),
           decisions.map((d) => d.speaker ?? ''), decisions.map((d) => d.speakerUserId ?? '')],
       );
+      if (kept.length) {
+        await client.query(
+          `UPDATE decisions d SET task_id = k.task_id::bigint, done_at = k.done_at::timestamptz, done_by = k.done_by::bigint
+             FROM unnest($3::text[], $4::text[], $5::text[], $6::text[]) AS k(text, task_id, done_at, done_by)
+            WHERE d.tenant_id = $1 AND d.meeting_id = $2 AND d.revoked_at IS NULL AND d.created_by IS NULL AND btrim(d.text) = k.text`,
+          [tenantId, meetingId, kept.map((k) => k.text), kept.map((k) => k.task_id), kept.map((k) => k.done_at ? new Date(k.done_at).toISOString() : null),
+            kept.map((k) => k.done_by)],
+        );
+      }
     });
   }
 

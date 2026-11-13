@@ -702,6 +702,12 @@ export class GuestLinksService {
     };
   }
 
+  /** #4902 п. 15: чат, ради которого выдана живая ссылка, — туда вернутся запись и протокол созвона. */
+  async linkChat(tenantId: string, linkId: string): Promise<string | null> {
+    const link = await this.repo.findActive(tenantId, linkId);
+    return link?.chat_id ? String(link.chat_id) : null;
+  }
+
   /** Ссылка ещё действует: не отозвана и не истекла. */
   async linkActive(tenantId: string, linkId: string): Promise<boolean> {
     return !!(await this.repo.findActive(tenantId, linkId));

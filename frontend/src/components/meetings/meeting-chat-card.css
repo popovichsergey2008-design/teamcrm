@@ -1,0 +1,29 @@
+/* #4902, п. 10–11: итоги созвона в чате — карточка итогов, личный список задач, сбой с «Повторить» */
+.mcc { margin: 8px 0; max-width: 640px; padding: 10px 12px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line, var(--accent)); display: flex; flex-direction: column; gap: 8px; }
+.mcc-ok { background: var(--ok-soft); border-color: var(--ok-line, var(--ok)); }
+.mcc-warn { background: var(--bg-elev); border-color: var(--border); }
+.mcc-danger { background: var(--danger-soft); border-color: var(--danger-line, var(--danger)); }
+.mcc-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mcc-head .chat-time { margin-left: auto; }
+.mcc-dim { color: var(--text-dim); font-size: var(--fs-sm); }
+.mcc-line { font-size: calc(13px * var(--fs-scale, 1)); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mcc-summary { display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.mcc-block ul { margin: 2px 0 0; padding-left: 18px; font-size: calc(13px * var(--fs-scale, 1)); }
+.mcc-label { font-weight: 650; font-size: var(--fs-sm); }
+.mcc-person { margin-top: 4px; }
+.mcc-person-name { font-size: var(--fs-sm); font-weight: 600; }
+.mcc-tasks { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.mcc-task { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; font-size: calc(13px * var(--fs-scale, 1)); padding: 4px 0; border-top: 1px dashed var(--border); }
+.mcc-task:first-child { border-top: 0; }
+.mcc-task-title { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.mcc-task.is-taken .mcc-task-title { color: var(--text-dim); }
+.mcc-task.is-declined .mcc-task-title { text-decoration: line-through; color: var(--text-dim); }
+.mcc-state { font-size: var(--fs-sm); color: var(--text-dim); }
+.mcc-task.is-taken .mcc-state { color: var(--ok); }
+.mcc-actions, .mcc-date, .mcc-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mcc-date { flex-basis: 100%; }
+.mcc-date .ui-input { width: auto; }
+.mcc-err { flex-basis: 100%; color: var(--danger); }
+.mcc-note { font-size: var(--fs-sm); color: var(--text-dim); }
+.mcc-audio { width: 100%; max-width: 420px; height: 36px; }
+.mcc-retell { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg-elev); border: 1px solid var(--border); }

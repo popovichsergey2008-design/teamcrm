@@ -14,6 +14,7 @@ import { MeetGateway } from './meet.gateway';
 import { RecordingService } from './recording.service';
 import { CalendarModule } from '../calendar/calendar.module';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
+import { MeetingMemoryModule } from '../meeting-memory/meeting-memory.module';
 
 /**
  * Этап 6, Ш1 — SFU-слой созвонов (mediasoup), перенесённый из TeamConnect.
@@ -23,9 +24,11 @@ import { IntegrationCryptoService } from '../integrations/crypto.service';
 @Module({
   // ChatsModule — внешний участник по ссылке попадает и в переписку, а не только
   // в переговорную; проверка гостевого токена при этом остаётся здесь, в одном месте.
-  imports: [MeetingsModule, ChatsModule, NotificationsModule, CalendarModule],
+  // MeetingMemoryModule — #4902 п. 12: «Кратко до сих пор» читает идущую запись этого процесса
+  imports: [MeetingsModule, ChatsModule, NotificationsModule, CalendarModule, MeetingMemoryModule],
   controllers: [MediaController, MeetGuestController],
   providers: [MediaService, MeetGateway, CallLogService, RecordingService, GuestLinksService, GuestLinksRepository, GuestLinksScheduler, IntegrationCryptoService, GuestSessionsRepository],
-  exports: [MediaService, GuestLinksService, GuestLinksRepository, GuestSessionsRepository],
+  // #4902 п. 15: MeetGateway — чат с клиентом при отзыве ссылки выводит гостя из созвона
+  exports: [MediaService, GuestLinksService, GuestLinksRepository, GuestSessionsRepository, MeetGateway],
 })
 export class MediaModule {}

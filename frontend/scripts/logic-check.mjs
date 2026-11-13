@@ -2022,6 +2022,42 @@ test('карточка: чей ход, сколько на этапе, «Гот�
   assert.deepEqual([...commonLabels(many)], ['common'], 'метка на всех карточках ничего не различает');
 });
 
+// ── живые карточки ссылок в чате (#4902, п. 3) ────────────────────────────────
+test('карточки ссылок: наши хосты и относительный путь — да, чужой сайт — нет', async () => {
+  const { parseQevoLink } = await load('lib/qevo-links.ts');
+  for (const u of ['https://app.qevo.one/projects/130/task/4863', 'https://anthill.team/projects/130/task/4863/check',
+    'https://app.teamsmrt.com/projects/130/task/4863?x=1', '/projects/130/task/4863']) {
+    assert.deepEqual(parseQevoLink(u), { kind: 'task', id: '4863' }, u);
+  }
+  assert.deepEqual(parseQevoLink('https://app.qevo.one/meetings/7/postcall'), { kind: 'meeting', id: '7' });
+  assert.deepEqual(parseQevoLink('/api/files/12'), { kind: 'file', id: '12' });
+  assert.deepEqual(parseQevoLink('https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUv/edit#gid=0'), { kind: 'sheet', id: '1AbCdEfGhIjKlMnOpQrStUv' });
+  assert.equal(parseQevoLink('https://evil.com/projects/1/task/2'), null, 'чужой сайт с нашим путём — не карточка');
+  assert.equal(parseQevoLink('https://qevo.one.evil.com/projects/1/task/2'), null);
+  assert.equal(parseQevoLink('http://localhost:5173/projects/1/task/2'), null, 'чужой хост без ownHost');
+  assert.deepEqual(parseQevoLink('http://localhost:5173/projects/1/task/2', 'localhost'), { kind: 'task', id: '2' }, 'адрес открытого приложения — свой');
+  assert.equal(parseQevoLink('https://app.qevo.one/projects/130'), null, 'проект целиком — не объект');
+});
+
+test('карточки ссылок: из текста — до трёх разных объектов, без картинок и хвостовой пунктуации', async () => {
+  const { extractQevoLinks } = await load('lib/qevo-links.ts');
+  const one = extractQevoLinks('Глянь app: https://app.qevo.one/projects/130/task/4863.');
+  assert.deepEqual(one.map((l) => [l.url, l.key]), [['https://app.qevo.one/projects/130/task/4863', 'task:4863']]);
+  assert.equal(extractQevoLinks('https://qevo.one/projects/1/task/5 и снова /projects/1/task/5').length, 1, 'одна задача — одна карточка');
+  assert.equal(extractQevoLinks('![снимок](/api/files/12) и [файл](/api/files/13)').map((l) => l.key).join(), 'file:13', 'картинка уже показана — без карточки');
+  const many = extractQevoLinks('/projects/1/task/1 /projects/1/task/2 /meetings/3 /api/files/4');
+  assert.equal(many.length, 3, 'не больше трёх карточек под сообщением');
+  assert.equal(extractQevoLinks('путь a/projects/1/task/2 внутри слова').length, 0, 'относительный путь — только отдельным словом');
+});
+
+test('#4894: после правки курсор возвращается туда, где правили', async () => {
+  const { editFocusTarget } = await load('lib/chat-focus.ts');
+  assert.equal(editFocusTarget(['10', '11'], '11'), 'thread', 'сообщение ветки — в поле ветки');
+  assert.equal(editFocusTarget(['10'], '7'), 'feed', 'сообщение ленты — в поле ленты');
+  assert.equal(editFocusTarget(null, '7'), 'feed', 'ветка закрыта — в ленту');
+  assert.equal(editFocusTarget(['10'], null), 'feed', 'отмена без сообщения — в ленту');
+});
+
 let failed = 0;
 for (const [name, fn] of cases) {
   try {

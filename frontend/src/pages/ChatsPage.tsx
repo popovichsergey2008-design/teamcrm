@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { QevoBotMark } from '../components/QevoBotMark';
 import { Avatar } from '../components/Avatar';
+import { editFocusTarget } from '../lib/chat-focus';
 import { Icon } from '../components/Icon';
 import { api, ApiError, QUEUED, request, Scheduled } from '../lib/api';
 import { loadChats, markChatReadLocal, subscribeChats } from '../lib/chats-feed';
@@ -44,6 +45,20 @@ const MessageToTask = lazy(() => import('../components/MessageToTask').then((m) 
 const ChatSelectBar = lazy(() => import('../components/ChatSelectBar').then((m) => ({ default: m.ChatSelectBar })));
 // #4892, п. 5: встреча из чата — карточка голосования грузится, только когда она есть в ленте
 const ProposalCard = lazy(() => import('../components/chat/ProposalCard'));
+const LinkCards = lazy(() => import('../components/chat/LinkCards')); // #4902 п. 3: живые карточки ссылок
+// #4902, п. 10–11: итоги созвона в чате и личный список задач — своим куском, только когда карточка в ленте
+const MeetingChatCard = lazy(() => import('../components/meetings/MeetingChatCard'));
+const ChatInboxPlus = lazy(() => import('../components/chat/ChatInboxPlus'));
+const MessageActions = lazy(() => import('../components/chat/MessageActions')); // #4902 п. 7–8: поручения → задачи, ответ из контекста
+const ClientStatusHint = lazy(() => import('../components/chat/ClientStatusHint')); // #4902 п. 15: ответ клиенту статусом задач
+// #4902 п. 14: кратко, метки времени, «Текст целиком», «Ответить голосом», задача-баг с видео — своим куском
+const ClipInsight = lazy(() => import('../components/chat/ClipInsight'));
+/** #4902 п. 14: клип узнаём по имени файла, которое даёт запись (lib/clip-upload). */
+const clipKindOf = (name: string | null | undefined): 'voice' | 'screen' | null =>
+  !name ? null : name.startsWith('Голосовое') ? 'voice' : name.startsWith('Запись экрана') ? 'screen' : null;
+// #4902 п. 9: вкладки чата и панель «Треды / Решения / Задачи / Встречи» — ленивым куском
+const ChatTabsBar = lazy(() => import('../components/chat/ChatTabs').then((m) => ({ default: m.ChatTabsBar })));
+const ChatTabPane = lazy(() => import('../components/chat/ChatTabs').then((m) => ({ default: m.ChatTabPane })));
 const TaskCardWindow = lazy(() => import('../components/TaskCardWindow').then((m) => ({ default: m.TaskCardWindow })));
 import { EmojiPicker } from '../components/EmojiPicker';
 import { ForwardDialog } from '../components/ForwardDialog';
@@ -464,6 +479,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * два столбца справа не поместятся, и открытие одного закрывает другой.
    */
   const [infoOpen, setInfoOpen] = useState(false);
+  const [chatTab, setChatTab] = useState('chat'); // #4902 п. 9: вкладка чата
+  useEffect(() => { setChatTab('chat'); }, [activeId]); // #4902 п. 9
   /** В окне поверх CRM второстепенные кнопки композера спрятаны за «+». */
   const [extraOpen, setExtraOpen] = useState(false);
   /** Открытая ветка для обработчиков сокета: они живут дольше одного отрисованного кадра. */
@@ -512,6 +529,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * телеграме». Одно меню на страницу: у какого сообщения открыто и в какой точке.
    */
   const [ctxFor, setCtxFor] = useState<{ id: string; at: MenuAt; picked: string; link?: string } | null>(null);
+  // #4902 п. 7–8: у какого сообщения открыты «Поручения → задачи» или «Спросить про контекст»
+  const [actFor, setActFor] = useState<{ id: string; mode: 'tasks' | 'ask' } | null>(null);
   /** Какой раздел открыт вместо переписки: входящие, треды, сохранённое. */
   const [view, setView] = useState<'chat' | 'inbox' | 'threads' | 'saved' | 'channels' | 'anthill'>('chat');
   /**
@@ -543,6 +562,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [channelOpen, setChannelOpen] = useState(false);
   /** Сводка непрочитанного и ответ поиска — показываются панелью, в чат не пишутся. */
   const [digest, setDigest] = useState<string | null>(null);
+  // #4902, п. 5: «Что я пропустил» — структурная сводка в ChatInboxPlus
+  const [missedTick, setMissedTick] = useState(0);
+  // #4902 п. 2: компактная лента; стили своим файлом — грузятся, только когда включено
+  const [compact, setCompact] = useState(() => { try { return localStorage.getItem('chat.compact') === '1'; } catch { return false; } });
+  useEffect(() => {
+    if (compact) void import('./chat-compact.css');
+    try { localStorage.setItem('chat.compact', compact ? '1' : '0'); } catch { /* приватное окно */ }
+  }, [compact]);
   const [aiBusy, setAiBusy] = useState(false);
   /**
    * Вопрос помощнику голосом (ТЗ-5, раздел 29): записал — расшифровали — спросили —
@@ -821,7 +848,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
    * когда нажали «отправить». Неотправленная запись остаётся в панели с «Повторить»
    * и «Отменить»; таймаут, отмена и повтор живут в хуке (#4635). Чат — тот, где начали запись.
    */
-  const clip = useClipRecorder((blob, kind, chatId, signal, progress) => api.sendChatClip(chatId, blob, kind, signal, progress));
+  // #4902 п. 14: «Ответить голосом» — голосовое при открытой полоске «ответ на…» уходит ответом
+  const replyRef = useRef(replyTo);
+  replyRef.current = replyTo;
+  const clip = useClipRecorder((blob, kind, chatId, signal, progress) => {
+    const r = kind === 'voice' ? replyRef.current : null;
+    if (!r) return api.sendChatClip(chatId, blob, kind, signal, progress);
+    return import('../lib/clip-upload')
+      .then((x) => x.uploadClip(chatId, blob, kind, signal, progress, { toId: r.id, excerpt: r.excerpt }))
+      .then((res) => { setReplyTo(null); return res; });
+  });
   const clipBusy = clip.sending || !!clip.failed;
 
   /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
@@ -1762,6 +1798,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   };
 
   /** Сохранить правку сообщения. Пустой текст — это удаление, и оно отдельной кнопкой. */
+  // #4902 п. 2 (#4894): после правки или отмены курсор снова в поле ввода — в ветке или в ленте
+  const stopEditing = (messageId: string | null) => {
+    setEditing(null);
+    if (editFocusTarget(threadRef.current?.messages.map((m) => String(m.id)), messageId) === 'thread') setThreadFocusKey((n) => n + 1);
+    else focusComposer();
+  };
+
   const saveEdit = async (messageId: string) => {
     if (!activeId) return;
     const text = editText.trim();
@@ -1772,7 +1815,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         ? { ...m, body: text, edited_at: new Date().toISOString() } : m));
       setMessages(edited);
       setThread((prev) => (prev ? { ...prev, messages: edited(prev.messages) } : prev));
-      setEditing(null);
+      stopEditing(messageId);
     } catch (e) {
       showToast({ title: 'Не удалось изменить', body: e instanceof ApiError ? e.message : 'Ошибка', section: 'chat' });
     }
@@ -1849,6 +1892,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       icon: 'star' as const,
       onClick: () => toggleSaved(m),
     },
+    // #4902 п. 9: любой участник отмечает сообщение решением — во вкладку «Решения»
+    ...(m.body && active && ['project', 'group', 'channel'].includes(active.kind) ? [{
+      label: 'Отметить как решение',
+      icon: 'flag' as const,
+      onClick: () => { void import('../components/chat/chat-decisions-api').then((x) => x.markDecision(String(m.id))); },
+    }] : []),
     {
       // Пересылка: чужие слова в свой чат — без «скопировать и вставить», которое
       // теряет и вложения, и автора.
@@ -1872,6 +1921,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         icon: 'sparkles' as const,
         onClick: () => setToTask(m),
       }]),
+    // #4902 п. 7: все поручения сообщения одной карточкой
+    ...(!m.is_ai && m.body ? [{ label: 'Поручения → задачи', icon: 'list' as const, onClick: () => setActFor({ id: String(m.id), mode: 'tasks' }) }] : []),
+    // #4902 п. 8: ответ по задачам, ТЗ и встречам — видит только спросивший
+    ...(m.body ? [{ label: 'Спросить про контекст', icon: 'help' as const, onClick: () => setActFor({ id: String(m.id), mode: 'ask' }) }] : []),
     ...(mine ? [
       {
         label: 'Изменить',
@@ -2150,7 +2203,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const sectionsByKey: Record<string, { label: string; count: number; unread: number; rows: React.ReactNode }> = {
     favorites: { label: 'Избранное', count: favorites.filter((c) => match(c.title)).length, unread: unreadOf(favorites), rows: favorites.filter((c) => match(c.title)).map((c) => rowOf(c, true)) },
     channels: { label: 'Каналы', count: channels.filter((c) => match(c.title)).length, unread: unreadOf(channels), rows: channels.filter((c) => match(c.title)).map((c) => rowOf(c)) },
-    external: { label: 'Внешние', count: external.filter((c) => match(c.title)).length, unread: unreadOf(external), rows: external.filter((c) => match(c.title)).map((c) => rowOf(c)) },
+    external: { label: 'С клиентами', /* #4902 п. 15 */ count: external.filter((c) => match(c.title)).length, unread: unreadOf(external), rows: external.filter((c) => match(c.title)).map((c) => rowOf(c)) },
     /*
       #4779, п. 10: в «Личных» — блок «Команда» со всеми сотрудниками, даже если переписки
       ещё нет. Раньше создатель пространства видел здесь одного человека, а третий
@@ -2507,6 +2560,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
           <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => navigate({ section: 'chat', view: 'meetings' })} title="Встречи: записи, протоколы, задачи после созвонов">
             <Icon name="record" size={15} /> Встречи
           </button>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" aria-pressed={compact} onClick={() => setCompact((v) => !v)}
+            title={compact ? 'Обычная лента' : 'Компактная лента: больше сообщений на экране'}>
+            <Icon name={compact ? 'maximize' : 'minimize'} size={15} />
+          </button>
           <GuestLinkButton
             chats={[...dms, ...groups].map((c) => ({ id: String(c.id), title: c.title ?? 'Чат' }))}
             chatId={activeId ? String(activeId) : null}
@@ -2540,17 +2597,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               <button
                 className="chat-pins-btn"
                 disabled={aiBusy}
-                onClick={async () => {
-                  setAiBusy(true); setDigest(null); setAiAnswer(null);
-                  try { setDigest((await api.aiMissed()).text); feedback('ai.completed'); }
-                  catch (e) { feedback('error'); setErr(e instanceof ApiError ? e.message : 'ИИ не ответил'); }
-                  finally { setAiBusy(false); }
-                }}
-                title="Пересказать всё непрочитанное по доступным чатам"
+                onClick={() => { setDigest(null); setAiAnswer(null); setMissedTick((t) => t + 1); }}
+                title="Сводка по всем чатам с последнего захода: темы, решения, что ждут от вас"
               >
-                <Icon name="sparkles" size={13} /> {aiBusy ? 'Читаю…' : 'Что я пропустил'}
+                <Icon name="sparkles" size={13} /> Что я пропустил
               </button>
             </div>
+
+            <Suspense fallback={null}>
+              <ChatInboxPlus missedTick={missedTick} onOpen={(hit) => void openFound(hit)}
+                onTaskCreated={(taskId, projectId) => setCardTask({ projectId, taskId })} />
+            </Suspense>
 
             {digest && (
               <div className="ai-digest">
@@ -2946,6 +3003,15 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               {/* Кнопки созвона стоят в шапке раздела — одни на все чаты,
                   чтобы не повторять их в каждой переписке. */}
             </div>
+            {/* #4902 п. 9: вкладки рабочего чата; «Файлы» — материалы в сведениях ⓘ */}
+            {['project', 'group', 'channel'].includes(active.kind) && (
+              <Suspense fallback={null}>
+                <ChatTabsBar
+                  tab={chatTab === 'files' && !infoOpen ? 'chat' : chatTab}
+                  onTab={(t) => { setChatTab(t); setInfoOpen(t === 'files'); if (t !== 'chat') setThread(null); if (t === 'threads') void loadThreads(); }}
+                />
+              </Suspense>
+            )}
 
             {/*
               Предупреждение, а не бейдж.
@@ -2959,6 +3025,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 <Icon name="alert" size={14} />
                 Здесь есть человек со стороны — он видит всё, что вы напишете.
                 Внутреннее обсуждение ведите в чате проекта.
+              </div>
+            )}
+            {/* #4902 п. 15: ИИ подсказывает ответ клиенту статусом задач — вставляется в поле, отправляет человек */}
+            {active.kind === 'external' && (
+              <div style={{ padding: '4px 12px' }}>
+                <Suspense fallback={null}>
+                  <ClientStatusHint chatId={String(active.id)} onInsert={(t) => { setDraft((d) => (d.trim() ? `${d.trimEnd()}\n${t}` : t)); focusComposer(); }} />
+                </Suspense>
               </div>
             )}
 
@@ -3005,7 +3079,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             })()}
 
             <div
-              className="chat-feed"
+              className={`chat-feed${compact ? ' is-compact' : ''}`}
               ref={feedRef}
               // листает сам человек (колесо, палец) — к черте непрочитанного ленту больше не тянем (#4681)
               onWheel={() => { userScrolled.current = true; }}
@@ -3053,9 +3127,11 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                 }
                 if (m.meeting_id) {
                   const [head, ...rest] = String(m.body ?? '').split('\n');
+                  // #4902: итог созвона, личный список задач или сбой — живая карточка (лениво); пока грузится — прежний вид
                   return (
                     <div key={m.id} data-msg={String(m.id)}>
                       {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
+                      <Suspense fallback={
                       <div className="meet-card">
                         <div className="meet-card-head">
                           <Icon name="record" size={14} /> <b>{head}</b>
@@ -3071,7 +3147,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         >
                           <Icon name="list" size={13} /> Открыть разбор
                         </button>
-                      </div>
+                      </div>}>
+                        <MeetingChatCard messageId={String(m.id)} meetingId={String(m.meeting_id)} body={String(m.body ?? '')}
+                          stamp={stampLabel(m.created_at)} stampTitle={new Date(m.created_at).toLocaleString('ru-RU')} />
+                      </Suspense>
                     </div>
                   );
                 }
@@ -3190,7 +3269,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             text={m.body}
                             className="chat-body"
                             mark={quoteMark?.id === String(m.id) ? quoteMark.text : null}
+                            secrets={m}
                           />
+                        )}
+                        {m.body && editing !== String(m.id) && <Suspense fallback={null}><LinkCards text={m.body} /></Suspense>}
+                        {/* #4902 п. 7–8: карточка поручений и ответ из контекста под сообщением */}
+                        {m.body && editing !== String(m.id) && (
+                          <Suspense fallback={null}><MessageActions
+                            messageId={String(m.id)} body={String(m.body)} isAi={!!m.is_ai} createdAt={m.created_at}
+                            mode={actFor?.id === String(m.id) ? actFor.mode : null} onClose={() => setActFor(null)}
+                          /></Suspense>
                         )}
                         {/* Правка своего сообщения — прямо в пузыре: уводить человека
                             в отдельное окно ради опечатки незачем. */}
@@ -3202,7 +3290,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                               в открытом списке Esc закрывает его и отмечает событие
                               обработанным, иначе один Esc делал бы два дела сразу.
                             */
-                            onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) setEditing(null); }}
+                            onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) stopEditing(editing); }}
                           >
                             {/*
                               Правим тем же полем, что и пишем.
@@ -3225,7 +3313,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             />
                             <div className="chat-edit-actions">
                               <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
-                              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                              <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => stopEditing(editing)}>Отмена</button>
                             </div>
                           </div>
                         )}
@@ -3245,6 +3333,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           <div className="chat-transcript" role="status">
                             Расшифровываю <span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span>
                           </div>
+                        ) : clipKindOf(m.file_name) === 'voice' && m.transcript && m.transcript !== m.body ? (
+                          null // #4902 п. 14: текст голосового, кратко и «Текст целиком» — в ClipInsight ниже
                         ) : m.transcript && m.transcript !== m.body ? (
                           // #4719: голосовое осталось голосовым — текст под ним, раскрыт: его попросили
                           <details className="chat-transcript" open={m.body === 'Голосовое сообщение'}>
@@ -3260,6 +3350,22 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           >
                             <Icon name="file" size={14} /> В текст
                           </button>
+                        )}
+                        {/* #4902 п. 14: голосовое и запись экрана → кратко, метки, задача-баг, «Ответить голосом» */}
+                        {m.file_id && activeId && clipKindOf(m.file_name) && (
+                          <Suspense fallback={null}>
+                            <ClipInsight
+                              chatId={activeId}
+                              messageId={String(m.id)}
+                              kind={clipKindOf(m.file_name)!}
+                              transcript={m.transcript}
+                              status={m.transcript_status}
+                              onVoiceReply={() => {
+                                setReplyTo({ id: String(m.id), author: m.author_name ?? m.guest_name ?? 'Собеседник', excerpt: String(m.transcript || m.body || 'Голосовое сообщение').slice(0, 600) });
+                                if (!clip.recording) void clip.start('voice', activeId);
+                              }}
+                            />
+                          </Suspense>
                         )}
                       </div>
                       {/* Поставленные реакции видны всегда: в них весь смысл — ответить
@@ -3763,7 +3869,23 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
             window.dispatchEvent(new CustomEvent('teamcrm:tasks-of', { detail: { userId } }));
           }}
           onCalendar={() => navigate({ section: 'calendar' })}
+          openMaterials={chatTab === 'files'}
         />
+      )}
+      {/* #4902 п. 9: панель вкладки — тот же правый слот, что у сведений и ветки */}
+      {active && !infoOpen && !thread && ['threads', 'decisions', 'tasks', 'meetings'].includes(chatTab) && (
+        <Suspense fallback={null}>
+          <ChatTabPane
+            tab={chatTab}
+            chatId={String(active.id)}
+            threads={threads}
+            onClose={() => setChatTab('chat')}
+            onJumpTo={(messageId) => void openFound({ chatId: String(active.id), messageId, threadRootId: null })}
+            onOpenThread={(rootId) => void openThread(rootId, String(active.id), true)}
+            canCall={!inCall}
+            onCall={(memberIds) => onCall({ id: String(active.id), title: active.title ?? 'Созвон', memberIds, projectId: active.projectId })}
+          />
+        </Suspense>
       )}
       {thread && (
         <section
@@ -3794,7 +3916,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   >
                     <div className="chat-author">{m.author_name}</div>
                     {/* Ссылки кликаются и здесь: ветка — такая же переписка. */}
-                    {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" />}
+                    {m.body && editing !== String(m.id) && <MessageText text={m.body} className="chat-body" secrets={m} />}
+                    {/* #4902 п. 7–8: и в ветке — поручения и ответ из контекста */}
+                    {m.body && editing !== String(m.id) && (
+                      <Suspense fallback={null}><MessageActions
+                        messageId={String(m.id)} body={String(m.body)} isAi={!!m.is_ai} createdAt={m.created_at}
+                        mode={i > 0 && actFor?.id === String(m.id) ? actFor.mode : null} onClose={() => setActFor(null)}
+                      /></Suspense>
+                    )}
                     {/*
                       Правка своего сообщения — и в ветке тоже.
 
@@ -3805,7 +3934,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     {editing === String(m.id) && (
                       <div
                         className="chat-edit"
-                        onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) setEditing(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Escape' && !e.defaultPrevented) stopEditing(editing); }}
                       >
                         {/* Правим тем же полем, что и пишем: «@» должно работать и здесь. */}
                         <MentionField
@@ -3822,7 +3951,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         />
                         <div className="chat-edit-actions">
                           <button className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => saveEdit(String(m.id))}>Сохранить</button>
-                          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setEditing(null)}>Отмена</button>
+                          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => stopEditing(editing)}>Отмена</button>
                         </div>
                       </div>
                     )}

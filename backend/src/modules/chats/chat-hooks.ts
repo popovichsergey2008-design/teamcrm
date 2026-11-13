@@ -24,3 +24,34 @@ export function onChatText(fn: Listener): void {
 export function emitChatText(m: ChatText): void {
   for (const fn of listeners) void fn(m).catch(() => undefined);
 }
+
+/**
+ * #4902, п. 14: клип (голосовое, запись экрана) распознан. Реплики с метками времени
+ * нужны разбору клипа (кратко, «0:42 баг», задача-баг) — модулю, которому нужны чаты;
+ * прямая зависимость чатов от него замкнула бы модули, поэтому — реестр.
+ */
+export interface ClipHeard {
+  tenantId: string;
+  chatId: string;
+  messageId: string;
+  kind: 'voice' | 'screen';
+  /** распознанное до причёсывания моделью */
+  text: string;
+  segments: { start: number; end: number; text: string }[];
+  durationSec: number;
+  /** кому слать события чата */
+  to: string[];
+  /** от загрузки записи до распознанного текста, мс */
+  sinceUploadMs: number;
+}
+type ClipListener = (c: ClipHeard) => Promise<void>;
+const clipListeners: ClipListener[] = [];
+
+export function onClipHeard(fn: ClipListener): void {
+  clipListeners.push(fn);
+}
+
+/** Клип начали распознавать: слушатели заводят «идёт разбор». Ошибки — не наружу. */
+export function emitClipHeard(c: ClipHeard): void {
+  for (const fn of clipListeners) void fn(c).catch(() => undefined);
+}

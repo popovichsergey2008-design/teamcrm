@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { loadTrialLimits, useTrialLimits } from '../lib/trial-limits';
 import { createPortal } from 'react-dom';
 import './call-pointer.css';
@@ -20,6 +20,9 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 import { savedDevices } from './DeviceCheck';
 import { confirmAction } from './ui/dialog';
 import { PointerMark, pointerWhere, sensitiveRoute, tapAt, videoPoint } from '../lib/screen-pointer';
+
+// #4902 п. 12: карточка прошлой встречи и «Кратко до сих пор» — ленивым куском
+const MeetingMemory = lazy(() => import('./meetings/MeetingMemory'));
 
 /**
  * Размер свёрнутого созвона по умолчанию.
@@ -1113,6 +1116,10 @@ export function CallPanel({ meetingId, inviteUserIds = [], calleeLabel, guest, s
           </div>
         ))}
         {linkNote && <div className="call-recording call-ai-waiting"><Icon name="link" size={15} /> {linkNote}</div>}
+        {/* #4902 п. 12: прошлая встреча (сколько задач готово) и «Кратко до сих пор» для опоздавших */}
+        {!isGuest && (state === 'connected' || state === 'reconnecting') && guestState === 'in' && (
+          <Suspense fallback={null}><MeetingMemory meetingId={meetingId} recording={recording} ask={() => client.current?.recapSoFar()} /></Suspense>
+        )}
 
         {/* До впуска сцены не видно и не слышно — ни гостю, ни коллеге, которого не звали. */}
         {guestState !== 'in' && (

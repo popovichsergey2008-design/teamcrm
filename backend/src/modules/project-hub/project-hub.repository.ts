@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { maskBodies } from '../../common/secrets';
 import { ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { DbService } from '../../database/db.service';
 import { DECISION_VISIBLE } from '../chat-analysis/chat-analysis.repository';
@@ -430,7 +431,7 @@ export class ProjectHubRepository {
         ORDER BY m.id
         LIMIT 300`,
       [tenantId, projectId, from, to],
-    );
+    ).then(maskBodies); // #4902, п. 13: библиотекарю — без паролей
   }
 
   /** Созвоны проекта за сутки — сводка и решения (для модели и подсчёта). */

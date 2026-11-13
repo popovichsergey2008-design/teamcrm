@@ -1,10 +1,11 @@
 import { stripPasteJunk } from '../../common/text/paste-junk';
+import { detectSecrets, maskSecrets, textFingerprint } from '../../common/secrets';
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
 import { trackBackground } from '../../common/background-work';
 import { NlService } from '../nl/nl.service';
 import { ChatsAiService } from './chats-ai.service';
-import { emitChatText } from './chat-hooks';
+import { emitChatText, emitClipHeard } from './chat-hooks';
 import { ChatTaskDraftService } from './chat-task-draft.service';
 import { CustomResponsesService } from './custom-responses.service';
 import { DiagService } from '../diagnostics/diag.service';
@@ -24,6 +25,8 @@ const PAGE = 50;
 const CLIP_TEXT_BUDGET_MS = 120_000;
 /** Причёсывание моделью — не дольше этого, иначе остаётся текст как услышан. */
 const CLIP_TIDY_BUDGET_MS = 20_000;
+/** #4902 п. 14: «расшифровка готова ≤ 30 с после отправки записи до 5 минут» (с запасом на загрузку). */
+const CLIP_READY_MS = 27_000;
 /** Обещание с потолком по времени: не успело — `fallback`, само оно доживает в фоне. */
 function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   let t: NodeJS.Timeout | undefined;
@@ -99,7 +102,7 @@ export class ChatsService {
       markedUnread: c.marked_unread === true,
       // уведомления по чату: панель не звучит и не считает тихие чаты
       notify: c.notify ?? 'all',
-      lastBody: c.last_body,
+      lastBody: maskSecrets(c.last_body), // #4902, п. 13: в списке чатов пароль — точками
       lastAuthor: c.last_author,
       lastAt: c.last_at,
       // избранное личное: у каждого свои четыре закреплённых чата
@@ -367,8 +370,10 @@ export class ChatsService {
       адресаты все, кто в чате, кроме автора. В личке «все» — это и так один человек.
     */
     const everyone = chat.kind !== 'dm' && mentionsEveryone(text);
+    // #4902, п. 13: в push, Telegram и всплывашку упоминания пароль не уходит — только точки
+    const safeText = maskSecrets(text);
     const mentioned = await this.mention(
-      tenantId, String(message.id), everyone ? [...(mentionIds ?? []), ...to] : mentionIds, user.userId, text,
+      tenantId, String(message.id), everyone ? [...(mentionIds ?? []), ...to] : mentionIds, user.userId, safeText,
       everyone ? 500 : 30,
     );
 
@@ -378,7 +383,7 @@ export class ChatsService {
     // Тем, кого нет в сети, — push и запись в ящик (ТЗ-9): не ждём и не роняем отправку.
     void this.repo.notifyModes(chatId).then((modes) => this.push.chatMessage({
       tenantId, chatId, chatKind: chat.kind, chatTitle: chat.title,
-      authorId: user.userId, authorName: message.author_name ?? null, text,
+      authorId: user.userId, authorName: message.author_name ?? null, text: safeText,
       recipients: to, mentioned, modes, threadRootId: rootId,
     })).catch(() => undefined);
     /*
@@ -395,7 +400,7 @@ export class ChatsService {
       if (chat.kind !== 'dm' && !isMention) continue;
       void this.mirror.chatMessage({
         tenantId, userId: String(rid), authorName: message.author_name ?? null,
-        chatTitle: chat.kind === 'dm' ? null : chat.title, text, mention: isMention, path: tgPath,
+        chatTitle: chat.kind === 'dm' ? null : chat.title, text: safeText, mention: isMention, path: tgPath,
       }).catch(() => undefined);
     }
     // В журнал — только факт и адресаты: по нему видно, ушло ли сообщение и кому,
@@ -819,7 +824,7 @@ export class ChatsService {
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId: toChatId, message });
     void this.push.chatMessage({
       tenantId, chatId: toChatId, chatKind: target.kind, chatTitle: target.title,
-      authorId: user.userId, authorName: null, text: String(src.body ?? 'вложение'),
+      authorId: user.userId, authorName: null, text: maskSecrets(String(src.body ?? 'вложение')),
       recipients: to, mentioned: [], modes: await this.repo.notifyModes(toChatId), threadRootId: null,
     }).catch(() => undefined);
     return message;
@@ -874,7 +879,7 @@ export class ChatsService {
     void this.push.chatMessage({
       tenantId, chatId: toChatId, chatKind: target.kind, chatTitle: target.title,
       authorId: user.userId, authorName: null,
-      text: messages.length === 1 ? String(src[0].body || 'вложение') : `Переслано сообщений: ${messages.length}`,
+      text: messages.length === 1 ? maskSecrets(String(src[0].body || 'вложение')) : `Переслано сообщений: ${messages.length}`,
       recipients: to, mentioned: [], modes: await this.repo.notifyModes(toChatId), threadRootId: null,
     }).catch(() => undefined);
     return { forwarded: messages.length, messages };
@@ -1080,6 +1085,8 @@ export class ChatsService {
     kind: 'voice' | 'screen',
     /** Человек нажал «Отменить» и соединение оборвалось — сообщение не создаём. */
     gone: () => boolean = () => false,
+    /** #4902 п. 14: «Ответить голосом» — голосовое ответом на сообщение этого чата. */
+    reply?: { toId?: string | null; excerpt?: string | null },
   ) {
     const chat = await this.access(tenantId, chatId, user);
     const t0 = Date.now();
@@ -1102,16 +1109,26 @@ export class ChatsService {
     // #4719, 02.11: голосовое остаётся голосовым — расшифровка только по кнопке «В текст»
     // (transcribeVoice), чтобы ИИ не работал зря, когда голосовое просто слушают.
     // Запись экрана расшифровывается сразу, как раньше.
-    const stt = kind !== 'voice' && await this.chatAi.canTranscribe(tenantId);
+    // #4902 п. 14 (ТЗ заказчика 13.11): голосовые снова расшифровываются автоматически —
+    // текст и кратко в 1–2 строки сразу; голосовое при этом остаётся голосовым (тело — подпись).
+    const stt = await this.chatAi.canTranscribe(tenantId);
+    const keep = kind === 'voice' ? '[keep-voice-body]' : caption;
+    // на что отвечаем — проверяем, как у текста: сообщение должно лежать в этом же чате
+    let replyToId: string | null = null;
+    if (reply?.toId) {
+      const src = await this.repo.findMessage(tenantId, String(reply.toId));
+      if (src && String(src.chat_id) === String(chatId)) replyToId = String(src.id);
+    }
     const row = await this.repo.addMessage({
       tenantId, chatId, authorId: user.userId, body: caption, fileId: String(stored.id),
+      replyToId, replyExcerpt: replyToId ? reply?.excerpt ?? null : null,
     });
-    if (stt) await this.repo.clipTranscript(tenantId, String(row.id), 'running', null, caption);
+    if (stt) await this.repo.clipTranscript(tenantId, String(row.id), 'running', null, keep);
     const message = { ...row, transcript_status: stt ? 'running' : null };
     await this.repo.markRead(tenantId, chatId, user.userId);
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
-    if (stt) void trackBackground(this.clipText(tenantId, chatId, String(row.id), file, caption, to, timing));
+    if (stt) void trackBackground(this.clipText(tenantId, chatId, String(row.id), file, keep, to, timing));
     else this.diag.write({ tenantId, scope: 'chat', refId: chatId, userId: user.userId, side: 'server', event: 'clip.timing', data: { ...timing, stt: false } });
     return message;
   }
@@ -1130,14 +1147,25 @@ export class ChatsService {
     let text = '';
     let tidyMs = 0;
     try {
-      heard = (await within(this.chatAi.transcribe(tenantId, file.buffer, file.originalname), CLIP_TEXT_BUDGET_MS, '')).trim();
+      // #4902 п. 14: с метками времени — для «0:42 баг» и кратко; разбор клипа слушает хук
+      const timed = await within(this.chatAi.transcribeTimed(tenantId, file.buffer, file.originalname), CLIP_TEXT_BUDGET_MS, { text: '', segments: [], durationSec: 0 });
+      heard = timed.text.trim();
+      if (heard) {
+        emitClipHeard({
+          tenantId, chatId, messageId, kind: timing.kind === 'screen' ? 'screen' : 'voice', text: heard,
+          segments: timed.segments, durationSec: timed.durationSec, to,
+          sinceUploadMs: Number(timing.storeMs ?? 0) + (Date.now() - t1),
+        });
+      }
       /*
         И причёсываем: Whisper отдаёт поток слов без знаков препинания, читать такое
         невозможно. Модель только расставляет знаки и чинит ослышки — не пересказывает.
         Автор всё равно может поправить сообщение, как любое своё (просьба заказчика).
       */
       const t2 = Date.now();
-      text = heard ? (await within(this.chatAi.tidyTranscript(tenantId, heard), CLIP_TIDY_BUDGET_MS, heard)).trim() : '';
+      // #4902 п. 14: текст — не позже 30 с от отправки: на причёсывание — сколько осталось (но не меньше 4 с)
+      const tidyBudget = Math.max(4_000, Math.min(CLIP_TIDY_BUDGET_MS, CLIP_READY_MS - (Date.now() - t1)));
+      text = heard ? (await within(this.chatAi.tidyTranscript(tenantId, heard), tidyBudget, heard)).trim() : '';
       tidyMs = heard ? Date.now() - t2 : 0;
     } catch { text = ''; }
     const sttMs = Date.now() - t1 - tidyMs;
@@ -1690,8 +1718,10 @@ export class ChatsService {
     const next = text.slice(0, 8000);
     await this.repo.editMessage(tenantId, messageId, next);
     const to = await this.recipients(chat, tenantId);
-    this.realtime.emitToUsers(tenantId, to, 'chat.message_edited', { chatId, messageId, body: next });
-    return { edited: true, body: next };
+    // #4902, п. 13: после правки отрезки секретов — заново, иначе лента закроет точками не то
+    const secrets = { secret_spans: detectSecrets(next), secret_of: textFingerprint(next) };
+    this.realtime.emitToUsers(tenantId, to, 'chat.message_edited', { chatId, messageId, body: next, ...secrets });
+    return { edited: true, body: next, ...secrets };
   }
 
   async remove(tenantId: string, chatId: string, messageId: string, user: { userId: string; role: string }) {

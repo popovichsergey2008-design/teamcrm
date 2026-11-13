@@ -1,0 +1,30 @@
+/* #4902, п. 9: вкладки чата и панель «Решения / Задачи / Треды / Встречи» — ленивым куском, в первый экран не едет */
+.ct-bar { display: flex; gap: 2px; padding: 2px 10px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; flex-shrink: 0; }
+.ct-bar::-webkit-scrollbar { display: none; }
+.ct-tab { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: var(--fs-sm); color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+.ct-tab:hover { color: var(--text); }
+.ct-tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.ct-tab:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.ct-pad { padding: 12px; }
+.ct-dec { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 16px; }
+.ct-dec-top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+.ct-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.ct-chip { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-dim); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.ct-chip.active { background: var(--bg-elev-2); color: var(--text); border-color: var(--accent); }
+.ct-note { font-size: var(--fs-sm); }
+.ct-block { display: flex; flex-direction: column; gap: 6px; }
+.ct-h { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; font-size: var(--fs-sm); font-weight: 700; }
+.ct-card { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm, 8px); background: var(--bg-elev); padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ct-card.ct-cand { border-left-style: dashed; }
+.ct-card.ct-done { border-left-color: var(--ok); }
+.ct-text { font-weight: 600; word-break: break-word; }
+.ct-meta { display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: center; font-size: var(--fs-sm); color: var(--text-dim); }
+.ct-link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-align: left; }
+.ct-link:hover { text-decoration: underline; }
+.ct-chip-ok, .ct-chip-open { padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); font: inherit; font-size: var(--fs-sm); }
+.ct-chip-ok { background: var(--ok-soft); border-color: var(--ok-line, var(--ok)); color: var(--text); cursor: default; }
+button.ct-chip-ok { cursor: pointer; }
+.ct-chip-open { background: var(--bg-elev-2); color: var(--text); }
+.ct-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ct-check { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); cursor: pointer; }
+.ct-mute { color: var(--text-dim); margin-left: auto; }

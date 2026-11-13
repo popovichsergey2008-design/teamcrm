@@ -10,6 +10,8 @@ import { apiUrl } from './origin';
  */
 export function uploadClip(
   chatId: string, blob: Blob, kind: 'voice' | 'screen', signal?: AbortSignal, onProgress?: (part: number) => void,
+  /** #4902 п. 14: «Ответить голосом» — голосовое ответом на сообщение */
+  reply?: { toId: string; excerpt?: string },
 ): Promise<any> {
   const fd = new FormData();
   // Расширение — по настоящему формату: старый WebView пишет mp4, а распознавание
@@ -17,6 +19,7 @@ export function uploadClip(
   const ext = /mp4|aac|m4a/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : 'webm';
   fd.append('file', blob, `${kind === 'voice' ? 'Голосовое' : 'Запись экрана'} ${new Date().toLocaleString('ru-RU')}.${ext}`);
   fd.append('kind', kind);
+  if (reply?.toId) { fd.append('replyToId', reply.toId); if (reply.excerpt) fd.append('replyExcerpt', reply.excerpt.slice(0, 600)); }
   return new Promise((ok, fail) => {
     const x = new XMLHttpRequest();
     x.open('POST', apiUrl(`/api/chats/${chatId}/clip`));

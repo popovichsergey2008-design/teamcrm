@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { maskBodies } from '../../common/secrets';
 import { meetingVisibleSql, projectVisibleSql, ProjectViewer, viewerParams } from '../../common/access/project-visibility';
 import { DbService } from '../../database/db.service';
 import { ExtractedAction } from './analysis-schema';
@@ -324,7 +325,7 @@ export class ChatAnalysisRepository {
         ORDER BY m.id
         LIMIT $5`,
       [tenantId, chatId, since, until, limit],
-    );
+    ).then(maskBodies); // #4902, п. 13: пароли из переписки модели не показываем
   }
 
   /**
@@ -442,7 +443,7 @@ export class ChatAnalysisRepository {
         ORDER BY m.id
         LIMIT $4`,
       [tenantId, chatId, afterId, limit],
-    );
+    ).then(maskBodies); // #4902, п. 13: пароли из переписки модели не показываем
   }
 
   /**

@@ -427,6 +427,11 @@ export class MeetClient {
         });
         return;
 
+      // #4902 п. 12: «Кратко до сих пор» — ответ спросившему; показывает ленивый кусок
+      case 'meet.recap-so-far':
+        window.dispatchEvent(new CustomEvent('meet:recap-so-far', { detail: p }));
+        return;
+
       case 'meet.notice':
         (this.ev.onNotice ?? this.ev.onError)(String(p.message ?? ''));
         return;
@@ -670,6 +675,9 @@ export class MeetClient {
   setRecording(on: boolean): void {
     this.emit(on ? 'meet.record-start' : 'meet.record-stop', {});
   }
+
+  /** #4902 п. 12: «Кратко до сих пор» — пересказ того, что уже обсудили, для опоздавшего. */
+  recapSoFar(): void { this.emit('meet.recap-so-far', {}); }
 
   /** Впустить или выставить стучащегося гостя. Доступно только сотруднику. */
   answerKnock(guestId: string, admit: boolean): void {

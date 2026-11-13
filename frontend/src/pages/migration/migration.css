@@ -1,0 +1,65 @@
+/* Экран переезда из Slack и Telegram (#4902, п. 4). Цвета — только токены темы. */
+.mig { display: flex; flex-direction: column; gap: 16px; max-width: 960px; color: var(--text); }
+.mig-head h2 { margin: 0 0 6px; font-size: 20px; }
+.mig-lead { margin: 0; color: var(--text-dim); line-height: 1.5; }
+
+.mig-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.mig-card,
+.mig-panel,
+.mig-history {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.mig-card .ui-btn { align-self: flex-start; }
+.mig-card-title,
+.mig-panel-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+.mig-steps,
+.mig-notes { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45; }
+.mig-notes { color: var(--text-dim); }
+
+.mig-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mig-dim { color: var(--text-mut); margin: 0; line-height: 1.45; }
+.mig-summary { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.45; }
+.mig-facts { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--text-dim); line-height: 1.45; }
+
+.mig-alert { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; border: 1px solid; line-height: 1.45; }
+.mig-alert-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
+.mig-alert-warn { background: var(--warn-soft); border-color: var(--warn-line); color: var(--warn); }
+
+.mig-bar { height: 8px; border-radius: 4px; background: var(--bg-elev-2); overflow: hidden; position: relative; }
+.mig-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s ease; }
+.mig-bar-busy > span { width: 30%; position: absolute; animation: mig-busy 1.2s ease-in-out infinite; }
+@keyframes mig-busy { from { left: -30%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) {
+  .mig-bar > span { transition: none; }
+  .mig-bar-busy > span { animation: none; width: 100%; opacity: 0.5; }
+}
+
+.mig-list-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; flex-wrap: wrap; }
+.mig-list-actions { display: flex; gap: 4px; }
+.mig-chats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 360px; overflow-y: auto; }
+.mig-chat { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: baseline; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.mig-chat:hover { background: var(--hover); }
+.mig-chat input { grid-row: span 2; align-self: center; }
+.mig-chat-title { font-weight: 500; overflow-wrap: anywhere; }
+.mig-chat-meta { color: var(--text-mut); font-size: 13px; }
+
+.mig-options { display: flex; flex-direction: column; gap: 8px; }
+.mig-options label { display: flex; gap: 8px; align-items: flex-start; line-height: 1.45; cursor: pointer; }
+.mig-options input { margin-top: 3px; }
+.mig-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.mig-failed ul { margin: 8px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow-y: auto; line-height: 1.45; overflow-wrap: anywhere; }
+.mig-history ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.mig-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.mig-link:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 2px; }
+
+@media (max-width: 600px) {
+  .mig-card .ui-btn, .mig-actions .ui-btn { align-self: stretch; width: 100%; justify-content: center; }
+}

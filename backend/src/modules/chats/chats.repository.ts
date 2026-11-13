@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { activeOverdueSql } from '../tasks/responsibility';
+import { maskSecrets, matchesOutsideSecrets, withSecretSpans } from '../../common/secrets';
 
 export interface ChatRow {
   id: string; tenant_id: string; kind: string; title: string | null;
@@ -298,7 +299,7 @@ export class ChatsRepository {
         ORDER BY m.id ${afterId ? 'ASC' : 'DESC'} LIMIT $4`,
       [tenantId, chatId, beforeId, limit, viewerId, afterId],
       // Наружу всегда по возрастанию — так рисует лента; вниз страница уже в этом порядке.
-    ).then((rows) => (afterId ? rows : rows.reverse()));
+    ).then((rows) => withSecretSpans(afterId ? rows : rows.reverse()));
   }
 
   /** Ветка целиком: корневое сообщение и ответы по возрастанию. */
@@ -349,7 +350,7 @@ export class ChatsRepository {
           AND (m.id = $2::bigint OR m.thread_root_id = $2::bigint)
         ORDER BY m.id`,
       [tenantId, rootId, viewerId],
-    );
+    ).then(withSecretSpans); // #4902, п. 13: секреты — отрезками, лента покажет их точками
   }
 
   /**
@@ -510,7 +511,7 @@ export class ChatsRepository {
     LEFT JOIN users ru ON ru.id = r.author_id
         WHERE m.id=$1`,
       [id],
-    );
+    ).then((r) => (r ? withSecretSpans([r])[0] : r));
   }
 
   /**
@@ -559,7 +560,7 @@ export class ChatsRepository {
         WHERE m.tenant_id=$1 AND m.chat_id=$2 AND m.deleted_at IS NULL AND m.pinned_at IS NOT NULL
         ORDER BY m.pinned_at DESC`,
       [tenantId, chatId],
-    );
+    ).then(withSecretSpans);
   }
 
   // ───── сохранённое, напоминания, упоминания (слой 2) ─────
@@ -694,7 +695,10 @@ export class ChatsRepository {
         ORDER BY m.id DESC
         LIMIT $4`,
       [tenantId, userId, `%${query}%`, limit, chatId],
-    );
+    // #4902, п. 13: совпало только внутри пароля — не находка; в выдаче секрет точками
+    ).then((rows) => rows
+      .filter((r) => matchesOutsideSecrets(r.body, query))
+      .map((r) => ({ ...r, body: maskSecrets(r.body) })));
   }
 
   /**
@@ -759,7 +763,7 @@ export class ChatsRepository {
     LEFT JOIN tasks t ON t.id = m.task_id
         ORDER BY m.id`,
       [tenantId, chatId, messageId, viewerId],
-    );
+    ).then(withSecretSpans);
   }
 
   /**
