@@ -2920,7 +2920,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   </button>
                 </span>
               )}
-              <span className="chat-head-title">
+              <span className="chat-head-title" style={{ minWidth: 0 }}>
                 {active.kind === 'dm' && <span className={`presence ${active.peerOnline ? 'on' : ''}`} title={active.peerOnline ? 'в сети' : 'не в сети'} />}
                 <b>{active.title ?? 'Чат'}</b>
                 {canRenameChat(active) && (
@@ -2939,11 +2939,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                       {ctx.status === 'archived' ? 'в архиве' : 'проект'}
                     </span>
                     {ctx.client_name && <span className="chat-row-group">{ctx.client_name}</span>}
-                    <span className="dim chat-ctx">
-                      {ctx.owner_name && <span title="Ответственный за проект">ответственный: {ctx.owner_name} · </span>}
+                    {/* #4902: при открытой правой панели строка сжимается многоточием и не выталкивает кнопки шапки */}
+                    <span className="dim chat-ctx" style={{ display: 'block', minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {ctx.owner_name && <span style={{ display: 'inline' }} title="Ответственный за проект">ответственный: {ctx.owner_name} · </span>}
                       задач в работе: {ctx.open_tasks}
-                      {ctx.overdue > 0 && <span className="chat-ctx-overdue"> · просрочено: {ctx.overdue}</span>}
-                      {ctx.nearest_deadline && <span> · ближайший срок: {new Date(ctx.nearest_deadline).toLocaleDateString('ru-RU')}</span>}
+                      {ctx.overdue > 0 && <span className="chat-ctx-overdue" style={{ display: 'inline' }}> · просрочено: {ctx.overdue}</span>}
+                      {ctx.nearest_deadline && <span style={{ display: 'inline' }}> · ближайший срок: {new Date(ctx.nearest_deadline).toLocaleDateString('ru-RU')}</span>}
                     </span>
                     <button
                       className="ui-btn ui-btn-ghost ui-btn-sm"

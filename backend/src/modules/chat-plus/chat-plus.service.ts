@@ -7,6 +7,12 @@ import { ago, DECISION, Msg, myUnanswered, waitingForMe } from './inbox-rules';
 
 type Viewer = { tenantId: string; userId: string; role: string };
 
+/** Модель любит повторять название чата в начале строки — оно и так стоит перед ней. */
+const dropLead = (text: string, chat: string) => {
+  const t = text.trim();
+  return t.toLowerCase().startsWith(chat.toLowerCase()) ? t.slice(chat.length).replace(/^\s*[:—–-]\s*/, '') || t : t;
+};
+
 const MISSED_SYSTEM = 'Ты помощник в рабочем мессенджере. По непрочитанным сообщениям сделай сводку работы человека по всем чатам. '
   + 'Ответь JSON: {"lines":[{"chatId":"…","text":"тема одной строкой: что обсуждали и чем кончилось","ids":["id сообщения-источника"]}],'
   + '"decisions":[{"text":"что решили","id":"…"}],"todo":[{"text":"что ждут от человека","id":"…"}]}. '
@@ -152,7 +158,7 @@ export class ChatPlusService {
       }), 'chat_missed_summary') ?? '');
       const j = JSON.parse(raw.match(/\{[\s\S]*\}/)?.[0] ?? '{}') as { lines?: { chatId?: string; text?: string; ids?: string[] }[]; decisions?: { text?: string; id?: string }[]; todo?: { text?: string; id?: string }[] };
       lines = (j.lines ?? []).filter((l) => l.text && l.chatId && chats.has(String(l.chatId))).slice(0, 8)
-        .map((l) => ({ chatId: String(l.chatId), chat: chats.get(String(l.chatId))!, text: String(l.text).slice(0, 300), messageId: (l.ids ?? []).map(String).find((x) => ids.has(x)) ?? null }));
+        .map((l) => ({ chatId: String(l.chatId), chat: chats.get(String(l.chatId))!, text: dropLead(String(l.text), chats.get(String(l.chatId))!).slice(0, 300), messageId: (l.ids ?? []).map(String).find((x) => ids.has(x)) ?? null }));
       decisions = (j.decisions ?? []).filter((d) => d.text && d.id && byId.has(String(d.id))).slice(0, 5)
         .map((d) => ({ text: String(d.text).slice(0, 240), chatId: byId.get(String(d.id))!.chat_id, messageId: String(d.id) }));
       todo = (j.todo ?? []).filter((d) => d.text && d.id && byId.has(String(d.id))).slice(0, 5)
