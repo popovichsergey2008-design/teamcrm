@@ -73,7 +73,9 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     expect(day1.plan.status).toBe('proposed');
     expect(day1.plan.scoreVersion).toBe('rule_of_3_v1');
     const keys = day1.top.map((i: any) => (i.kind === 'approval' ? `approval:${i.approvalId}` : `task:${i.taskId}`));
-    expect(keys).toEqual(expect.arrayContaining([`task:${overdue.id}`, `task:${soon.id}`, `approval:${appr.id}`]));
+    expect(keys).toEqual(expect.arrayContaining([`task:${overdue.id}`, `task:${soon.id}`]));
+    // #4891, п. 4: согласования — в блоке «Проверки и решения», а не среди главных результатов
+    expect(keys).not.toContain(`approval:${appr.id}`);
     expect(keys).not.toContain(`task:${idle.id}`);
     expect(keys).not.toContain(`task:${blocked.id}`);
     expect(day1.top[0].taskId).toBe(String(overdue.id)); // главная миссия — самое весомое
@@ -94,12 +96,13 @@ describe('ТЗ-16 — Фокус дня: правило трёх (e2e)', () => {
     await http.post('/api/focus/today/accept').set(H(tok)).expect(201);
     await http.post('/api/focus/today/recalculate').set(H(tok)).expect(409);
 
-    // 5. Замена по одной: на место согласования — задача без срока
-    const apprItem = day1.top.find((i: any) => i.kind === 'approval');
+    // 5. Свободное третье место — задача без срока; затем замена по одной, с причиной
+    const added = (await http.post('/api/focus/today/items').set(H(tok)).send({ key: `task:${idle.id}`, rank: 3 }).expect(201)).body.data;
+    expect(added.top.find((i: any) => i.rank === 3).taskId).toBe(String(idle.id));
     const replaced = (await http.post('/api/focus/today/items').set(H(tok))
-      .send({ key: `task:${idle.id}`, rank: apprItem.rank, reason: 'wrong_priority' }).expect(201)).body.data;
+      .send({ key: `task:${blocked.id}`, rank: 3, reason: 'wrong_priority' }).expect(201)).body.data;
     expect(replaced.plan.status).toBe('modified');
-    expect(replaced.top.find((i: any) => i.rank === apprItem.rank).taskId).toBe(String(idle.id));
+    expect(replaced.top.find((i: any) => i.rank === 3).taskId).toBe(String(blocked.id));
     // чужое добавить нельзя
     await http.post('/api/focus/today/items').set(H(tok)).send({ key: 'task:999999999' }).expect(400);
 

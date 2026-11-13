@@ -76,3 +76,9 @@
 .zen-outcome-title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 
 .zen-more-tasks { color: var(--text-dim); font-size: var(--fs-sm); }
+
+/* #4891, п. 5: следующий шаг и «Тишина» */
+.zen-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.zen-card { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-elev); min-width: 0; overflow-wrap: anywhere; }
+.zen-card .zen-end-acts { flex-direction: row; width: auto; }
+.zen-team { text-align: center; font-size: 13px; }

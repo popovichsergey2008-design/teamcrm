@@ -173,6 +173,10 @@ export function pickTop3(scored: Scored[], opts: { freeHours?: number | null } =
     if (out.length >= 3) break;
     const others = out.filter((x) => x.kind !== 'task').length;
     if (c.kind !== 'task' && others >= 2 && hasOwn) continue;
+    // #4891, п. 4: проверки чужой работы не занимают места главных результатов — не больше одной,
+    // а согласования — в блоке «Проверки и решения» и в быстрых делах
+    if (hasOwn && c.kind === 'review' && out.some((x) => x.kind === 'review')) continue;
+    if (hasOwn && c.kind === 'approval') continue;
     if (opts.freeHours != null && c.estimateHours && hours + c.estimateHours > opts.freeHours && out.length > 0) continue;
     out.push(c);
     hours += c.estimateHours ?? 0;

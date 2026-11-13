@@ -99,11 +99,11 @@ describe('выбор тройки', () => {
     expect(picked).toHaveLength(3);
   });
 
-  it('не больше двух проверок, если есть своя достойная задача', () => {
+  it('#4891, п. 4: не больше одной проверки, если есть своя достойная задача', () => {
     const reviews = [1, 2, 3].map(() => score(task({ kind: 'review', waiting: 3, deadlineAt: msk('2026-10-06T12:00:00') })));
     const own = score(task({ deadlineAt: msk('2026-10-09T12:00:00') }));
     const picked = pickTop3([...reviews, own]);
-    expect(picked.filter((p) => p.kind === 'review')).toHaveLength(2);
+    expect(picked.filter((p) => p.kind === 'review')).toHaveLength(1);
     expect(picked.map((p) => p.key)).toContain(own.key);
   });
 

@@ -9,6 +9,8 @@ import { readFocusMinutes, refreshFocusSession, remainingNow, setFocusSession, t
 import { useEscape } from '../hooks/useEscape';
 import { feedback } from '../lib/feedback';
 import { Linkify } from './Linkify';
+import { request } from '../lib/api';
+import { useAuth } from '../state/auth';
 
 /**
  * Окно глубокой работы (ТЗ-16, п. 49): таймер, задача, что считать готовым,
@@ -78,6 +80,28 @@ export function FocusZen({ session, onOpenTask }: {
   const [later, setLater] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const focusTasks = session.tasks?.length ? session.tasks : task ? [{ id: task.id, title: task.title, projectId: task.projectId }] : [];
+  /*
+    #4891, п. 5: следующий шаг (записанный при прошлом выходе или первый пункт чек-листа),
+    «Тишина» — сколько сообщений и звонков ждут, «Записать шаг и выйти» — прогресс сохраняется,
+    следующий старт продолжает с него.
+  */
+  const { user } = useAuth();
+  const [step, setStep] = useState<string | null>(null);
+  const [stepsDone, setStepsDone] = useState<string[]>([]);
+  const [waiting, setWaiting] = useState(0);
+  const [saving, setSaving] = useState<string | null>(null);
+  useEffect(() => {
+    if (!task?.id) return;
+    void request<{ nextStep: string | null; stepsDone: string[] }>('GET', `/focus/plus/tasks/${task.id}/note`)
+      .then((n) => { setStep(n.nextStep); setStepsDone(n.stepsDone ?? []); }).catch(() => undefined);
+  }, [task?.id]);
+  useEffect(() => {
+    if (session.finished) return;
+    const load = () => api.focusSummary(session.id).then((sm) => setWaiting(sm.items.length)).catch(() => undefined);
+    void load();
+    const t = window.setInterval(load, 60_000);
+    return () => window.clearInterval(t);
+  }, [session.id, session.finished]);
 
   useEscape(() => setMini(true), !mini && !ended);
 
@@ -134,7 +158,12 @@ export function FocusZen({ session, onOpenTask }: {
       setFocusSession(await api.focusStart({ taskId: task?.id ?? null, itemId: session.itemId, minutes: readFocusMinutes() }));
       feedback('focus.started');
     }
-    if (next === 'done' && task) onOpenTask(task.projectId, task.id);
+    if (next === 'done') {
+      // #4891, п. 6: плашка «что сделано · сколько в фокусе · N из 3 · кто получил уведомление»
+      const worked = Math.max(1, Math.round((Date.now() - Date.parse(session.startedAt)) / 60_000));
+      window.dispatchEvent(new CustomEvent('teamcrm:focus-done', { detail: { taskId: task?.id ?? null, title: task?.title ?? null, minutes: worked } }));
+      if (task) onOpenTask(task.projectId, task.id);
+    }
     // «Задача выполнена» — в её карточку: сдаётся обычным путём, с проверками приёмки
     const doneTask = focusTasks.find((t) => results[t.id] === 'done');
     const moreTask = focusTasks.find((t) => results[t.id] === 'more');
@@ -259,6 +288,29 @@ export function FocusZen({ session, onOpenTask }: {
                 <p><Linkify text={task.description} /></p>
               </details>
             )}
+            <div className="zen-cards">
+              <div className="zen-card">
+                <div className="zen-sub">Следующий шаг</div>
+                {saving !== null ? (
+                  <>
+                    <input className="input" autoFocus value={saving} placeholder="С чего продолжить в следующий раз?" onChange={(e) => setSaving(e.target.value)} aria-label="Следующий шаг" />
+                    <div className="zen-end-acts">
+                      <Button size="sm" variant="primary" disabled={busy} onClick={() => void act(async () => {
+                        if (task?.id) await request('PUT', `/focus/plus/tasks/${task.id}/note`, { stepDone: step ?? undefined, nextStep: saving.trim() || null });
+                        await finish('back');
+                      })}>Сохранить и выйти</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSaving(null)}>Отмена</Button>
+                    </div>
+                  </>
+                ) : <b>{step ?? 'Какой первый шаг? — запишите при выходе'}</b>}
+                {stepsDone.length > 0 && <div className="dim">{stepsDone.slice(-3).map((x) => `✓ ${x}`).join(' · ')}</div>}
+              </div>
+              <div className="zen-card">
+                <div className="zen-sub">Тишина</div>
+                <b>Уведомления на паузе</b>
+                <div className="dim">{waiting + missed.length ? `ждут: ${waiting} ${waiting === 1 ? 'сообщение' : 'сообщения'}${missed.length ? ` и ${missed.length} звонок` : ''}` : 'пока ничего не пришло'} · срочные — по вашим правилам</div>
+              </div>
+            </div>
             {checks.length > 0 && (
               <section className="zen-checks" aria-label="Чек-лист">
                 <div className="zen-sub">Чек-лист · {doneCount} из {checks.length}</div>
@@ -275,6 +327,9 @@ export function FocusZen({ session, onOpenTask }: {
               <textarea className="input" rows={3} value={notes} onChange={(e) => onNotes(e.target.value)} placeholder="Мысль, которую нельзя потерять, — и дальше работать" />
             </label>
             <div className="zen-acts">
+              {task && <Button variant="primary" disabled={busy} onClick={() => void finish('done')}><Icon name="check" size={15} /> Готово — задача сделана</Button>}
+              {task && saving === null && <Button variant="outline" disabled={busy} onClick={() => setSaving('')}>Записать шаг и выйти</Button>}
+              <Button variant="outline" disabled={busy} onClick={() => void act(async () => { await request('POST', `/focus/plus/sessions/${session.id}/extend`, { minutes: 10 }); await refreshFocusSession(); })}>+10 мин</Button>
               {session.status === 'running'
                 ? <Button variant="outline" disabled={busy} onClick={() => void act(async () => setFocusSession(await api.focusPause(session.id)))}><Icon name="pause" size={15} /> Пауза</Button>
                 : <Button variant="primary" disabled={busy} onClick={() => void act(async () => setFocusSession(await api.focusResume(session.id)))}><Icon name="play" size={15} /> Продолжить</Button>}
@@ -282,6 +337,7 @@ export function FocusZen({ session, onOpenTask }: {
               <Button variant="ghost" disabled={busy} onClick={() => void finish('cancel')}>Отменить фокус</Button>
             </div>
             {err && <div className="error-text" role="alert">{err}</div>}
+            <div className="zen-team dim">Команда видит: «{user?.fullName?.split(' ')[0] ?? 'Вы'} в фокусе до {new Date(session.plannedEndAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}»</div>
           </>
         )}
       </div>

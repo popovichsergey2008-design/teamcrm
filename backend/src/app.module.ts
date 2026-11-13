@@ -91,6 +91,7 @@ import { AssistantModule } from './modules/assistant/assistant.module';
 import { ChatsModule } from './modules/chats/chats.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarPlusModule } from './modules/calendar-plus/calendar-plus.module';
+import { FocusPlusModule } from './modules/focus-plus/focus-plus.module';
 import { BookingModule } from './modules/booking/booking.module';
 import { FeedModule } from './modules/feed/feed.module';
 import { ProactiveModule } from './modules/proactive/proactive.module';
@@ -185,6 +186,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     MediaModule,
     CalendarModule,
     CalendarPlusModule,
+    FocusPlusModule,
     BookingModule,
     FeedModule,
     ProactiveModule,
