@@ -3,48 +3,57 @@ import { Icon } from '../components/Icon';
 import { SkeletonList } from '../components/Skeleton';
 import { Button } from '../components/ui/button';
 import { Dialog } from '../components/ui/dialog';
-import { api, ApiError, FocusCloseSummary, FocusToday } from '../lib/api';
+import { api, ApiError, FocusToday } from '../lib/api';
+import { CloseSummary2, focusApi } from './focus/focus-api';
 
-const plural = (n: number, one: string, few: string, many: string) => {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b > 1 && b < 5) return few;
-  if (b === 1) return one;
-  return many;
-};
+type When = 'tomorrow' | 'date' | 'inbox';
 
 /**
- * «Завершить день и подвести итоги» (ТЗ-16, п. 80–86).
+ * «Завершить день» за 2 минуты (ТЗ-16, п. 80–86; #4891, п. 10).
  *
- * Открывается только по нажатию — поверх работы сама не выскакивает. Тон — без
- * упрёков: «завершено 2 из 3», а не «вы не успели». Хвосты не уезжают «на завтра»
- * скопом: всё возвращается в общий список, и утром тройка соберётся заново; на
- * завтра закрепляется только то, что человек отметил сам.
+ * Открывается только по нажатию (или из мягкого напоминания в конце рабочего дня). Тон —
+ * без упрёков: «Хороший день: 2 из 3». По каждой незавершённой — что сделано, следующий шаг
+ * и «Завтра 10:00» / «Выбрать день» / «Во входящие»: ставится время в календаре, срок задачи
+ * не меняется. «Завтра начните с…» — первая строка утреннего брифа. После — «Не в сети».
  */
 export function CloseDayDialog({ open, onClose, onClosed }: {
   open: boolean;
   onClose: () => void;
   onClosed: (next: FocusToday) => void;
 }) {
-  const [sum, setSum] = useState<FocusCloseSummary | null>(null);
-  const [tomorrow, setTomorrow] = useState<Set<string>>(new Set());
+  const [sum, setSum] = useState<CloseSummary2 | null>(null);
+  const [plan, setPlan] = useState<Record<string, { when: When; date: string; step: string }>>({});
+  const [startWith, setStartWith] = useState('');
   const [quiet, setQuiet] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     if (!open) return;
-    setSum(null); setErr(''); setTomorrow(new Set());
-    api.focusCloseSummary()
-      .then((s) => { setSum(s); setQuiet(s.quietDefault); })
+    setSum(null); setErr(''); setStartWith('');
+    focusApi.closeSummary()
+      .then((s) => {
+        setSum(s); setQuiet(s.quietDefault);
+        setPlan(Object.fromEntries(s.remaining.map((r) => [r.id, { when: 'inbox' as When, date: '', step: r.nextStep ?? '' }])));
+      })
       .catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось собрать итоги'));
   }, [open]);
 
+  const set = (id: string, patch: Partial<{ when: When; date: string; step: string }>) =>
+    setPlan((p) => ({ ...p, [id]: { ...p[id], ...patch } }));
+
   const finish = async () => {
+    if (!sum) return;
     setBusy(true); setErr('');
     try {
-      onClosed(await api.focusClose([...tomorrow], quiet));
+      await focusApi.close({
+        startWith: startWith.trim() || null, quiet,
+        items: sum.remaining.map((r) => {
+          const p = plan[r.id];
+          return { itemId: r.id, taskId: r.taskId, nextStep: r.taskId && p.step !== (r.nextStep ?? '') ? p.step : undefined, when: p.when, date: p.when === 'date' ? p.date : null };
+        }),
+      });
+      onClosed(await api.focusToday());
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не получилось — попробуйте ещё раз');
     } finally {
@@ -53,17 +62,12 @@ export function CloseDayDialog({ open, onClose, onClosed }: {
   };
 
   const all = sum && sum.topTotal > 0 && sum.topDone === sum.topTotal;
-  const toggle = (id: string) => setTomorrow((s) => {
-    const n = new Set(s);
-    if (n.has(id)) n.delete(id); else n.add(id);
-    return n;
-  });
 
   return (
     <Dialog
       open={open}
       onOpenChange={(o) => { if (!o) onClose(); }}
-      title={all ? 'Отличная работа!' : 'Итоги дня'}
+      title={sum ? sum.headline : 'Итоги дня'}
       footer={(
         <>
           <Button variant="ghost" onClick={onClose}>Не сейчас</Button>
@@ -77,37 +81,44 @@ export function CloseDayDialog({ open, onClose, onClosed }: {
         <div className="fd-close">
           {all && <div className="fd-close-win" aria-hidden="true"><Icon name="check-circle" size={40} /></div>}
           <div className="fd-close-stats">
-            <div><b>{sum.topDone} / {sum.topTotal}</b><span>главных действий</span></div>
-            <div><b>{sum.deepMinutes}</b><span>{plural(sum.deepMinutes, 'минута', 'минуты', 'минут')} глубокого фокуса</span></div>
-            <div><b>{sum.unblocked}</b><span>разблокировано задач коллег</span></div>
-            <div><b>{sum.meetings}</b><span>{plural(sum.meetings, 'встреча', 'встречи', 'встреч')}</span></div>
+            <div><b>{sum.topDone} из {sum.topTotal}</b><span>результатов готово</span></div>
+            <div><b>{sum.deepHours}</b><span>глубокой работы</span></div>
+            <div><b>{sum.reviewsDone}</b><span>проверок и решений разобрано</span></div>
+            <div><b>{sum.moved}</b><span>задач сдвинулось</span></div>
           </div>
 
-          {sum.remaining.length > 0 && (
-            <section>
-              <p>Сегодня завершено {sum.topDone} из {sum.topTotal} главных действий. {sum.remaining.length === 1 ? 'Осталось:' : 'Остались:'}</p>
-              {sum.remaining.map((i) => (
-                <label key={i.id} className="fd-close-left">
-                  {i.kind === 'task' && i.taskId
-                    ? <input type="checkbox" checked={tomorrow.has(i.id)} onChange={() => toggle(i.id)} />
-                    : <span className="fd-close-dot" aria-hidden="true" />}
-                  <span>
-                    {i.title ?? 'Задача недоступна'}
-                    {i.kind === 'task' && i.taskId && <span className="dim"> — закрепить на завтра</span>}
-                  </span>
-                </label>
-              ))}
-              <p className="dim">Что не закрепите, вернётся в общий список — утром фокус соберётся заново.</p>
-            </section>
-          )}
-          {sum.secondaryLeft > 0 && (
-            <p className="dim">
-              Ещё {sum.secondaryLeft} {plural(sum.secondaryLeft, 'второстепенное действие', 'второстепенных действия', 'второстепенных действий')} останутся в списке — ничего не потеряется.
-            </p>
-          )}
+          {sum.remaining.map((r) => {
+            const p = plan[r.id];
+            if (!p) return null;
+            return (
+              <section key={r.id} className="fd-close-item">
+                <b>{r.title ?? 'Задача недоступна'}</b>
+                {r.done.length > 0 && <div className="dim fp-small">Сделано: {r.done.join(' · ')}</div>}
+                {r.taskId && (
+                  <input className="input" value={p.step} placeholder="Следующий шаг" aria-label={`Следующий шаг: ${r.title ?? ''}`}
+                    onChange={(e) => set(r.id, { step: e.target.value })} />
+                )}
+                {r.taskId && r.kind === 'task' && (
+                  <div className="fd-close-when" role="group" aria-label="Когда продолжить">
+                    {([['tomorrow', 'Завтра 10:00'], ['date', 'Выбрать день'], ['inbox', 'Во входящие']] as [When, string][]).map(([w, label]) => (
+                      <button key={w} type="button" className={`fd-chip${p.when === w ? ' on' : ''}`} aria-pressed={p.when === w} onClick={() => set(r.id, { when: w })}>{label}</button>
+                    ))}
+                    {p.when === 'date' && <input className="input fp-date" type="date" value={p.date} min={new Date().toISOString().slice(0, 10)} onChange={(e) => set(r.id, { date: e.target.value })} aria-label="День" />}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+          {sum.remaining.length > 0 && <p className="dim fp-small">Срок задач не меняется — ставится только время в календаре.</p>}
+
+          <label className="fd-close-start">
+            <span>Завтра начните с…</span>
+            <input className="input" value={startWith} maxLength={500} placeholder="Например: созвон с Иваном по отчёту" onChange={(e) => setStartWith(e.target.value)} />
+            <span className="dim fp-small">Этой строкой начнётся утренний бриф</span>
+          </label>
           <label className="fd-close-quiet">
             <input type="checkbox" checked={quiet} onChange={(e) => setQuiet(e.target.checked)} />
-            Тихий режим до начала следующего рабочего дня
+            «Не в сети» и тишина до начала следующего рабочего дня
             <span className="dim">срочные стуки и безопасность всё равно дойдут</span>
           </label>
         </div>

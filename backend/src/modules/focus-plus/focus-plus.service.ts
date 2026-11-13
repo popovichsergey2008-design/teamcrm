@@ -87,7 +87,15 @@ export class FocusPlusService {
     const mission = top.find((i) => i.status !== 'done' && i.kind === 'task') ?? top.find((i) => i.status !== 'done');
     const reviewsSlot = plan.timeline.find((s) => s.kind === 'reviews');
     const tf = (ms: number) => new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+    // #4891, п. 10: «Завтра начните с…», записанное вечером, — первой строкой брифа
+    const startWith = (await this.db.one<{ text: string }>(
+      `SELECT text FROM focus_start_with WHERE user_id = $1 AND focus_date = $2::date`, [v.userId, today]))?.text ?? null;
+    // п. 11: новый человек — пустой Фокус и ни одного прошлого плана с делами
+    const firstDay = !top.length && !(await this.db.one<{ x: number }>(
+      `SELECT 1 AS x FROM focus_day_items i JOIN focus_day_plans p ON p.id = i.plan_id
+        WHERE p.tenant_id = $1 AND p.user_id = $2 AND p.focus_date < $3::date LIMIT 1`, [v.tenantId, v.userId, today]));
     const brief = [
+      startWith ? `Вы просили начать с: ${startWith.replace(/[.\s]+$/, '')}.` : '',
       `Сегодня ${hours(Math.max(0, plan.availableMin))} на задачи.`,
       mission ? `Начните с «${shortTitle(mission.title ?? '')}» — это главный результат дня.` : 'Главный результат дня не выбран — выберите задачу.',
       reviewsSlot ? `Проверки и решения — одним блоком в ${tf(reviewsSlot.start)}.` : '',
@@ -99,7 +107,7 @@ export class FocusPlusService {
     return {
       enabled: true as const,
       updatedAt: new Date(now).toISOString(),
-      phase, dayOff, nextWorkday: next,
+      phase, dayOff, nextWorkday: next, firstDay, startWith,
       date: today, timeZone: tz,
       workStart: prefs.workStart, workEnd: prefs.workEnd,
       capacity: {

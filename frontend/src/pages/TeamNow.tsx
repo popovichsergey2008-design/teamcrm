@@ -8,17 +8,19 @@ import { getSocket } from '../lib/socket';
 import { initialsOf } from '../lib/initials';
 import { navigate } from '../lib/router';
 import { toastSaved } from '../lib/notifications';
+import { focusApi } from './focus/focus-api';
 
 type Status = TeamPresence['status'];
 
 /** Группы (п. 66): сначала тех, кого лучше не трогать; «не в сети» — свёрнуто. */
-const GROUPS: { status: Status[]; title: string }[] = [
-  { status: ['deep_focus'], title: 'В глубоком фокусе' },
-  { status: ['in_meeting'], title: 'На созвоне' },
-  { status: ['do_not_disturb'], title: 'Просили не беспокоить' },
+// #4891, п. 9: компактно — сразу видны те, кого лучше не трогать; остальные — по «Ещё»
+const GROUPS: { status: Status[]; title: string; main?: boolean }[] = [
+  { status: ['deep_focus'], title: 'В фокусе', main: true },
+  { status: ['in_meeting'], title: 'На созвоне', main: true },
+  { status: ['do_not_disturb'], title: 'Не беспокоить', main: true },
   { status: ['available'], title: 'Доступны' },
   { status: ['break'], title: 'На перерыве' },
-  { status: ['workday_closed'], title: 'Завершили день' },
+  { status: ['workday_closed'], title: 'Не в сети · завершили день' },
 ];
 
 const hm = (iso: string | null) => {
@@ -40,13 +42,13 @@ function line(p: TeamPresence): string {
     case 'in_meeting': return p.note ? `На созвоне · ${p.note}` : 'На созвоне';
     case 'do_not_disturb': return 'Не беспокоить';
     case 'break': return p.until ? `Перерыв до ${hm(p.until)}` : 'Перерыв';
-    case 'workday_closed': return 'День завершён';
+    case 'workday_closed': return 'Не в сети · день завершён';
     case 'available': return p.taskTitle ? `Работает: ${p.taskTitle}` : p.note ? p.note : 'На месте';
     default: return 'Не в сети';
   }
 }
 
-const Row = memo(function Row({ p, me, open, onToggle }: { p: TeamPresence; me: boolean; open: boolean; onToggle: () => void }) {
+const Row = memo(function Row({ p, me, open, onToggle, link }: { p: TeamPresence; me: boolean; open: boolean; onToggle: () => void; link?: number }) {
   const [busy, setBusy] = useState(false);
   const write = async () => {
     setBusy(true);
@@ -71,6 +73,8 @@ const Row = memo(function Row({ p, me, open, onToggle }: { p: TeamPresence; me: 
         <span className="tn-text">
           <span className="tn-name">{p.fullName}{me ? ' (вы)' : ''}</span>
           <span className="tn-line">{line(p)}</span>
+          {/* что связывает вас сейчас (#4891, п. 9) */}
+          {!!link && <span className="tn-link">ждёт вашей проверки{link > 1 ? ` · ${link}` : ''}</span>}
         </span>
       </button>
       {open && !me && (
@@ -101,6 +105,9 @@ export function TeamNow({ meId, onOpenPulse }: { meId: string | undefined; onOpe
   const [denied, setDenied] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showOffline, setShowOffline] = useState(false);
+  const [showRest, setShowRest] = useState(false);
+  const [links, setLinks] = useState<Record<string, { waitingMyReview: number }>>({});
+  useEffect(() => { void focusApi.teamLinks().then(setLinks).catch(() => undefined); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -134,21 +141,29 @@ export function TeamNow({ meId, onOpenPulse }: { meId: string | undefined; onOpe
         {onOpenPulse && <Button variant="ghost" size="sm" className="tn-pulse" onClick={onOpenPulse}>Открыть Пульс команды</Button>}
       </h3>
       {GROUPS.map((g) => {
-        const list = others.filter((p) => g.status.includes(p.status));
+        const list = others.filter((p) => g.status.includes(p.status) && (g.main || showRest || links[p.userId]));
         if (!list.length) return null;
         return (
           <div key={g.title} className="tn-group">
             <div className="tn-group-title">{g.title} · {list.length}</div>
             <ul className="tn-list">
               {list.map((p) => (
-                <Row key={p.userId} p={p} me={p.userId === String(meId)} open={openId === p.userId}
+                <Row key={p.userId} p={p} me={p.userId === String(meId)} open={openId === p.userId} link={links[p.userId]?.waitingMyReview}
                   onToggle={() => setOpenId((v) => (v === p.userId ? null : p.userId))} />
               ))}
             </ul>
           </div>
         );
       })}
-      {offline.length > 0 && (
+      {(() => {
+        const rest = others.filter((p) => !GROUPS.some((g) => g.main && g.status.includes(p.status)) && !links[p.userId]).length;
+        return rest > 0 ? (
+          <button type="button" className="tn-more" aria-expanded={showRest} onClick={() => setShowRest((v) => !v)}>
+            {showRest ? 'Свернуть' : `Ещё ${rest}: доступны, на перерыве, завершили день`} <Icon name={showRest ? 'chevron-up' : 'chevron-down'} size={13} />
+          </button>
+        ) : null;
+      })()}
+      {offline.length > 0 && showRest && (
         <button type="button" className="tn-more" aria-expanded={showOffline} onClick={() => setShowOffline((v) => !v)}>
           Не в сети · {offline.length} <Icon name={showOffline ? 'chevron-up' : 'chevron-down'} size={13} />
         </button>

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Readable } from 'stream';
+import { isJunkPhrase } from '../../common/agreement-filter';
 import { AppException } from '../../common/http/app-exception';
 import { localParts } from '../assistant/ping-rules';
 import { tomorrowOf, zonedTime } from '../focus/close-day';
@@ -209,6 +210,7 @@ export class FocusBriefService implements OnModuleInit {
       }));
     const topTaskIds = top.map((i) => i.taskId).filter((x): x is string => !!x);
 
+    const learned = await this.repo.notPromises(v.tenantId).catch(() => [] as string[]);
     const [meetings, postcall, commitments, due, waiting, cal, ann, overloaded, submitted] = await Promise.all([
       this.repo.meetingsYesterday(v.tenantId, v.userId, boss, v.role === 'client', yStart, dayStart),
       this.repo.postcallPending(v.tenantId, v.userId),
@@ -230,7 +232,8 @@ export class FocusBriefService implements OnModuleInit {
       dayOff: plan.dayOff,
       boss,
       top,
-      meetings: meetings.map((m) => ({ id: m.id, title: m.title, at: hhmm(new Date(m.at), tz), decisions: m.decisions.map((d) => d.replace(/\s+/g, ' ').trim().slice(0, 140)) })),
+      // #4891, п. 8: пустые реплики и отмеченное «Это не обещание» в бриф не цитируются
+      meetings: meetings.map((m) => ({ id: m.id, title: m.title, at: hhmm(new Date(m.at), tz), decisions: m.decisions.filter((d) => !isJunkPhrase(d, learned)).map((d) => d.replace(/\s+/g, ' ').trim().slice(0, 140)) })),
       postcall: postcall.map((p) => ({ meetingId: p.meeting_id, title: p.title })),
       commitments: commitments.map((c) => ({
         id: c.id, action: c.action_text, taskId: c.task_id, projectId: c.project_id,

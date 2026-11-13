@@ -62,11 +62,12 @@ export function DeepFocusGuard({ peerId, peerName }: { peerId: string; peerName:
     <div className="tv2-callout" role="status" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px' }}>
       <Icon name="target" size={15} />
       <span style={{ flex: 1, minWidth: 200 }}>
-        {first} в глубоком фокусе{p.until ? ` до ${hm(p.until)}` : ''}{p.focusTasks?.length ? ` · ${p.focusTasks.map((t) => `#${t.id}`).join(', ')}` : ''}. Сообщение будет доставлено без звука.
+        {/* #4891, п. 9: «Константин в фокусе до 15:30 — сообщение придёт после. Срочно?» */}
+        {first} в фокусе{p.until ? ` до ${hm(p.until)}` : ''}{p.focusTasks?.length ? ` · ${p.focusTasks.map((t) => `#${t.id}`).join(', ')}` : ''} — сообщение придёт после. Срочно?
       </span>
       {knocked
         ? <span className="dim">Срочное обращение отправлено</span>
-        : <Button variant="outline" size="sm" disabled={busy} onClick={() => void knock()}><Icon name="hand" size={14} /> Срочно связаться</Button>}
+        : <Button variant="outline" size="sm" disabled={busy} onClick={() => void knock()}><Icon name="hand" size={14} /> Срочно</Button>}
     </div>
   );
 }

@@ -22,6 +22,9 @@ import { TeamNow } from './TeamNow';
 import { MorningPlan } from './focus/MorningPlan';
 import { MainCard, ReviewsBlock } from './focus/MainCard';
 import { ReviewRun } from './focus/ReviewRun';
+import { Replan } from './focus/Replan';
+import { Agreements } from './focus/Agreements';
+import { FirstDay } from './focus/FirstDay';
 import { dur, focusApi, PlusDay } from './focus/focus-api';
 import { useAuth } from '../state/auth';
 import { helloName } from '../lib/hello-name';
@@ -127,6 +130,12 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     return () => window.removeEventListener('teamcrm:focus-done', onDone);
   }, []);
   const phase = plus?.phase ?? 'day';
+  // мягкое напоминание в конце рабочего дня ведёт сюда с ?close=1 (#4891, п. 10)
+  useEffect(() => {
+    if (!active || !/[?&]close=1/.test(window.location.search)) return;
+    setClosing(true);
+    try { window.history.replaceState(window.history.state, '', window.location.pathname); } catch { /* адрес останется — не страшно */ }
+  }, [active]);
   const briefOn = !!day.brief && day.brief.enabled;
 
   const apply = (next: FocusToday) => {
@@ -601,7 +610,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       )}
 
       {/* Новая критичная задача после принятия — только предложение (п. 38). */}
-      {critical && (
+      {plus && <div className="fd-secondary"><Replan onChanged={() => { void reload(); void loadPlus(); }} /></div>}
+      {critical && !plus && (
         <section className="fd-critical" role="status">
           <div className="fd-critical-line">
             <Icon name="zap" size={16} />
@@ -636,7 +646,9 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       )}
 
 
-      {top.length === 0 ? (
+      {top.length === 0 && plus?.firstDay ? (
+        <FirstDay day={plus} onDone={(d) => { setPlus(d); void reload(); }} />
+      ) : top.length === 0 ? (
         <EmptyState
           icon="target"
           title="На сегодня критичных задач нет"
@@ -692,6 +704,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       {/* Всё остальное — ниже тройки (ТЗ-27, п. 3): в Дзене прячется. */}
       <div className="fd-secondary fd-stack">
         {day.huddle.map(huddleCard)}
+        {plus && <Agreements meId={user?.id} />}
         <Suspense fallback={null}><AiDemoInvite /></Suspense>
         <OnboardingCard />
         <MeetingAgenda onJoin={onJoinCall} />

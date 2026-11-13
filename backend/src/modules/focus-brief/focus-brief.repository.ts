@@ -215,6 +215,11 @@ export class FocusBriefRepository {
   // ── факты (все — с правами) ──
 
   /** Вчерашние встречи, где человек был или которые он завёл, — с решениями; только видимые. */
+  /** #4891, п. 8: фразы, отмеченные «Это не обещание», — в бриф не цитируются. */
+  async notPromises(tenantId: string): Promise<string[]> {
+    return (await this.db.many<{ phrase: string }>(`SELECT phrase FROM focus_not_promises WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 500`, [tenantId])).map((r) => r.phrase);
+  }
+
   meetingsYesterday(tenantId: string, userId: string, boss: boolean, client: boolean, from: Date, to: Date) {
     return this.db.many<{ id: string; title: string; at: Date; decisions: string[] }>(
       `SELECT m.id::text, m.title, COALESCE(m.happened_at, m.created_at) AS at,
