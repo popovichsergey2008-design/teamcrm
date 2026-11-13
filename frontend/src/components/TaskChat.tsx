@@ -190,8 +190,16 @@ export function TaskChat({
   /** Правка своего сообщения: сказанное вслух не переписывают, написанное — да. */
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
   // #4888: правка сообщения — курсор сразу в поле, в конец текста (меню отдаёт фокус кнопке «⋯» — ставим после)
+  const wasEditing = useRef(false);
   useEffect(() => {
-    if (!editing) return;
+    // #4894: правку закончили — курсор остаётся в строке сообщения, можно писать дальше
+    if (!editing) {
+      if (!wasEditing.current) return;
+      wasEditing.current = false;
+      const t = window.setTimeout(() => composeRef.current?.querySelector('textarea')?.focus(), 60);
+      return () => window.clearTimeout(t);
+    }
+    wasEditing.current = true;
     const t = window.setTimeout(() => {
       const el = composeRef.current?.querySelector('textarea');
       if (!el) return;
@@ -1384,6 +1392,12 @@ export function TaskChat({
                       className="msg-text"
                       mark={quoteMark?.id === String(c.id) ? quoteMark.text : null}
                     />
+                  )}
+                  {/* #4896: отчёт «было/стало» — одним щелчком, а не поиском по вкладкам */}
+                  {c.is_ai && /вкладке «Было\/стало»/.test(String(c.body ?? '')) && (
+                    <button type="button" className="link-btn" onClick={() => window.dispatchEvent(new CustomEvent('teamcrm:task-tab', { detail: { taskId: String(taskId), tab: 'check' } }))}>
+                      <Icon name="eye" size={13} /> Открыть «Было/стало»
+                    </button>
                   )}
 
                   {/* Несколько файлов — одно сообщение, как в переписке. Старые сообщения

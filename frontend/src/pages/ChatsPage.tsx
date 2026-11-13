@@ -599,8 +599,16 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     #4888: «Изменить» — сразу печатать. Меню, закрываясь, возвращает фокус своей кнопке
     «⋯» — поэтому ставим курсор чуть позже него, в конец текста.
   */
+  const wasEditing = useRef(false);
   useEffect(() => {
-    if (!editing) return;
+    // #4894: правку закончили (сохранили или отменили) — курсор обратно в строку сообщения
+    if (!editing) {
+      if (!wasEditing.current) return;
+      wasEditing.current = false;
+      const t = window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chat-input textarea')?.focus(), 60);
+      return () => window.clearTimeout(t);
+    }
+    wasEditing.current = true;
     const t = window.setTimeout(() => {
       const el = document.querySelector<HTMLTextAreaElement>('.chat-edit textarea');
       if (!el) return;
