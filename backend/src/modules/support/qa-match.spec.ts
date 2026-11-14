@@ -39,11 +39,15 @@ describe('qa-match: база «вопрос — ответ» для Отдела
     expect(idOf('почему задача не закрывается')).toBe('A-039');
   });
 
-  it('вопрос без ответа команды помечен «передать человеку»', () => {
+  it('ответ команды из таблицы 13.11 — вместо «уточню»', () => {
+    // до 13.11 у A-238 ответа команды не было (handoff); Юрий вписал его в лист «Приложение»
     const hit = matchQa('нужна оплата по счету для юрлица', BASE);
     expect(hit?.entry.id).toBe('A-238');
-    expect(hit?.entry.handoff).toBe(true);
-    expect(hit?.entry.answer).toMatch(/уточню/i);
+    expect(hit?.entry.handoff).toBe(false);
+    expect(hit?.entry.answer).toMatch(/только картой/i);
+    // правка команды не перебивает сверенное с продуктом: подзадачи уже есть
+    expect(BASE.find((e) => e.id === 'A-267')?.answer).toMatch(/^Да\./);
+    expect(BASE.find((e) => e.id === 'A-239')?.answer).toMatch(/Отдельных тарифов ИИ больше нет/);
   });
 
   it('вопрос не из базы — null, отвечает модель', () => {

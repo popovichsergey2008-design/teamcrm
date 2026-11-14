@@ -31,8 +31,13 @@
      ответа команды — список PRODUCT_WINS.
   4. «Сайт»: явно устаревшие ответы таблицы (тарифы ИИ «Базовый/Расширенный», пробный
      «7 + 7», «подзадач нет») поправлены в SITE_FIXES — так же, как это сделано в справке.
+  5. С 13.11 команда пишет ответы прямо в колонку «Ответ» листов «Сайт» и «Приложение»
+     (лист «Вопросы к команде» опустел). Чтобы такая правка не проиграла справке по
+     правилу 3, вторым аргументом передаётся прошлая версия таблицы: ответ, изменившийся
+     с неё, считается ответом команды (правила 1–3, кроме PRODUCT_WINS) и вписывается в
+     справку — при следующем запуске справка уже совпадёт с таблицей.
 
-Запуск:  python -I scripts/qa-base/build_qa.py путь/к/таблице.xlsx
+Запуск:  python -I scripts/qa-base/build_qa.py путь/к/таблице.xlsx [прошлая/таблица.xlsx]
 """
 from __future__ import annotations
 
@@ -244,8 +249,9 @@ TEAM_REWRITE: dict[str, tuple[str, str]] = {
 
 # «Приложение»: где ответ справки сверен с продуктом позже ответа команды и важнее него.
 #   A-267 — команда: «пока нет, но планируется», а подзадачи с тех пор вышли (#4846);
-#   A-296 — справка говорит то же, что факты команды, но уже по шагам меню.
-PRODUCT_WINS = {'A-267', 'A-296'}
+#   A-296 — справка говорит то же, что факты команды, но уже по шагам меню;
+#   A-239 — правка 13.11 снова про «Базовый/Расширенный», а тариф ИИ уже один.
+PRODUCT_WINS = {'A-267', 'A-296', 'A-239'}
 
 # «Сайт»: устаревшие ответы таблицы. id → (метка устаревшего текста; новый ответ).
 # Метка нужна, чтобы не затереть ответ, который в таблице уже поправили.
@@ -333,7 +339,7 @@ def read_sheet(ws) -> list[dict]:
             continue
         out.append({
             'id': rid, 'segment': clean(r[1]), 'question': clean(r[2]),
-            'aliases': aliases_of(r[3]), 'answer': clean(r[4]),
+            'aliases': aliases_of(r[3]), 'answer': clean(r[4])[:1].upper() + clean(r[4])[1:],
             'bucket': (clean(r[5]) or 'A').upper()[:1], 'needs_team': clean(r[7]),
         })
     return out
@@ -408,11 +414,15 @@ def patch_handbook(file: Path, title: str, answer: str) -> None:
     warnings.append(f'справка: не нашёл «{title}» в {file.name}')
 
 
-def build(xlsx: Path) -> None:
+def build(xlsx: Path, prev: Path | None = None) -> None:
     wb = openpyxl.load_workbook(xlsx, data_only=True)
     site = read_sheet(wb['Сайт'])
     app = read_sheet(wb['Приложение'])
     team = read_team(wb['Вопросы к команде'])
+    edited: set[str] = set()  # правило 5: ответ в «Приложении» поменяли с прошлой версии
+    if prev:
+        was = {r['id']: r['answer'] for r in read_sheet(openpyxl.load_workbook(prev, data_only=True)['Приложение'])}
+        edited = {r['id'] for r in app if r['id'] in was and was[r['id']] != r['answer']}
     known = {r['id'] for r in site + app}
     for rid in team:
         if rid not in known:
@@ -481,8 +491,12 @@ def build(xlsx: Path) -> None:
         h = hb_of.get(r['id'])
         hb_differs = bool(h and h['answer'].replace('\n', ' ') != r['answer'].replace('\n', ' '))
         team_text = None
-        if r['id'] in team and not (r['id'] in PRODUCT_WINS and hb_differs):
+        if r['id'] in PRODUCT_WINS and hb_differs:
+            pass
+        elif r['id'] in team:
             team_text, handoff = team_answer(r['id'], team[r['id']])
+        elif r['id'] in edited:
+            team_text = r['answer']  # команда сама переписала ответ в таблице — как есть
         # Ответ команды проверяется раньше справки: справку скрипт сам же и правит ответами
         # команды, и при следующем запуске она не должна перебить обновлённый ответ.
         if handoff:
@@ -516,6 +530,6 @@ def build(xlsx: Path) -> None:
 
 if __name__ == '__main__':
     sys.stdout.reconfigure(encoding='utf-8')
-    if len(sys.argv) != 2:
-        sys.exit('Использование: python -I scripts/qa-base/build_qa.py таблица.xlsx')
-    build(Path(sys.argv[1]))
+    if len(sys.argv) not in (2, 3):
+        sys.exit('Использование: python -I scripts/qa-base/build_qa.py таблица.xlsx [прошлая.xlsx]')
+    build(Path(sys.argv[1]), Path(sys.argv[2]) if len(sys.argv) == 3 else None)
