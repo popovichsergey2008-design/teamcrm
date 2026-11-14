@@ -11,9 +11,13 @@ interface PlanItem {
   kind: 'move' | 'create'; eventId?: string; title: string; fromStartsAt?: string; fromEndsAt?: string;
   startsAt: string; endsAt: string; status: string; ok: boolean; participantIds?: string[];
 }
-interface Plan { kind: 'plan' | 'summary' | 'none'; text: string; items: PlanItem[]; message: string | null }
+interface Plan { kind: 'plan' | 'summary' | 'none'; text: string; items: PlanItem[]; message: string | null; tz?: string }
 
-const when = (iso: string) => `${new Date(iso).toLocaleDateString('ru-RU', { weekday: 'short' })} ${new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+/** #4920: время плана — в поясе профиля, как и текст агента («пн 09:00»), а не браузера. */
+const when = (iso: string, timeZone?: string) => {
+  const f = (tz?: string) => `${new Date(iso).toLocaleDateString('ru-RU', { weekday: 'short', timeZone: tz })} ${new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz })}`;
+  try { return f(timeZone); } catch { return f(); }
+};
 const pad = (n: number) => String(n).padStart(2, '0');
 const local = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
@@ -110,10 +114,10 @@ export function CalendarAgent({ initial, onClose, onApplied }: { initial?: strin
             {plan.items.length > 0 && plan.text && !plan.text.startsWith('План') && <div className="dim cal-small">{plan.text}</div>}
             {plan.items.map((it, i) => (
               <div key={`${it.eventId ?? 'new'}${i}`} className="cal-agent-row">
-                <span>{it.title}{it.fromStartsAt ? ` · ${when(it.fromStartsAt)} →` : ' · новая встреча'}</span>
+                <span>{it.title}{it.fromStartsAt ? ` · ${when(it.fromStartsAt, plan.tz)} →` : ' · новая встреча'}</span>
                 {edit
                   ? <input type="datetime-local" className="ui-input cal-agent-time" value={local(it.startsAt)} onChange={(e) => setTime(i, e.target.value)} aria-label={`Новое время: ${it.title}`} />
-                  : <b>{when(it.startsAt)}</b>}
+                  : <b>{when(it.startsAt, plan.tz)}</b>}
                 <span className={`cal-pill ${it.ok ? 'ok' : 'warn'}`}>{it.status}</span>
               </div>
             ))}

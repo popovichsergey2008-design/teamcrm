@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
-import { plural } from '../../common/text/ru-grammar';
+import { declineName, plural } from '../../common/text/ru-grammar';
 import { setCalendarAgent } from '../../common/calendar-agent-hook';
 import { onWeekLine } from '../../common/week-lines';
 import { DbService } from '../../database/db.service';
@@ -125,7 +125,7 @@ export class AgentService implements OnModuleInit {
         notBefore: notBefore ? new Date(notBefore).toISOString() : null, notAfter: new Date(notAfter).toISOString() });
       const names = users.filter((u) => ids.includes(u.id)).map((u) => u.name.split(' ')[0]);
       const items: PlanItem[] = r.slots.slice(0, 1).map((s) => ({
-        kind: 'create', title: `Встреча с ${names.join(', ')}`, startsAt: s.startsAt, endsAt: s.endsAt,
+        kind: 'create', title: `Встреча с ${names.map((n) => declineName(n, 'ins')).join(', ')}`, startsAt: s.startsAt, endsAt: s.endsAt,
         status: s.busyOptional.length ? `${s.busyOptional.join(', ')} занят(а)` : (ids.length > 1 ? 'все свободны' : 'свободен'), ok: true, participantIds: ids,
       }));
       const when = intent.day ? ` на ${this.fmtDay(intent.day)}` : intent.week === 'next' ? ' на следующей неделе' : intent.week === 'this' ? ' на этой неделе' : '';
