@@ -206,7 +206,9 @@ export class MeetingPrepService implements OnModuleInit, OnModuleDestroy {
           const prev = await this.db.one<{ n: number }>(
             `SELECT count(*)::int AS n FROM calendar_event_tasks WHERE event_id = $1`, [r.event_id]);
           const lines = (agenda?.body ?? '').split('\n').filter(Boolean).slice(0, 3);
-          const time = `${r.starts_at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' })}–${r.ends_at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' })}`;
+          // #4920: часы — в поясе получателя, а не всегда по Москве
+          const tz = r.tz || 'Europe/Moscow';
+          const time = `${r.starts_at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz })}–${r.ends_at.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz })}`;
           const prep = lines.length ? lines.join(' · ') : prev?.n ? `связанных задач: ${prev.n}` : 'повестки нет — откройте карточку встречи';
           this.realtime.emitToUsers(r.tenant_id, [r.user_id], 'calendar.reminder', {
             eventId: r.event_id, title: r.title, startsAt: r.starts_at, minutesBefore: r.prep_min, location: null,

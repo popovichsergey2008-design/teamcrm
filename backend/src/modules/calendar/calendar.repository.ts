@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'crypto';
 import { DbService } from '../../database/db.service';
+import { CALL_SPANS_SQL } from './call-spans';
 
 export interface EventRow {
   id: string;
@@ -354,6 +355,9 @@ export class CalendarRepository {
         WHERE p.tenant_id = $1 AND p.user_id = ANY($2::bigint[]) AND p.status <> 'declined'
           AND e.starts_at < $4::timestamptz AND e.ends_at > $3::timestamptz
           AND ($5::bigint IS NULL OR e.id <> $5::bigint)
+       UNION ALL
+       -- #4920: созвон из чата без встречи в календаре — человек был занят
+       SELECT s.user_id, s.starts_at, s.ends_at, 'event' FROM (${CALL_SPANS_SQL}) s
        UNION ALL
        -- отпуск и больничный — это тоже «занят», просто на целые дни
        SELECT a.user_id, a.from_date::timestamptz, (a.to_date + 1)::timestamptz, a.kind

@@ -94,6 +94,27 @@ export class TelegramMirror {
   }
 
   /**
+   * #4920, п. 10: гостю встречи — не только письмо. Гость не пользователь CRM, но если он
+   * контакт клиента и уже запускал бота (итоги встречи в Telegram, #1525), его чат известен:
+   * напоминание уходит туда же. Нет связи — молчим, письмо всё равно ушло.
+   */
+  async guest(tenantId: string, email: string, text: string): Promise<boolean> {
+    if (!this.sender.enabled || !email?.trim() || !text.trim()) return false;
+    try {
+      const rows = await this.db.many<{ telegram_chat_id: string }>(
+        `SELECT DISTINCT l.telegram_chat_id
+           FROM client_contacts c JOIN client_telegram_links l ON l.tenant_id = c.tenant_id AND l.contact_id = c.id AND l.revoked_at IS NULL
+          WHERE c.tenant_id = $1 AND c.email_norm = lower(btrim($2)) LIMIT 3`,
+        [tenantId, email]);
+      for (const r of rows) await this.sender.sendMessage(r.telegram_chat_id, text);
+      return rows.length > 0;
+    } catch (e) {
+      this.log.warn(`напоминание гостю в Telegram не ушло: ${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
    * Сообщение с кнопками (#4891, п. 12: план дня «✓ Принять» / «Открыть в Qevo»). Та же
    * настройка дублей в Telegram; в тишине «Завершить день» — молчим.
    */

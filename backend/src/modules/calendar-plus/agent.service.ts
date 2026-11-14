@@ -1,11 +1,13 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { plural } from '../../common/text/ru-grammar';
 import { setCalendarAgent } from '../../common/calendar-agent-hook';
 import { onWeekLine } from '../../common/week-lines';
 import { DbService } from '../../database/db.service';
 import { CalendarSeriesService } from '../calendar/calendar-series.service';
+import { CALL_WITHOUT_EVENT } from '../calendar/call-spans';
 import { freeSlots, workWindows, zonedParts, zonedToUtc } from '../calendar/find-time';
-import { matchPeople } from '../nl/event-draft';
+import { matchPeople, pickDay } from '../nl/event-draft';
 import { InboxRepository } from '../notifications/inbox.repository';
 import { RealtimeService } from '../realtime/realtime.service';
 import { parseAgent, partRange } from './agent-rules';
@@ -62,6 +64,10 @@ export class AgentService implements OnModuleInit {
     return `${new Date(ms).toLocaleDateString('ru-RU', { weekday: 'short', timeZone: tz })} ${new Date(ms).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: tz })}`;
   }
 
+  private fmtDay(d: Date): string {
+    return d.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+
   private localNow(tz: string): Date {
     const p = zonedParts(Date.now(), tz);
     return new Date(p.y, p.m - 1, p.d, p.hh, p.mm);
@@ -71,9 +77,20 @@ export class AgentService implements OnModuleInit {
     return zonedToUtc(day.getFullYear(), day.getMonth() + 1, day.getDate(), Math.floor(minutes / 60), minutes % 60, tz);
   }
 
-  async plan(tenantId: string, user: Viewer, text: string) {
+  /**
+   * history — прошлые команды этого разговора, новые в конце (#4920, п. 2): «найди 30 минут
+   * с Глебом в понедельник» → «а во вторник?» — тот же поиск с тем же человеком на другой день.
+   */
+  async plan(tenantId: string, user: Viewer, text: string, history: string[] = []) {
     const tz = await this.plus.timezoneOf(tenantId, user.userId);
-    const intent = parseAgent(text, this.localNow(tz));
+    const now0 = this.localNow(tz);
+    let intent = parseAgent(text, now0);
+    const prevFind = [...history].reverse().map((h) => ({ h, i: parseAgent(h, now0) })).find((x) => x.i?.kind === 'find');
+    if (!intent && prevFind && prevFind.i?.kind === 'find') {
+      const day = pickDay(text, now0);
+      const week = /(^|[^а-я])след\S*\s+недел/i.test(text) ? 'next' as const : /(^|[^а-я])недел/i.test(text) ? 'this' as const : null;
+      if (day || week) intent = { ...prevFind.i, day: week ? null : day, week, scope: day && !week ? 'day' : 'week' };
+    }
     const none = { kind: 'none' as const, tz, text: 'Не понял команду. Например: «перенеси мои встречи завтра после 15:00 на пятницу», «найди час с Глебом на этой неделе», «освободи утро четверга», «что у меня завтра?»', items: [] as PlanItem[], message: null as string | null };
     if (!intent) return none;
     const me = await this.db.one<{ full_name: string }>(`SELECT full_name FROM users WHERE id = $1`, [user.userId]);
@@ -88,20 +105,31 @@ export class AgentService implements OnModuleInit {
       const users = await this.db.many<{ id: string; name: string }>(
         `SELECT u.id::text, u.full_name AS name FROM users u JOIN roles r ON r.id = u.role_id
           WHERE u.tenant_id = $1 AND u.is_active AND r.code <> 'client' AND u.id <> $2`, [tenantId, user.userId]);
-      const ids = matchPeople(text, users).ids;
+      let ids = matchPeople(text, users).ids;
+      // «а во вторник?» — люди из прошлой команды разговора
+      if (!ids.length && prevFind) ids = matchPeople(prevFind.h, users).ids;
       if (!ids.length) return { ...none, text: 'С кем найти время? Назовите коллегу по имени: «найди час с Глебом на этой неделе».' };
       const now = this.localNow(tz);
-      const endWeek = new Date(now); endWeek.setDate(now.getDate() + (7 - ((now.getDay() + 6) % 7)));
-      const notAfter = intent.day ? this.at(intent.day, 24 * 60, tz) : this.at(endWeek, 0, tz);
-      const notBefore = intent.day ? this.at(intent.day, 0, tz) : null;
-      const r = await this.plus.bestTime(tenantId, user, { participantIds: ids, minutes: intent.minutes, days: 8,
+      // понедельник следующей недели; «на следующей неделе» — его пн–пт (#4920, п. 2)
+      const nextMon = new Date(now); nextMon.setDate(now.getDate() + (7 - ((now.getDay() + 6) % 7)));
+      let notBefore: number | null = null;
+      let notAfter: number;
+      if (intent.day) { notBefore = this.at(intent.day, 0, tz); notAfter = this.at(intent.day, 24 * 60, tz); }
+      else if (intent.week === 'next') {
+        notBefore = this.at(nextMon, 0, tz);
+        const sat = new Date(nextMon); sat.setDate(nextMon.getDate() + 5);
+        notAfter = this.at(sat, 0, tz);
+      } else if (intent.week === 'this') notAfter = this.at(nextMon, 0, tz);
+      else notAfter = Date.now() + 7 * DAY; // день не назван — ближайшие семь дней
+      const r = await this.plus.bestTime(tenantId, user, { participantIds: ids, minutes: intent.minutes, days: 14,
         notBefore: notBefore ? new Date(notBefore).toISOString() : null, notAfter: new Date(notAfter).toISOString() });
       const names = users.filter((u) => ids.includes(u.id)).map((u) => u.name.split(' ')[0]);
       const items: PlanItem[] = r.slots.slice(0, 1).map((s) => ({
         kind: 'create', title: `Встреча с ${names.join(', ')}`, startsAt: s.startsAt, endsAt: s.endsAt,
         status: s.busyOptional.length ? `${s.busyOptional.join(', ')} занят(а)` : (ids.length > 1 ? 'все свободны' : 'свободен'), ok: true, participantIds: ids,
       }));
-      return { kind: 'plan' as const, tz, items, message: null, text: items.length ? `Нашёл время: ${r.slots.map((s) => s.label).join(', ')}` : (r.message ?? 'Общего окна нет') };
+      const when = intent.day ? ` на ${this.fmtDay(intent.day)}` : intent.week === 'next' ? ' на следующей неделе' : intent.week === 'this' ? ' на этой неделе' : '';
+      return { kind: 'plan' as const, tz, items, message: null, text: items.length ? `Нашёл время: ${r.slots.map((s) => s.label).join(', ')}` : (r.message ?? `Общего окна${when} нет`) };
     }
 
     // перенос и «освободи»: свои встречи дня по условию
@@ -170,7 +198,7 @@ export class AgentService implements OnModuleInit {
     const tail = notMine.length ? ` Не ваши встречи (переносит организатор): ${notMine.join(', ')}.` : '';
     return {
       kind: 'plan' as const, tz, items, message,
-      text: items.length ? `План изменений · ${items.length} ${items.length === 1 ? 'встреча' : items.length < 5 ? 'встречи' : 'встреч'}.${tail}` : `Встреч по условию нет.${tail}`,
+      text: items.length ? `План изменений · ${items.length} ${plural(items.length, 'встреча', 'встречи', 'встреч')}.${tail}` : `Встреч по условию нет.${tail}`,
     };
   }
 
@@ -214,7 +242,7 @@ export class AgentService implements OnModuleInit {
     const d = new Date(dayStart).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: tz });
     void prefs;
     return [
-      `${d.replace(/^./, (x) => x.toUpperCase())}: ${ms.length ? `${ms.length} ${ms.length === 1 ? 'встреча' : ms.length < 5 ? 'встречи' : 'встреч'}` : 'встреч нет'}.`,
+      `${d.replace(/^./, (x) => x.toUpperCase())}: ${ms.length ? `${ms.length} ${plural(ms.length, 'встреча', 'встречи', 'встреч')}` : 'встреч нет'}.`,
       ...ms.map((m) => `${t(m.start)}–${t(m.end)} ${m.title}`),
       windows.length ? `Свободные окна: ${windows.slice(0, 4).map((w) => `${t(w.start)}–${t(w.end)}`).join(', ')}.` : 'Свободных окон от получаса нет.',
       clash.length ? `Накладки: ${clash.join('; ')}.` : '',
@@ -271,7 +299,13 @@ export class AgentService implements OnModuleInit {
               (EXTRACT(HOUR FROM e.ends_at AT TIME ZONE $3) * 60 + EXTRACT(MINUTE FROM e.ends_at AT TIME ZONE $3))::int AS e
          FROM calendar_events e LEFT JOIN calendar_participants p ON p.event_id = e.id AND p.user_id = $2
         WHERE e.tenant_id = $1 AND NOT e.all_day AND e.starts_at > now() - interval '28 days' AND e.starts_at < now()
-          AND (e.owner_id = $2 OR (p.user_id IS NOT NULL AND p.status <> 'declined'))`,
+          AND (e.owner_id = $2 OR (p.user_id IS NOT NULL AND p.status <> 'declined'))
+       UNION ALL
+       SELECT (EXTRACT(HOUR FROM c.started_at AT TIME ZONE $3) * 60 + EXTRACT(MINUTE FROM c.started_at AT TIME ZONE $3))::int,
+              (EXTRACT(HOUR FROM c.ended_at AT TIME ZONE $3) * 60 + EXTRACT(MINUTE FROM c.ended_at AT TIME ZONE $3))::int
+         FROM call_log c
+        WHERE c.tenant_id = $1 AND $2::bigint = ANY(c.participant_ids) AND c.ended_at IS NOT NULL
+          AND c.started_at > now() - interval '28 days' AND ${CALL_WITHOUT_EVENT}`,
       [tenantId, user.userId, tz]);
     const [sh, sm] = ws.split(':').map(Number);
     const [eh, em] = we.split(':').map(Number);
@@ -305,7 +339,12 @@ export class AgentService implements OnModuleInit {
               COALESCE((SELECT sum(EXTRACT(EPOCH FROM (LEAST(e.ends_at, $3::timestamptz) - GREATEST(e.starts_at, $2::timestamptz))) / 60)
                           FROM calendar_events e LEFT JOIN calendar_participants p ON p.event_id = e.id AND p.user_id = u.id
                          WHERE e.tenant_id = $1 AND NOT e.all_day AND e.starts_at < $3::timestamptz AND e.ends_at > $2::timestamptz
-                           AND (e.owner_id = u.id OR (p.user_id IS NOT NULL AND p.status <> 'declined'))), 0)::int AS meeting_min,
+                           AND (e.owner_id = u.id OR (p.user_id IS NOT NULL AND p.status <> 'declined'))), 0)::int
+              -- #4920: и созвоны из чата, у которых нет встречи в календаре
+              + COALESCE((SELECT sum(EXTRACT(EPOCH FROM (LEAST(COALESCE(c.ended_at, now()), $3::timestamptz) - GREATEST(c.started_at, $2::timestamptz))) / 60)
+                          FROM call_log c WHERE c.tenant_id = $1 AND u.id = ANY(c.participant_ids)
+                           AND c.started_at < $3::timestamptz AND COALESCE(c.ended_at, now()) > $2::timestamptz
+                           AND ${CALL_WITHOUT_EVENT}), 0)::int AS meeting_min,
               COALESCE((SELECT sum(EXTRACT(EPOCH FROM (LEAST(b.ends_at, $3::timestamptz) - GREATEST(b.starts_at, $2::timestamptz))) / 60)
                           FROM calendar_blocks b WHERE b.user_id = u.id AND b.kind = 'focus'
                            AND b.starts_at < $3::timestamptz AND b.ends_at > $2::timestamptz), 0)::int AS focus_min

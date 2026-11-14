@@ -208,8 +208,24 @@ function pickLocation(text: string): string | null {
  * и «с Петром» должно находить Петра Иванова. Падежи режем по основе — «Петром»,
  * «Петра» и «Пётр» дают одинаковое начало слова.
  */
+/**
+ * Служебные слова речи — не имена (#4920, п. 5): «…с Глебом и Константином про CRM»
+ * звало на встречу Юрия Про. Фамилия из трёх букв совпадает с предлогом целиком, и
+ * никакое сравнение по началу этого не отличит — такие слова со строчной не сопоставляем.
+ */
+const NOT_NAMES_RU = [
+  'про', 'для', 'при', 'без', 'над', 'под', 'изо', 'обо', 'ото', 'или', 'как', 'что', 'это', 'все', 'всё', 'еще', 'ещё',
+  'там', 'тут', 'где', 'кто', 'чем', 'нам', 'вам', 'нас', 'вас', 'нее', 'неё', 'его', 'ему', 'она', 'они', 'оно', 'мой',
+  'моя', 'мне', 'меня', 'тебе', 'час', 'раз', 'два', 'три', 'пять', 'день', 'дня', 'утра', 'вечера', 'нет', 'так',
+];
+let notNames: Set<string> | null = null; // латиница считается при первом вызове: TRANSLIT объявлен ниже
+
 export function matchPeople(text: string, users: EventContextUser[]): { ids: string[] } {
-  const spoken = norm(text).split(/[^a-zа-я]+/).filter(Boolean).map(latinKey);
+  // служебное слово с заглавной не в начале фразы — уже имя: «позвать Про»
+  const stop = (notNames ??= new Set(NOT_NAMES_RU.map(latinKey)));
+  const spoken = text.replace(/ё/gi, 'е').split(/[^a-zA-Zа-яА-Я]+/).filter(Boolean)
+    .filter((w, i) => !stop.has(latinKey(w)) || (i > 0 && w[0] !== w[0].toLowerCase()))
+    .map(latinKey);
   const ids: string[] = [];
   for (const u of users) {
     const parts = norm(u.name).split(/\s+/).filter(Boolean).map(latinKey).filter((p) => p.length >= 3);

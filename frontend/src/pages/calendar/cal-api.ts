@@ -34,6 +34,15 @@ export interface PhrasePreview {
   agenda: { id: string; title: string; projectId: string; overdueDays: number | null }[];
 }
 export interface CallItem { id: string; title: string; startsAt: string; endsAt: string; live: boolean; chatId: string | null; roomId: string; participants: number; meetingId: string | null; summaryReady: boolean }
+/** #4920, п. 4: карточка созвона из журнала. */
+export interface CallCardTask { title: string; assignee: string | null; deadlineAt: string | null; taskId: string | null; projectId: string | null; done: boolean }
+export interface CallCardData {
+  id: string; title: string; startsAt: string; endsAt: string; live: boolean; roomId: string; chatId: string | null; chatTitle: string | null;
+  people: string[];
+  meeting: { id: string; status: string | null; summary: string | null; decisions: string[]; tasks: CallCardTask[] } | null;
+  previous: { meetingId: string; title: string; happenedAt: string; agreements: CallCardTask[] } | null;
+  materials: { fileId: string; title: string }[];
+}
 export interface PrepCard {
   eventId: string; title: string; startsAt: string; endsAt: string; canEdit: boolean; people: string[];
   publicId: string | null; meetRoomId: string | null;
@@ -62,6 +71,7 @@ export const calApi = {
   create: (b: { title: string; startsAt: string; endsAt: string; participantIds?: string[]; description?: string; repeat?: string | null; via: string; agendaTaskIds?: string[]; allDay?: boolean; location?: string | null }) =>
     request<{ id: string; meeting?: { publicId: string } | null }>('POST', '/calendar/plus/events', { ...b, repeat: b.repeat || undefined, location: b.location || undefined }),
   calls: (from: string, to: string) => request<CallItem[]>('GET', `/calendar/plus/calls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+  callCard: (id: string) => request<CallCardData>('GET', `/calendar/plus/calls/${encodeURIComponent(id)}/card`),
   prep: (id: string) => request<PrepCard>('GET', `/calendar/plus/events/${id}/prep`),
   genAgenda: (id: string, save: boolean) => request<{ body: string }>('POST', `/calendar/plus/events/${id}/agenda/generate${save ? '?save=1' : ''}`),
   saveAgenda: (id: string, body: string) => request<PrepCard>('PUT', `/calendar/plus/events/${id}/agenda`, { body }),

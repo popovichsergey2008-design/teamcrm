@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { CALL_WITHOUT_EVENT } from '../calendar/call-spans';
 
 export interface PrefsRow {
   user_id: string; tenant_id: string;
@@ -11,6 +12,12 @@ export interface MyMeetingRow {
   id: string; title: string; description: string | null; starts_at: Date; ends_at: Date; all_day: boolean;
   owner_id: string; participants: number; has_agenda: boolean; my_status: string | null; public_id: string | null;
   meet_room_id: string | null; series_id: string | null;
+}
+
+export interface CallRow {
+  id: string; room_id: string; chat_id: string | null; chat_title: string | null; started_at: Date; ended_at: Date | null;
+  participants: number; participant_ids: string[]; others: string | null;
+  meeting_id: string | null; meeting_status: string | null; meeting_title: string | null;
 }
 
 export interface ProposalRow {
@@ -116,6 +123,15 @@ export class CalendarPlusRepository {
          FROM calendar_external_events x JOIN calendar_links l ON l.id = x.link_id
         WHERE x.tenant_id = $1 AND l.user_id = ANY($2::bigint[]) AND l.kind IN ('import', 'google', 'yandex') AND NOT x.all_day
           AND x.starts_at < $5::timestamptz AND x.ends_at > $4::timestamptz
+       UNION ALL
+       -- #4920: созвон QEVO без встречи в календаре (из чата) — тоже занятость
+       SELECT u.uid::text, c.started_at, COALESCE(c.ended_at, GREATEST(now(), c.started_at + interval '15 minutes')), 'meeting',
+              CASE WHEN u.uid = $3::bigint THEN COALESCE(ch.title, 'Созвон') END
+         FROM call_log c CROSS JOIN LATERAL unnest(c.participant_ids) AS u(uid)
+         LEFT JOIN chats ch ON ch.id = c.chat_id
+        WHERE c.tenant_id = $1 AND u.uid = ANY($2::bigint[])
+          AND c.started_at < $5::timestamptz AND COALESCE(c.ended_at, now()) > $4::timestamptz
+          AND ${CALL_WITHOUT_EVENT}
        UNION ALL
        SELECT a.user_id::text, a.from_date::timestamptz, (a.to_date + 1)::timestamptz, 'away', NULL
          FROM user_availability a
@@ -261,10 +277,11 @@ export class CalendarPlusRepository {
 
   /** Встречи, которым пора прислать подготовку: начало через prep_min (у каждого своё). */
   duePrep() {
-    return this.db.many<{ tenant_id: string; event_id: string; user_id: string; title: string; starts_at: Date; ends_at: Date; public_id: string | null; meet_room_id: string | null; prep_min: number }>(
+    return this.db.many<{ tenant_id: string; event_id: string; user_id: string; title: string; starts_at: Date; ends_at: Date; public_id: string | null; meet_room_id: string | null; prep_min: number; tz: string }>(
       `SELECT e.tenant_id::text, e.id::text AS event_id, p.user_id::text, e.title, e.starts_at, e.ends_at,
               CASE WHEN e.is_call THEN ml.public_id END AS public_id, e.meet_room_id,
-              COALESCE(pr.prep_min, 10) AS prep_min
+              COALESCE(pr.prep_min, 10) AS prep_min,
+              (SELECT COALESCE(u.timezone, t.timezone, 'Europe/Moscow') FROM users u JOIN tenants t ON t.id = u.tenant_id WHERE u.id = p.user_id) AS tz
          FROM calendar_events e
          JOIN calendar_participants p ON p.event_id = e.id AND p.status <> 'declined'
          LEFT JOIN meet_guest_links ml ON ml.event_id = e.id AND ml.kind = 'meeting' AND ml.revoked_at IS NULL
@@ -289,24 +306,82 @@ export class CalendarPlusRepository {
   // ---------- созвоны ----------
 
   callsInRange(tenantId: string, userId: string, from: string, to: string) {
-    return this.db.many<{ id: string; room_id: string; chat_id: string | null; chat_title: string | null; started_at: Date; ended_at: Date | null; participants: number; meeting_id: string | null; meeting_status: string | null }>(
+    return this.db.many<CallRow>(
       `SELECT c.id::text, c.room_id, c.chat_id::text, ch.title AS chat_title, c.started_at, c.ended_at,
-              cardinality(c.participant_ids) AS participants,
-              m.id::text AS meeting_id, m.status AS meeting_status
+              cardinality(c.participant_ids) AS participants, c.participant_ids::text[] AS participant_ids,
+              (SELECT string_agg(u.full_name, ', ' ORDER BY u.full_name) FROM users u
+                WHERE u.id = ANY(c.participant_ids) AND u.id <> $2::bigint) AS others,
+              m.id::text AS meeting_id, m.status AS meeting_status, m.title AS meeting_title
          FROM call_log c
          LEFT JOIN chats ch ON ch.id = c.chat_id
          LEFT JOIN LATERAL (
-           SELECT mm.id, mm.status FROM meetings mm
+           SELECT mm.id, mm.status, mm.title FROM meetings mm
             WHERE mm.tenant_id = c.tenant_id AND mm.room_id = c.room_id
               AND COALESCE(mm.happened_at, mm.created_at) BETWEEN c.started_at - interval '1 hour' AND COALESCE(c.ended_at, now()) + interval '1 hour'
             ORDER BY mm.created_at DESC LIMIT 1
          ) m ON TRUE
         WHERE c.tenant_id = $1 AND $2::bigint = ANY(c.participant_ids)
           AND c.started_at < $4::timestamptz AND COALESCE(c.ended_at, now()) > $3::timestamptz
-          AND NOT EXISTS (SELECT 1 FROM calendar_events e WHERE e.tenant_id = c.tenant_id AND e.meet_room_id = c.room_id)
-          AND NOT EXISTS (SELECT 1 FROM meet_guest_links ml WHERE ml.tenant_id = c.tenant_id AND ml.room_id = c.room_id AND ml.event_id IS NOT NULL)
+          AND ${CALL_WITHOUT_EVENT}
         ORDER BY c.started_at`,
       [tenantId, userId, from, to],
+    );
+  }
+
+  /** Один созвон человека — для карточки (#4920, п. 4). Чужой созвон не отдаём. */
+  async callOf(tenantId: string, userId: string, callId: string): Promise<CallRow | null> {
+    const rows = await this.db.many<CallRow>(
+      `SELECT c.id::text, c.room_id, c.chat_id::text, ch.title AS chat_title, c.started_at, c.ended_at,
+              cardinality(c.participant_ids) AS participants, c.participant_ids::text[] AS participant_ids,
+              (SELECT string_agg(u.full_name, ', ' ORDER BY u.full_name) FROM users u
+                WHERE u.id = ANY(c.participant_ids) AND u.id <> $2::bigint) AS others,
+              m.id::text AS meeting_id, m.status AS meeting_status, m.title AS meeting_title
+         FROM call_log c
+         LEFT JOIN chats ch ON ch.id = c.chat_id
+         LEFT JOIN LATERAL (
+           SELECT mm.id, mm.status, mm.title FROM meetings mm
+            WHERE mm.tenant_id = c.tenant_id AND mm.room_id = c.room_id
+              AND COALESCE(mm.happened_at, mm.created_at) BETWEEN c.started_at - interval '1 hour' AND COALESCE(c.ended_at, now()) + interval '1 hour'
+            ORDER BY mm.created_at DESC LIMIT 1
+         ) m ON TRUE
+        WHERE c.tenant_id = $1 AND c.id = $3::bigint AND $2::bigint = ANY(c.participant_ids)`,
+      [tenantId, userId, callId],
+    );
+    return rows[0] ?? null;
+  }
+
+  meetingSummary(tenantId: string, meetingId: string) {
+    return this.db.one<{ summary: string | null; decisions: unknown }>(
+      `SELECT summary, decisions FROM meeting_summaries WHERE tenant_id = $1 AND meeting_id = $2`, [tenantId, meetingId]);
+  }
+
+  /**
+   * Прошлый разобранный созвон тех же людей до этого: тот же чат или те же участники.
+   * Из него — «что договорились в прошлый раз» в карточке.
+   */
+  previousCallMeeting(tenantId: string, call: Pick<CallRow, 'id' | 'chat_id' | 'participant_ids' | 'started_at' | 'meeting_id'>) {
+    return this.db.one<{ meeting_id: string; title: string; happened_at: Date }>(
+      `SELECT m.id::text AS meeting_id, m.title, COALESCE(m.happened_at, m.created_at) AS happened_at
+         FROM meetings m
+        WHERE m.tenant_id = $1 AND m.status = 'done' AND COALESCE(m.happened_at, m.created_at) < $2::timestamptz
+          AND ($5::bigint IS NULL OR m.id <> $5::bigint)
+          AND (($3::bigint IS NOT NULL AND m.chat_id = $3::bigint)
+               OR EXISTS (SELECT 1 FROM call_log c WHERE c.tenant_id = m.tenant_id AND c.room_id = m.room_id
+                            AND c.id <> $6::bigint AND c.participant_ids @> $4::bigint[]))
+        ORDER BY COALESCE(m.happened_at, m.created_at) DESC LIMIT 1`,
+      [tenantId, call.started_at, call.chat_id, call.participant_ids, call.meeting_id, call.id],
+    );
+  }
+
+  /** Файлы, которые прислали в чат созвона за сутки до его конца, — материалы встречи. */
+  chatFiles(tenantId: string, chatId: string, until: Date) {
+    return this.db.many<{ file_id: string; file_name: string }>(
+      `SELECT DISTINCT ON (f.id) f.id::text AS file_id, f.file_name
+         FROM chat_messages m JOIN files f ON f.id = m.file_id
+        WHERE m.tenant_id = $1 AND m.chat_id = $2 AND m.deleted_at IS NULL
+          AND m.created_at <= $3::timestamptz AND m.created_at > $3::timestamptz - interval '1 day'
+        ORDER BY f.id DESC LIMIT 8`,
+      [tenantId, chatId, until],
     );
   }
 

@@ -354,7 +354,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
             {/* #4779, п. 6.7: без распознавания речи — сразу дорога к ключу */}
             {!ai && (
               <Button variant="outline" size="sm" style={{ marginTop: 8 }} onClick={() => navigate({ section: 'settings', tab: 'integrations' })}>
-                <Icon name="link" size={14} /> Подключить ключ OpenAI
+                <Icon name="link" size={14} /> Подключить распознавание речи
               </Button>
             )}
             {people.length > 0 && (

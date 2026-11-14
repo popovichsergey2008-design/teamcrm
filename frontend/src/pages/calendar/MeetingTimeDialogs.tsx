@@ -11,7 +11,24 @@ import './calendar.css';
 import { calApi, type BestTimeResult } from './cal-api';
 import { DateInput } from '../../components/DateInput';
 
-const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+/**
+ * Время по поясу аккаунта (#4920, п. 6): сервер считает часы в поясе из профиля, и подпись
+ * обязана говорить в нём же. Браузер в другом поясе давал «13:00–22:00» при часах 09–18.
+ */
+const hhmm = (iso: string, timeZone?: string) => {
+  try { return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone }); }
+  catch { return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }); }
+};
+const browserZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } };
+/** «Europe/Kiev» → «Kiev»: город из названия пояса — понятнее смещения. */
+const zoneCity = (tz: string) => tz.split('/').pop()?.replace(/_/g, ' ') ?? tz;
+/** Совпадают ли сейчас пояса по смещению; null — сравнить не удалось. */
+const sameOffset = (a: string, b: string): boolean | null => {
+  try {
+    const at = (tz: string) => new Date().toLocaleString('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    return at(a) === at(b);
+  } catch { return null; }
+};
 type Role = 'req' | 'opt';
 
 /** Участники: обязательный / необязательный / не зовём — одним касанием по кругу. */
@@ -99,7 +116,10 @@ export function CommonTimeDialog({ meId, onClose, onPick, onPoll, initialIds, in
         )}
         {res && res.slots.length > 0 && (
           <div className="cal-bars">
-            <div className="dim cal-small">Занятость {res.day.label}, {hhmm(res.day.startsAt)}–{hhmm(res.day.endsAt)}</div>
+            <div className="dim cal-small">
+              Занятость {res.day.label}, {hhmm(res.day.startsAt, res.timeZone)}–{hhmm(res.day.endsAt, res.timeZone)}
+              {res.timeZone && browserZone() && sameOffset(res.timeZone, browserZone()) === false && ` · время по поясу профиля (${zoneCity(res.timeZone)})`}
+            </div>
             {res.people.map((p) => (
               <div key={p.id} className="cal-bar-row">
                 <span className="cal-bar-name">{p.name}{p.zone ? ` (${p.zone})` : ''}{p.optional ? ' · необяз.' : ''}</span>

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
+import { CALL_WITHOUT_EVENT } from './call-spans';
 
 /** Блок своего расписания: время на задачу или запланированный фокус (#4787, п. 3, 12). */
 export interface BlockRow {
@@ -132,7 +133,14 @@ export class CalendarBlocksRepository {
          FROM calendar_blocks b
         WHERE b.tenant_id = $1 AND b.user_id = $2
           AND b.starts_at < $4::timestamptz AND b.ends_at > $3::timestamptz
-          AND ($5::bigint IS NULL OR b.id <> $5::bigint)`,
+          AND ($5::bigint IS NULL OR b.id <> $5::bigint)
+       UNION ALL
+       -- #4920: созвон из чата без встречи в календаре
+       SELECT c.started_at, COALESCE(c.ended_at, GREATEST(now(), c.started_at + interval '15 minutes'))
+         FROM call_log c
+        WHERE c.tenant_id = $1 AND $2::bigint = ANY(c.participant_ids)
+          AND c.started_at < $4::timestamptz AND COALESCE(c.ended_at, now()) > $3::timestamptz
+          AND ${CALL_WITHOUT_EVENT}`,
       [tenantId, userId, from, to, exceptBlockId ?? null],
     );
   }

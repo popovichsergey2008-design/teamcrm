@@ -15,7 +15,19 @@ describe('#4892 п. 13: команды агенту календаря', () => {
   });
   it('найди час с Глебом на этой неделе', () => {
     const i = parseAgent('найди час с Глебом на этой неделе', now);
-    expect(i).toEqual({ kind: 'find', minutes: 60, scope: 'week', day: null });
+    expect(i).toEqual({ kind: 'find', minutes: 60, scope: 'week', day: null, week: 'this' });
+  });
+  it('#4920: «в понедельник» — день, а не «на неделе» (в слове есть «недел»)', () => {
+    const i = parseAgent('найди 30 минут с Глебом в понедельник', now);
+    expect(i?.kind).toBe('find');
+    if (i?.kind !== 'find') return;
+    expect(i.minutes).toBe(30);
+    expect(i.week).toBeNull();
+    expect(i.day?.getDate()).toBe(16);
+  });
+  it('#4920: «на следующей неделе» — следующая неделя', () => {
+    const i = parseAgent('найди час с Глебом на следующей неделе', now);
+    expect(i).toEqual({ kind: 'find', minutes: 60, scope: 'week', day: null, week: 'next' });
   });
   it('освободи мне утро четверга', () => {
     const i = parseAgent('освободи мне утро четверга', now);

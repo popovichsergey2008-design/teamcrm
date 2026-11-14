@@ -68,7 +68,10 @@ export function AssistantPanel({ from, to, refreshKey, onChanged, onWindows, onC
           {data.insight.focusWindows > 0 && <> · окон для фокуса: {data.insight.focusWindows}</>}
         </div>
       )}
-      {data && !data.suggestions.length && <div className="cal-assist-empty dim">На этой неделе всё в порядке — накладок, перегруженных дней и встреч без повестки нет.</div>}
+      {/* #4920, п. 10: пустая неделя — не «всё в порядке», а подсказка, чем занять время */}
+      {data && !data.suggestions.length && (data.insight.meetingMin === 0
+        ? <div className="cal-assist-empty dim">Встреч на неделе нет — время целиком ваше. Поставьте блоки фокуса под главные задачи («Поставить» в сводке дня) или разложите задачи со сроками по свободным окнам («Разложить по неделе»).</div>
+        : <div className="cal-assist-empty dim">На этой неделе всё в порядке — накладок, перегруженных дней и встреч без повестки нет.</div>)}
       {data?.suggestions.map((s) => (
         <div key={s.key} className={`cal-assist-card tone-${s.tone}`}>
           <div className="cal-assist-title">{s.title}</div>

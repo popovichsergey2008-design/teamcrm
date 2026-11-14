@@ -87,6 +87,8 @@ class DeclineDto {
 }
 class AgentDto {
   @IsString() @MinLength(3) @MaxLength(500) text!: string;
+  /** #4920: прошлые команды разговора — «а во вторник?» продолжает прошлый поиск. */
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(500, { each: true }) history?: string[];
 }
 class AgentApplyDto {
   @IsArray() @ArrayMaxSize(20) items!: PlanItem[];
@@ -118,7 +120,7 @@ export class CalendarPlusController {
 
   /** ИИ-агент календаря (п. 13): план изменений — и «Применить». */
   @Post('agent')
-  agentPlan(@CurrentUser() u: AuthUser, @Body() dto: AgentDto) { return this.agent.plan(u.tenantId, u, dto.text); }
+  agentPlan(@CurrentUser() u: AuthUser, @Body() dto: AgentDto) { return this.agent.plan(u.tenantId, u, dto.text, dto.history ?? []); }
 
   @Post('agent/apply')
   agentApply(@CurrentUser() u: AuthUser, @Body() dto: AgentApplyDto) { return this.agent.apply(u.tenantId, u, dto); }
@@ -217,6 +219,12 @@ export class CalendarPlusController {
   @Get('calls')
   calls(@CurrentUser() u: AuthUser, @Query('from') from: string, @Query('to') to: string) {
     return this.plus.calls(u.tenantId, u.userId, from, to);
+  }
+
+  /** #4920, п. 4: карточка созвона — итоги, задачи, прошлые договорённости, вход в звонок. */
+  @Get('calls/:id/card')
+  callCard(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.plus.callCard(u.tenantId, u.userId, id);
   }
 
   /** Карточка встречи = подготовка (п. 6). */

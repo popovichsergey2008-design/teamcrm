@@ -198,13 +198,17 @@ export function bestTime(input: BestTimeInput): BestTimeResult {
   pool.sort((a, b) => b.score - a.score || a.s - b.s);
   const out: Cand[] = [];
   const usedDays = new Set<string>();
-  // по одному варианту на день — чтобы был выбор, потом добиваем лучшими
-  for (const pass of [0, 1]) {
+  const usedTimes = new Set<string>();
+  // По одному варианту на день и в разное время суток — чтобы был выбор (#4920, п. 9: три
+  // варианта «в 09:00» на разные дни выбором не являются), потом добиваем лучшими.
+  for (const pass of [0, 1, 2]) {
     for (const c of pool) {
       if (out.length >= limit) break;
-      const day = zonedParts(c.s, input.viewerTimeZone).date;
-      if (out.includes(c) || (pass === 0 && usedDays.has(day))) continue;
-      usedDays.add(day);
+      const p = zonedParts(c.s, input.viewerTimeZone);
+      const time = `${p.hh}:${p.mm}`;
+      if (out.includes(c) || (pass < 2 && usedDays.has(p.date)) || (pass === 0 && usedTimes.has(time))) continue;
+      usedDays.add(p.date);
+      usedTimes.add(time);
       out.push(c);
     }
   }

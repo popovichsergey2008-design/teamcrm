@@ -51,6 +51,7 @@ import { calApi, type CalPrefs, type CallItem, type WeekAssistant } from './cale
 import { DeclineBox, FocusGoalCard, PreviewBar, RescheduleBanner, type Proposed } from './calendar/TimeWork';
 import { isTimeless } from './calendar/DeadlinesBar';
 import { CalendarAgent, TimeAnalytics } from './calendar/CalendarAgent';
+import { CallCard } from './calendar/CallCard';
 import { getSocket } from '../lib/socket';
 import './calendar/calendar.css';
 import { DateInput } from '../components/DateInput';
@@ -183,9 +184,12 @@ function openTask(t: { id: string; project_id: string }): void {
  * Цвет ВСЕГДА со словом: «просрочено», «срочно», «важно» — в подсказке и для тех,
  * кто цвета не различает. Одним цветом ничего сказать нельзя.
  */
+const dueTime = (iso: string) => (isTimeless(iso) ? 'весь день' : new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+
 function DueChip({ task, compact }: { task: CalTask; compact?: boolean }) {
   const mark = dueMark(task);
-  const time = new Date(task.deadline_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  // #4920, п. 7: срок без времени — «весь день», а не выдуманные 21:00 или 00:00
+  const time = dueTime(task.deadline_at);
   return (
     <button
       className={`cal-chip cal-chip-task due-${mark}`}
@@ -456,10 +460,9 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
     }
     return ids;
   }, [events]);
-  const openCall = (c: CallItem) => {
-    if (c.meetingId) navigate({ section: 'chat', view: 'meetings', meetingId: c.meetingId });
-    else if (c.chatId) navigate({ section: 'chat', chatId: c.chatId });
-  };
+  /** #4920, п. 4: созвон открывается своей карточкой, а не общим списком встреч. */
+  const [callCard, setCallCard] = useState<string | null>(null);
+  const openCall = (c: CallItem) => setCallCard(c.id);
   const allDay = events.filter((e) => e.allDay);
 
   // встречи и блоки — в одной раскладке: блок не должен ложиться поверх встречи невидимо
@@ -595,9 +598,12 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
         <div className="cal-summary" aria-label="Сводка на сегодня">
           {/* #4892, п. 0: без взаимоисключающих фраз — встречи, свободное время, фокус */}
           <span>Сегодня: {meetingsToday} {plural(meetingsToday, 'встреча', 'встречи', 'встреч')}</span>
-          <span>· {freeTodayMin ? fmtMinutes(freeTodayMin) : '0 мин'} свободно</span>
+          {/* #4920, п. 8: в выходной рабочих часов нет — «9 ч свободно» было неправдой */}
+          {isDayOff(new Date(today0), gridWork)
+            ? <span>· выходной</span>
+            : <span>· {freeTodayMin ? fmtMinutes(freeTodayMin) : '0 мин'} свободно</span>}
           {taskMinToday > 0 && <span>· {fmtMinutes(taskMinToday)} на задачи</span>}
-          {focusMinToday ? <span>· {fmtMinutes(focusMinToday)} фокуса</span> : (
+          {focusMinToday ? <span>· {fmtMinutes(focusMinToday)} фокуса</span> : isDayOff(new Date(today0), gridWork) ? null : (
             <span>· фокус не запланирован → <button className="cal-due-link" onClick={() => setFocusDlg({})}>Поставить</button></span>
           )}
           <button className="cal-due-link" onClick={() => setPlanDayOpen(true)}>Помоги спланировать день</button>
@@ -739,6 +745,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       )}
       {pollOpen && <PollDialog onClose={() => setPollOpen(false)} onDecided={() => { setPollOpen(false); void reload(); }} />}
       {planDayOpen && <PlanDayDialog onClose={() => setPlanDayOpen(false)} onSaved={() => { setPlanDayOpen(false); void reload(); }} />}
+      {callCard && <CallCard id={callCard} onClose={() => setCallCard(null)} onJoin={onStartCall} />}
       {agent !== null && (
         <CalendarAgent initial={agent || undefined} onClose={() => setAgent(null)} onApplied={() => { setAgent(null); void reload(); }} />
       )}
@@ -1077,7 +1084,7 @@ function ListView({ days, events, tasks, blocks, onOpen, onOpenBlock, onRespond 
             return (
               <div key={t.id} className={`cal-list-row cal-list-due due-${mark}`}>
                 <span className="cal-list-time">
-                  {new Date(t.deadline_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                  {dueTime(t.deadline_at)}
                   {' · '}{DUE_LABEL[mark]}
                 </span>
                 <button className="cal-list-title" onClick={() => openTask(t)} title="Открыть карточку задачи">

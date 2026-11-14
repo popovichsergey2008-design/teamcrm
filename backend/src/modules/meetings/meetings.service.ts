@@ -400,7 +400,7 @@ export class MeetingsService implements OnModuleInit {
         const replies = await this.transcribeTracks(input.tenantId, input.tracks);
         await saved;
         if (!replies.length) {
-          await this.repo.setStatus(meeting.id, 'error', 'Речь не распознана — проверьте ключ OpenAI');
+          await this.repo.setStatus(meeting.id, 'error', SPEECH_EMPTY);
           await this.postcall.failRest(input.tenantId, meeting.id);
           // короткий звонок без речи служба итогов узнает сама и промолчит (#4902)
           await this.failed(input.tenantId, meeting.id);
@@ -525,8 +525,8 @@ export class MeetingsService implements OnModuleInit {
     await inPool(tracks, TRANSCRIBE_PARALLEL, async (track) => {
       const { chunks } = await extractAudioChunks(track.buffer, track.fileName);
       for (const chunk of chunks) {
-        const segments = await this.ai.transcribeSegments(
-          tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint);
+        const segments = await retryOnNetwork(() => this.ai.transcribeSegments(
+          tenantId, chunk.buffer, chunk.name, chunk.buffer.length / 4000, hint));
         // Гость сотрудником не является: speaker_user_id ссылается на users(id),
         // и запись туда «guest:<uuid>» уронила бы расшифровку всей встречи.
         const guest = track.userId.startsWith('guest:');
@@ -605,7 +605,7 @@ export class MeetingsService implements OnModuleInit {
         await this.repo.setStatus(meetingId, 'error',
           meeting.source === 'transcript'
             ? 'В файле субтитров не нашлось реплик'
-            : 'Распознавание вернуло пустой результат — проверьте ключ OpenAI и качество записи');
+            : SPEECH_EMPTY);
         await this.postcall.failRest(tenantId, meetingId);
         await this.failed(tenantId, meetingId);
         return;
@@ -1338,6 +1338,34 @@ async function inPool<T>(items: T[], limit: number, fn: (item: T) => Promise<voi
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
+/**
+ * #4920: человеку не показываем «OpenAI» и «ключ» — ему нужно знать, что делать, а не
+ * чем мы распознаём. Пустая расшифровка — это запись без слов (тишина, выключенный микрофон).
+ */
+const SPEECH_EMPTY = 'В записи не нашлось речи — возможно, был выключен микрофон. Если говорили, нажмите «Разобрать заново».';
+
+/** Обрыв связи с сервисом распознавания (не ответ с ошибкой): «fetch failed», сброс, тайм-аут. */
+function isNetworkError(e: unknown): boolean {
+  const err = e as { message?: string; name?: string; cause?: { code?: string } };
+  return err?.message === 'fetch failed' || err?.name === 'TimeoutError'
+    || /^(ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|UND_ERR_)/.test(err?.cause?.code ?? '');
+}
+
+/**
+ * #4920: созвон 06.11 упал на одном «fetch failed» — до OpenAI ходим через канал, и он
+ * изредка рвётся. Повтор после паузы дешевле, чем потерянный разбор встречи.
+ */
+async function retryOnNetwork<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i >= tries || !isNetworkError(e)) throw e;
+      await new Promise((r) => setTimeout(r, 5_000 * i));
+    }
+  }
+}
+
 /** ИИ не ответил, хотя ключ есть: кончились деньги на API, ключ отозван, сбой провайдера. */
 class AiUnavailableError extends Error {
   constructor() { super('ИИ не ответил — закончились средства на API или недоступен ключ'); }
@@ -1346,8 +1374,9 @@ class AiUnavailableError extends Error {
 /** Текст ошибки встречи для экрана: сбой ИИ — отдельно от проблем с записью. */
 function meetingError(e: unknown): string {
   if (e instanceof AiUnavailableError) {
-    return 'ИИ не ответил при разборе — закончились средства на API или недоступен ключ. Пополните баланс и нажмите «Разобрать заново»: стенограмма сохранена.';
+    return 'ИИ не ответил при разборе. Нажмите «Разобрать заново» чуть позже: стенограмма сохранена.';
   }
+  if (isNetworkError(e)) return 'Сервис распознавания речи не ответил. Запись сохранена — нажмите «Разобрать заново».';
   return describeFfmpegError(e);
 }
 

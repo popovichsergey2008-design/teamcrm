@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon';
 import { Dialog } from '../../components/ui/dialog';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { ApiError, request } from '../../lib/api';
+import { plural } from '../../lib/chat-text';
 import { toastSaved } from '../../lib/notifications';
 import { fmtMinutes } from './TaskTimeDialog';
 
@@ -22,17 +23,32 @@ const local = (iso: string) => { const d = new Date(iso); return `${d.getFullYea
  * меня завтра?». Ответ — план: было → стало, «все свободны» или «Алина занята», текст
  * участникам. «Применить», «Изменить», «Отмена»; без «Применить» ничего не меняется.
  */
+/** #4920, п. 2: разговор с агентом не пропадает при закрытии окна — до 10 последних реплик. */
+const HISTORY_KEY = 'calendar.agent.history';
+type Turn = { asked: string; text: string };
+const loadTurns = (): Turn[] => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]').slice(-10); } catch { return []; } };
+const saveTurns = (t: Turn[]) => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(t.slice(-10))); } catch { /* без хранилища — история до закрытия окна */ } };
+
 export function CalendarAgent({ initial, onClose, onApplied }: { initial?: string; onClose: () => void; onApplied: () => void }) {
   const [text, setText] = useState(initial ?? '');
   const [asked, setAsked] = useState('');
   const [plan, setPlan] = useState<Plan | null>(null);
+  /** Прошлые реплики: показываем над ответом и отправляем агенту — «а во вторник?» понятно из них. */
+  const [turns, setTurns] = useState<Turn[]>(loadTurns);
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const ask = async (t: string) => {
     if (t.trim().length < 3) return;
+    // прошлый ответ уходит в историю, как только задан новый вопрос
+    const past = asked && plan ? [...turns, { asked, text: plan.text }].slice(-10) : turns;
+    setTurns(past); saveTurns(past);
     setBusy(true); setErr(''); setEdit(false); setAsked(t.trim());
-    try { setPlan(await request<Plan>('POST', '/calendar/plus/agent', { text: t.trim() })); setText(''); }
+    try {
+      const r = await request<Plan>('POST', '/calendar/plus/agent', { text: t.trim(), history: past.map((x) => x.asked).slice(-5) });
+      setPlan(r); setText('');
+      saveTurns([...past, { asked: t.trim(), text: r.text }]);
+    }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Агент не ответил'); }
     finally { setBusy(false); }
   };
@@ -70,6 +86,17 @@ export function CalendarAgent({ initial, onClose, onApplied }: { initial?: strin
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} size="lg" title="ИИ-агент · календарь"
       description="Агент ничего не меняет без «Применить». Работает здесь, в чате с ботом, голосом и в Telegram.">
       <div className="cal-agent">
+        {turns.length > 0 && (
+          <div className="cal-agent-history" aria-label="Прошлые команды" style={{ display: 'grid', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+            {turns.map((x, i) => (
+              <div key={i} style={{ display: 'grid', gap: 2 }}>
+                <div className="cal-agent-me">{x.asked}</div>
+                <div className="dim cal-small" style={{ whiteSpace: 'pre-line' }}>{x.text}</div>
+              </div>
+            ))}
+            <button type="button" className="cal-due-link" style={{ justifySelf: 'start' }} onClick={() => { setTurns([]); saveTurns(asked && plan ? [{ asked, text: plan.text }] : []); }}>Очистить историю</button>
+          </div>
+        )}
         {asked && <div className="cal-agent-me">{asked}</div>}
         {plan && plan.kind === 'summary' && (
           <div className="cal-agent-card">
@@ -152,7 +179,9 @@ export function TimeAnalytics({ from, to, boss, onClose, onChanged }: { from: st
                   )}
                 </div>
               ))}
-              <div className="cal-agent-row"><span>{me.bare.count} {me.bare.count === 1 ? 'встреча прошла' : 'встречи прошли'} без повестки и итогов</span><span className="dim">{me.bare.days.join(', ')}</span></div>
+              <div className="cal-agent-row"><span>{me.bare.count
+                ? `${me.bare.count} ${plural(me.bare.count, 'встреча прошла', 'встречи прошли', 'встреч прошло')} без повестки и итогов`
+                : 'Все встречи — с повесткой или итогами'}</span><span className="dim">{me.bare.days.join(', ')}</span></div>
               <div className="cal-agent-row"><span>Лучшее время для фокуса</span><b>{me.bestFocus ?? '—'}</b></div>
             </>
           )}

@@ -133,6 +133,9 @@ describe('Надиктованная встреча — разбор', () => {
       .toEqual([]);
     expect(matchPeople('позвать Юрия', mixed).ids).toEqual(['8']);
     expect(matchPeople('позвать Про', mixed).ids).toEqual(['8']);
+    // #4920, п. 5: предлог «про» — не фамилия
+    expect(matchPeople('созвон с Юрием про CRM', mixed).ids).toEqual(['8']);
+    expect(matchPeople('обсудить про CRM', mixed).ids).toEqual([]);
   });
 
   it('похожее слово не выдаёт себя за имя', () => {

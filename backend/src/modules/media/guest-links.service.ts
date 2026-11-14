@@ -328,10 +328,15 @@ export class GuestLinksService {
       if (!(await this.repo.markGuestReminded(String(inv.id)))) continue;
       const ev = await this.repo.eventForInvite(String(inv.tenant_id), String(inv.event_id), String(inv.created_by)).catch(() => null);
       if (!ev || !inv.token_enc) continue;
+      const url = `${this.baseUrl()}/meet/${this.crypto.decrypt(inv.token_enc)}`;
       await this.mail.sendGuest('reminder', ev, {
-        inviteId: String(inv.id), email: inv.invite_email, name: inv.invite_name,
-        url: `${this.baseUrl()}/meet/${this.crypto.decrypt(inv.token_enc)}`,
+        inviteId: String(inv.id), email: inv.invite_email, name: inv.invite_name, url,
       }, ev.owner_name);
+      // #4920, п. 10: и в Telegram, если гость — контакт клиента с подключённым ботом
+      // пояс гостя неизвестен — «через 15 минут» вместо часов, которые он может прочитать не так
+      await this.telegram.guest(String(inv.tenant_id), inv.invite_email,
+        `Через 15 минут встреча «${ev.title}»${ev.owner_name ? ` с ${ev.owner_name}` : ''}.
+Вход: ${url}`);
       sent++;
     }
     return sent;

@@ -11,7 +11,7 @@ export type AgentIntent =
   | { kind: 'summary'; day: Date }
   | { kind: 'move'; day: Date; after: number | null; before: number | null; part: DayPart | null; target: Date; targetMin: number | null; reason: string | null }
   | { kind: 'free'; day: Date; part: DayPart; reason: string | null }
-  | { kind: 'find'; minutes: number; scope: 'week' | 'day'; day: Date | null }
+  | { kind: 'find'; minutes: number; scope: 'week' | 'day'; day: Date | null; week: 'this' | 'next' | null }
   | null;
 
 const norm = (t: string) => t.toLowerCase().replace(/ё/g, 'е');
@@ -73,8 +73,10 @@ export function parseAgent(text: string, now: Date): AgentIntent {
       const hh = /(\d)\s*час/.exec(t);
       return hh ? Number(hh[1]) * 60 : 60;
     })();
-    const day = /недел/.test(t) ? null : pickDay(head, now);
-    return { kind: 'find', minutes, scope: day ? 'day' : 'week', day };
+    // #4920: «недел» сидит и в «понедельнике» — «в понедельник» читалось как «на неделе»
+    const week = /(^|[^а-я])след\S*\s+недел/.test(t) ? 'next' : /(^|[^а-я])недел/.test(t) ? 'this' : null;
+    const day = week ? null : pickDay(head, now);
+    return { kind: 'find', minutes, scope: day ? 'day' : 'week', day, week };
   }
   return null;
 }

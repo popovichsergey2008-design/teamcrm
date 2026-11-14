@@ -23,6 +23,11 @@ describe('#4892 п. 4: лучшее время', () => {
       expect(st >= at(16, 13) && st < at(16, 14)).toBe(false);
     }
   });
+  it('#4920, п. 9: три варианта — в разное время суток, а не все в начало дня', () => {
+    const r = bestTime({ now, minutes: 30, viewerTimeZone: MSK, people: [person({ id: 'я', me: true }), person({ id: 'Глеб' })] });
+    const times = r.slots.map((x) => new Date(x.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: MSK }));
+    expect(new Set(times).size).toBe(3);
+  });
   it('чужой фокус и встречи не предлагаются; пояс каждого учитывается', () => {
     const gleb = person({ id: 'Глеб', busy: [{ start: at(16, 10), end: at(16, 13), kind: 'focus' }] });
     // Екатеринбург +2: рабочий день 10–19 по Екб = 8–17 по Москве

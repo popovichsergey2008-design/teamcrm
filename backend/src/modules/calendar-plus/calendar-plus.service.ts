@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../common/http/app-exception';
+import { plural } from '../../common/text/ru-grammar';
 import { DbService } from '../../database/db.service';
 import { CalendarBlocksService } from '../calendar/calendar-blocks.service';
 import { CalendarCardService } from '../calendar/calendar-card.service';
@@ -8,7 +9,7 @@ import { CalendarService } from '../calendar/calendar.service';
 import { zonedParts, zonedToUtc } from '../calendar/find-time';
 import { bufferChanges, candidates, Candidate, Meeting, weekInsight } from './assistant-rules';
 import { bestTime, BusySpan, dayBar, Person, zoneLabel } from './best-time';
-import { CalendarPlusRepository, PrefsRow } from './calendar-plus.repository';
+import { CalendarPlusRepository, type CallRow, PrefsRow } from './calendar-plus.repository';
 import { phraseDraft, RepeatFreq } from './phrase-rules';
 
 type Viewer = { userId: string; role: string };
@@ -273,11 +274,13 @@ export class CalendarPlusService {
 
   private async weekInput(tenantId: string, user: Viewer, from: number, to: number) {
     const now = Date.now();
-    const [prefs, rows, blockRows, tasks] = await Promise.all([
+    const [prefs, rows, blockRows, tasks, calls] = await Promise.all([
       this.prefs(tenantId, user.userId),
       this.repo.myMeetings(tenantId, user.userId, new Date(from).toISOString(), new Date(to).toISOString()),
       this.blocks.inRange(tenantId, user.userId, new Date(from).toISOString(), new Date(to).toISOString()),
       this.repo.myOpenTasks(tenantId, user.userId, new Date(to + DAY).toISOString()),
+      // #4920, п. 1: созвоны QEVO — тоже встречи: в шапке, ассистенте, аналитике и подборе
+      this.repo.callsInRange(tenantId, user.userId, new Date(from).toISOString(), new Date(to).toISOString()),
     ]);
     const external = await this.db.many<{ id: string; title: string; starts_at: Date; ends_at: Date }>(
       `SELECT x.id::text, x.title, x.starts_at, x.ends_at FROM calendar_external_events x JOIN calendar_links l ON l.id = x.link_id
@@ -289,6 +292,12 @@ export class CalendarPlusService {
         mine: String(r.owner_id) === String(user.userId), participants: Number(r.participants) || 1, hasAgenda: !!r.has_agenda,
       })),
       ...external.map((x) => ({ id: `x${x.id}`, title: x.title, start: x.starts_at.getTime(), end: x.ends_at.getTime(), mine: false, participants: 1, hasAgenda: true, external: true })),
+      // созвон уже прошёл или идёт: двигать и готовить повестку нечего — только время
+      ...calls.map((c) => ({
+        id: `call${c.id}`, title: CalendarPlusService.callTitle(c), start: c.started_at.getTime(),
+        end: (c.ended_at ?? new Date(Math.max(now, c.started_at.getTime() + 15 * MIN))).getTime(),
+        mine: false, participants: Number(c.participants) || 1, hasAgenda: true, external: true,
+      })),
     ];
     return {
       prefs,
@@ -389,7 +398,7 @@ export class CalendarPlusService {
       const day = t(c.chain[0].start).split(' ')[0];
       return {
         key: c.key, kind: c.kind, tone: 'warn',
-        title: `${day.replace(/^./, (x) => x.toUpperCase())}: ${c.dayMeetings} ${c.dayMeetings === 1 ? 'встреча' : (c.dayMeetings ?? 0) < 5 ? 'встречи' : 'встреч'} за день`,
+        title: `${day.replace(/^./, (x) => x.toUpperCase())}: ${c.dayMeetings} ${plural(c.dayMeetings ?? 0, 'встреча', 'встречи', 'встреч')} за день`,
         text: `с ${hhmm(c.chain[0].start)} до ${hhmm(c.chain[c.chain.length - 1].end)} — ${c.chain.length} подряд без перерыва. Добавить 10 мин между встречами?`,
         action: { label: 'Добавить буферы', kind: 'buffers' },
         preview: ch.map((x) => ({ label: x.title, before: `${hhmm(x.start)}–${hhmm(x.end)}`, after: `${hhmm(x.start)}–${hhmm(x.newEnd)}` })),
@@ -458,17 +467,66 @@ export class CalendarPlusService {
 
   // ---------- созвоны в сетке ----------
 
+  /**
+   * #4920, п. 4: в сетке — тема, а не безликое «Созвон». Тема — название разбора (его даёт
+   * ИИ по разговору), пока его нет — группа, из которой звонили, или с кем говорили.
+   * «Созвон 13.11, 08:49» — заглушка до разбора, темой не считается.
+   */
+  static callTitle(r: Pick<CallRow, 'meeting_title' | 'chat_title' | 'others'>): string {
+    const topic = r.meeting_title?.trim();
+    if (topic && !/^Созвон \d{2}\.\d{2}/.test(topic)) return topic;
+    if (r.chat_title?.trim()) return `Созвон · ${r.chat_title.trim()}`;
+    const others = (r.others ?? '').split(', ').filter(Boolean).map((n) => n.split(' ')[0]);
+    return others.length ? `Созвон с ${others.slice(0, 3).join(', ')}${others.length > 3 ? ` и ещё ${others.length - 3}` : ''}` : 'Созвон';
+  }
+
   async calls(tenantId: string, userId: string, from: string, to: string) {
     const rows = await this.repo.callsInRange(tenantId, userId, from, to);
     return rows.map((r) => ({
       id: `call${r.id}`,
-      title: r.chat_title ? `Созвон · ${r.chat_title}` : 'Созвон',
+      title: CalendarPlusService.callTitle(r),
       startsAt: r.started_at.toISOString(),
       endsAt: (r.ended_at ?? new Date(Math.max(Date.now(), r.started_at.getTime() + 15 * MIN))).toISOString(),
       live: !r.ended_at,
       chatId: r.chat_id, roomId: r.room_id, participants: Number(r.participants) || 0,
       meetingId: r.meeting_id, summaryReady: r.meeting_status === 'done',
     }));
+  }
+
+  /**
+   * Карточка созвона (#4920, п. 4; п. 6 ТЗ #4892): что за встреча, «Войти в звонок», пока
+   * идёт, итоги и задачи по людям, что договорились в прошлый раз, материалы из чата.
+   * Раньше щелчок по созвону уводил в общий список встреч.
+   */
+  async callCard(tenantId: string, userId: string, id: string) {
+    const callId = String(id).replace(/^call/, '');
+    if (!/^\d+$/.test(callId)) throw AppException.notFound('Созвон не найден');
+    const c = await this.repo.callOf(tenantId, userId, callId);
+    if (!c) throw AppException.notFound('Созвон не найден');
+    const end = c.ended_at ?? new Date();
+    const [summary, tasks, prev, files] = await Promise.all([
+      c.meeting_id && c.meeting_status === 'done' ? this.repo.meetingSummary(tenantId, c.meeting_id) : Promise.resolve(null),
+      c.meeting_id ? this.repo.meetingAgreements(tenantId, c.meeting_id) : Promise.resolve([]),
+      this.repo.previousCallMeeting(tenantId, c),
+      c.chat_id ? this.repo.chatFiles(tenantId, c.chat_id, end) : Promise.resolve([]),
+    ]);
+    const agreements = prev ? await this.repo.meetingAgreements(tenantId, prev.meeting_id) : [];
+    const decisions = Array.isArray(summary?.decisions) ? (summary!.decisions as unknown[]).map(String).filter(Boolean).slice(0, 8) : [];
+    const task = (t: { title: string; assignee: string | null; deadline_at: Date | null; task_id: string | null; done: boolean; project_id: string | null }) => ({
+      title: t.title, assignee: t.assignee, deadlineAt: t.deadline_at?.toISOString() ?? null, taskId: t.task_id, projectId: t.project_id, done: !!t.done,
+    });
+    return {
+      id: `call${c.id}`, title: CalendarPlusService.callTitle(c),
+      startsAt: c.started_at.toISOString(), endsAt: end.toISOString(), live: !c.ended_at,
+      roomId: c.room_id, chatId: c.chat_id, chatTitle: c.chat_title,
+      people: (c.others ?? '').split(', ').filter(Boolean),
+      meeting: c.meeting_id ? {
+        id: c.meeting_id, status: c.meeting_status,
+        summary: summary?.summary?.trim() || null, decisions, tasks: tasks.map(task),
+      } : null,
+      previous: prev ? { meetingId: prev.meeting_id, title: prev.title, happenedAt: prev.happened_at.toISOString(), agreements: agreements.map(task) } : null,
+      materials: files.map((f) => ({ fileId: f.file_id, title: f.file_name })),
+    };
   }
 
   // ---------- аналитика времени ----------

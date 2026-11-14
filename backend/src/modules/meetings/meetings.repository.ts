@@ -85,7 +85,7 @@ export class MeetingsRepository {
   /** Кому показать карточку: участники чата (у проектного — вся команда). */
   async chatAudience(tenantId: string, chatId: string): Promise<string[]> {
     const rows = await this.db.many<{ user_id: string }>(
-      `SELECT m.user_id FROM chat_members m WHERE m.chat_id=$1
+      `SELECT m.user_id::text FROM chat_members m WHERE m.chat_id=$1
         UNION
        SELECT u.id::text FROM users u
         WHERE u.tenant_id=$2 AND EXISTS (SELECT 1 FROM chats c WHERE c.id=$1 AND c.kind='project')`,
