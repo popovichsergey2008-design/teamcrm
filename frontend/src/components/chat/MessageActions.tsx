@@ -29,6 +29,8 @@ interface Ping { userId: string; name: string; taskId: string | null; title: str
 interface Answer {
   question: string; kind: string; source: string; lines: { text: string; sources: Source[] }[]; noData: boolean;
   text: string | null; reply: string | null; remind: Ping[]; ask: Ping | null;
+  /** #4925, п. 3: исполнителя нет — «Назначить исполнителя» открывает постановку с этим текстом */
+  assign?: { text: string } | null;
 }
 type Draft = { title: string; assigneeId: string; deadline: string; linkTaskId: string; skip: boolean };
 
@@ -56,7 +58,8 @@ function openSource(s: Source) {
   else if (s.kind === 'file' && s.taskId) navigate(s.projectId ? { section: 'projects', projectId: String(s.projectId), taskId: String(s.taskId) } : { section: 'projects' });
   else if (s.chatId) navigate({ section: 'chat', chatId: String(s.chatId) });
 }
-const sourceLabel = (s: Source) => (s.kind === 'task' ? `#${s.id} «${s.title}»` : s.kind === 'meeting' ? `встреча «${s.title}»` : `файл «${s.title}»`);
+const sourceLabel = (s: Source) => (s.kind === 'task' ? `#${s.id} «${s.title}»` : s.kind === 'meeting' ? `встреча «${s.title}»`
+  : s.kind === 'message' ? 'сообщение в чате' : `файл «${s.title}»`);
 
 export default function MessageActions({ messageId, body, isAi, createdAt, mode, onClose }: {
   messageId: string;
@@ -338,6 +341,12 @@ function ContextAnswer({ messageId, busy, error, answer, onClose }: { messageId:
               <Icon name="bell" size={12} /> {done.includes(`remind:${p.userId}`) ? `Напомнил: ${first(p.name)}` : `Напомнить: ${first(p.name)}`}
             </button>
           ))}
+          {answer.assign && (
+            <button className="ui-btn ui-btn-primary ui-btn-sm"
+              onClick={() => window.dispatchEvent(new CustomEvent('teamcrm:quick-task', { detail: { text: answer.assign!.text } }))}>
+              <Icon name="user" size={12} /> Назначить исполнителя
+            </button>
+          )}
           {answer.ask && (
             <button className="ui-btn ui-btn-outline ui-btn-sm" disabled={!!sending || done.includes(`ask:${answer.ask.userId}`)}
               onClick={() => void ping(answer.ask!, 'ask')}

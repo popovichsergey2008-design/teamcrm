@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { DecisionQueueService } from '../decision-queue/decision-queue.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { NotificationsRepository } from './notifications.repository';
 import { CenterQuery, CenterRepository, CenterRow, CenterViewer } from './center.repository';
@@ -45,6 +46,7 @@ export class NotificationCenter {
     private readonly notifications: NotificationsRepository,
     private readonly realtime: RealtimeService,
     private readonly box: InboxRepository,
+    @Optional() private readonly queue?: DecisionQueueService,
   ) {}
 
   /** Выключенные человеком типы «Входящих» — их нет ни в списке, ни на счётчике. */
@@ -204,8 +206,16 @@ export class NotificationCenter {
     return { items: groupInbox(rows), next: rows.length === limit ? rows[rows.length - 1].id : null };
   }
 
+  /**
+   * #4925, п. 4: «Ждут решения» у «Входящих» — то же число, что в Пульсе, Фокусе дня,
+   * брифинге и «Пульсе недели»: одна функция очереди решений (#4890), а не непрочитанные
+   * уведомления о решениях. Раньше меню показывало 127 при 121 в Пульсе.
+   */
   async inboxCounters(v: CenterViewer) {
-    return this.repo.inboxCounts(v, await this.offKinds(v));
+    const c = await this.repo.inboxCounts(v, await this.offKinds(v));
+    if (!this.queue) return c;
+    const decisions = await this.queue.count({ tenantId: v.tenantId, userId: v.userId }).catch(() => c.decisions);
+    return { ...c, important: c.important - c.decisions + decisions, decisions };
   }
 
   async inboxMark(v: CenterViewer, ids: string[], action: 'read' | 'unread' | 'done' | 'undone' | 'snooze', until?: Date) {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { maskSecrets } from '../../common/secrets';
 import { DbService } from '../../database/db.service';
 import { inQuietHours, pushAllowed } from './inbox-rules';
 
@@ -15,6 +16,15 @@ export interface InboxRow {
 }
 
 /** Ящик уведомлений: строка на событие одному человеку, номер строки — курсор клиента. */
+/**
+ * #4925, п. 1: текст уведомления сохраняется при отправке, и записи, сделанные до нового
+ * правила распознавания паролей, хранят пароль открытым. Маскируем при каждой выдаче —
+ * так закрываются и старые записи, без переписывания базы.
+ */
+function safeRows<T extends { title?: string | null; body?: string | null }>(rows: T[]): T[] {
+  return rows.map((r) => ({ ...r, title: maskSecrets(r.title), body: maskSecrets(r.body) }));
+}
+
 @Injectable()
 export class InboxRepository {
   constructor(private readonly db: DbService) {}
@@ -59,7 +69,7 @@ export class InboxRepository {
         WHERE user_id=$1 AND ($2::bigint IS NULL OR id > $2)
         ORDER BY id ASC LIMIT $3`,
       [userId, afterId, limit],
-    );
+    ).then(safeRows);
   }
 
   /** Последние N — для первого открытия, когда курсора ещё нет. */
@@ -67,7 +77,7 @@ export class InboxRepository {
     return this.db.many<InboxRow>(
       `SELECT * FROM notification_inbox WHERE user_id=$1 ORDER BY id DESC LIMIT $2`,
       [userId, limit],
-    );
+    ).then(safeRows);
   }
 
   /**
@@ -95,7 +105,7 @@ export class InboxRepository {
       `SELECT path, title, body FROM notification_inbox
         WHERE user_id=$1 AND read_at IS NULL ORDER BY id DESC LIMIT $2`,
       [userId, limit],
-    );
+    ).then(safeRows);
   }
 
   async unreadCount(userId: string): Promise<number> {

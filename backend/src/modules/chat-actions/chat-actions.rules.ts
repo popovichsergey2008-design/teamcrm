@@ -349,6 +349,61 @@ export interface TaskFact {
   assigneeId: string | null; assignee: string | null; authorId: string | null; author: string | null;
   status: string | null; deadline: string | null; closed: boolean;
   files: string[]; links: string[]; score: number;
+  /** #4925, п. 3: слово вопроса есть в названии (а не только пунктом в описании-ТЗ) */
+  inTitle?: boolean;
+  /** строка описания, где встретилось слово вопроса: «1. Видео для блоков сайта…» */
+  excerpt?: string | null;
+  /** задача названа в ветке рядом (номер или тема соседних сообщений) */
+  fromContext?: boolean;
+}
+
+/** Сообщение ветки, из которого понятно, о чём вопрос. */
+export interface ContextMessage { id: string; chatId: string; author: string | null; at: string; text: string }
+
+/**
+ * #4925, п. 3: номера задач в соседних сообщениях — «#4863», «№4863», ссылка «/task/4863».
+ * Ветка сама говорит, о какой задаче речь, — искать по одному слову вопроса не нужно.
+ */
+export function contextTaskIds(texts: string[]): string[] {
+  const out = new Set<string>();
+  for (const t of texts) {
+    for (const m of String(t ?? '').matchAll(/(?:#|№\s?|\/task\/)(\d{2,7})(?!\d)/g)) out.add(m[1]);
+  }
+  return [...out].slice(0, 10);
+}
+
+/** Строка текста (пункт ТЗ, абзац), где встретилась основа слова вопроса. */
+export function lineWith(text: string | null | undefined, stems: string[]): string | null {
+  const lines = String(text ?? '').split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  for (const l of lines) {
+    const low = norm(l);
+    if (stems.some((s) => low.includes(s))) return l.replace(/\s+/g, ' ').slice(0, 220);
+  }
+  return null;
+}
+
+/**
+ * Вопрос «кто / я ли должен» про то, что у лучшей задачи только пунктом в описании (ТЗ),
+ * а своей задачи с исполнителем нет: так и говорим — «исполнитель не назначен» — и
+ * предлагаем назначить. Иначе ответ «#4863 делает Глеб» читается как «видео — Глеб».
+ */
+export function unassignedLine(kind: QuestionKind, facts: Facts, topic: string): AnswerLine | null {
+  if (kind !== 'who' && kind !== 'me') return null;
+  const t = facts.tasks[0];
+  if (!t || t.inTitle || !t.excerpt) return null;
+  return {
+    text: `Отдельной задачи «${topic}» нет — это пункт ТЗ в задаче #${t.id} «${t.title}»${t.assignee ? ` (ТЗ ведёт ${t.assignee})` : ''}: «${t.excerpt}». Исполнитель не назначен.`,
+    sources: [taskSrc(t)],
+  };
+}
+
+/** Строка ответа из переписки: кто и когда сказал о теме вопроса в этой ветке. */
+export function contextLine(m: ContextMessage): AnswerLine {
+  const at = m.at ? ` ${dd(m.at)}` : '';
+  return {
+    text: `В переписке${at}${m.author ? ` ${m.author}` : ''}: «${m.text.replace(/\s+/g, ' ').slice(0, 200)}${m.text.length > 200 ? '…' : ''}»`,
+    sources: [{ kind: 'message', id: m.id, title: 'сообщение', chatId: m.chatId, messageId: m.id }],
+  };
 }
 export interface MeetingFact {
   id: string; title: string; at: string | null; what: 'decision' | 'draft' | 'summary'; text: string;

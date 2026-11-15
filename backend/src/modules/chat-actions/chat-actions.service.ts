@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { maskSecrets } from '../../common/secrets';
 import { meetingVisibleSql, projectVisibleSql, viewerParams } from '../../common/access/project-visibility';
 import { AppException } from '../../common/http/app-exception';
 import { DbService } from '../../database/db.service';
@@ -10,9 +11,7 @@ import { NlService } from '../nl/nl.service';
 import { ProjectResolverService } from '../nl/project-resolver.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import {
-  AnswerLine, askStems, askWhom, AssignmentContext, AssignmentItem, composeAnswer, createLabel, extractAssignments, Facts,
-  FileFact, itemsFromModel, linksIn, MeetingFact, mergeWithRules, missingOf, pickSimilar, questionKind, remindTargets,
-  replyText, SIMILAR_LINK, sourcedModelLines, TaskFact, titleStems,
+  AnswerLine, askStems, askWhom, AssignmentContext, AssignmentItem, composeAnswer, createLabel, extractAssignments, Facts, FileFact, itemsFromModel, linksIn, MeetingFact, mergeWithRules, missingOf, pickSimilar, questionKind, remindTargets, replyText, SIMILAR_LINK, sourcedModelLines, TaskFact, titleStems, contextLine, ContextMessage, lineWith, unassignedLine, contextTaskIds,
 } from './chat-actions.rules';
 
 type Viewer = { tenantId: string; userId: string; role: string };
@@ -59,6 +58,17 @@ const hits = (expr: string, arr: string) => `(SELECT count(*) FROM unnest(${arr}
  * протоколам встреч с источником у каждой строки; видит только спросивший, в чат —
  * только по кнопке. Модели может не быть — тогда всё правилами.
  */
+const normText = (t: string) => String(t ?? '').toLowerCase().replace(/ё/g, 'е');
+
+/** Предмет вопроса — первое предметное слово как есть: «Видео я должен был создавать?» → «Видео». */
+function topicOf(question: string, stems: string[]): string | null {
+  for (const raw of question.split(/[^A-Za-zА-Яа-яЁё0-9-]+/)) {
+    const w = raw.toLowerCase().replace(/ё/g, 'е');
+    if (w && stems.some((s) => w.startsWith(s))) return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+  return null;
+}
+
 @Injectable()
 export class ChatActionsService {
   private readonly log = new Logger('ChatActions');
@@ -352,8 +362,16 @@ export class ChatActionsService {
       const r = await this.db.one<{ body: string }>(`SELECT body FROM chat_messages WHERE tenant_id = $1 AND id = $2`, [v.tenantId, m.reply_to_id]);
       stems = askStems(r?.body ?? '');
     }
-    const facts: Facts = stems.length ? await this.facts(v, stems, m.chat_project_id, kind === 'where') : { tasks: [], meetings: [], files: [] };
-    const empty = !facts.tasks.length && !facts.meetings.length && !facts.files.length;
+    // #4925, п. 3: контекст ветки — соседние сообщения о той же теме и номера задач в них
+    const ctx = await this.context(v, m, stems);
+    const facts: Facts = stems.length || ctx.taskIds.length
+      ? await this.facts(v, stems, m.chat_project_id, kind === 'where', ctx) : { tasks: [], meetings: [], files: [] };
+    // 1–2 лучших источника, а не россыпь совпадений по слову; лучшая задача из контекста
+    // ветки — остальные совпадения по одному слову («Сжатие видео») только шумят
+    if (facts.tasks[0]?.fromContext) facts.tasks = facts.tasks.filter((t) => t.fromContext);
+    facts.tasks = facts.tasks.slice(0, 2);
+    facts.meetings = facts.meetings.slice(0, 2);
+    const empty = !facts.tasks.length && !facts.meetings.length && !facts.files.length && !ctx.messages.length;
 
     let lines: AnswerLine[] = [];
     let source = 'rules';
@@ -369,6 +387,12 @@ export class ChatActionsService {
         if (fromModel.length) { lines = fromModel; source = 'model'; }
       } catch (e) { this.log.warn(`ответ из контекста ${m.id} без модели: ${(e as Error).message}`); }
       if (!lines.length) lines = composeAnswer(kind, facts, String(v.userId));
+      const topic = topicOf(q, stems);
+      const unassigned = topic ? unassignedLine(kind, facts, topic) : null;
+      if (unassigned) lines = [unassigned, ...lines.filter((l) => !l.sources.some((s) => s.kind === 'task' && s.id === facts.tasks[0]?.id))];
+      // что сказали о теме в этой ветке — вторым источником, если места хватает
+      if (ctx.messages[0] && lines.length < 3) lines.push(contextLine(ctx.messages[0]));
+      lines = lines.slice(0, 3);
     }
     const noData = !lines.length;
     const author = m.author_id && m.author ? { id: m.author_id, name: m.author } : null;
@@ -387,32 +411,75 @@ export class ChatActionsService {
       reply: noData ? null : replyText(lines),
       remind: remindTargets(facts, String(v.userId)),
       ask: whom,
+      // #4925, п. 3: исполнителя нет — предложить назначить (окно постановки с готовым текстом)
+      assign: !noData && lines.some((l) => l.text.endsWith('Исполнитель не назначен.'))
+        ? { text: `${topicOf(q, stems) ?? 'Задача'} — по ТЗ задачи #${facts.tasks[0]?.id}` } : null,
     };
   }
 
-  private async facts(v: Viewer, stems: string[], chatProjectId: string | null, files: boolean): Promise<Facts> {
+  /**
+   * Соседние сообщения ветки: ответ «Кто за это отвечает?» должен знать, о чём разговор.
+   * Ветка — корень и ответы; без ветки — сообщения чата за двое суток до вопроса. Берём те,
+   * где есть слово вопроса, и то, на которое ответили.
+   */
+  private async context(v: Viewer, m: MessageRow, stems: string[]): Promise<{ taskIds: string[]; stems: string[]; messages: ContextMessage[] }> {
+    const rows = await this.db.many<{ id: string; chat_id: string; author: string | null; created_at: Date; body: string }>(
+      `SELECT x.id::text, x.chat_id::text, u.full_name AS author, x.created_at, x.body
+         FROM chat_messages x JOIN chat_messages q ON q.id = $2
+         LEFT JOIN users u ON u.id = x.author_id
+        WHERE x.tenant_id = $1 AND x.chat_id = q.chat_id AND x.id <> q.id AND x.deleted_at IS NULL AND NOT x.is_ai
+          AND COALESCE(btrim(x.body), '') <> ''
+          AND (CASE WHEN q.thread_root_id IS NOT NULL THEN (x.id = q.thread_root_id OR x.thread_root_id = q.thread_root_id)
+                    ELSE x.created_at BETWEEN q.created_at - interval '2 days' AND q.created_at + interval '10 minutes' END)
+        ORDER BY abs(EXTRACT(EPOCH FROM (x.created_at - q.created_at))) LIMIT 30`,
+      [v.tenantId, m.id]).catch(() => []);
+    const about = rows.filter((r) => r.id === m.reply_to_id || (stems.length && stems.some((s) => normText(r.body).includes(s))));
+    const texts = [m.body, ...about.map((r) => r.body)];
+    const own = new Set(stems);
+    return {
+      taskIds: contextTaskIds(texts),
+      stems: askStems(about.map((r) => r.body).join(' ')).filter((s) => !own.has(s)).slice(0, 8),
+      // цитируем то, что объясняет тему (пункт ТЗ, решение), а не встречный вопрос «что там по видео?»
+      messages: about
+        .filter((r) => stems.some((s) => normText(r.body).includes(s)))
+        .sort((x, y) => Number(x.body.trim().endsWith('?')) - Number(y.body.trim().endsWith('?')) || y.body.length - x.body.length)
+        .map((r) => ({ id: r.id, chatId: r.chat_id, author: r.author, at: r.created_at.toISOString(), text: maskSecrets(lineWith(r.body, stems) ?? r.body) }))
+        .slice(0, 2),
+    };
+  }
+
+  private async facts(v: Viewer, stems: string[], chatProjectId: string | null, files: boolean,
+    ctx: { taskIds: string[]; stems: string[] } = { taskIds: [], stems: [] }): Promise<Facts> {
     const vp = viewerParams(v);
     const vis = projectVisibleSql('t.project_id', { user: '$2', all: '$3', client: '$4' });
     const taskRows = await this.db.many<{
       id: string; title: string; description: string | null; project_id: string; project_name: string | null; assignee_id: string | null;
       assignee: string | null; author_id: string | null; author: string | null; status: string | null; deadline_at: Date | null;
-      closed_at: Date | null; th: number; dh: number;
+      closed_at: Date | null; th: number; dh: number; named: boolean; ch: number;
     }>(
       `SELECT t.id::text, t.title, t.description, t.project_id::text, p.name AS project_name, t.assignee_id::text, ua.full_name AS assignee,
               t.created_by::text AS author_id, uc.full_name AS author, bc.name AS status, t.deadline_at, t.closed_at,
-              ${hits('t.title', '$5')}::int AS th, ${hits("COALESCE(t.description, '')", '$5')}::int AS dh
+              ${hits('t.title', '$5')}::int AS th, ${hits("COALESCE(t.description, '')", '$5')}::int AS dh,
+              (t.id = ANY($7::bigint[])) AS named, ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}::int AS ch
          FROM tasks t JOIN projects p ON p.id = t.project_id
     LEFT JOIN board_columns bc ON bc.id = t.column_id
     LEFT JOIN users ua ON ua.id = t.assignee_id
     LEFT JOIN users uc ON uc.id = t.created_by
         WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND ${vis}
-          AND ${like("t.title || ' ' || COALESCE(t.description, '')", '$5')}
-        ORDER BY (${hits('t.title', '$5')} * 3 + ${hits("COALESCE(t.description, '')", '$5')}) DESC,
+          AND (t.id = ANY($7::bigint[]) OR (cardinality($5::text[]) > 0 AND ${like("t.title || ' ' || COALESCE(t.description, '')", '$5')}))
+        -- #4925, п. 3: сначала задача, названная в ветке; потом та, что совпала и с вопросом,
+        -- и с темой соседних сообщений (тема «ТЗ сайта» + «видео» → #4863), и только потом —
+        -- просто слово вопроса в названии
+        ORDER BY (t.id = ANY($7::bigint[])) DESC,
+                 (${hits('t.title', '$5')} * 3 + ${hits("COALESCE(t.description, '')", '$5')}
+                   + 2 * ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}) DESC,
                  (t.project_id = $6::bigint) DESC NULLS LAST, (t.closed_at IS NULL) DESC, t.updated_at DESC
-        LIMIT 8`,
-      [v.tenantId, ...vp, stems, chatProjectId]);
+        LIMIT 12`,
+      [v.tenantId, ...vp, stems, chatProjectId, ctx.taskIds, ctx.stems]);
     const need = Math.min(2, stems.length);
-    const strong = taskRows.filter((t) => t.th > 0 || t.dh >= need).slice(0, 5);
+    const strong = taskRows.filter((t) => t.named || t.th > 0 || t.dh >= need)
+      .sort((a, b) => Number(b.named) - Number(a.named) || (b.th * 3 + b.dh + 2 * b.ch) - (a.th * 3 + a.dh + 2 * a.ch))
+      .slice(0, 5);
     const ids = strong.map((t) => t.id);
     const att = ids.length ? await this.db.many<{ task_id: string; file_name: string }>(
       `SELECT ta.task_id::text, f.file_name FROM task_attachments ta JOIN files f ON f.id = ta.file_id
@@ -420,7 +487,8 @@ export class ChatActionsService {
     const tasks: TaskFact[] = strong.map((t) => ({
       id: t.id, title: t.title, projectId: t.project_id, projectName: t.project_name, assigneeId: t.assignee_id, assignee: t.assignee,
       authorId: t.author_id, author: t.author, status: t.status, deadline: isoDay(t.deadline_at), closed: !!t.closed_at,
-      files: att.filter((a) => a.task_id === t.id).map((a) => a.file_name).slice(0, 5), links: linksIn(t.description), score: t.th * 3 + t.dh,
+      files: att.filter((a) => a.task_id === t.id).map((a) => a.file_name).slice(0, 5), links: linksIn(t.description), score: t.th * 3 + t.dh + 2 * t.ch,
+      inTitle: t.th > 0, excerpt: t.th > 0 ? null : maskSecrets(lineWith(t.description, stems) ?? '') || null, fromContext: !!t.named || t.ch > 0,
     }));
 
     const mv = meetingVisibleSql('mt', { user: '$2', all: '$3', client: '$4' });

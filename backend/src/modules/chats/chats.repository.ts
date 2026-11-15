@@ -399,7 +399,7 @@ export class ChatsRepository {
         ORDER BY r.last_reply_at DESC NULLS LAST
         LIMIT $3`,
       [tenantId, userId, limit],
-    );
+    ).then((rows: any[]) => rows.map((r) => ({ ...r, root_body: maskSecrets(r.root_body) })));
   }
 
   /** Ветку открыли — ответы в ней больше не новые. */
@@ -802,7 +802,7 @@ export class ChatsRepository {
         ORDER BY m.created_at DESC
         LIMIT $3`,
       [tenantId, userId, limit],
-    );
+    ).then((rows: any[]) => rows.map((r) => ({ ...r, body: maskSecrets(r.body), my_body: maskSecrets(r.my_body) })));
   }
 
   /** Кого позвали по имени в конкретном сообщении. */
@@ -861,7 +861,8 @@ export class ChatsRepository {
         ORDER BY (n.seen_at IS NULL) DESC, m.created_at DESC
         LIMIT $3`,
       [tenantId, userId, limit],
-    );
+    // #4925, п. 1: превью «Вас упомянули» — без паролей
+    ).then((rows: any[]) => rows.map((r) => ({ ...r, body: maskSecrets(r.body) })));
   }
 
   async markMentionsSeen(tenantId: string, userId: string): Promise<void> {

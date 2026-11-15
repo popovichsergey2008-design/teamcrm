@@ -90,6 +90,6 @@ describe('ТЗ-2 — поиск (e2e)', () => {
       .send({ acceptPrivacy: true, tenantName: 'Search2', email: `s2_${uniq()}@t.test`, password: 'Test-pass-2026', fullName: 'К' })
       .expect(201)).body.data;
     const empty = await find(owner.accessToken, 'а');
-    expect(empty).toEqual({ query: 'а', tasks: [], projects: [], chats: [], messages: [], people: [], docs: [] });
+    expect(empty).toEqual({ query: 'а', tasks: [], projects: [], chats: [], messages: [], people: [], docs: [], meetings: [] });
   });
 });

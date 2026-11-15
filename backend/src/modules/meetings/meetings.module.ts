@@ -20,6 +20,7 @@ import { ChatsModule } from '../chats/chats.module';
 import { MeetingRecapController } from './meeting-recap.controller';
 import { MeetingRecapRepository } from './meeting-recap.repository';
 import { MeetingRecapService } from './meeting-recap.service';
+import { ProtocolPrivacyService } from './protocol-privacy.service';
 
 /** Этап 6, М2: разбор записей встреч. Свои созвоны появятся позже — источник записи внешний. */
 @Module({
@@ -29,7 +30,7 @@ import { MeetingRecapService } from './meeting-recap.service';
     ChatsModule],
   controllers: [MeetingsController, AudioProofController, MeetingRecapController],
   providers: [MeetingsService, MeetingsRepository, PostcallService, PostcallRepository, AudioProofService,
-    MeetingRecapService, MeetingRecapRepository],
+    MeetingRecapService, MeetingRecapRepository, ProtocolPrivacyService],
   exports: [MeetingsService, MeetingsRepository, PostcallService], // репозиторий нужен уборке: черновики со встреч
 })
 export class MeetingsModule {}

@@ -1,4 +1,5 @@
 import {
+  contextTaskIds, lineWith, unassignedLine,
   askStems, askWhom, composeAnswer, createLabel, extractAssignments, Facts, isAssignment, isContextQuestion, itemsFromModel,
   leadingAddress, linksIn, mergeWithRules, missingOf, pickSimilar, questionKind, remindTargets, replyText, similarity,
   sourcedModelLines, splitAssignments,
@@ -160,5 +161,21 @@ describe('п. 8: «Кто за это отвечает?»', () => {
     const t = replyText([{ text: 'Видео делает Глеб.', sources: [{ kind: 'task', id: '4864', title: 'Промо-видео' }] }]);
     expect(t).toBe('Видео делает Глеб. (источник: #4864)');
     expect(linksIn('см. https://a.ru/x и https://a.ru/x')).toEqual(['https://a.ru/x']);
+  });
+
+  it('#4925, п. 3: номера задач в ветке, строка ТЗ с темой вопроса', () => {
+    expect(contextTaskIds(['см. #4863 и №4864', 'https://app.qevo.one/projects/130/task/4865'])).toEqual(['4863', '4864', '4865']);
+    expect(lineWith('По ТЗ остаются:\n1. Видео для блоков сайта — исходники не получены.\n2. UTM', ['виде'])).toBe('1. Видео для блоков сайта — исходники не получены.');
+  });
+
+  it('#4925, п. 3: тема — только пункт ТЗ без своей задачи → «исполнитель не назначен»', () => {
+    const t = { id: '4863', title: '2 ТЗ qevo.one основной сайт', projectId: '1', projectName: 'QEVO', assigneeId: '96', assignee: 'Глеб',
+      authorId: '2', author: 'Сергей', status: 'В работе', deadline: null, closed: false, files: [], links: [], score: 5,
+      inTitle: false, excerpt: '1. Видео для блоков сайта — исходники не получены.' };
+    const line = unassignedLine('who', { tasks: [t], meetings: [], files: [] }, 'Видео');
+    expect(line?.text).toContain('Исполнитель не назначен');
+    expect(line?.text).toContain('#4863');
+    expect(line?.sources[0].id).toBe('4863');
+    expect(unassignedLine('who', { tasks: [{ ...t, inTitle: true }], meetings: [], files: [] }, 'Видео')).toBeNull();
   });
 });

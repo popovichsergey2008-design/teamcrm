@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DecisionQueueModule } from '../decision-queue/decision-queue.module';
 import { DatabaseModule } from '../../database/database.module';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsRepository } from './notifications.repository';
@@ -16,7 +17,7 @@ import { InboxBoxController } from './inbox.controller';
 
 /** Почтовые уведомления: постановка в очередь + отдельный отправляющий обработчик; центр уведомлений (#4655). */
 @Module({
-  imports: [DatabaseModule, TelegramModule],
+  imports: [DatabaseModule, TelegramModule, DecisionQueueModule],
   controllers: [NotificationsController, NotificationCenterController, InboxBoxController],
   providers: [NotificationsRepository, NotificationsService, MailWorker, TelegramMirror, InboxRepository, FcmSender, PushService,
     CenterRepository, NotificationCenter],

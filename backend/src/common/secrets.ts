@@ -201,6 +201,32 @@ export function detectSecrets(text: string | null | undefined): SecretSpan[] {
     const at = m.index! + m[0].length - m[1].length;
     add(at, at + v.length, 'password');
   }
+  /*
+    #4925, п. 1: доступ без подписей, строками — так их и присылают в чат:
+      https://dev.example.com/
+      admin
+      Pa55word!x
+    Адрес, под ним логин, под ним пароль. Прячем строку пароля; логин и адрес остаются,
+    по ним понятно, к чему доступ. Похожесть на пароль обязательна — иначе две обычные
+    строки после ссылки («смотри» / «сегодня») стали бы точками.
+  */
+  for (const m of s.matchAll(/(?:^|\n)[ \t]*(?:https?:\/\/\S+|(?:[\w-]+\.)+[a-z]{2,}\S*)[ \t]*\r?\n[ \t]*[\w.@+-]{2,60}[ \t]*\r?\n[ \t]*(\S{6,64})[ \t]*(?=\r?\n|$)/giu)) {
+    const v = m[1];
+    if (!looksLikePassword(v)) continue;
+    const at = m.index! + m[0].length - m[0].slice(m[0].lastIndexOf(v)).length;
+    add(at, at + v.length, 'password');
+  }
+  /*
+    #4925, п. 2: «аккаунт взять у Константина (ivan 7341)» — логин и пароль в скобках
+    после слова о доступе. Прячем вторую половину — пароль; «(Иван Петров)» и «(см. выше)»
+    не трогаем: пароль должен быть с цифрами или знаками.
+  */
+  for (const m of s.matchAll(new RegExp(`${NB}(?:аккаунт|акк|учётк|учетк|логин|доступ|account|login|creds?)\\p{L}*[^\\n()]{0,60}\\(\\s*[\\w.@+-]{2,40}\\s*[\\s:/]\\s*([^\\s()]{3,40})\\s*\\)`, 'giu'))) {
+    const v = m[1];
+    if (!/\d|[!@#$%^&*]/.test(v) || NOT_A_VALUE.has(v.toLowerCase())) continue;
+    const at = m.index! + m[0].lastIndexOf(v);
+    add(at, at + v.length, 'password');
+  }
   // «ivan@mail.ru:Qwerty123» — почта и пароль через двоеточие
   for (const m of s.matchAll(/[\w.+-]+@[\w-]+\.[\w.-]+:(\S{4,80})/g)) {
     const v = trimTail(m[1]);

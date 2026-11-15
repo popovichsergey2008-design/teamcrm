@@ -125,6 +125,21 @@ describe('детектор секретов (#4902, п. 13)', () => {
     expect(hit.length).toBeLessThanOrEqual(1);
   });
 
+  it('#4925: доступ строками без подписей — адрес, логин, пароль', () => {
+    const msg = '@все \nпросьба зайти сюда \nhttps://dev.example.com/\nadmin\nXk7#pQ2mZ9\n\nи посмотреть отображается ли флаг';
+    const out = maskSecrets(msg);
+    expect(out).not.toContain('Xk7#pQ2mZ9');
+    expect(out).toContain('https://dev.example.com/\nadmin\n••••••');
+    // две обычные строки после ссылки — не пароль
+    expect(maskSecrets('вот ссылка\nhttps://qevo.one/\nсмотри\nсегодня вечером')).toContain('сегодня вечером');
+  });
+
+  it('#4925: логин и пароль в скобках после слова о доступе', () => {
+    const d = 'Яндекс-аккаунт для работы взять у Константина (ivan 7341), новый не создавать';
+    expect(maskSecrets(d)).toBe('Яндекс-аккаунт для работы взять у Константина (ivan ••••••), новый не создавать');
+    expect(maskSecrets('доступ к сайту у Ивана (Иван Петров)')).toBe('доступ к сайту у Ивана (Иван Петров)');
+  });
+
   it('прячет только значение — подпись остаётся читаемой', () => {
     expect(maskSecrets('Пароль: Qwerty123!')).toBe(`Пароль: ${SECRET_MASK}`);
     expect(maskSecrets('postgres://qevo:SuperSecret42@db:5432/crm')).toBe(`postgres://qevo:${SECRET_MASK}@db:5432/crm`);

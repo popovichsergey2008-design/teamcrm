@@ -4,7 +4,6 @@ import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
 import { applyOrder, MENU_PREFS_CHANGED, MenuPrefs, moreSections, moveItem } from '../lib/menu-order';
 import { INBOX_CHANGED, inboxApi } from '../lib/inbox-api';
-import { flowApi } from '../lib/flow-api';
 import { DropdownMenu, MenuItem, MenuSeparator } from './ui/dropdown-menu';
 import { setQuietSource, setStatusQuiet } from '../lib/quiet';
 import { Avatar } from './Avatar';
@@ -288,8 +287,9 @@ export function Sidebar({
     const load = () => {
       window.clearTimeout(t);
       t = window.setTimeout(() => {
-        void Promise.all([inboxApi.counters(), flowApi.queue().catch(() => [])]).then(([c, q]) => {
-          const decisions = q.length + c.decisions;
+        // #4925, п. 4: решения считает сервер одной функцией очереди — то же число, что в Пульсе
+        void inboxApi.counters().then((c) => {
+          const decisions = c.decisions;
           const next = { n: c.important - c.decisions + decisions, decisions, tip: `Ждут решения ${decisions} · Упоминания ${c.mentions} · Назначено ${c.assigned}` };
           setInbox(next);
           // колокольчик на телефоне показывает то же число, что «Входящие» (NotificationBell)
