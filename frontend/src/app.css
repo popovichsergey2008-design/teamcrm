@@ -5801,7 +5801,8 @@ button.chat-pop-row:hover { background: var(--hover); }
   .call-controls .ui-btn.call-off > .icon { background: transparent; }
   .call-controls .ui-btn.call-on > .icon { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   .call-controls .ui-btn-sm { font-size: calc(11px * var(--fs-scale)); }
-  .call-btn-cap { display: block; line-height: 1.2; text-align: center; white-space: nowrap; }
+  /* #4927: подпись переносится в ширину кнопки — «Завершить всем» не наезжает на соседей */
+  .call-btn-cap { display: block; line-height: 1.2; text-align: center; max-width: 64px; overflow-wrap: anywhere; }
   .call-controls .call-leave { margin-left: 0; order: 99; color: var(--text); }
   .call-controls .call-hangup-ico {
     display: grid; place-items: center; padding: 0;

@@ -18,7 +18,7 @@ import {
   Info, CircleHelp, Lock, Eye, EyeOff, LogOut, BookOpen, Inbox, Plug, Handshake, Sparkles,
   ChartColumn, Wallet, Sun, Moon, Monitor, Play, Pause, Mail, Building2, Target, Zap, ShieldCheck,
   Pin, ThumbsUp, ThumbsDown, Heart, Rocket, Megaphone, PartyPopper, Trophy, Lightbulb, WandSparkles,
-  Funnel, CheckCheck, SquarePen, House, AtSign, Undo2, Hourglass, Columns3, Ban,
+  Funnel, CheckCheck, SquarePen, House, AtSign, Undo2, Hourglass, Columns3, Ban, Menu,
 } from 'lucide-react';
 
 const ICONS = {
@@ -27,7 +27,7 @@ const ICONS = {
   record: CircleDot, stop: Square, hand: Hand, robot: Bot, users: Users, user: User, 'user-plus': UserPlus,
   maximize: Maximize2, minimize: Minimize2, restore: PictureInPicture2,
   board: SquareKanban, list: List, check: Check, 'check-circle': CircleCheck, close: X, plus: Plus, minus: Minus,
-  search: Search, settings: Settings, filter: ListFilter, sort: ArrowUpDown, more: MoreHorizontal,
+  search: Search, settings: Settings, filter: ListFilter, sort: ArrowUpDown, more: MoreHorizontal, menu: Menu,
   folder: Folder, archive: Archive, file: File, paperclip: Paperclip, download: Download, upload: Upload, image: Image,
   calendar: Calendar, clock: Clock, bell: Bell, flag: Flag, star: Star, tag: Tag,
   edit: Pencil, trash: Trash2, copy: Copy, link: Link, refresh: RefreshCw, send: Send,

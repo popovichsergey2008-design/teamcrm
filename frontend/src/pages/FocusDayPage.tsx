@@ -10,8 +10,11 @@ import { MeetingAgenda } from '../components/MeetingAgenda';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { promptText } from '../components/ui/dialog';
-import { api, ApiError, FocusCandidate, FocusChangeReason, FocusHuddle, FocusItem, FocusToday } from '../lib/api';
+import { api, ApiError, FocusCandidate, FocusChangeReason, FocusHuddle, FocusItem, FocusToday, request } from '../lib/api';
 import { navigate } from '../lib/router';
+
+/** #4926: задача, которая сдана и ждёт чужой проверки. */
+interface WaitingTask { id: string; title: string; projectId: string; projectName: string | null; column: string | null; since: string | null }
 import { plural } from '../lib/chat-text';
 import { deadlineBadge, priorityBadge } from '../lib/labels';
 import { getSocket } from '../lib/socket';
@@ -120,7 +123,11 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   */
   const [plus, setPlus] = useState<PlusDay | null>(null);
   // #4890, пп. 4–6: разбор решений по одной карточке — здесь же, без перехода
-  const [runOpen, setRunOpen] = useState(false);
+  // 'inline' — разбор раскрыт на месте карточки «Разобрать N проверок» (#4926), true — блоком ниже
+  const [runOpen, setRunOpen] = useState<boolean | 'inline'>(false);
+  /** #4926: «Ждут проверки» — развёрнутый список (null — ещё не загружен). */
+  const [reviewList, setReviewList] = useState<WaitingTask[] | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   // п. 13: «Ждут вашего решения» — живое число той же функции, что в Пульсе и брифинге
   const [liveDecisions, setLiveDecisions] = useState<number | null>(null);
   const [decPassport, setDecPassport] = useState(false);
@@ -309,15 +316,26 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     */
     if (item.kind !== 'task' && item.status !== 'done' && decisionCount > 1 && !editing) {
       const take = Math.min(10, decisionCount);
+      // #4926: «Начать разбор» раскрывает разбор здесь же — список пачки и текущая карточка,
+      // а не уводит к блоку ниже по странице
+      if (runOpen === 'inline') {
+        return (
+          <div key={item.id} className="fd-card fd-mission" style={{ padding: 0, overflow: 'hidden' }}>
+            <DecisionRun boss={boss} onCount={setLiveDecisions}
+              onClose={() => { setRunOpen(false); setBacklog(null); void reload(); void loadPlus(); }}
+              onBackToPulse={() => { setRunOpen(false); navigate({ section: 'radar' }); }} />
+          </div>
+        );
+      }
       return (
         <article key={item.id} className={`fd-card${item.rank === 1 ? ' fd-mission' : ''}`} aria-label={`#${item.rank} Разбор решений`}>
           <div className="fd-card-top"><span className="fd-rank">#{item.rank} {RANK_LABEL[item.rank]}</span></div>
-          <button type="button" className="fd-title" onClick={() => setRunOpen(true)}>
+          <button type="button" className="fd-title" onClick={() => setRunOpen('inline')}>
             <Icon name="check-circle" size={item.rank === 1 ? 18 : 15} /> Разобрать {take} {plural(take, 'проверку', 'проверки', 'проверок')} · ≈ {take * 2} мин
           </button>
           <p className="fd-about fd-bundle-sub">Ждут вашего решения: {decisionCount} · самые старые первыми, по одной карточке</p>
           <div className="fd-actions">
-            <Button variant={item.rank === 1 ? 'primary' : 'outline'} size="sm" onClick={() => setRunOpen(true)}><Icon name="check-circle" size={14} /> Начать разбор</Button>
+            <Button variant={item.rank === 1 ? 'primary' : 'outline'} size="sm" onClick={() => setRunOpen('inline')}><Icon name="check-circle" size={14} /> Начать разбор</Button>
           </div>
         </article>
       );
@@ -756,7 +774,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         <ReviewsBlock count={decisionCount} minutes={plus.capacity.reviewsMin} at={reviewsSlot ? new Date(reviewsSlot.startsAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : null}
           decisions={plusDecisions} onStart={() => setRunOpen(true)} onSnoozed={() => { setBacklog(null); void loadPlus(); void reload(); }} />
       )}
-      {runOpen && (
+      {runOpen === true && (
         <DecisionRun boss={boss} onCount={setLiveDecisions}
           onClose={() => { setRunOpen(false); setBacklog(null); void reload(); void loadPlus(); }}
           onBackToPulse={() => { setRunOpen(false); navigate({ section: 'radar' }); }} />
@@ -774,10 +792,35 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
       {/* Решение заказчика: вместо колонки «Требует моего решения» — одна строка. */}
       {/* ТЗ-30 (п. 17): сданное ждёт проверки — от меня ничего не нужно, поэтому строкой, не в тройке */}
       {(day.waitingReview ?? 0) > 0 && (
-        <div className="fd-row fd-secondary fd-row-static" role="status">
-          <Icon name="check-circle" size={15} /> Ждут проверки: <b>{day.waitingReview}</b>
-          <span className="dim"> — работа сдана, срок за вами не числится</span>
-        </div>
+        <>
+          {/* #4926: у блока есть «Развернуть» — видно, какие задачи сданы и ждут проверки */}
+          <button type="button" className="fd-row fd-secondary" aria-expanded={reviewOpen}
+            onClick={() => {
+              const next = !reviewOpen;
+              setReviewOpen(next);
+              if (next && reviewList === null) {
+                request<WaitingTask[]>('GET', '/focus/today/waiting-review').then(setReviewList).catch(() => setReviewList([]));
+              }
+            }}>
+            <Icon name="check-circle" size={15} /> Ждут проверки: <b>{day.waitingReview}</b>
+            <span className="dim"> — работа сдана, срок за вами не числится</span>
+            <span className="dim" style={{ marginLeft: 'auto' }}>{reviewOpen ? 'Свернуть' : 'Развернуть'}</span>
+            <Icon name={reviewOpen ? 'chevron-up' : 'chevron-down'} size={14} />
+          </button>
+          {reviewOpen && (
+            <section className="fd-backlog fd-secondary" aria-label="Ждут проверки">
+              {reviewList === null ? <SkeletonList rows={3} />
+                : !reviewList.length ? <div className="dim">Список не загрузился — откройте доску проекта.</div>
+                : reviewList.map((t) => (
+                  <button key={t.id} type="button" className="fd-row" style={{ width: '100%', textAlign: 'left' }}
+                    onClick={() => navigate({ section: 'projects', projectId: t.projectId, taskId: t.id })} title="Открыть задачу">
+                    <span className="dim">№{t.id}</span> <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
+                    <span className="dim">{[t.projectName, t.column, t.since ? `с ${new Date(t.since).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}` : null].filter(Boolean).join(' · ')}</span>
+                  </button>
+                ))}
+            </section>
+          )}
+        </>
       )}
       {/* #4890, п. 3, 13: то же число и то же определение, что в Пульсе и брифинге; по нажатию — паспорт числа */}
       {decisionCount > 0 && (

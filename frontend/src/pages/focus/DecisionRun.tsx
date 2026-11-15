@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon';
 import { promptText } from '../../components/ui/dialog';
 import { ApiError } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
+import { navigate } from '../../lib/router';
 import { feedback } from '../../lib/feedback';
 import { indexPair } from '../pulse/pulse-api';
 import { DecisionAction, DecisionCard, DecisionResult, decisionsApi, RunSummary } from './decisions-api';
@@ -211,8 +212,34 @@ export function DecisionRun({ boss, onClose, onCount, onBackToPulse }: {
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-md" disabled={busy} onClick={() => void decide('ask')}>Задать вопрос</button>
                 <button type="button" className="ui-btn ui-btn-outline ui-btn-md" disabled={busy} onClick={() => void decide('close')}>Неактуально — закрыть</button>
                 <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" disabled={busy} onClick={skip}>Пропустить →</button>
+                {card.taskId && card.projectId && (
+                  <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" onClick={() => navigate({ section: 'projects', projectId: String(card.projectId), taskId: String(card.taskId) })}>
+                    Открыть задачу
+                  </button>
+                )}
               </div>
             </article>
+          )}
+          {/* #4926: вся пачка списком — текущая подсвечена, по щелчку можно перейти к любой */}
+          {batch && batch.length > 1 && (
+            <ol aria-label="Задачи этого разбора" style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 2 }}>
+              {batch.map((b, i) => (
+                <li key={b.key}>
+                  <button type="button" disabled={i < pos} onClick={() => setPos(i)} aria-current={i === pos ? 'step' : undefined}
+                    style={{
+                      display: 'flex', gap: 8, width: '100%', textAlign: 'left', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', font: 'inherit',
+                      border: `1px solid ${i === pos ? 'var(--accent)' : 'transparent'}`, color: i < pos ? 'var(--text-dim)' : 'var(--text)',
+                      background: i === pos ? 'var(--accent-soft, var(--hover))' : 'none',
+                    }}>
+                    <span className="dim" style={{ minWidth: 22 }}>{i + 1}.</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: i < pos ? 'line-through' : 'none' }}>
+                      {b.taskId ? `#${b.taskId} ` : ''}{b.title}
+                    </span>
+                    <span className="dim dr-small">{i === pos ? 'сейчас' : i < pos ? 'разобрано' : `ждёт ${b.waitingDays} ${plural(b.waitingDays, 'день', 'дня', 'дн.')}`}</span>
+                  </button>
+                </li>
+              ))}
+            </ol>
           )}
           <div className="dim dr-small">Каждое решение — по одной задаче. Массового «Принять всё» нет.</div>
         </>

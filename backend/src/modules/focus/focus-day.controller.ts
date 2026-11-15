@@ -81,6 +81,12 @@ export class FocusDayController {
     return this.day.setEnabled(u.tenantId, dto.enabled);
   }
 
+  /** #4926: «Ждут проверки» — список задач, которые сданы и ждут чужой проверки. */
+  @Get('waiting-review')
+  waitingReview(@CurrentUser() u: AuthUser) {
+    return this.day.waitingReviewList(this.v(u));
+  }
+
   @Get('backlog')
   backlog(@CurrentUser() u: AuthUser) {
     return this.day.backlog(this.v(u));

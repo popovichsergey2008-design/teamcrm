@@ -333,6 +333,11 @@ export class FocusDayService {
   }
 
   /** Остальные действия по очкам — раскрываются по нажатию (п. 39, 143). */
+  async waitingReviewList(v: { tenantId: string; userId: string; role: string }) {
+    const rows = await this.repo.waitingReviewList(v.tenantId, v.userId);
+    return rows.map((r) => ({ id: r.id, title: r.title, projectId: r.project_id, projectName: r.project_name, column: r.column_name, since: r.since?.toISOString() ?? null }));
+  }
+
   async backlog(v: Viewer, now = new Date()) {
     const { tz, today } = await this.context(v, now);
     const plan = await this.repo.plan(v.tenantId, v.userId, today);

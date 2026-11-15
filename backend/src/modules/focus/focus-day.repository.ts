@@ -85,6 +85,21 @@ export class FocusDayRepository {
     return r?.n ?? 0;
   }
 
+  /**
+   * #4926: «Ждут проверки» — развернуть. Те же задачи, что в счётчике (сдана, срок за
+   * исполнителем не числится): номер, название, проект, колонка и с какого дня ждёт.
+   */
+  waitingReviewList(tenantId: string, userId: string, limit = 50) {
+    return this.db.many<{ id: string; title: string; project_id: string; project_name: string | null; column_name: string | null; since: Date | null }>(
+      `SELECT t.id::text, t.title, t.project_id::text, p.name AS project_name, bc.name AS column_name,
+              COALESCE(t.submitted_at, t.updated_at) AS since
+         FROM tasks t JOIN projects p ON p.id = t.project_id LEFT JOIN board_columns bc ON bc.id = t.column_id
+        WHERE t.tenant_id = $1 AND t.assignee_id = $2 AND t.deleted_at IS NULL AND t.closed_at IS NULL AND ${pausedSql('t')}
+        ORDER BY COALESCE(t.submitted_at, t.updated_at) ASC NULLS LAST LIMIT $3`,
+      [tenantId, userId, limit],
+    );
+  }
+
   async enabled(tenantId: string): Promise<boolean> {
     const row = await this.db.one<{ focus_v2: boolean }>(`SELECT focus_v2 FROM tenants WHERE id = $1`, [tenantId]);
     return !!row?.focus_v2;

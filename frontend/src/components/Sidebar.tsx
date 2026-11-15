@@ -675,6 +675,10 @@ export function Sidebar({
         <div className="nav-top">
           {/* #4807 §5, п. 1: строка 36 px — переключатель пространства и «Свернуть» справа */}
           <div className="nav-ws-row">
+            {/* #4928: кнопка меню — бургер слева сверху, как привыкли; сворачивает и разворачивает панель */}
+            <button className="nav-ws-fold" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>
+              <Icon name="menu" size={18} />
+            </button>
             <DropdownMenu
               align="start"
               trigger={(
@@ -692,9 +696,6 @@ export function Sidebar({
               <MenuSeparator />
               <MenuItem onSelect={() => onSwitchOrg('__new__')} icon={<Icon name="plus" size={15} />}>Создать пространство…</MenuItem>
             </DropdownMenu>
-            <button className="nav-ws-fold" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'}>
-              <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={15} />
-            </button>
           </div>
           <div className="nav-org">
             {/*
