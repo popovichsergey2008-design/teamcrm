@@ -166,3 +166,13 @@ describe('sliceByAnchors (#4712)', () => {
     expect(parts.map((p) => p.part)).toEqual(['Проверить форму на сайте.', 'Проверить форму в приложении.']);
   });
 });
+
+describe('15.11: JSON из ответа модели', () => {
+  it('пояснение до или после объекта не роняет разбор в долгий полный путь', () => {
+    const { modelJson } = jest.requireActual('./fast-path');
+    expect(modelJson('{"intent":"create_task"}')).toEqual({ intent: 'create_task' });
+    expect(modelJson('```json\n{"a":1}\n```')).toEqual({ a: 1 });
+    expect(modelJson('Вот разбор:\n{"task":{"title":"Макет"}}\nГотово.')).toEqual({ task: { title: 'Макет' } });
+    expect(() => modelJson('не понял')).toThrow();
+  });
+});

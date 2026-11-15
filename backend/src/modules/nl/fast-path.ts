@@ -95,6 +95,25 @@ export interface NlTiming {
 export const NL_MID_ON = process.env.NL_MID_PATH !== '0';
 /** Потолок быстрой модели на оформление одного поручения. */
 export const NL_MID_BUDGET_MS = Number(process.env.NL_MID_BUDGET_MS ?? 8000);
+/**
+ * Потолок полного разбора, когда быстрый не справился (15.11): полный путь идёт в основную
+ * модель компании (Kimi K3/K3.1 Pro), а у неё таймаут 3 минуты — голосовая задача висела
+ * 199–269 секунд. Человек ждёт на экране: дольше этого — черновик правилами.
+ */
+export const NL_FULL_BUDGET_MS = Number(process.env.NL_FULL_BUDGET_MS ?? 20000);
+
+/**
+ * JSON из ответа модели: модели иногда добавляют пояснение до или после объекта, и
+ * JSON.parse целиком падал — разбор уходил в долгий полный путь из-за лишней фразы.
+ */
+export function modelJson(raw: string): any {
+  const text = String(raw ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+  try { return JSON.parse(text); } catch { /* ниже — первый объект в тексте */ }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('в ответе модели нет JSON');
+  return JSON.parse(text.slice(start, end + 1));
+}
 /** Ответ на поручение: название, описание, шаги проверки. */
 export const NL_MID_MAX_TOKENS = 900;
 /** Потолок деления на поручения: ответ короткий, только начала кусков. */

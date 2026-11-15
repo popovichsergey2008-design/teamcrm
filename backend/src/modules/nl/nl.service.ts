@@ -29,7 +29,7 @@ import { OrgService } from '../org/org.service';
 import { Org, ORG_PROMPT_HINT, orgForModel } from '../org/org-rules';
 import {
   fastTitleFrom, NL_FAST_BUDGET_MS, NL_FAST_MAX_TOKENS, NL_MID_BUDGET_MS, NL_MID_MAX_TOKENS, NL_SPLIT_BUDGET_MS,
-  NlTiming, sliceByAnchors,
+  NlTiming, sliceByAnchors, NL_FULL_BUDGET_MS, modelJson,
 } from './fast-path';
 import { participantIdsIn } from '../tasks/participants';
 import { plainOf, TITLE_SYSTEM, titleFromText, tidyTitle } from './task-title';
@@ -268,8 +268,9 @@ export class NlService {
 
     let model: Record<string, unknown> | null = null;
     try {
-      const raw = await this.ai.generate(tenantId, EVENT_SYSTEM, JSON.stringify({ text: clean }), 'nl_event');
-      model = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      // 15.11: основная модель без потолка держала форму встречи до 3 минут
+      const raw = await this.ai.generate(tenantId, EVENT_SYSTEM, JSON.stringify({ text: clean }), 'nl_event', { timeoutMs: NL_FULL_BUDGET_MS });
+      model = modelJson(raw);
     } catch (e) {
       // молчание модели — не повод отдавать пустую форму: дальше работают правила
       this.log.warn(`разбор встречи без модели: ${(e as Error).message}`);
@@ -343,8 +344,10 @@ export class NlService {
     let modelAnswered = false;
     const tModel = Date.now();
     let modelFail: string | null = null;
-    const toJson = (raw: string) => JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
-    const full = () => this.ai.generate(tenantId, system, userMsg, 'nl_command', { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params });
+    const toJson = modelJson;
+    // budget — потолок, когда человек ждёт на экране (запасной полный разбор после быстрого)
+    const full = (budget?: number) => this.ai.generate(tenantId, system, userMsg, 'nl_command',
+      { promptVersionId: prompt?.versionId, model: prompt?.model, params: prompt?.params, ...(budget ? { timeoutMs: budget } : {}) });
     try {
       if (opts.fast) {
         /*
@@ -361,7 +364,7 @@ export class NlService {
         } catch (e) {
           this.log.warn(`быстрый разбор не успел: ${(e as Error).message} — полный`);
           if (opts.timing) opts.timing.midFallback = true;
-          parsed = toJson(await full());
+          parsed = toJson(await full(NL_FULL_BUDGET_MS));
         }
       } else {
         parsed = toJson(await full());
@@ -586,8 +589,8 @@ export class NlService {
     }
     let items: any[] = [];
     try {
-      const raw = await this.ai.generate(tenantId, `${MANY_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT.replace('assigneeId', 'assignee')}` : ''}`, userMsg, 'nl_command');
-      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      const raw = await this.ai.generate(tenantId, `${MANY_SYSTEM}${orgIn ? ` ${ORG_PROMPT_HINT.replace('assigneeId', 'assignee')}` : ''}`, userMsg, 'nl_command', { timeoutMs: NL_FULL_BUDGET_MS });
+      const parsed = modelJson(raw);
       items = Array.isArray(parsed?.tasks) ? parsed.tasks : [];
     } catch (e) {
       this.log.warn(`разбор пачки задач без модели: ${(e as Error).message}`);
@@ -932,8 +935,8 @@ export class NlService {
     let skill: Skill | null = null;
     let confidence = 0;
     try {
-      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify({ text: text.slice(0, 1200), catalog: skillsCatalog() }), 'nl_command');
-      const parsed = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, '').trim());
+      const raw = await this.ai.generate(tenantId, SUGGEST_SYSTEM, JSON.stringify({ text: text.slice(0, 1200), catalog: skillsCatalog() }), 'nl_command', { timeoutMs: NL_FULL_BUDGET_MS });
+      const parsed = modelJson(raw);
       if (isDepartment(parsed?.department)) department = parsed.department;
       if (isSkill(parsed?.specialization)) skill = parsed.specialization;
       const c = Number(parsed?.confidence);
