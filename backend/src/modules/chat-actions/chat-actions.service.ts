@@ -371,6 +371,10 @@ export class ChatActionsService {
     if (facts.tasks[0]?.fromContext) facts.tasks = facts.tasks.filter((t) => t.fromContext);
     facts.tasks = facts.tasks.slice(0, 2);
     facts.meetings = facts.meetings.slice(0, 2);
+    // ТЗ задачи — файлом или ссылкой, а пункт назван в ветке: цитируем пункт оттуда
+    const top = facts.tasks[0];
+    const excerptMsg = top && !top.inTitle && !top.excerpt && top.fromContext ? ctx.messages[0] ?? null : null;
+    if (top && excerptMsg) top.excerpt = excerptMsg.text.slice(0, 220);
     const empty = !facts.tasks.length && !facts.meetings.length && !facts.files.length && !ctx.messages.length;
 
     let lines: AnswerLine[] = [];
@@ -389,9 +393,11 @@ export class ChatActionsService {
       if (!lines.length) lines = composeAnswer(kind, facts, String(v.userId));
       const topic = topicOf(q, stems);
       const unassigned = topic ? unassignedLine(kind, facts, topic) : null;
+      // пункт процитирован из переписки — и она в источниках: по клику видно, кто и когда сказал
+      if (unassigned && excerptMsg) unassigned.sources.push(contextLine(excerptMsg).sources[0]);
       if (unassigned) lines = [unassigned, ...lines.filter((l) => !l.sources.some((s) => s.kind === 'task' && s.id === facts.tasks[0]?.id))];
       // что сказали о теме в этой ветке — вторым источником, если места хватает
-      if (ctx.messages[0] && lines.length < 3) lines.push(contextLine(ctx.messages[0]));
+      if (ctx.messages[0] && lines.length < 3 && !lines[0]?.text.includes(ctx.messages[0].text.slice(0, 60))) lines.push(contextLine(ctx.messages[0]));
       lines = lines.slice(0, 3);
     }
     const noData = !lines.length;
@@ -455,19 +461,23 @@ export class ChatActionsService {
     const taskRows = await this.db.many<{
       id: string; title: string; description: string | null; project_id: string; project_name: string | null; assignee_id: string | null;
       assignee: string | null; author_id: string | null; author: string | null; status: string | null; deadline_at: Date | null;
-      closed_at: Date | null; th: number; dh: number; named: boolean; ch: number; before: boolean;
+      closed_at: Date | null; th: number; dh: number; named: boolean; ch: number; cth: number; before: boolean;
     }>(
       `SELECT t.id::text, t.title, t.description, t.project_id::text, p.name AS project_name, t.assignee_id::text, ua.full_name AS assignee,
               t.created_by::text AS author_id, uc.full_name AS author, bc.name AS status, t.deadline_at, t.closed_at,
               ${hits('t.title', '$5')}::int AS th, ${hits("COALESCE(t.description, '')", '$5')}::int AS dh,
               (t.id = ANY($7::bigint[])) AS named, ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}::int AS ch,
+              ${hits('t.title', '$8')}::int AS cth,
               ($9::timestamptz IS NULL OR t.created_at <= $9::timestamptz) AS before
          FROM tasks t JOIN projects p ON p.id = t.project_id
     LEFT JOIN board_columns bc ON bc.id = t.column_id
     LEFT JOIN users ua ON ua.id = t.assignee_id
     LEFT JOIN users uc ON uc.id = t.created_by
         WHERE t.tenant_id = $1 AND t.deleted_at IS NULL AND ${vis}
-          AND (t.id = ANY($7::bigint[]) OR (cardinality($5::text[]) > 0 AND ${like("t.title || ' ' || COALESCE(t.description, '')", '$5')}))
+          AND (t.id = ANY($7::bigint[]) OR (cardinality($5::text[]) > 0 AND ${like("t.title || ' ' || COALESCE(t.description, '')", '$5')})
+               -- ТЗ лежит файлом, а пункт назван только в ветке («По ТЗ сайта остаются: видео…»):
+               -- задача, чьё название совпало с темой соседних сообщений хотя бы двумя словами
+               OR ${hits('t.title', '$8')} >= 2)
         -- #4925, п. 3: сначала задача, названная в ветке; потом та, что совпала и с вопросом,
         -- и с темой соседних сообщений (тема «ТЗ сайта» + «видео» → #4863), и только потом —
         -- просто слово вопроса в названии
@@ -476,16 +486,16 @@ export class ChatActionsService {
         ORDER BY (t.id = ANY($7::bigint[])) DESC,
                  ($9::timestamptz IS NULL OR t.created_at <= $9::timestamptz) DESC,
                  (${hits('t.title', '$5')} * 3 + ${hits("COALESCE(t.description, '')", '$5')}
-                   + 2 * ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}) DESC,
+                   + 2 * ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')} + 2 * ${hits('t.title', '$8')}) DESC,
                  (t.project_id = $6::bigint) DESC NULLS LAST, (t.closed_at IS NULL) DESC, t.updated_at DESC
         LIMIT 12`,
       [v.tenantId, ...vp, stems, chatProjectId, ctx.taskIds, ctx.stems, ctx.at ?? null]);
     const need = Math.min(2, stems.length);
-    const found = taskRows.filter((t) => t.named || t.th > 0 || t.dh >= need);
+    const found = taskRows.filter((t) => t.named || t.th > 0 || t.dh >= need || t.cth >= 2);
     // были задачи на момент вопроса — заведённые позже (разбор этого же вопроса) не показываем
     const strong = (found.some((t) => t.before) ? found.filter((t) => t.before || t.named) : found)
       .sort((a, b) => Number(b.named) - Number(a.named) || Number(b.before) - Number(a.before)
-        || (b.th * 3 + b.dh + 2 * b.ch) - (a.th * 3 + a.dh + 2 * a.ch))
+        || (b.th * 3 + b.dh + 2 * b.ch + 2 * b.cth) - (a.th * 3 + a.dh + 2 * a.ch + 2 * a.cth))
       .slice(0, 5);
     const ids = strong.map((t) => t.id);
     const att = ids.length ? await this.db.many<{ task_id: string; file_name: string }>(
@@ -494,8 +504,8 @@ export class ChatActionsService {
     const tasks: TaskFact[] = strong.map((t) => ({
       id: t.id, title: t.title, projectId: t.project_id, projectName: t.project_name, assigneeId: t.assignee_id, assignee: t.assignee,
       authorId: t.author_id, author: t.author, status: t.status, deadline: isoDay(t.deadline_at), closed: !!t.closed_at,
-      files: att.filter((a) => a.task_id === t.id).map((a) => a.file_name).slice(0, 5), links: linksIn(t.description), score: t.th * 3 + t.dh + 2 * t.ch,
-      inTitle: t.th > 0, excerpt: t.th > 0 ? null : maskSecrets(lineWith(t.description, stems) ?? '') || null, fromContext: !!t.named || t.ch > 0,
+      files: att.filter((a) => a.task_id === t.id).map((a) => a.file_name).slice(0, 5), links: linksIn(t.description), score: t.th * 3 + t.dh + 2 * t.ch + 2 * t.cth,
+      inTitle: t.th > 0, excerpt: t.th > 0 ? null : maskSecrets(lineWith(t.description, stems) ?? '') || null, fromContext: !!t.named || t.ch > 0 || t.cth > 0,
     }));
 
     const mv = meetingVisibleSql('mt', { user: '$2', all: '$3', client: '$4' });
