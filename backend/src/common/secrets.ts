@@ -253,6 +253,13 @@ export function detectSecrets(text: string | null | undefined): SecretSpan[] {
   labeled(KEY_LABEL, keyValueOk, 'token');
   // «пароль поменяли, новый: …» — подпись оторвалась от значения
   labeled(`(?:нов(?:ый|ая)|временн(?:ый|ая)|new|temporary|temp)${NA}`, looksLikePassword, 'password');
+  // «Xk7#pQ2mZ9 новый пароль на хостинге» — значение ДО подписи (15.11, живой чат)
+  for (const m of s.matchAll(new RegExp(`(?<=^|\\s)(\\S{6,64})\\s+(?:[—–-]\\s+)?(?:это\\s+)?(?:(?:нов|временн|мо|наш|тот)\\p{L}*\\s+)?(?:парол[ьяюеи]|password|pass)${NA}`, 'giu'))) {
+    const v = trimTail(m[1]);
+    if (!looksLikePassword(v)) continue;
+    const at = m.index! + m[0].indexOf(m[1]);
+    add(at, at + v.length, 'password');
+  }
   // ПИН — только цифры: «pin: закрепить сверху» паролем не считаем
   for (const m of s.matchAll(new RegExp(`${NB}(?:пин(?:-?код)?|pin(?:[ -]?code)?)${NA}\\s*[:=—–-]?\\s*(\\d{4,8})(?!\\d)`, 'giu'))) {
     const at = m.index! + m[0].length - m[1].length;
