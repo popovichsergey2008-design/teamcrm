@@ -405,7 +405,9 @@ export class ChatActionsService {
       const unassigned = topic ? unassignedLine(kind, facts, topic) : null;
       // пункт процитирован из переписки — и она в источниках: по клику видно, кто и когда сказал
       if (unassigned && excerptMsg) unassigned.sources.push(contextLine(excerptMsg).sources[0]);
-      if (unassigned) lines = [unassigned, ...lines.filter((l) => !l.sources.some((s) => s.kind === 'task' && s.id === facts.tasks[0]?.id))];
+      // ответ «исполнитель не назначен» — главный; строки о других задачах («это на вас: #4778,
+      // уже закрыта») читаются как «видео на вас» и только путают
+      if (unassigned) lines = [unassigned, ...lines.filter((l) => !l.sources.some((s) => s.kind === 'task'))];
       // что сказали о теме в этой ветке — вторым источником, если места хватает
       if (ctx.messages[0] && lines.length < 2 && !lines[0]?.text.includes(ctx.messages[0].text.slice(0, 60))) lines.push(contextLine(ctx.messages[0]));
       lines = lines.slice(0, 2); // #4925, п. 3: 1–2 лучших источника, а не россыпь
