@@ -19,7 +19,7 @@ type Viewer = { tenantId: string; userId: string; role: string };
 interface MessageRow {
   id: string; chat_id: string; body: string; author_id: string | null; author: string | null; thread_root_id: string | null;
   reply_to_id: string | null; is_ai: boolean; kind: string; chat_project_id: string | null; client_id: string | null; task_id: string | null;
-}
+ created_at?: Date | null; }
 
 interface CardRow {
   message_id: string; chat_id: string; items: AssignmentItem[]; project_id: string | null; project_level: string;
@@ -89,7 +89,7 @@ export class ChatActionsService {
     const m = await this.db.one<MessageRow>(
       `SELECT m.id::text, m.chat_id::text, COALESCE(m.body, '') AS body, m.author_id::text, COALESCE(u.full_name, m.guest_name) AS author,
               m.thread_root_id::text, m.reply_to_id::text, m.is_ai, c.kind, COALESCE(c.project_id, c.linked_project_id)::text AS chat_project_id,
-              c.client_id::text, m.task_id::text
+              c.client_id::text, m.task_id::text, m.created_at
          FROM chat_messages m JOIN chats c ON c.id = m.chat_id LEFT JOIN users u ON u.id = m.author_id
         WHERE m.tenant_id = $1 AND m.id = $3 AND m.deleted_at IS NULL
           AND (c.kind = 'project' OR EXISTS (SELECT 1 FROM chat_members me WHERE me.chat_id = c.id AND me.user_id = $2))`,
@@ -365,7 +365,7 @@ export class ChatActionsService {
     // #4925, п. 3: контекст ветки — соседние сообщения о той же теме и номера задач в них
     const ctx = await this.context(v, m, stems);
     const facts: Facts = stems.length || ctx.taskIds.length
-      ? await this.facts(v, stems, m.chat_project_id, kind === 'where', ctx) : { tasks: [], meetings: [], files: [] };
+      ? await this.facts(v, stems, m.chat_project_id, kind === 'where', { ...ctx, at: m.created_at ?? null }) : { tasks: [], meetings: [], files: [] };
     // 1–2 лучших источника, а не россыпь совпадений по слову; лучшая задача из контекста
     // ветки — остальные совпадения по одному слову («Сжатие видео») только шумят
     if (facts.tasks[0]?.fromContext) facts.tasks = facts.tasks.filter((t) => t.fromContext);
@@ -449,18 +449,19 @@ export class ChatActionsService {
   }
 
   private async facts(v: Viewer, stems: string[], chatProjectId: string | null, files: boolean,
-    ctx: { taskIds: string[]; stems: string[] } = { taskIds: [], stems: [] }): Promise<Facts> {
+    ctx: { taskIds: string[]; stems: string[]; at?: Date | null } = { taskIds: [], stems: [] }): Promise<Facts> {
     const vp = viewerParams(v);
     const vis = projectVisibleSql('t.project_id', { user: '$2', all: '$3', client: '$4' });
     const taskRows = await this.db.many<{
       id: string; title: string; description: string | null; project_id: string; project_name: string | null; assignee_id: string | null;
       assignee: string | null; author_id: string | null; author: string | null; status: string | null; deadline_at: Date | null;
-      closed_at: Date | null; th: number; dh: number; named: boolean; ch: number;
+      closed_at: Date | null; th: number; dh: number; named: boolean; ch: number; before: boolean;
     }>(
       `SELECT t.id::text, t.title, t.description, t.project_id::text, p.name AS project_name, t.assignee_id::text, ua.full_name AS assignee,
               t.created_by::text AS author_id, uc.full_name AS author, bc.name AS status, t.deadline_at, t.closed_at,
               ${hits('t.title', '$5')}::int AS th, ${hits("COALESCE(t.description, '')", '$5')}::int AS dh,
-              (t.id = ANY($7::bigint[])) AS named, ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}::int AS ch
+              (t.id = ANY($7::bigint[])) AS named, ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}::int AS ch,
+              ($9::timestamptz IS NULL OR t.created_at <= $9::timestamptz) AS before
          FROM tasks t JOIN projects p ON p.id = t.project_id
     LEFT JOIN board_columns bc ON bc.id = t.column_id
     LEFT JOIN users ua ON ua.id = t.assignee_id
@@ -470,15 +471,21 @@ export class ChatActionsService {
         -- #4925, п. 3: сначала задача, названная в ветке; потом та, что совпала и с вопросом,
         -- и с темой соседних сообщений (тема «ТЗ сайта» + «видео» → #4863), и только потом —
         -- просто слово вопроса в названии
+        -- задача, заведённая уже после вопроса (в том числе разбор этого самого вопроса), —
+        -- не то, что имели в виду в ветке: ниже существовавших тогда
         ORDER BY (t.id = ANY($7::bigint[])) DESC,
+                 ($9::timestamptz IS NULL OR t.created_at <= $9::timestamptz) DESC,
                  (${hits('t.title', '$5')} * 3 + ${hits("COALESCE(t.description, '')", '$5')}
                    + 2 * ${hits("t.title || ' ' || COALESCE(t.description, '')", '$8')}) DESC,
                  (t.project_id = $6::bigint) DESC NULLS LAST, (t.closed_at IS NULL) DESC, t.updated_at DESC
         LIMIT 12`,
-      [v.tenantId, ...vp, stems, chatProjectId, ctx.taskIds, ctx.stems]);
+      [v.tenantId, ...vp, stems, chatProjectId, ctx.taskIds, ctx.stems, ctx.at ?? null]);
     const need = Math.min(2, stems.length);
-    const strong = taskRows.filter((t) => t.named || t.th > 0 || t.dh >= need)
-      .sort((a, b) => Number(b.named) - Number(a.named) || (b.th * 3 + b.dh + 2 * b.ch) - (a.th * 3 + a.dh + 2 * a.ch))
+    const found = taskRows.filter((t) => t.named || t.th > 0 || t.dh >= need);
+    // были задачи на момент вопроса — заведённые позже (разбор этого же вопроса) не показываем
+    const strong = (found.some((t) => t.before) ? found.filter((t) => t.before || t.named) : found)
+      .sort((a, b) => Number(b.named) - Number(a.named) || Number(b.before) - Number(a.before)
+        || (b.th * 3 + b.dh + 2 * b.ch) - (a.th * 3 + a.dh + 2 * a.ch))
       .slice(0, 5);
     const ids = strong.map((t) => t.id);
     const att = ids.length ? await this.db.many<{ task_id: string; file_name: string }>(

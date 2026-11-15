@@ -130,6 +130,8 @@ describe('детектор секретов (#4902, п. 13)', () => {
     const out = maskSecrets(msg);
     expect(out).not.toContain('Xk7#pQ2mZ9');
     expect(out).toContain('https://dev.example.com/\nadmin\n••••••');
+    // пароль из одних строчных букв, строки с \r\n (как пришло из живого чата)
+    expect(maskSecrets('зайти сюда\r\nhttps://dev.example.com/\r\nadmin\r\nqzmxkvbrtwe\r\n\r\nи посмотреть')).not.toContain('qzmxkvbrtwe');
     // две обычные строки после ссылки — не пароль
     expect(maskSecrets('вот ссылка\nhttps://qevo.one/\nсмотри\nсегодня вечером')).toContain('сегодня вечером');
   });
