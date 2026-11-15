@@ -20,7 +20,9 @@ export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'ch
   /** Встреча по постоянной ссылке `/meet/{publicId}` (ТЗ-14): в меню её нет, в неё приходят по ссылке. */
   | 'meet'
   /** #4807 §6: «Входящие» — `/inbox`, вкладка — `/inbox/ai` и т. п. */
-  | 'inbox';
+  | 'inbox'
+  /** #4922: страница поиска `/search/<запрос>`; запрос — в `view` */
+  | 'search';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -57,7 +59,7 @@ export type Route = {
 };
 
 const SECTIONS: Section[] = [
-  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients', 'inbox',
+  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients', 'inbox', 'search',
 ];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */
@@ -131,6 +133,8 @@ export function parsePath(pathname: string): Route {
   if (!section) return { section: 'focus' };
 
   switch (section) {
+    case 'search':
+      return seg[1] ? { section, view: seg[1] } : { section };
     case 'focus':
       if (seg[1] === 'inbox') return { section, view: 'inbox' };
       // календарь стал отдельным разделом; старый адрес продолжает работать —
@@ -180,6 +184,8 @@ export function parsePath(pathname: string): Route {
 
 export function buildPath(r: Route): string {
   switch (r.section) {
+    case 'search':
+      return r.view ? `/search/${enc(r.view)}` : '/search';
     case 'inbox':
       return r.tab && r.tab !== 'important' ? `/inbox/${enc(r.tab)}` : '/inbox';
     case 'focus':

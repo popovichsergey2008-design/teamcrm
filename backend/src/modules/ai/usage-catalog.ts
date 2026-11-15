@@ -88,6 +88,9 @@ const PRICES: { match: RegExp; input: number; output: number }[] = [
   { match: /^claude-opus/, input: 15, output: 75 },
   // Kimi (Moonshot AI), прайс platform.kimi.ai на октябрь 2026; у K3 рассуждение
   // всегда включено и тарифицируется как выход
+  // #4921: K3.1 Pro (платформа Kimi, ноябрь 2026): $2/$10, highspeed — $4/$20; раньше K3 — иначе цена K3
+  { match: /^kimi-k3\.1-pro-highspeed/, input: 4, output: 20 },
+  { match: /^kimi-k3\.1/, input: 2, output: 10 },
   { match: /^kimi-k3/, input: 3, output: 15 },
   { match: /^kimi-k2\.7-code-highspeed/, input: 1.9, output: 8 },
   { match: /^kimi-k2/, input: 0.95, output: 4 },

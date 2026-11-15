@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { api, type PlanTask } from '../../lib/api';
+import { navigate } from '../../lib/router';
 import { fmtMinutes } from './TaskTimeDialog';
 
 /** Тип данных при перетаскивании задачи на сетку календаря. */
@@ -46,7 +47,12 @@ export function PlanPanel({ refreshKey, onPlan, onClose, onPlanWeek }: {
             className="cal-plan-card"
             draggable={!phone}
             onDragStart={(e) => { e.dataTransfer.setData(DRAG_TASK, t.id); e.dataTransfer.effectAllowed = 'copy'; }}>
-            <div className="cal-plan-title" title={t.title}><span className="cal-due-num">№{t.id}</span> {t.title}</div>
+            {/* #4923: задача открывается щелчком по номеру и названию — понять, о чём она */}
+            <button type="button" className="cal-plan-title" title={`${t.title} — открыть карточку`}
+              style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}
+              onClick={() => navigate({ section: 'projects', projectId: t.projectId, taskId: t.id })}>
+              <span className="cal-due-num">№{t.id}</span> {t.title}
+            </button>
             <div className="cal-plan-meta">
               <span>{t.projectName}</span>
               <span className={t.deadlineAt && Date.parse(t.deadlineAt) < Date.now() ? 'cal-plan-late' : ''}>

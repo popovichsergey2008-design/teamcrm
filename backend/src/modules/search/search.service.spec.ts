@@ -1,5 +1,5 @@
 import { snippet } from './search.service';
-import { SearchRepository } from './search.repository';
+import { queryNumber, queryWords, SearchRepository } from './search.repository';
 
 /**
  * Две мелочи, которые ошибаются молча: окрестность совпадения (человек видит начало
@@ -31,5 +31,18 @@ describe('поиск: подготовка строк', () => {
     expect(SearchRepository.like('100%')).toBe('%100\\%%');
     expect(SearchRepository.like('a_b')).toBe('%a\\_b%');
     expect(SearchRepository.like('c:\\tmp')).toBe('%c:\\\\tmp%');
+  });
+
+  it('#4922: слова — порознь и в любом порядке, ё = е, номер задачи с # и №', () => {
+    expect(queryWords('Отчёт  по акции')).toEqual(['%отчет%', '%по%', '%акции%']);
+    expect(queryWords('100%')).toEqual(['%100\\%%']);
+    expect(queryNumber('#4922')).toBe('4922');
+    expect(queryNumber('№ 15')).toBe('15');
+    expect(queryNumber('задача 15')).toBe('');
+  });
+
+  it('#4922: слова стоят порознь — окрестность первого найденного', () => {
+    const s = snippet('Начало. '.repeat(20) + 'тут отчёт по рассылке', 'рассылка отчет');
+    expect(s).toContain('отчёт по рассылке');
   });
 });

@@ -84,6 +84,7 @@ const ClientsPage = lazy(() => import('./pages/clients/ClientsPage').then((m) =>
 // окно обновления — только телефону и только при новой версии: из стартовой сборки вон
 const UpdateSheet = lazy(() => import('./components/UpdateSheet').then((m) => ({ default: m.UpdateSheet })));
 const PulsePage = lazy(() => import('./pages/PulsePage').then((m) => ({ default: m.PulsePage })));
+const SearchPage = lazy(() => import('./pages/SearchPage').then((m) => ({ default: m.SearchPage })));
 // #4807 §6: «Входящие» — лениво: первый экран их не грузит
 const InboxPage = lazy(() => import('./pages/InboxPage').then((m) => ({ default: m.InboxPage })));
 const prefetchRadar = () => { void import('./pages/PulsePage').then((m) => m.prefetchPulse()); };
@@ -907,6 +908,7 @@ export function App() {
           <Suspense fallback={pageFallback}><TaskBatchPage taskIds={route.taskIds} /></Suspense>
         )}
         {route.section === 'radar' && canManage && <Suspense fallback={pageFallback}><PulsePage /></Suspense>}
+        {route.section === 'search' && <Suspense fallback={pageFallback}><SearchPage query={route.view ?? ''} /></Suspense>}
         {route.section === 'clients' && CLIENTS_ENABLED && (
           <Suspense fallback={pageFallback}><ClientsPage clientId={route.clientId} /></Suspense>
         )}

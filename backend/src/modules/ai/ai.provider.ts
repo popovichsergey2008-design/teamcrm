@@ -220,7 +220,8 @@ export const KIMI_DEFAULT_MODEL = 'kimi-k2.6';
 export function isReasoningModel(model: string): boolean {
   return /^(?:openai\/)?(?:gpt-5|gpt-6|o\d)/i.test(model) && !/chat-latest|search-api/i.test(model);
 }
-export const KIMI_FALLBACK_MODELS = ['kimi-k3', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed'];
+// #4921: K3.1 Pro — тест вместо K3 для разбора и постановки задач (дешевле K3: $2/$10 против $3/$15)
+export const KIMI_FALLBACK_MODELS = ['kimi-k3.1-pro', 'kimi-k3', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed'];
 export const isKimiModel = (m?: string | null) => /^kimi/i.test(m ?? '');
 
 /**
@@ -556,6 +557,9 @@ export class RealAiProvider implements AiProvider {
     const kimiModel = this.kimiModelFor(model);
     const kimiFirst = this.kimiFirst(model);
     if (kimiFirst) attempts.push({ name: `kimi(${kimiModel})`, usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs, sig) });
+    // #4921: новая модель Kimi (K3.1 Pro) недоступна аккаунту или упала — сначала прежняя K3,
+    // а не чужой провайдер: разбор задач должен остаться на Kimi
+    if (kimiFirst && /^kimi-k3\./i.test(kimiModel)) attempts.push({ name: 'kimi(kimi-k3)', usedModel: 'kimi-k3', run: () => this.kimiChat('kimi-k3', system, user, maxTokens, imgs, sig) });
     if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH, imgs, sig) });
     if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, imgs, sig) });
     if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs, sig) });

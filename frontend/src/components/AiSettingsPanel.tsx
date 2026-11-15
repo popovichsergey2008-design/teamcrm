@@ -4,6 +4,7 @@ import { OptionSelect } from './ui/option-select';
 
 /** Подписи моделей Kimi в выборе: чем они отличаются для работы CRM. */
 const KIMI_HINT: Record<string, string> = {
+  'kimi-k3.1-pro': 'новая, рассуждает; дешевле K3 — тест разбора задач (#4921)',
   'kimi-k3': 'флагман, рассуждает (медленнее, дороже)',
   'kimi-k2.6': 'быстрая, без рассуждений',
   'kimi-k2.7-code': 'для кода',

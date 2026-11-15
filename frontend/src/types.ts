@@ -513,12 +513,14 @@ export interface AiAction {
 /** Ответ поиска командной строки. Пусто во всех полях — значит правда ничего не нашлось. */
 export interface SearchResults {
   query: string;
-  tasks: { id: string; title: string; project_id: string; project_name: string; column_name: string; closed: boolean; assignee_name: string | null }[];
+  tasks: { id: string; title: string; project_id: string; project_name: string; column_name: string; closed: boolean; assignee_name: string | null; deadline_at?: string | null; description?: string | null }[];
   projects: { id: string; name: string; status: string }[];
   chats: { id: string; title: string | null; kind: string }[];
   messages: { id: string; chat_id: string; chat_title: string | null; chat_kind: string; body: string; author_name: string | null; created_at: string }[];
   people: { id: string; full_name: string; email: string; role_code: string; position: string | null }[];
   docs: { id: string; title: string; source: string }[];
+  /** #4922: встречи и протоколы по названию */
+  meetings?: { id: string; title: string; happened_at: string; source: string }[];
 }
 
 /** Находка смыслового поиска: кусок текста из архива и то, откуда он взят. */

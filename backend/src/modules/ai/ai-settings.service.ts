@@ -282,7 +282,10 @@ export class AiSettingsService implements OnModuleInit {
       });
       const json: any = await res.json();
       const ids: string[] = (json?.data ?? []).map((m: any) => m.id).filter((id: any) => typeof id === 'string' && /^kimi/i.test(id));
-      return ids.length ? [KIMI_DEFAULT_MODEL, ...ids.filter((x) => x !== KIMI_DEFAULT_MODEL).sort()] : KIMI_FALLBACK_MODELS;
+      // #4921: K3.1 Pro показываем, даже если список аккаунта её ещё не отдаёт (открывается после
+      // пополнения) — недоступная модель откатится на K3, а не сломает работу ИИ
+      const all = [...new Set([...ids, 'kimi-k3.1-pro'])];
+      return ids.length ? [KIMI_DEFAULT_MODEL, ...all.filter((x) => x !== KIMI_DEFAULT_MODEL).sort()] : KIMI_FALLBACK_MODELS;
     } catch (e) {
       this.log.warn(`kimiModels failed: ${(e as Error).message}`);
       return KIMI_FALLBACK_MODELS;

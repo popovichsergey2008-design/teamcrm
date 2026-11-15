@@ -1,6 +1,5 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, IconName } from './Icon';
-import { openSupport } from './support/SupportDock';
 import { VoiceStatus } from './VoiceStatus';
 import { api, type RecentTask } from '../lib/api';
 import { TaskStateDot } from './TaskStateDot';
@@ -460,16 +459,17 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     }
 
     /*
-      Отдел заботы — ПЕРВОЙ закреплённой строкой, всегда (ТЗ-34, п. 2.3 и 4.2), с молнией
-      и текстом документа дословно. Человек жмёт Ctrl+K — и помощь в одном Enter.
+      #4922: строка «Отдел заботы» в подсказках поиска убрана по просьбе заказчика — она
+      стояла над находками и мешала искать. Помощь — кнопкой «Помощь и бот» в меню.
+      Вместо неё — переход на страницу поиска со всеми результатами.
     */
-    add({
-      key: 'support:open',
-      group: 'Закреплено',
-      title: 'Отдел заботы Qevo: Сказать вопрос голосом (5 сек), решить в чате (30 сек) или включить созвон (30 сек)',
-      icon: 'zap',
-      run: () => { openSupport(); onClose(); },
-    });
+    if (query.length >= 2) {
+      add({
+        key: 'act:search-page', group: 'Поиск', title: `Все результаты по «${query}»`,
+        hint: 'страница поиска: задачи, чаты, сообщения, встречи, люди — по разделам', icon: 'search',
+        run: () => go({ section: 'search', view: query }),
+      });
+    }
 
     // #4807 §5, п. 2: «поставь задачу Сергею до пятницы» — первой строкой постановка
     if (looksLikeTask(q)) {
@@ -592,6 +592,15 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
       add({ key: `call:${p.id}`, group: 'Люди', title: `Позвонить: ${p.full_name}`, icon: 'phone', run: () => call(String(p.id)) });
     }
 
+    for (const m of remote?.meetings ?? []) {
+      add({
+        key: `mt:${m.id}`, group: 'Встречи', title: m.title,
+        hint: new Date(m.happened_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }), icon: 'video',
+        run: () => go({ section: 'chat', view: 'meetings', meetingId: String(m.id) },
+          { title: m.title, path: `/meetings/${m.id}`, icon: 'video' }),
+      });
+    }
+
     for (const d of remote?.docs ?? []) {
       add({
         key: `d:${d.id}`, group: 'Регламенты', title: d.title, icon: 'book',
@@ -667,7 +676,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
   // по запросу что-то открыли — запоминаем его для подсказок (#4730)
   const runItem = (it: Item) => {
     const query = q.trim();
-    if (query.length >= 2 && !it.key.startsWith('qh:') && it.key !== 'support:open') rememberQuery(query);
+    if (query.length >= 2 && !it.key.startsWith('qh:')) rememberQuery(query);
     it.run();
   };
 
@@ -733,7 +742,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
               <div key={it.key}>
                 {head && <div className="palette-group">{head}</div>}
                 <button
-                  className={`palette-item${i === active ? ' active' : ''}${it.key === 'support:open' ? ' palette-pinned' : ''}`}
+                  className={`palette-item${i === active ? ' active' : ''}`}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => runItem(it)}
                 >
