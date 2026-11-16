@@ -46,6 +46,9 @@ interface ChallengePayload {
  * Пароль, почта и второй фактор живут на глобальном аккаунте, поэтому и проверяются
  * один раз на человека, во всех его организациях.
  */
+/** #4949: с этой даты новый аккаунт без подтверждённой почты не входит. */
+const VERIFY_GATE_SINCE = Date.parse('2026-11-16T00:00:00Z');
+
 @Injectable()
 export class AccountSecurityService {
   private readonly log = new Logger('AccountSecurity');
@@ -153,6 +156,24 @@ export class AccountSecurityService {
   async markUserVerified(tenantId: string, userId: string) {
     const accountId = (await this.users.accountIdOf(tenantId, userId))?.account_id;
     if (accountId) await this.repo.markVerified(String(accountId));
+  }
+
+  /**
+   * #4949: без подтверждённой почты в QEVO не пускаем — иначе регистрируются на чужой
+   * или выдуманный адрес и сразу пользуются пробным пространством. Только для аккаунтов,
+   * заведённых с 16.11.2026: прежние работают как работали. Служебные адреса (вход через
+   * Telegram) не подтверждаются. Флаг и поведение в тестах — как у assertVerified.
+   */
+  needsVerification(acc: { email: string; email_verified_at?: Date | string | null; created_at?: Date | string }): boolean {
+    const flag = process.env.AUTH_REQUIRE_VERIFIED_EMAIL;
+    if (flag === 'false' || (flag !== 'true' && process.env.NODE_ENV === 'test')) return false;
+    if (acc.email_verified_at || isServiceEmail(acc.email)) return false;
+    return !acc.created_at || new Date(acc.created_at).getTime() >= VERIFY_GATE_SINCE;
+  }
+
+  /** Повторное письмо при попытке войти без подтверждения — с тем же лимитом, что и кнопка. */
+  async resendQuiet(accountId: string): Promise<void> {
+    await this.resendVerification(accountId).catch(() => undefined);
   }
 
   async isVerified(accountId: string): Promise<boolean> {

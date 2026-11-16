@@ -2,14 +2,14 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { api, SIGNED_OUT_EVENT, tokens } from '../lib/api';
 import { disconnectSocket, reconnectSocket } from '../lib/socket';
 import { forgetRegisteredDevice, registeredDeviceId } from '../hooks/useDeviceRegistration';
-import { isMfaChallenge, type AuthResult, type LoginResponse, type OrgRef, type User } from '../types';
+import { isMfaChallenge, isVerifyRequired, type AuthResult, type LoginResponse, type OrgRef, type User } from '../types';
 
 interface AuthState {
   user: User | null;
   organizations: OrgRef[];
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string>; referrerHost?: string; referralCode?: string }) => Promise<void>;
+  login: (email: string, password: string) => Promise<string | null>;
+  register: (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string>; referrerHost?: string; referralCode?: string }) => Promise<string | null>;
   /** Перечитать себя с сервера — после знакомства (#4779) имя и настройки новые. */
   reloadUser: () => Promise<void>;
   /** Принять ответ входа: так заходят через Google и Telegram — пароля там нет. */
@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const r = await api.telegramCode(tg);
           if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
-          else tokens.set(r.accessToken, r.refreshToken);
+          else if (!isVerifyRequired(r)) tokens.set(r.accessToken, r.refreshToken);
         } catch (e) { authNotice = (e as Error).message; }
       }
       if (tokens.access) {
@@ -99,13 +99,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applySession = (r: LoginResponse) => {
     if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
-    else void take(r);
+    else if (!isVerifyRequired(r)) void take(r);
   };
 
-  const login = async (email: string, password: string) => {
+  /** #4949: вернёт адрес, если почта ещё не подтверждена, — тогда сессии нет, экран просит открыть письмо. */
+  const login = async (email: string, password: string): Promise<string | null> => {
     const r = await api.login({ email, password });
+    if (isVerifyRequired(r)) return r.email;
     if (isMfaChallenge(r)) setMfaToken(r.mfaToken);
     else await take(r);
+    return null;
   };
 
   const completeMfa = async (code: string) => {
@@ -115,11 +118,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (b: { tenantName?: string; email: string; password: string; fullName?: string; acceptPrivacy: boolean; website?: string; utm?: Record<string, string>; referrerHost?: string; referralCode?: string }) => {
     const r = await api.register(b);
+    if (isVerifyRequired(r)) return r.email; // #4949: сначала ссылка из письма
     tokens.set(r.accessToken, r.refreshToken);
     reconnectSocket();
     // настройки (знакомство #4779, первый запуск) есть только в /me
     setUser((await api.me().catch(() => null)) ?? r.user);
     setOrganizations(r.organizations ?? []);
+    return null;
   };
 
   const switchOrg = async (tenantId: string) => {

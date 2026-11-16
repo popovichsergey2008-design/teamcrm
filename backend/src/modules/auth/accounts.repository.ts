@@ -7,6 +7,8 @@ export interface AccountRow {
   email: string;
   password_hash: string;
   full_name: string;
+  email_verified_at?: Date | string | null;
+  created_at?: Date | string;
 }
 
 @Injectable()

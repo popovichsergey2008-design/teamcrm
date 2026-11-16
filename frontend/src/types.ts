@@ -85,8 +85,14 @@ export interface MfaChallenge {
   mfaRequired: true;
   mfaToken: string;
 }
-export type LoginResponse = AuthResult | MfaChallenge;
+/** #4949: почта не подтверждена — сессии нет, письмо со ссылкой уже ушло. */
+export interface VerifyRequired {
+  verifyRequired: true;
+  email: string;
+}
+export type LoginResponse = AuthResult | MfaChallenge | VerifyRequired;
 export const isMfaChallenge = (r: unknown): r is MfaChallenge => !!r && (r as MfaChallenge).mfaRequired === true;
+export const isVerifyRequired = (r: unknown): r is VerifyRequired => !!r && (r as VerifyRequired).verifyRequired === true;
 
 export type SocialAuthResult = LoginResponse | { needsWorkspace: true; email: string; fullName: string };
 

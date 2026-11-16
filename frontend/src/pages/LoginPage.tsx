@@ -24,15 +24,20 @@ export function LoginPage() {
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState(authNotice);
   const [busy, setBusy] = useState(false);
+  /** #4949: адрес, на который ушло письмо подтверждения; пока не подтвердят — внутрь не пускаем. */
+  const [verifyFor, setVerifyFor] = useState<string | null>(null);
+  const [verifyNote, setVerifyNote] = useState('');
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setBusy(true);
     try {
-      if (mode === 'login') await login(email, password);
-      // #4779: имя и название пространства — после входа, здесь только почта и согласия
-      else await register({ email, password, acceptPrivacy: agreed, website, utm: signupUtm(), referrerHost: signupReferrer(), referralCode: signupReferralCode() });
+      const need = mode === 'login'
+        ? await login(email, password)
+        // #4779: имя и название пространства — после входа, здесь только почта и согласия
+        : await register({ email, password, acceptPrivacy: agreed, website, utm: signupUtm(), referrerHost: signupReferrer(), referralCode: signupReferralCode() });
+      if (need) { setVerifyFor(need); setVerifyNote(''); setMode('login'); }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Что-то пошло не так');
     } finally {
@@ -50,6 +55,39 @@ export function LoginPage() {
       <p className="dim auth-sub">{sub}</p>
     </>
   );
+
+  // #4949: «Я подтвердил» — тот же вход; не подтвердил — письмо уходит ещё раз (с лимитом)
+  const recheck = async () => {
+    setBusy(true); setVerifyNote('');
+    try {
+      const need = await login(email, password);
+      if (need) setVerifyNote('Почта ещё не подтверждена. Мы отправили письмо ещё раз — проверьте и папку «Спам».');
+      else setVerifyFor(null);
+    } catch (err) { setVerifyNote(err instanceof ApiError ? err.message : 'Что-то пошло не так'); }
+    finally { setBusy(false); }
+  };
+
+  if (verifyFor && !mfaPending) {
+    return (
+      <div className="center-screen">
+        <div className="card auth-card">
+          {head('Подтвердите почту')}
+          <p style={{ marginTop: 0 }}>
+            Мы отправили письмо на <b>{verifyFor}</b>. Откройте его и перейдите по ссылке — после этого вы войдёте в QEVO.
+          </p>
+          <p className="dim" style={{ fontSize: 13 }}>Ссылка действует двое суток. Письма нет — проверьте папку «Спам».</p>
+          {verifyNote && <div className="error-text" role="status">{verifyNote}</div>}
+          <button type="button" className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy} onClick={() => void recheck()}>
+            {busy ? 'Проверяю…' : 'Я подтвердил — войти'}
+          </button>
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-md auth-submit" disabled={busy}
+            onClick={() => { setVerifyFor(null); setVerifyNote(''); setMode('register'); setPassword(''); }}>
+            Указать другую почту
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (mfaPending || mode === 'forgot') {
     return (

@@ -39,8 +39,10 @@ export interface SessionMeta {
 }
 
 export type SessionResult = { user: PublicUser; organizations: OrgRef[] } & TokenPair;
+/** #4949: почта не подтверждена — сессии нет, письмо со ссылкой отправлено. */
+export type VerifyRequired = { verifyRequired: true; email: string };
 /** Вход: готовая сессия или, если включён второй фактор, просьба ввести код. */
-export type LoginResult = SessionResult | MfaChallenge;
+export type LoginResult = SessionResult | MfaChallenge | VerifyRequired;
 
 export interface OrgRef {
   tenantId: string;
@@ -100,7 +102,7 @@ export class AuthService {
    * Регистрация: создаёт ГЛОБАЛЬНЫЙ аккаунт + первую организацию + owner-членство.
    * E-mail уникален глобально (одна личность = один аккаунт).
    */
-  async register(dto: RegisterDto, meta?: SessionMeta): Promise<SessionResult> {
+  async register(dto: RegisterDto, meta?: SessionMeta): Promise<SessionResult | VerifyRequired> {
     // поле-ловушка: человек его не видит и не заполняет, бот заполняет всё подряд
     if (dto.website) throw AppException.validation('Не удалось зарегистрироваться. Обновите страницу и попробуйте ещё раз');
     await this.throttle.hit(RULES.registerIp, meta?.ip);
@@ -144,6 +146,8 @@ export class AuthService {
     // письмо со ссылкой подтверждения — в очередь; сбой почты не мешает войти
     await this.security.sendVerification(String(user.account_id)).catch(() => undefined);
     await this.security.auditUser({ tenantId: String(user.tenant_id), userId: String(user.id), name: user.full_name }, 'auth.registered', meta);
+    // #4949: войти можно только после перехода по ссылке из письма
+    if (this.security.needsVerification({ email: dto.email })) return { verifyRequired: true, email: dto.email };
     const tokens = await this.issueTokens(user, meta);
     const orgs = this.orgRefs(await this.users.membershipsByAccount(user.account_id as string));
     return { user: toPublicUser(user), organizations: orgs, ...tokens };
@@ -162,6 +166,11 @@ export class AuthService {
       throw AppException.unauthorized('Неверный email или пароль');
     }
     await this.throttle.reset(RULES.loginFail, dto.email);
+    // #4949: почта не подтверждена — шлём письмо ещё раз (с лимитом) и сессию не выдаём
+    if (this.security.needsVerification(account)) {
+      await this.security.resendQuiet(String(account.id));
+      return { verifyRequired: true, email: account.email };
+    }
 
     const memberships = await this.users.membershipsByAccount(account.id);
     if (memberships.length === 0) throw AppException.unauthorized('У аккаунта нет активных организаций');
