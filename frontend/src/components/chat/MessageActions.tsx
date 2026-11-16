@@ -61,11 +61,14 @@ function openSource(s: Source) {
 const sourceLabel = (s: Source) => (s.kind === 'task' ? `#${s.id} «${s.title}»` : s.kind === 'meeting' ? `встреча «${s.title}»`
   : s.kind === 'message' ? 'сообщение в чате' : `файл «${s.title}»`);
 
-export default function MessageActions({ messageId, body, isAi, createdAt, mode, onClose }: {
+export default function MessageActions({ messageId, body, isAi, createdAt, mine, meId, mode, onClose }: {
   messageId: string;
   body: string;
   isAi?: boolean;
   createdAt?: string | null;
+  /** #4933: подсказку о поручении видят только автор сообщения и тот, кому поручено. */
+  mine?: boolean;
+  meId?: string;
   /** Открыто из меню сообщения: «Поручения → задачи» или «Спросить про контекст». */
   mode: 'tasks' | 'ask' | null;
   onClose: () => void;
@@ -80,6 +83,9 @@ export default function MessageActions({ messageId, body, isAi, createdAt, mode,
   const [askBusy, setAskBusy] = useState(false);
   const [askErr, setAskErr] = useState('');
   const [askOpen, setAskOpen] = useState(false);
+  /** #4933: найденные сами поручения — одной строкой; карточка раскрывается по нажатию. */
+  const [expanded, setExpanded] = useState(false);
+  const [hidden, setHidden] = useState(false);
 
   // п. 7, показ в ленте: карточка появляется сама, если сервер нашёл поручения
   useEffect(() => {
@@ -88,16 +94,21 @@ export default function MessageActions({ messageId, body, isAi, createdAt, mode,
     if (!autoCache.has(messageId)) {
       autoCache.set(messageId, request<Card>('GET', `/chat-actions/messages/${messageId}/tasks?auto=1`).catch(() => null));
     }
-    void autoCache.get(messageId)!.then((c) => { if (alive && c && c.items.length && !c.dismissed) setCard(c); });
+    void autoCache.get(messageId)!.then((c) => {
+      if (!alive || !c || !c.items.length || c.dismissed) return;
+      // #4933: карточка у всех на каждом «посмотри/проверь» мешала. Чужое поручение не показываем вовсе.
+      const mineToo = mine || (!!meId && c.items.some((i) => String(i.assigneeId ?? '') === String(meId)));
+      if (mineToo) setCard(c);
+    });
     return () => { alive = false; };
-  }, [messageId, autoTasks, mode]);
+  }, [messageId, autoTasks, mode, mine, meId]);
 
   // п. 7, из меню: разбор моделью, если она есть
   useEffect(() => {
     if (mode !== 'tasks') return;
     setCardBusy(true); setCardErr('');
     request<Card>('GET', `/chat-actions/messages/${messageId}/tasks`)
-      .then((c) => { setCard(c); autoCache.set(messageId, Promise.resolve(c)); if (!c.items.length) setCardErr('Поручений в сообщении не нашёл — можно создать задачу вручную (палочка).'); })
+      .then((c) => { setCard(c); setExpanded(true); setHidden(false); autoCache.set(messageId, Promise.resolve(c)); if (!c.items.length) setCardErr('Поручений в сообщении не нашёл — можно создать задачу вручную (палочка).'); })
       .catch((e) => setCardErr(err(e, 'Не удалось разобрать сообщение')))
       .finally(() => setCardBusy(false));
   }, [messageId, mode]);
@@ -111,10 +122,11 @@ export default function MessageActions({ messageId, body, isAi, createdAt, mode,
   };
   useEffect(() => { if (mode === 'ask') ask(); }, [mode, messageId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const closeTasks = () => { setCard(null); setCardErr(''); if (mode === 'tasks') onClose(); };
+  const closeTasks = () => { setCard(null); setCardErr(''); setExpanded(false); setHidden(true); if (mode === 'tasks') onClose(); };
   const closeAsk = () => { setAskOpen(false); setAnswer(null); setAskErr(''); if (mode === 'ask') onClose(); };
 
-  const showCard = !!card && card.items.length > 0;
+  const showCard = !!card && card.items.length > 0 && !hidden;
+  const pending = showCard ? card!.items.filter((i) => !i.taskId).length : 0;
   return (
     <>
       {mode === 'tasks' && cardBusy && <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Ищу поручения в сообщении…</div>}
@@ -123,7 +135,11 @@ export default function MessageActions({ messageId, body, isAi, createdAt, mode,
           {cardErr} <button style={linkBtn} onClick={closeTasks}>Скрыть</button>
         </div>
       )}
-      {showCard && <AssignmentCard card={card!} onChange={setCard} onClose={closeTasks} messageId={messageId} />}
+      {showCard && (expanded || !pending ? <AssignmentCard card={card!} onChange={setCard} onClose={closeTasks} messageId={messageId} /> : (
+        <button className="msg-act" style={{ marginTop: 4 }} onClick={(e) => { e.stopPropagation(); setExpanded(true); }} title="Проверить и создать задачу — ничего не создаётся без вашего подтверждения">
+          <Icon name="sparkles" size={12} /> {pending === 1 ? 'Похоже на поручение — оформить задачей?' : `Поручений в сообщении: ${pending} — оформить задачами?`}
+        </button>
+      ))}
       {askHint && !askOpen && mode !== 'ask' && (
         <button className="msg-act" style={{ marginTop: 4 }} onClick={(e) => { e.stopPropagation(); ask(); }} title="Ответ по задачам, ТЗ и протоколам встреч — увидите только вы">
           <Icon name="help" size={12} /> Кто за это отвечает? — ответ из контекста

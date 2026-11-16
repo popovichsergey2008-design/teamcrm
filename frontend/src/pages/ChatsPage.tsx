@@ -3285,6 +3285,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         {m.body && editing !== String(m.id) && (
                           <Suspense fallback={null}><MessageActions
                             messageId={String(m.id)} body={String(m.body)} isAi={!!m.is_ai} createdAt={m.created_at}
+                            mine={String(m.author_id) === String(user?.id)} meId={String(user?.id ?? '')}
                             mode={actFor?.id === String(m.id) ? actFor.mode : null} onClose={() => setActFor(null)}
                           /></Suspense>
                         )}
@@ -3929,6 +3930,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                     {m.body && editing !== String(m.id) && (
                       <Suspense fallback={null}><MessageActions
                         messageId={String(m.id)} body={String(m.body)} isAi={!!m.is_ai} createdAt={m.created_at}
+                        mine={String(m.author_id) === String(user?.id)} meId={String(user?.id ?? '')}
                         mode={i > 0 && actFor?.id === String(m.id) ? actFor.mode : null} onClose={() => setActFor(null)}
                       /></Suspense>
                     )}
