@@ -10,8 +10,10 @@ import { AppException } from '../../common/http/app-exception';
  * человек читает. Поменяли текст — поднимите версию в ОБОИХ местах, иначе в журнал
  * ляжет не та редакция, с которой человек соглашался.
  */
-export const POLICY_VERSIONS = { privacy: 'v2', remote_support: 'v3' } as const;
+export const POLICY_VERSIONS = { privacy: 'v2', remote_support: 'v4' } as const;
 export type PolicyKind = keyof typeof POLICY_VERSIONS;
+/** #4950: редакция словами — п. 2.1 Политики удалённой поддержки требует её в журнале согласия. */
+export const POLICY_EDITIONS: Record<PolicyKind, string> = { privacy: 'Редакция от 26 октября 2026 г.', remote_support: 'Редакция от 16 ноября 2026 г.' };
 
 /**
  * Сколько живёт согласие на удалённую помощь.
@@ -60,7 +62,7 @@ export class PolicyConsentsService {
                  VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
                  RETURNING id::text, version, accepted_at`;
     // #4680: при регистрации галочки — за весь пакет документов сайта; в журнале видно, за какие
-    const context = input.policy === 'privacy' ? { ...(input.context ?? {}), documents: SIGNUP_DOCUMENTS } : (input.context ?? {});
+    const context = { ...(input.policy === 'privacy' ? { ...(input.context ?? {}), documents: SIGNUP_DOCUMENTS } : (input.context ?? {})), edition: POLICY_EDITIONS[input.policy] };
     const params = [
       input.tenantId == null ? null : String(input.tenantId),
       input.userId == null ? null : String(input.userId),

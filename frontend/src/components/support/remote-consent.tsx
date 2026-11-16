@@ -69,7 +69,7 @@ function ConsentHost({ intro, accept, onDone }: {
         <p>
           Подробно — в{' '}
           <a href={LEGAL['remote-support'].path} target="_blank" rel="noopener" onClick={showPolicy} aria-expanded={doc}>Политике удалённой технической поддержки</a>
-          {' '}(редакция от {LEGAL['remote-support'].date}, {LEGAL['remote-support'].version}).
+          {' '}(редакция от {LEGAL['remote-support'].date}). Нажимая «Разрешить доступ», вы соглашаетесь с её условиями.
         </p>
         {doc && (
           <div className="legal-dialog-body remote-consent-doc" tabIndex={0} role="region" aria-label="Текст Политики удалённой технической поддержки">
