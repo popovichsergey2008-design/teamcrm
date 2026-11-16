@@ -1724,6 +1724,29 @@ export class ChatsService {
     return { edited: true, body: next, ...secrets };
   }
 
+  /**
+   * #4931: текст голосового — это его расшифровка, и неточность в ней правит автор. Меняется
+   * только текст: запись не трогаем, её по-прежнему можно прослушать. Раньше «Изменить»
+   * правило подпись сообщения («Голосовое сообщение»), а расшифровка оставалась прежней.
+   */
+  async editTranscript(
+    tenantId: string, chatId: string, messageId: string,
+    user: { userId: string; role: string }, body: string,
+  ) {
+    const chat = await this.access(tenantId, chatId, user);
+    const message = await this.repo.message(tenantId, messageId);
+    if (!message || String(message.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    if (String(message.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    if (!message.file_id) throw AppException.validation('У сообщения нет записи — правьте его как обычный текст');
+    const text = stripPasteJunk(String(body ?? '')).trim().slice(0, 8000);
+    if (!text) throw AppException.validation('Пустой текст — оставьте хотя бы одно слово или удалите сообщение');
+    const nextBody = await this.repo.editTranscript(tenantId, messageId, text);
+    if (nextBody === null) throw AppException.notFound('Сообщение не найдено');
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message.transcript', { chatId, messageId, transcript: text, status: 'ready', body: nextBody, edited: true });
+    return { transcript: text, body: nextBody };
+  }
+
   async remove(tenantId: string, chatId: string, messageId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     const message = await this.repo.message(tenantId, messageId);

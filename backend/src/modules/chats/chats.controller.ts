@@ -659,6 +659,17 @@ export class ChatsController {
     return this.chats.editMessage(u.tenantId, id, messageId, u, dto.body);
   }
 
+  /** #4931: поправить текст своего голосового — расшифровку; запись остаётся как была. */
+  @Patch(':id/messages/:messageId/transcript')
+  editTranscript(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: MessageEditDto,
+  ) {
+    return this.chats.editTranscript(u.tenantId, id, messageId, u, dto.body);
+  }
+
   @Delete(':id/messages/:messageId')
   remove(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('messageId') messageId: string) {
     return this.chats.remove(u.tenantId, id, messageId, u);

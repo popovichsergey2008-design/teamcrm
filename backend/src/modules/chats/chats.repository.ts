@@ -1178,6 +1178,22 @@ export class ChatsRepository {
     return row ? row.body : null;
   }
 
+  /**
+   * #4931: новая расшифровка голосового. Если текст сообщения совпадал с прежней
+   * расшифровкой (её подставили вместо подписи) — меняется и он, иначе подпись остаётся.
+   */
+  async editTranscript(tenantId: string, id: string, text: string): Promise<string | null> {
+    const row = await this.db.one<{ body: string }>(
+      `UPDATE chat_messages
+          SET body = CASE WHEN transcript IS NOT NULL AND body = transcript THEN $3 ELSE body END,
+              transcript = $3, transcript_status = 'ready', edited_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+        RETURNING body`,
+      [tenantId, id, text],
+    );
+    return row ? row.body : null;
+  }
+
   async editMessage(tenantId: string, id: string, body: string): Promise<void> {
     await this.db.query(
       `UPDATE chat_messages SET body=$3, edited_at=now()

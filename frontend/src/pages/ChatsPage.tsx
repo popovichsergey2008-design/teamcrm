@@ -627,6 +627,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   const [taskDrafts, setTaskDrafts] = useState<Record<string, MessageTaskDraft>>({});
   /** Какое сообщение сейчас правим и что в поле правки. */
   const [editing, setEditing] = useState<string | null>(null);
+  /** #4931: у голосового правят расшифровку, а не подпись «Голосовое сообщение». */
+  const [editTranscriptOf, setEditTranscriptOf] = useState<string | null>(null);
   /*
     #4888: «Изменить» — сразу печатать. Меню, закрываясь, возвращает фокус своей кнопке
     «⋯» — поэтому ставим курсор чуть позже него, в конец текста.
@@ -1810,9 +1812,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     const text = editText.trim();
     if (!text) return;
     try {
-      await api.editMessage(activeId, messageId, text);
+      const voice = editTranscriptOf === messageId;
+      const r = voice ? await api.editTranscript(activeId, messageId, text) : null;
+      if (!voice) await api.editMessage(activeId, messageId, text);
       const edited = (list: Message[]) => list.map((m) => (String(m.id) === messageId
-        ? { ...m, body: text, edited_at: new Date().toISOString() } : m));
+        ? (voice ? { ...m, transcript: text, transcript_status: 'ready', body: r?.body ?? m.body, edited_at: new Date().toISOString() }
+          : { ...m, body: text, edited_at: new Date().toISOString() }) : m));
+      setEditTranscriptOf(null);
       setMessages(edited);
       setThread((prev) => (prev ? { ...prev, messages: edited(prev.messages) } : prev));
       stopEditing(messageId);
@@ -1927,9 +1933,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     ...(m.body ? [{ label: 'Спросить про контекст', icon: 'help' as const, onClick: () => setActFor({ id: String(m.id), mode: 'ask' }) }] : []),
     ...(mine ? [
       {
-        label: 'Изменить',
-        icon: 'edit' as const,
-        onClick: () => { setEditing(String(m.id)); setEditText(String(m.body ?? '')); },
+        // #4931: у голосового с расшифровкой — «Изменить текст»: правится расшифровка, запись остаётся
+        ...(m.file_id && m.transcript
+          ? { label: 'Изменить текст', icon: 'edit' as const, onClick: () => { setEditTranscriptOf(String(m.id)); setEditing(String(m.id)); setEditText(String(m.transcript ?? '')); } }
+          : { label: 'Изменить', icon: 'edit' as const, onClick: () => { setEditTranscriptOf(null); setEditing(String(m.id)); setEditText(String(m.body ?? '')); } }),
       },
       { label: 'Удалить', icon: 'trash' as const, danger: true, onClick: () => { void removeMessage(String(m.id)); } },
     ] : []),

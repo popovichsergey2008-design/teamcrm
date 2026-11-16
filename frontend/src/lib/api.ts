@@ -2466,6 +2466,9 @@ export const api = {
     request<{ sendAt: string }>('PATCH', `/chats/scheduled/${id}`, { sendAt }),
 
   /** Правка своего сообщения: помечается как изменённое, чужие править нельзя. */
+  /** #4931: поправить расшифровку своего голосового (запись остаётся). */
+  editTranscript: (chatId: string, messageId: string, body: string) =>
+    request<{ transcript: string; body: string }>('PATCH', `/chats/${chatId}/messages/${messageId}/transcript`, { body }),
   editMessage: (chatId: string, messageId: string, body: string) =>
     request<{ edited: boolean; body: string }>('PATCH', `/chats/${chatId}/messages/${messageId}`, { body }),
   deleteMessage: (chatId: string, messageId: string) =>
