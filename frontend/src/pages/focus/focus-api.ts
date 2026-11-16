@@ -4,6 +4,7 @@ import { request } from '../../lib/api';
 export interface DaySlot {
   kind: 'meeting' | 'task' | 'reviews' | 'reserve' | 'lunch'; title: string; startsAt: string; endsAt: string;
   itemId?: string; taskId?: string | null; estimated?: boolean; count?: number;
+  projectId?: string | null;
 }
 export interface MainCard {
   itemId: string; taskId: string | null; projectId: string | null; projectName: string | null; title: string | null; kind: string;

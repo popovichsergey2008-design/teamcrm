@@ -69,10 +69,11 @@ export function MorningPlan({ day, accepted, busy, onDay, onEdit, onRefresh, onR
         <div className="fp-nums">
           <div><b>{dur(c.workMin)}</b><span>рабочий день</span></div>
           <div><b>{dur(c.meetingMin)}</b><span>встречи (уже вычтены)</span></div>
-          <div><b>{dur(c.plannedMin)}</b><span>запланировано</span></div>
+          {/* #4951: «что это за задачи» — плитки ведут к плану по часам, где каждый блок открывается */}
+          <button type="button" className="fp-num-link" onClick={showTimeline} title="Показать задачи дня по часам"><b>{dur(c.plannedMin)}</b><span>запланировано</span></button>
           {c.overloadMin > 0
-            ? <div className="bad"><b>−{dur(c.overloadMin)}</b><span>не помещается</span></div>
-            : <div className="ok"><b>{dur(c.reserveMin)}</b><span>резерв</span></div>}
+            ? <button type="button" className="fp-num-link bad" onClick={showTimeline} title="Показать задачи дня по часам"><b>−{dur(c.overloadMin)}</b><span>не помещается</span></button>
+            : <button type="button" className="fp-num-link ok" onClick={showTimeline} title="Свободное время в плане по часам"><b>{dur(c.reserveMin)}</b><span>резерв</span></button>}
         </div>
         <div className="fp-bar" aria-hidden="true">
           <span className="meet" style={{ width: seg(c.meetingMin) }} />
@@ -131,6 +132,22 @@ export function MorningPlan({ day, accepted, busy, onDay, onEdit, onRefresh, onR
   );
 }
 
+/** #4951: плитки «запланировано» / «резерв» — к плану по часам с подсветкой. */
+function showTimeline() {
+  const el = document.getElementById('fp-timeline');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('fp-flash');
+  window.setTimeout(() => el.classList.remove('fp-flash'), 1600);
+}
+
+/** #4951: блок дня по щелчку — задача, встреча (календарь) или разбор решений. */
+function openSlot(s: DaySlot) {
+  if (s.kind === 'task' && s.taskId && s.projectId) navigate({ section: 'projects', projectId: String(s.projectId), taskId: String(s.taskId) });
+  else if (s.kind === 'meeting') navigate({ section: 'calendar' });
+  else if (s.kind === 'reviews') window.dispatchEvent(new Event('teamcrm:focus-review'));
+}
+
 /** Таймлайн дня: задачи в свободных окнах между встречами; задачу можно перетащить на другое время. */
 export function Timeline({ slots, onMoved }: { slots: DaySlot[]; onMoved: () => void }) {
   const [drag, setDrag] = useState<DaySlot | null>(null);
@@ -151,15 +168,19 @@ export function Timeline({ slots, onMoved }: { slots: DaySlot[]; onMoved: () => 
     setDrag(null);
   };
   return (
-    <aside className="fp-card fp-timeline" aria-label="Сегодня по часам">
+    <aside className="fp-card fp-timeline" id="fp-timeline" aria-label="Сегодня по часам">
       <div className="fp-title">Сегодня</div>
       {slots.map((s, i) => (
         <div key={`${s.kind}${i}`} className="fp-tl-row"
           onDragOver={(e) => { if (drag && s.kind === 'reserve') e.preventDefault(); }}
           onDrop={() => void drop(s)}>
           <span className="fp-tl-time dim">{hm(s.startsAt)}</span>
-          <span className={`fp-tl-slot ${s.kind}`} draggable={s.kind === 'task'} onDragStart={() => setDrag(s)} onDragEnd={() => setDrag(null)}
-            title={s.kind === 'task' ? 'Перетащите на резерв, чтобы перенести' : undefined}>
+          <span className={`fp-tl-slot ${s.kind}${s.kind === 'task' || s.kind === 'meeting' || s.kind === 'reviews' ? ' is-link' : ''}`}
+            draggable={s.kind === 'task'} onDragStart={() => setDrag(s)} onDragEnd={() => setDrag(null)}
+            role={s.kind === 'task' || s.kind === 'meeting' || s.kind === 'reviews' ? 'button' : undefined}
+            tabIndex={s.kind === 'task' || s.kind === 'meeting' || s.kind === 'reviews' ? 0 : undefined}
+            onClick={() => openSlot(s)} onKeyDown={(e) => { if (e.key === 'Enter') openSlot(s); }}
+            title={s.kind === 'task' ? 'Открыть задачу · перетащите на резерв, чтобы перенести' : s.kind === 'meeting' ? 'Открыть в календаре' : s.kind === 'reviews' ? 'Начать разбор решений' : undefined}>
             <b>{s.kind === 'reviews' ? `Проверки и решения` : s.title}</b>
             <span className="dim fp-small">
               {s.kind === 'reviews' ? `${s.count} шт. · ${dur(Math.round((Date.parse(s.endsAt) - Date.parse(s.startsAt)) / 60000))}`
@@ -169,7 +190,7 @@ export function Timeline({ slots, onMoved }: { slots: DaySlot[]; onMoved: () => 
         </div>
       ))}
       {!slots.length && <div className="dim fp-small">Встреч и задач на сегодня нет.</div>}
-      <div className="dim fp-small">блоки можно перетаскивать на резерв</div>
+      <div className="dim fp-small">щелчок открывает задачу или встречу · блоки можно перетаскивать на резерв</div>
     </aside>
   );
 }

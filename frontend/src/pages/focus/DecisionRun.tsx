@@ -17,6 +17,9 @@ const MIN_PER = 2;
 const newRunId = () => `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 type Tally = Record<DecisionAction, number>;
+/** #4951: что решено в этом разборе — зачёркиваются только они, и у каждого есть «Отменить». */
+type Done = { action: DecisionAction; actionId: string; at: number };
+const DONE_LABEL: Record<DecisionAction, string> = { accept: 'принято', return: 'на доработке', close: 'закрыто', ask: 'вопрос задан' };
 const ZERO: Tally = { accept: 0, return: 0, close: 0, ask: 0 };
 
 /**
@@ -39,12 +42,13 @@ export function DecisionRun({ boss, onClose, onCount, onBackToPulse }: {
   const [recaps, setRecaps] = useState<Record<string, { text: string; source: 'ai' | 'rules' } | 'loading'>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [done, setDone] = useState<Record<string, Done>>({});
   // решённые и пропущенные в этом разборе — «Ещё 10» их не повторяет; в очереди пропущенные остаются
   const seen = useRef<Set<string>>(new Set());
   const root = useRef<HTMLElement>(null);
 
   const loadBatch = useCallback(async () => {
-    setErr(''); setBatch(null); setPos(0); setSummary(null); setPlate(null);
+    setErr(''); setBatch(null); setPos(0); setSummary(null); setPlate(null); setDone({});
     try {
       const b = await decisionsApi.batch([...seen.current]);
       setBatch(b.items); setCount(b.count); onCount(b.count);
@@ -88,6 +92,7 @@ export function DecisionRun({ boss, onClose, onCount, onBackToPulse }: {
       seen.current.add(card.key);
       setTally((t) => ({ ...t, [action]: t[action] + 1 }));
       setPlate({ ...r, card, at: pos });
+      setDone((d) => ({ ...d, [card.key]: { action, actionId: r.actionId, at: pos } }));
       setCount(r.count.after); onCount(r.count.after);
       feedback('action.confirmed');
       window.dispatchEvent(new Event('teamcrm:tasks-changed'));
@@ -99,18 +104,20 @@ export function DecisionRun({ boss, onClose, onCount, onBackToPulse }: {
     } finally { setBusy(false); }
   };
 
-  const undo = async () => {
-    if (!plate || busy) return;
+  // «Отменить» на плашке — последнее решение; в списке пачки (#4951) — любое из этого разбора
+  const undo = async (target: ({ key: string } & Done) | null = plate ? { key: plate.card.key, action: plate.action, actionId: plate.actionId, at: plate.at } : null) => {
+    if (!target || busy) return;
     setBusy(true); setErr('');
     try {
-      const r = await decisionsApi.undo(plate.actionId);
-      seen.current.delete(plate.card.key);
-      setTally((t) => ({ ...t, [plate.action]: Math.max(0, t[plate.action] - 1) }));
+      const r = await decisionsApi.undo(target.actionId);
+      seen.current.delete(target.key);
+      setTally((t) => ({ ...t, [target.action]: Math.max(0, t[target.action] - 1) }));
+      setDone((d) => { const n = { ...d }; delete n[target.key]; return n; });
       setCount(r.count); onCount(r.count);
       // задача — снова на экране, на том же месте разбора
       setSummary(null);
-      setPos(plate.at);
-      setPlate(null);
+      setPos(target.at);
+      if (!plate || plate.actionId === target.actionId) setPlate(null);
       window.dispatchEvent(new Event('teamcrm:tasks-changed'));
       toastSaved('Решение отменено', r.index ? `задача вернулась в прежний статус · индекс ${indexPair(r.index.before, r.index.after)}` : 'задача вернулась в прежний статус');
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Отменить не получилось'); }
@@ -220,25 +227,38 @@ export function DecisionRun({ boss, onClose, onCount, onBackToPulse }: {
               </div>
             </article>
           )}
-          {/* #4926: вся пачка списком — текущая подсвечена, по щелчку можно перейти к любой */}
+          {/* #4926: вся пачка списком — текущая подсвечена, по щелчку можно перейти к любой.
+              #4951: зачёркнуты только решённые (раньше — всё выше текущей, даже пропущенное),
+              у решённой — «Отменить», у каждой — «Открыть задачу». */}
           {batch && batch.length > 1 && (
             <ol aria-label="Задачи этого разбора" style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 2 }}>
-              {batch.map((b, i) => (
-                <li key={b.key}>
-                  <button type="button" disabled={i < pos} onClick={() => setPos(i)} aria-current={i === pos ? 'step' : undefined}
-                    style={{
-                      display: 'flex', gap: 8, width: '100%', textAlign: 'left', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', font: 'inherit',
-                      border: `1px solid ${i === pos ? 'var(--accent)' : 'transparent'}`, color: i < pos ? 'var(--text-dim)' : 'var(--text)',
-                      background: i === pos ? 'var(--accent-soft, var(--hover))' : 'none',
-                    }}>
-                    <span className="dim" style={{ minWidth: 22 }}>{i + 1}.</span>
-                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: i < pos ? 'line-through' : 'none' }}>
-                      {b.taskId ? `#${b.taskId} ` : ''}{b.title}
-                    </span>
-                    <span className="dim dr-small">{i === pos ? 'сейчас' : i < pos ? 'разобрано' : `ждёт ${b.waitingDays} ${plural(b.waitingDays, 'день', 'дня', 'дн.')}`}</span>
-                  </button>
-                </li>
-              ))}
+              {batch.map((b, i) => {
+                const d = done[b.key];
+                return (
+                  <li key={b.key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <button type="button" disabled={!!d} onClick={() => { setPlate(null); setPos(i); }} aria-current={i === pos ? 'step' : undefined}
+                      title={d ? undefined : 'Показать эту задачу в разборе'}
+                      style={{
+                        display: 'flex', gap: 8, flex: 1, minWidth: 0, textAlign: 'left', padding: '6px 10px', borderRadius: 8, cursor: d ? 'default' : 'pointer', font: 'inherit',
+                        border: `1px solid ${i === pos && !d ? 'var(--accent)' : 'transparent'}`, color: d ? 'var(--text-dim)' : 'var(--text)',
+                        background: i === pos && !d ? 'var(--accent-soft, var(--hover))' : 'none',
+                      }}>
+                      <span className="dim" style={{ minWidth: 22 }}>{i + 1}.</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: d ? 'line-through' : 'none' }}>
+                        {b.taskId ? `#${b.taskId} ` : ''}{b.title}
+                      </span>
+                      <span className="dim dr-small">{d ? DONE_LABEL[d.action] : i === pos ? 'сейчас' : `ждёт ${b.waitingDays} ${plural(b.waitingDays, 'день', 'дня', 'дн.')}`}</span>
+                    </button>
+                    {d && <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy} onClick={() => void undo({ key: b.key, ...d })} title="Вернуть задачу в прежний статус">Отменить</button>}
+                    {b.taskId && b.projectId && (
+                      <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" aria-label={`Открыть задачу #${b.taskId}`} title="Открыть задачу"
+                        onClick={() => navigate({ section: 'projects', projectId: String(b.projectId), taskId: String(b.taskId) })}>
+                        Открыть
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           )}
           <div className="dim dr-small">Каждое решение — по одной задаче. Массового «Принять всё» нет.</div>

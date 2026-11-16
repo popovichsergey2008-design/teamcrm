@@ -115,7 +115,11 @@ export class FocusPlusService {
         workMin: plan.workMin, meetingMin: plan.meetingMin, availableMin: plan.availableMin,
         plannedMin: plan.plannedMin, reviewsMin: plan.reviewsMin, reserveMin: plan.reserveMin, overloadMin: plan.overloadMin,
       },
-      timeline: plan.timeline.map((s) => ({ ...s, startsAt: new Date(s.start).toISOString(), endsAt: new Date(s.end).toISOString() })),
+      // #4951: проект задачи — чтобы блок «Сегодня» открывал её карточку
+      timeline: plan.timeline.map((s) => ({
+        ...s, startsAt: new Date(s.start).toISOString(), endsAt: new Date(s.end).toISOString(),
+        ...(s.taskId ? { projectId: top.find((i) => i.taskId === s.taskId)?.projectId ?? null } : {}),
+      })),
       brief: { yesterday: yesterday.line, text: brief },
       decisions, waitingReview: t.waitingReview ?? 0,
       why: top.filter((i) => i.status !== 'done').map((i) => ({
