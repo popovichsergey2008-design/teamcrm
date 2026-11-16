@@ -34,10 +34,14 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour:
  * готово, на проверке, не начато — сразу после входа, запрос один и лёгкий.
  * «Кратко до сих пор» — пересказ на 15 секунд с метками записи; запрос идёт сокетом
  * созвона (запись живёт в процессе звонка), ответ приходит событием meet:recap-so-far.
+ *
+ * #4934/#4942 (16.11): широкая карточка сама раскрывалась при входе и закрывала окно
+ * созвона. Теперь она свёрнута в кнопку «С прошлой встречи: N не закрыто» рядом с
+ * пересказом и раскрывается только по нажатию.
  */
 export default function MeetingMemory({ meetingId, recording, ask }: { meetingId: string; recording: boolean; ask: () => void }) {
   const [card, setCard] = useState<PrevCard | null>(null);
-  const [hidden, setHidden] = useState(false);
+  const [open, setOpen] = useState(false);
   const [recap, setRecap] = useState<Recap | null>(null);
   const [busy, setBusy] = useState(false);
   const [momentNote, setMomentNote] = useState('');
@@ -95,15 +99,16 @@ export default function MeetingMemory({ meetingId, recording, ask }: { meetingId
   };
 
   const c = card?.counts;
+  const left = c ? c.total - c.done : 0;
   return (
     <div className="mmem">
-      {card && !hidden && c && (
+      {card && open && c && (
         <div className="mmem-card" role="status">
           <div className="mmem-head">
             <Icon name="clock" size={15} />
             <b>С прошлой встречи</b>
             <span className="mmem-dim">· {card.meeting.reasonText} · {day(card.meeting.at)}{card.meeting.title ? ` · ${card.meeting.title}` : ''}</span>
-            <button type="button" className="msg-act mmem-close" onClick={() => setHidden(true)} title="Скрыть" aria-label="Скрыть карточку прошлой встречи">
+            <button type="button" className="msg-act mmem-close" onClick={() => setOpen(false)} title="Свернуть" aria-label="Свернуть карточку прошлой встречи">
               <Icon name="close" size={14} />
             </button>
           </div>
@@ -129,8 +134,14 @@ export default function MeetingMemory({ meetingId, recording, ask }: { meetingId
       <div className="mmem-bar">
         <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={askRecap} disabled={busy}
           title={recording ? 'Пересказ того, что уже обсудили, — за 15 секунд' : 'Запись не идёт: пересказ будет по сообщениям чата'}>
-          <Icon name="sparkles" size={15} /> {busy ? 'Пересказываю…' : 'Кратко до сих пор'}
+          <Icon name="sparkles" size={15} /> {busy ? 'Пересказываю…' : 'О чём уже говорили'}
         </button>
+        {card && c && (
+          <button type="button" className={`ui-btn ui-btn-sm ${open ? 'ui-btn-outline' : 'ui-btn-ghost'}`} onClick={() => setOpen((o) => !o)}
+            aria-expanded={open} title={`Задачи с прошлой встречи (${card.meeting.reasonText}, ${day(card.meeting.at)}): что готово, что нет`}>
+            <Icon name="clock" size={15} /> {left > 0 ? `С прошлой встречи: ${left} не закрыто` : 'С прошлой встречи: всё готово'}
+          </button>
+        )}
         {recap && <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => setRecap(null)}>Скрыть</button>}
       </div>
 
