@@ -80,7 +80,7 @@ export function LoginPage() {
           <button type="button" className="ui-btn ui-btn-primary ui-btn-md auth-submit" disabled={busy} onClick={() => void recheck()}>
             {busy ? 'Проверяю…' : 'Я подтвердил — войти'}
           </button>
-          <button type="button" className="ui-btn ui-btn-ghost ui-btn-md auth-submit" disabled={busy}
+          <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" style={{ width: '100%', marginTop: 8 }} disabled={busy}
             onClick={() => { setVerifyFor(null); setVerifyNote(''); setMode('register'); setPassword(''); }}>
             Указать другую почту
           </button>
