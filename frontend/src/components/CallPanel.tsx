@@ -566,7 +566,17 @@ export function CallPanel({ meetingId, inviteUserIds = [], calleeLabel, guest, s
       } catch (e) {
         // перезаход не удался (сервер ещё не поднялся, сеть не вернулась) — пробуем снова
         if (rejoin > 0 && !cancelled) { scheduleRejoin(); return; }
-        setErr(e instanceof ApiError ? e.message : (e as Error)?.message ?? 'Не удалось подключиться');
+        const msg = e instanceof ApiError ? e.message : (e as Error)?.message ?? 'Не удалось подключиться';
+        // #4946: сервер не ответил на канал или поток — сигнальный канал уже полумёртв (16.11 у
+        // Константина ответ на микрофон потерялся, обрыв заметили лишь через 20 с). Не пугаем
+        // ошибкой и не ждём обрыва: сразу входим заново, после удачного входа надпись исчезнет.
+        if (!cancelled && !noRejoin.current && /^Сервер (?:не принял поток|не подтвердил соединение|созвонов не открыл)/.test(msg)) {
+          diag('meet', 'rejoin.on-timeout', meetingId, { reason: msg });
+          setErr('Связь с сервером созвонов споткнулась — переподключаюсь…');
+          scheduleRejoin();
+          return;
+        }
+        setErr(msg);
       }
     })();
     return () => {
