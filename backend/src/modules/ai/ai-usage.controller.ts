@@ -11,6 +11,8 @@ class AiSettingsDto {
   @IsOptional() @IsString() @MaxLength(200) anthropicKey?: string;
   @IsOptional() @IsString() @MaxLength(200) openrouterKey?: string;
   @IsOptional() @IsString() @MaxLength(200) kimiKey?: string;
+  /** Yandex AI Studio — ключ API сервисного аккаунта (16.11). */
+  @IsOptional() @IsString() @MaxLength(200) yandexKey?: string;
   @IsOptional() @IsString() @MaxLength(96) brainModel?: string;
 }
 

@@ -1630,7 +1630,7 @@ export const api = {
 
   aiUsage: (days = 30) => request<any>('GET', `/ai/usage?days=${days}`),
   aiSettingsGet: () => request<any>('GET', '/ai/settings'),
-  aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
+  aiSettingsSave: (b: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; yandexKey?: string; brainModel?: string }) => request<any>('PUT', '/ai/settings', b),
   aiSettingsModels: () => request<string[]>('GET', '/ai/settings/models'),
 
   // PromptOps — версионирование промптов (enh-07)

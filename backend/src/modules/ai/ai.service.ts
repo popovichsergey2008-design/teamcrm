@@ -59,8 +59,8 @@ export class AiService {
     generate: ((system: string, user: string) => Promise<string>) | null;
   }> {
     const s = await this.settings.resolve(tenantId);
-    const own = s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey
-      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey) : null;
+    const own = s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey || s.yandex
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey, s.yandex) : null;
     // ключ демо — наши деньги: под тем же выключателем и бюджетом, что общий ключ
     const demo = this.demoOpenai && (await this.guard.decision().catch(() => null))?.shared !== false
       ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
@@ -99,7 +99,7 @@ export class AiService {
     const demo = shared && this.demoOpenai ? new RealAiProvider(this.demoOpenai, undefined, 'gpt-4o-mini', 'gpt-4o-mini') : null;
     const g = this.settings.globalKeys();
     const global = shared && g.source === 'global'
-      ? new RealAiProvider(g.openaiKey, g.anthropicKey, this.parserModel, g.brainModel, g.openrouterKey, g.kimiKey) : null;
+      ? new RealAiProvider(g.openaiKey, g.anthropicKey, this.parserModel, g.brainModel, g.openrouterKey, g.kimiKey, g.yandex) : null;
     const llm = demo ?? global;
     return {
       transcribe: demo
@@ -165,8 +165,8 @@ export class AiService {
   /** Провайдер для конкретного арендатора (BYOK: ключ арендатора > глобальный .env). */
   private async providerFor(tenantId: string) {
     const s = await this.settings.resolve(tenantId);
-    const provider: AiProvider = (s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey)
-      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey)
+    const provider: AiProvider = (s.openaiKey || s.anthropicKey || s.openrouterKey || s.kimiKey || s.yandex)
+      ? new RealAiProvider(s.openaiKey, s.anthropicKey, this.parserModel, s.brainModel, s.openrouterKey, s.kimiKey, s.yandex)
       : new MockAiProvider();
     const embedModel = (s.openaiKey || s.openrouterKey) ? 'text-embedding-3-small' : 'mock-embed';
     const brainModel = s.brainModel

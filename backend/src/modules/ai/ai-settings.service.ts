@@ -2,9 +2,10 @@ import { sharedSecret } from '../shared-secrets/secrets-registry';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DbService } from '../../database/db.service';
+import { AppException } from '../../common/http/app-exception';
 import { AiGuardService } from './ai-guard.service';
 import { IntegrationCryptoService } from '../integrations/crypto.service';
-import { KIMI_BASE_URL, KIMI_DEFAULT_MODEL, KIMI_FALLBACK_MODELS } from './ai.provider';
+import { KIMI_BASE_URL, KIMI_DEFAULT_MODEL, KIMI_FALLBACK_MODELS, YANDEX_BASE_URL, YANDEX_KNOWN_MODELS, YANDEX_PREFIX } from './ai.provider';
 import { limitAlert, TRIAL_DAYS_DEFAULT, TRIAL_TOKENS_DEFAULT, trialVerdict, TrialVerdict } from './ai-trial';
 
 /** Решение «можно ли общим ключом» живёт минуту: считать токены на каждый вызов модели незачем. */
@@ -16,9 +17,14 @@ export interface ResolvedAi {
   openrouterKey?: string;
   /** Kimi (Moonshot AI): с ним вся текстовая работа ИИ идёт через Kimi (19.10). */
   kimiKey?: string;
+  /** Yandex AI Studio (16.11): ключ и каталог — модели на выбор и запасной путь. */
+  yandex?: { key: string; folder: string } | null;
   brainModel?: string;
   source: 'tenant' | 'global' | 'none';
 }
+
+/** Есть ли у компании свой ключ ИИ — любой из провайдеров. */
+const ownKey = (r: any) => !!(r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc || r?.yandex_key_enc);
 
 /** Бесплатные модели OpenRouter — фолбэк, если их список не отдался (id меняются со временем). */
 const OPENROUTER_FREE_FALLBACK = [
@@ -120,7 +126,7 @@ export class AiSettingsService implements OnModuleInit {
     if (!level || v.reason === 'platform') return;
     const own = await this.db.one<{ n: number }>(
       `SELECT 1 AS n FROM ai_settings WHERE tenant_id=$1
-          AND (openai_key_enc IS NOT NULL OR anthropic_key_enc IS NOT NULL OR openrouter_key_enc IS NOT NULL OR kimi_key_enc IS NOT NULL)`, [tenantId]);
+          AND (openai_key_enc IS NOT NULL OR anthropic_key_enc IS NOT NULL OR openrouter_key_enc IS NOT NULL OR kimi_key_enc IS NOT NULL OR yandex_key_enc IS NOT NULL)`, [tenantId]);
     if (own) return;
     const month = v.windowStart.toISOString().slice(0, 7);
     const used = Math.round(v.tokensUsed / 1000).toLocaleString('ru-RU');
@@ -154,7 +160,7 @@ export class AiSettingsService implements OnModuleInit {
   async keysOf(tenantId: string): Promise<{ own: boolean; global: boolean }> {
     const r = await this.row(tenantId).catch(() => null);
     return {
-      own: !!(r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc),
+      own: ownKey(r),
       global: !!(this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi),
     };
   }
@@ -170,7 +176,7 @@ export class AiSettingsService implements OnModuleInit {
    */
   async limit(tenantId: string) {
     const r = await this.row(tenantId).catch(() => null);
-    const own = !!(r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc);
+    const own = ownKey(r);
     const v = await this.trial(tenantId, true);
     return {
       own, platform: v.reason === 'platform',
@@ -189,6 +195,8 @@ export class AiSettingsService implements OnModuleInit {
       anthropicKeySet: !!r?.anthropic_key_enc,
       openrouterKeySet: !!r?.openrouter_key_enc,
       kimiKeySet: !!r?.kimi_key_enc,
+      yandexKeySet: !!r?.yandex_key_enc,
+      yandexFolder: r?.yandex_folder ?? null,
       brainModel: r?.brain_model ?? this.globalBrainModel ?? null,
       globalOpenai: !!this.globalOpenai,
       globalAnthropic: !!this.globalAnthropic,
@@ -198,7 +206,7 @@ export class AiSettingsService implements OnModuleInit {
        * Пробный ИИ общим ключом (#4624): показываем, пока своего ключа нет. `serverKey` —
        * есть ли общий ключ на сервере вообще: без него пробовать нечем.
        */
-      trial: (r?.openai_key_enc || r?.anthropic_key_enc || r?.openrouter_key_enc || r?.kimi_key_enc) ? null : {
+      trial: ownKey(r) ? null : {
         ...(await this.trial(tenantId, true)),
         serverKey: !!(this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi),
       },
@@ -206,7 +214,7 @@ export class AiSettingsService implements OnModuleInit {
   }
 
   /** Сохранить ключи/модель. undefined — не трогать; '' — очистить. */
-  async update(tenantId: string, userId: string, patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; brainModel?: string }) {
+  async update(tenantId: string, userId: string, patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; yandexKey?: string; brainModel?: string }) {
     const cur = await this.row(tenantId);
     const openaiEnc = patch.openaiKey === undefined ? (cur?.openai_key_enc ?? null)
       : patch.openaiKey ? this.crypto.encrypt(patch.openaiKey.trim()) : null;
@@ -216,7 +224,20 @@ export class AiSettingsService implements OnModuleInit {
       : patch.openrouterKey ? this.crypto.encrypt(patch.openrouterKey.trim()) : null;
     const kimiEnc = patch.kimiKey === undefined ? (cur?.kimi_key_enc ?? null)
       : patch.kimiKey ? this.crypto.encrypt(patch.kimiKey.trim()) : null;
+    // Яндекс: каталог узнаём по ключу сразу — без него запрос к модели не собрать
+    let yandexEnc = cur?.yandex_key_enc ?? null;
+    let yandexFolder: string | null = cur?.yandex_folder ?? null;
+    if (patch.yandexKey !== undefined) {
+      if (patch.yandexKey) {
+        const folder = await this.yandexFolderOf(patch.yandexKey.trim());
+        if (!folder) throw AppException.validation('Ключ Yandex AI Studio не подошёл: Яндекс не отдал список моделей. Проверьте ключ и права сервисного аккаунта (ai.languageModels.user).');
+        yandexEnc = this.crypto.encrypt(patch.yandexKey.trim());
+        yandexFolder = folder;
+      } else { yandexEnc = null; yandexFolder = null; }
+    }
     let brainModel = patch.brainModel === undefined ? (cur?.brain_model ?? null) : (patch.brainModel || null);
+    // ключ Яндекса сняли — его модель никуда не ведёт
+    if (patch.yandexKey === '' && (brainModel ?? '').startsWith(YANDEX_PREFIX)) brainModel = null;
     // Новый ключ Kimi без выбранной модели Kimi — переводим работу ИИ на Kimi сразу:
     // ради этого ключ и вводят (19.10, «перевести всю работу ИИ на эту модель»).
     if (patch.kimiKey && patch.brainModel === undefined && !/^kimi/i.test(brainModel ?? '')) brainModel = KIMI_DEFAULT_MODEL;
@@ -231,6 +252,7 @@ export class AiSettingsService implements OnModuleInit {
          brain_model=EXCLUDED.brain_model, updated_by=EXCLUDED.updated_by, updated_at=now()`,
       [tenantId, openaiEnc, anthropicEnc, openrouterEnc, kimiEnc, brainModel, userId],
     );
+    await this.db.query(`UPDATE ai_settings SET yandex_key_enc = $2, yandex_folder = $3 WHERE tenant_id = $1`, [tenantId, yandexEnc, yandexFolder]);
     return this.get(tenantId);
   }
 
@@ -243,12 +265,14 @@ export class AiSettingsService implements OnModuleInit {
     const tAnthropic = dec(r?.anthropic_key_enc);
     const tOpenrouter = dec(r?.openrouter_key_enc);
     const tKimi = dec(r?.kimi_key_enc);
+    const tYandex = dec(r?.yandex_key_enc);
+    const yandex = tYandex && r?.yandex_folder ? { key: tYandex, folder: String(r.yandex_folder) } : null;
     // Выключатели и бюджет владельца платформы (консоль владельца): решение — до выбора
     // ключа, поэтому резервный провайдер его не обходит. Весь ИИ выключен — как без ключа:
     // возможности уходят на правила, как у компании без ИИ.
     const verdict = await this.guard.decision().catch(() => ({ any: true, shared: true, reason: null }));
     if (!verdict.any) return { brainModel: r?.brain_model || this.globalBrainModel, source: 'none' };
-    const own = !!(tOpenai || tAnthropic || tOpenrouter || tKimi);
+    const own = !!(tOpenai || tAnthropic || tOpenrouter || tKimi || tYandex);
     // общий ключ сервера — только площадке вендора и новой компании в пробный период (#4624)
     const useGlobal = !own && verdict.shared && (this.globalOpenai || this.globalAnthropic || this.globalOpenrouter || this.globalKimi)
       ? (await this.trial(tenantId).catch(() => null))?.allowed === true
@@ -261,17 +285,45 @@ export class AiSettingsService implements OnModuleInit {
     const brainModel = r?.brain_model || this.globalBrainModel;
     const source: ResolvedAi['source'] = own ? 'tenant'
       : (openaiKey || anthropicKey || openrouterKey || kimiKey) ? 'global' : 'none';
-    return { openaiKey, anthropicKey, openrouterKey, kimiKey, brainModel, source };
+    return { openaiKey, anthropicKey, openrouterKey, kimiKey, yandex, brainModel, source };
   }
 
   /** Список доступных чат-моделей: по ключу OpenAI + бесплатные модели OpenRouter (если задан его ключ). */
   async listModels(tenantId: string): Promise<string[]> {
-    const { openaiKey, openrouterKey, kimiKey } = await this.resolve(tenantId);
+    const { openaiKey, openrouterKey, kimiKey, yandex } = await this.resolve(tenantId);
     const kimi = kimiKey ? await this.kimiModels(kimiKey) : [];
+    const ya = yandex ? (await this.yandexModels(yandex.key)).map((m) => `${YANDEX_PREFIX}${m}`) : [];
     const openai = openaiKey ? await this.openaiModels(openaiKey) : [];
     const openrouter = openrouterKey ? await this.openrouterFreeModels() : [];
-    const all = [...kimi, ...openai, ...openrouter];
+    const all = [...kimi, ...ya, ...openai, ...openrouter];
     return all.length ? all : ['gpt-4o-mini', 'gpt-4o'];
+  }
+
+  /** Каталог Yandex Cloud по ключу: он стоит в адресах моделей gpt://<каталог>/… */
+  private async yandexFolderOf(key: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${YANDEX_BASE_URL}/models`, { headers: { Authorization: `Api-Key ${key}` }, signal: AbortSignal.timeout(15000) });
+      const json: any = await res.json();
+      const id = (json?.data ?? []).map((m: any) => String(m?.id ?? '')).find((x: string) => x.startsWith('gpt://'));
+      return id ? id.split('/')[2] || null : null;
+    } catch (e) {
+      this.log.warn(`yandexFolderOf: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Чат-модели Яндекса (без эмбеддингов и речи): id после каталога — «yandexgpt/latest». */
+  private async yandexModels(key: string): Promise<string[]> {
+    try {
+      const res = await fetch(`${YANDEX_BASE_URL}/models`, { headers: { Authorization: `Api-Key ${key}` }, signal: AbortSignal.timeout(15000) });
+      const json: any = await res.json();
+      const ids: string[] = (json?.data ?? []).map((m: any) => String(m?.id ?? '').split('/').slice(3).join('/'))
+        .filter((x: string) => x && !/embedding|text-search|speech|deprecated/i.test(x));
+      return ids.length ? ids : YANDEX_KNOWN_MODELS;
+    } catch (e) {
+      this.log.warn(`yandexModels failed: ${(e as Error).message}`);
+      return YANDEX_KNOWN_MODELS;
+    }
   }
 
   /** Чат-модели Kimi по ключу; не отдались — известный список (октябрь 2026). */

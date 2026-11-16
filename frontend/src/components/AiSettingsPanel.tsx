@@ -9,6 +9,15 @@ const KIMI_HINT: Record<string, string> = {
   'kimi-k2.6': 'быстрая, без рассуждений',
   'kimi-k2.7-code': 'для кода',
   'kimi-k2.7-code-highspeed': 'для кода, быстрая',
+  // Yandex AI Studio (16.11): из России напрямую, ~1 с на ответ
+  'yandex:yandexgpt/latest': 'ЯндексGPT Pro — Яндекс, из России напрямую',
+  'yandex:yandexgpt-5.1/latest': 'ЯндексGPT Pro 5.1 — Яндекс',
+  'yandex:yandexgpt-lite/latest': 'ЯндексGPT Lite — Яндекс, быстрая и дешёвая',
+  'yandex:aliceai-llm/latest': 'Алиса AI — Яндекс',
+  'yandex:aliceai-llm-flash/latest': 'Алиса AI Flash — Яндекс, быстрая',
+  'yandex:deepseek-v4-flash/latest': 'DeepSeek через Яндекс',
+  'yandex:deepseek-v4.1-flash/latest': 'DeepSeek 4.1 через Яндекс',
+  'yandex:qwen3.6-35b-a3b/latest': 'Qwen через Яндекс',
 };
 
 /** BYOK: ключи ИИ-провайдеров (шифруются на сервере) + выбор модели чата. Встраивается в «Интеграции». */
@@ -18,6 +27,7 @@ export function AiSettingsSection() {
   const [anthropicKey, setAnthropicKey] = useState('');
   const [openrouterKey, setOpenrouterKey] = useState('');
   const [kimiKey, setKimiKey] = useState('');
+  const [yandexKey, setYandexKey] = useState('');
   const [brainModel, setBrainModel] = useState('');
   const [models, setModels] = useState<string[]>([]);
   const [msg, setMsg] = useState('');
@@ -30,7 +40,7 @@ export function AiSettingsSection() {
   const loadModels = () => api.aiSettingsModels().then(setModels).catch(() => undefined);
   useEffect(() => { load(); loadModels(); }, []);
 
-  const save = async (patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; brainModel?: string }) => {
+  const save = async (patch: { openaiKey?: string; anthropicKey?: string; openrouterKey?: string; kimiKey?: string; yandexKey?: string; brainModel?: string }) => {
     try { const r = await api.aiSettingsSave(patch); setS(r); setBrainModel(r.brainModel ?? ''); flash('Сохранено'); loadModels(); return r; }
     catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
@@ -41,9 +51,10 @@ export function AiSettingsSection() {
     if (anthropicKey.trim()) patch.anthropicKey = anthropicKey.trim();
     if (openrouterKey.trim()) patch.openrouterKey = openrouterKey.trim();
     if (kimiKey.trim()) patch.kimiKey = kimiKey.trim();
+    if (yandexKey.trim()) patch.yandexKey = yandexKey.trim();
     if (!Object.keys(patch).length) return flash('Вставьте ключ');
-    await save(patch);
-    setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey(''); setKimiKey('');
+    const r = await save(patch);
+    if (r) { setOpenaiKey(''); setAnthropicKey(''); setOpenrouterKey(''); setKimiKey(''); setYandexKey(''); }
   };
 
   if (!s) return null;
@@ -81,6 +92,16 @@ export function AiSettingsSection() {
         </div>
         <input className="input add-user-input" type="password" placeholder="sk-... (ключ Kimi)" value={kimiKey} onChange={(e) => setKimiKey(e.target.value)} />
 
+        {/* 16.11: Яндекс — модели на выбор и запасной путь, когда OpenAI или Kimi недоступны из России */}
+        <div className="drawer-section-title">Ключ Yandex AI Studio — ЯндексGPT и запасной ИИ</div>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
+          Статус: {s.yandexKeySet ? `задан (каталог ${s.yandexFolder ?? '—'})` : '— не задан —'}.
+          {' '}С ключом в выборе модели появляются ЯндексGPT, Алиса AI и DeepSeek через Яндекс, а если основной ИИ не
+          ответил (например, OpenAI или Kimi недоступны из России) — ответит ЯндексGPT. Ключ API сервисного аккаунта
+          с ролью ai.languageModels.user — в <a href="https://aistudio.yandex.ru" target="_blank" rel="noreferrer">AI Studio</a>.
+        </div>
+        <input className="input add-user-input" type="password" placeholder="AQVN... (ключ API Yandex Cloud)" value={yandexKey} onChange={(e) => setYandexKey(e.target.value)} />
+
         <div className="drawer-section-title">Ключ OpenAI (GPT) — речь, голос, поиск</div>
         {/* #4779, п. 6.3 */}
         <div style={{ fontSize: 12, marginBottom: 4 }}>Нужен для созвонов и голосовых.</div>
@@ -100,8 +121,8 @@ export function AiSettingsSection() {
         <input className="input add-user-input" type="password" placeholder="sk-or-..." value={openrouterKey} onChange={(e) => setOpenrouterKey(e.target.value)} />
 
         <button className="ui-btn ui-btn-primary ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={saveKeys}>Сохранить ключи</button>
-        {(s.openaiKeySet || s.anthropicKeySet || s.openrouterKeySet || s.kimiKeySet) && (
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '', kimiKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
+        {(s.openaiKeySet || s.anthropicKeySet || s.openrouterKeySet || s.kimiKeySet || s.yandexKeySet) && (
+          <button className="ui-btn ui-btn-ghost ui-btn-sm" style={{ width: '100%', marginTop: 6 }} onClick={() => save({ openaiKey: '', anthropicKey: '', openrouterKey: '', kimiKey: '', yandexKey: '' })}>Удалить свои ключи (вернуться к общему)</button>
         )}
 
         <div className="drawer-section-title">Модель ответов ИИ (Brain)</div>

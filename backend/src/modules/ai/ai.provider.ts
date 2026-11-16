@@ -224,6 +224,19 @@ export function isReasoningModel(model: string): boolean {
 export const KIMI_FALLBACK_MODELS = ['kimi-k3.1-pro', 'kimi-k3', 'kimi-k2.6', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed'];
 export const isKimiModel = (m?: string | null) => /^kimi/i.test(m ?? '');
 
+/*
+  Yandex AI Studio (16.11): OpenAI-совместимый chat/completions. Модели в выборе — «yandex:<id>»
+  (yandex:yandexgpt/latest): у самого Яндекса адрес gpt://<каталог>/<id>, каталог знает ключ.
+  Из России отвечает напрямую — поэтому он и запасной путь, когда OpenAI или Kimi недоступны.
+*/
+export const YANDEX_BASE_URL = 'https://llm.api.cloud.yandex.net/v1';
+export const YANDEX_PREFIX = 'yandex:';
+export const isYandexModel = (m?: string | null) => (m ?? '').startsWith(YANDEX_PREFIX);
+/** Запасная модель Яндекса: отвечает за ~1 с и держит русский лучше прочих в каталоге. */
+export const YANDEX_FALLBACK_MODEL = process.env.YANDEX_FALLBACK_MODEL || 'yandexgpt/latest';
+/** Чат-модели Яндекса в выборе, если список не отдался (ноябрь 2026). */
+export const YANDEX_KNOWN_MODELS = ['yandexgpt/latest', 'yandexgpt-5.1/latest', 'yandexgpt-lite/latest', 'aliceai-llm/latest', 'aliceai-llm-flash/latest', 'deepseek-v4-flash/latest', 'deepseek-v4.1-flash/latest', 'qwen3.6-35b-a3b/latest'];
+
 /**
  * Рассуждение Kimi. У K3 оно всегда включено и по умолчанию «max» — это минуты и
  * дорогой выход на каждый мелкий вызов (подписи, черновики, разбор сообщений). Для
@@ -278,7 +291,17 @@ export class RealAiProvider implements AiProvider {
     private readonly brainModel?: string,
     private readonly openrouterKey?: string,
     private readonly kimiKey?: string,
+    /** Yandex AI Studio: ключ API и каталог (gpt://<каталог>/…). */
+    private readonly yandex?: { key: string; folder: string } | null,
   ) {}
+
+  /** Запрос в Яндекс: id без префикса «yandex:», адрес модели — с каталогом. */
+  private yandexChat(model: string, system: string, user: string, maxTokens: number, signal?: AbortSignal): Promise<string> {
+    const y = this.yandex!;
+    const id = model.startsWith(YANDEX_PREFIX) ? model.slice(YANDEX_PREFIX.length) : model;
+    return this.chatCompletion(`${YANDEX_BASE_URL}/chat/completions`, y.key, `gpt://${y.folder}/${id}`, system, user, maxTokens,
+      { Authorization: `Api-Key ${y.key}`, 'OpenAI-Project': y.folder }, [], signal);
+  }
 
   /** Модель Kimi для запроса: явная модель Kimi, иначе выбранная у компании, иначе K3. */
   private kimiModelFor(model: string): string {
@@ -545,7 +568,8 @@ export class RealAiProvider implements AiProvider {
     const maxTokens = opts?.maxTokens ?? 1500;
     const sig = opts?.signal;
     const model = opts?.model || this.brainModel || '';
-    const isOpenRouter = model.includes('/'); // id вида vendor/model[:free] → OpenRouter
+    const isYandex = isYandexModel(model);
+    const isOpenRouter = model.includes('/') && !isYandex; // id вида vendor/model[:free] → OpenRouter
     const OR_URL = 'https://openrouter.ai/api/v1/chat/completions';
     const ORH = { 'HTTP-Referer': 'https://qevo.one', 'X-Title': 'QEVO' };
     const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
@@ -555,15 +579,22 @@ export class RealAiProvider implements AiProvider {
     const imgs = opts?.images ?? [];
     const attempts: { name: string; usedModel: string; run: () => Promise<string> }[] = [];
     const kimiModel = this.kimiModelFor(model);
-    const kimiFirst = this.kimiFirst(model);
+    const kimiFirst = this.kimiFirst(model) && !isYandex;
+    // выбрана модель Яндекса — она первой
+    if (isYandex && this.yandex) attempts.push({ name: `yandex(${model})`, usedModel: model, run: () => this.yandexChat(model, system, user, maxTokens, sig) });
     if (kimiFirst) attempts.push({ name: `kimi(${kimiModel})`, usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs, sig) });
     // #4921: новая модель Kimi (K3.1 Pro) недоступна аккаунту или упала — сначала прежняя K3,
     // а не чужой провайдер: разбор задач должен остаться на Kimi
     if (kimiFirst && /^kimi-k3\./i.test(kimiModel)) attempts.push({ name: 'kimi(kimi-k3)', usedModel: 'kimi-k3', run: () => this.kimiChat('kimi-k3', system, user, maxTokens, imgs, sig) });
     if (isOpenRouter && this.openrouterKey) attempts.push({ name: `openrouter(${model})`, usedModel: model, run: () => this.chatCompletion(OR_URL, this.openrouterKey!, model, system, user, maxTokens, ORH, imgs, sig) });
     if (this.anthropicKey && (!model || /^claude/i.test(model))) attempts.push({ name: `anthropic(${model || 'default'})`, usedModel: model || 'claude-3-5-sonnet-latest', run: () => this.anthropicChat(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, imgs, sig) });
-    if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs, sig) });
-    // фолбэки на любой доступный ключ
+    // запасной путь — Яндекс (16.11): из России отвечает напрямую, когда OpenAI или Kimi за каналом недоступны
+    const yandexBackup = this.yandex && !isYandex
+      ? { name: `yandex(${YANDEX_FALLBACK_MODEL})`, usedModel: `${YANDEX_PREFIX}${YANDEX_FALLBACK_MODEL}`, run: () => this.yandexChat(YANDEX_FALLBACK_MODEL, system, user, maxTokens, sig) }
+      : null;
+    if (this.openaiKey && !isOpenRouter && !isKimiModel(model) && !isYandex) attempts.push({ name: `openai(${model || 'gpt-4o-mini'})`, usedModel: model || 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, model || 'gpt-4o-mini', system, user, maxTokens, {}, imgs, sig) });
+    // фолбэки на любой доступный ключ: первым — Яндекс, он не зависит от обходного канала
+    if (yandexBackup) attempts.push(yandexBackup);
     if (this.openaiKey) attempts.push({ name: 'openai(fallback)', usedModel: 'gpt-4o-mini', run: () => this.chatCompletion(OPENAI_URL, this.openaiKey!, 'gpt-4o-mini', system, user, maxTokens, {}, imgs, sig) });
     if (this.anthropicKey) attempts.push({ name: 'anthropic(fallback)', usedModel: 'claude-3-5-sonnet-latest', run: () => this.anthropicChat('claude-3-5-sonnet-latest', system, user, maxTokens, imgs, sig) });
     if (this.kimiKey && !kimiFirst) attempts.push({ name: 'kimi(fallback)', usedModel: kimiModel, run: () => this.kimiChat(kimiModel, system, user, maxTokens, imgs, sig) });
@@ -609,6 +640,7 @@ export class RealAiProvider implements AiProvider {
     const openaiFast = process.env.AI_FAST_OPENAI_MODEL || 'gpt-5.4-mini';
     if (this.openaiKey) others.push({ name: `openai(${openaiFast})`, usedModel: openaiFast, run: (s) => this.chatCompletion(OPENAI_URL, this.openaiKey!, openaiFast, system, user, maxTokens, {}, [], s) });
     if (this.anthropicKey) others.push({ name: 'anthropic(haiku)', usedModel: 'claude-3-5-haiku-latest', run: (s) => this.anthropicChat('claude-3-5-haiku-latest', system, user, maxTokens, [], s) });
+    if (this.yandex) others.push({ name: 'yandex(yandexgpt-lite)', usedModel: `${YANDEX_PREFIX}yandexgpt-lite/latest`, run: (s) => this.yandexChat('yandexgpt-lite/latest', system, user, maxTokens, s) });
     if (this.openrouterKey && !this.openaiKey) others.push({ name: 'openrouter(gpt-4o-mini)', usedModel: 'openai/gpt-4o-mini', run: (s) => this.chatCompletion('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey!, 'openai/gpt-4o-mini', system, user, maxTokens, { 'HTTP-Referer': 'https://qevo.one', 'X-Title': 'QEVO' }, [], s) });
     const openaiFirst = !!this.openaiKey && process.env.AI_FAST_PREFER !== 'kimi';
     if (kimi && !openaiFirst && this.kimiFirst(opts.model || this.brainModel || '')) runs.push(kimi, ...others);
@@ -672,11 +704,16 @@ export class RealAiProvider implements AiProvider {
   async generateStream(system: string, user: string, opts: GenerateOpts | undefined, onDelta: (t: string) => void): Promise<string> {
     const maxTokens = opts?.maxTokens ?? 1500;
     const model = opts?.model || this.brainModel || '';
-    const isOpenRouter = model.includes('/');
+    const isYandex = isYandexModel(model);
+    const isOpenRouter = model.includes('/') && !isYandex;
     const ORH = { 'HTTP-Referer': 'https://qevo.one', 'X-Title': 'QEVO' };
     try {
       let full = '';
-      if (this.kimiFirst(model)) full = await this.kimiStream(this.kimiModelFor(model), system, user, maxTokens, onDelta);
+      if (isYandex && this.yandex) {
+        const y = this.yandex;
+        full = await this.openaiStream(`${YANDEX_BASE_URL}/chat/completions`, y.key, `gpt://${y.folder}/${model.slice(YANDEX_PREFIX.length)}`, system, user, maxTokens, onDelta,
+          { Authorization: `Api-Key ${y.key}`, 'OpenAI-Project': y.folder });
+      } else if (this.kimiFirst(model)) full = await this.kimiStream(this.kimiModelFor(model), system, user, maxTokens, onDelta);
       else if (isOpenRouter && this.openrouterKey) full = await this.openaiStream('https://openrouter.ai/api/v1/chat/completions', this.openrouterKey, model, system, user, maxTokens, onDelta, ORH);
       else if (this.anthropicKey && (!model || /^claude/i.test(model))) full = await this.anthropicStream(model || 'claude-3-5-sonnet-latest', system, user, maxTokens, onDelta);
       else if (this.openaiKey && !isOpenRouter && !isKimiModel(model)) full = await this.openaiStream('https://api.openai.com/v1/chat/completions', this.openaiKey, model || 'gpt-4o-mini', system, user, maxTokens, onDelta);
