@@ -76,13 +76,20 @@ describe('Защита входа (e2e)', () => {
     expect((await http.post('/api/auth/email/resend').set(H(u.token)).expect(200)).body.data.verified).toBe(true);
   });
 
-  it('без подтверждённой почты приглашать нельзя (когда правило включено)', async () => {
+  // #4949: при включённом правиле без подтверждённой почты не войти вовсе — ни после регистрации, ни входом
+  it('без подтверждённой почты не войти (когда правило включено); после ссылки — вход и приглашения', async () => {
     process.env.AUTH_REQUIRE_VERIFIED_EMAIL = 'true';
     try {
-      const u = await register();
-      await http.post('/api/invites').set(H(u.token)).send({ email: `inv_${uniq()}@t.test`, role: 'member' }).expect(403);
-      await http.post('/api/auth/email/verify').send({ token: await tokenFromMail(u.email, 'auth.verify-email', 'verify') }).expect(200);
-      await http.post('/api/invites').set(H(u.token)).send({ email: `inv_${uniq()}@t.test`, role: 'member' }).expect(201);
+      const email = `sec_${uniq()}@t.test`;
+      const reg = await http.post('/api/auth/register')
+        .send({ acceptPrivacy: true, tenantName: 'Sec', email, password: PASS, fullName: 'Тест Защиты' }).expect(201);
+      expect(reg.body.data).toEqual({ verifyRequired: true, email });
+      const before = await http.post('/api/auth/login').send({ email, password: PASS }).expect(201);
+      expect(before.body.data).toEqual({ verifyRequired: true, email });
+      await http.post('/api/auth/email/verify').send({ token: await tokenFromMail(email, 'auth.verify-email', 'verify') }).expect(200);
+      const token = (await http.post('/api/auth/login').send({ email, password: PASS }).expect(201)).body.data.accessToken as string;
+      expect(token).toBeTruthy();
+      await http.post('/api/invites').set(H(token)).send({ email: `inv_${uniq()}@t.test`, role: 'member' }).expect(201);
     } finally {
       delete process.env.AUTH_REQUIRE_VERIFIED_EMAIL;
     }
