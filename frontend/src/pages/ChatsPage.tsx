@@ -134,6 +134,8 @@ interface Message {
   /** Расшифровка голосового (ТЗ-26): «Текст» под плеером */
   transcript?: string | null;
   transcript_status?: string | null;
+  /** #4933: автор убрал карточку ссылки под сообщением. */
+  cards_hidden?: boolean;
   /** Все вложения сообщения: несколько картинок — это одно сообщение. */
   files?: { fileId: string; name: string; mime?: string; size?: number }[];
   /** Сколько собеседников прочитали сообщение и сколько их всего — для галочек. */
@@ -1111,6 +1113,14 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       setThread((prev) => (prev ? { ...prev, messages: edited(prev.messages) } : prev));
     };
     socket.on('chat.message_edited', onEdited);
+    // #4933: автор убрал / вернул карточку ссылки — у всех сразу
+    const onCards = (p: { chatId: string; messageId: string; hidden: boolean }) => {
+      if (String(p.chatId) !== String(activeId)) return;
+      const upd = (list: Message[]) => list.map((m) => (String(m.id) === String(p.messageId) ? { ...m, cards_hidden: p.hidden } : m));
+      setMessages(upd);
+      setThread((prev) => (prev ? { ...prev, messages: upd(prev.messages) } : prev));
+    };
+    socket.on('chat.message.cards', onCards);
     socket.on('chat.task_linked', onTaskLinked);
     socket.on('chat.message.transcript', onTranscript);
     socket.on('chat.reminder', onReminder);
@@ -1181,6 +1191,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       socket.off('chat.message_edited', onEdited);
       socket.off('chat.task_linked', onTaskLinked);
       socket.off('chat.message.transcript', onTranscript);
+      socket.off('chat.message.cards', onCards);
       socket.off('chat.reminder', onReminder);
       socket.off('chat.mention', onMention);
       socket.off('chat.pinned', onPinned);
@@ -1805,6 +1816,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     setEditing(null);
     if (editFocusTarget(threadRef.current?.messages.map((m) => String(m.id)), messageId) === 'thread') setThreadFocusKey((n) => n + 1);
     else focusComposer();
+  };
+
+  /** #4933: автор убирает / возвращает карточку ссылки под своим сообщением — у всех. */
+  const setCardsHidden = async (messageId: string, hidden: boolean) => {
+    if (!activeId) return;
+    try {
+      await api.setCardsHidden(activeId, messageId, hidden);
+      const upd = (list: Message[]) => list.map((m) => (String(m.id) === messageId ? { ...m, cards_hidden: hidden } : m));
+      setMessages(upd);
+      setThread((prev) => (prev ? { ...prev, messages: upd(prev.messages) } : prev));
+    } catch (e) { toastSaved('Не получилось', e instanceof ApiError ? e.message : ''); }
   };
 
   const saveEdit = async (messageId: string) => {
@@ -3280,7 +3302,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             secrets={m}
                           />
                         )}
-                        {m.body && editing !== String(m.id) && <Suspense fallback={null}><LinkCards text={m.body} /></Suspense>}
+                        {m.body && editing !== String(m.id) && (
+                          <Suspense fallback={null}><LinkCards
+                            text={m.body} messageId={String(m.id)} hidden={!!m.cards_hidden} mine={String(m.author_id) === String(user?.id)}
+                            onHide={(h) => setCardsHidden(String(m.id), h)}
+                          /></Suspense>
+                        )}
                         {/* #4902 п. 7–8: карточка поручений и ответ из контекста под сообщением */}
                         {m.body && editing !== String(m.id) && (
                           <Suspense fallback={null}><MessageActions

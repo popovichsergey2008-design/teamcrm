@@ -37,6 +37,8 @@ export interface ChatListItem extends ChatRow {
 export interface MessageRow {
   transcript?: string | null;
   transcript_status?: string | null;
+  /** #4933: автор убрал карточку ссылки под сообщением — у всех. */
+  cards_hidden?: boolean;
   /** #4903: когда расшифровка готова — или когда запущена (для перезапуска зависшей). */
   transcribed_at?: Date | null;
   id: string; chat_id: string; author_id: string | null; author_name: string | null;
@@ -252,7 +254,7 @@ export class ChatsRepository {
   ): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.cards_hidden,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
@@ -306,7 +308,7 @@ export class ChatsRepository {
   thread(tenantId: string, rootId: string, viewerId: string): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.cards_hidden,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
@@ -490,7 +492,7 @@ export class ChatsRepository {
   messageById(id: string | number): Promise<MessageRow | null> {
     return this.db.one<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.transcribed_at,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.cards_hidden, m.transcribed_at,
               m.thread_root_id, m.reply_count, m.last_reply_at,
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
               m.forwarded_author, m.forwarded_from_id::text, m.forwarded_chat_id::text, ru.full_name AS reply_author,
@@ -545,7 +547,7 @@ export class ChatsRepository {
   pinned(tenantId: string, chatId: string): Promise<MessageRow[]> {
     return this.db.many<MessageRow>(
       `SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.cards_hidden,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               COALESCE((
                 SELECT json_agg(json_build_object(
@@ -723,7 +725,7 @@ export class ChatsRepository {
            ORDER BY id LIMIT 20)
        )
        SELECT m.id, m.chat_id, m.author_id, u.full_name AS author_name, m.body, m.file_id,
-              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status,
+              f.file_name, f.content_type, f.size_bytes::text, m.created_at, m.edited_at, m.transcript, m.transcript_status, m.cards_hidden,
               m.thread_root_id, m.reply_count, m.last_reply_at, m.pinned_at,
               -- цитата ответа: выделенный кусок, а если его нет — начало исходного сообщения
               m.reply_to_id, COALESCE(NULLIF(m.reply_excerpt, ''), r.body) AS reply_body,
@@ -1192,6 +1194,15 @@ export class ChatsRepository {
       [tenantId, id, text],
     );
     return row ? row.body : null;
+  }
+
+  /** #4933: убрать или вернуть карточку ссылки под сообщением. */
+  async setCardsHidden(tenantId: string, id: string, hidden: boolean): Promise<boolean> {
+    const row = await this.db.one<{ id: string }>(
+      `UPDATE chat_messages SET cards_hidden = $3 WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL RETURNING id::text`,
+      [tenantId, id, hidden],
+    );
+    return !!row;
   }
 
   async editMessage(tenantId: string, id: string, body: string): Promise<void> {

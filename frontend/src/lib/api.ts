@@ -2467,6 +2467,9 @@ export const api = {
 
   /** Правка своего сообщения: помечается как изменённое, чужие править нельзя. */
   /** #4931: поправить расшифровку своего голосового (запись остаётся). */
+  /** #4933: автор убирает (или возвращает) карточку ссылки под своим сообщением — у всех. */
+  setCardsHidden: (chatId: string, messageId: string, hidden: boolean) =>
+    request<{ hidden: boolean }>('PATCH', `/chats/${chatId}/messages/${messageId}/cards`, { hidden }),
   editTranscript: (chatId: string, messageId: string, body: string) =>
     request<{ transcript: string; body: string }>('PATCH', `/chats/${chatId}/messages/${messageId}/transcript`, { body }),
   editMessage: (chatId: string, messageId: string, body: string) =>

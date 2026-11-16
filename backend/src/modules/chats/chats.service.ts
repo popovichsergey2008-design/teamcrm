@@ -1747,6 +1747,21 @@ export class ChatsService {
     return { transcript: text, body: nextBody };
   }
 
+  /**
+   * #4933: карточка ссылки под сообщением мешает — автор убирает её у всех (как крестик
+   * предпросмотра в Telegram). Чужие сообщения так не правятся: остальные скрывают у себя.
+   */
+  async setCardsHidden(tenantId: string, chatId: string, messageId: string, user: { userId: string; role: string }, hidden: boolean) {
+    const chat = await this.access(tenantId, chatId, user);
+    const message = await this.repo.message(tenantId, messageId);
+    if (!message || String(message.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    if (String(message.author_id) !== String(user.userId)) throw AppException.forbidden('Убрать карточку у всех может только автор сообщения');
+    if (!(await this.repo.setCardsHidden(tenantId, messageId, !!hidden))) throw AppException.notFound('Сообщение не найдено');
+    const to = await this.recipients(chat, tenantId);
+    this.realtime.emitToUsers(tenantId, to, 'chat.message.cards', { chatId, messageId, hidden: !!hidden });
+    return { hidden: !!hidden };
+  }
+
   async remove(tenantId: string, chatId: string, messageId: string, user: { userId: string; role: string }) {
     const chat = await this.access(tenantId, chatId, user);
     const message = await this.repo.message(tenantId, messageId);

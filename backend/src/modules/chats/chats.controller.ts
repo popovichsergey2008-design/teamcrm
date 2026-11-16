@@ -90,6 +90,12 @@ class RescheduleDto {
   @IsOptional() @IsString() @MaxLength(8000) body?: string;
 }
 
+/** #4933: убрать / вернуть карточку ссылки под своим сообщением. */
+class CardsHiddenDto {
+  @IsBoolean()
+  hidden!: boolean;
+}
+
 class MessageEditDto {
   /*
     Предел правки — ТОТ ЖЕ, что и у отправки.
@@ -668,6 +674,17 @@ export class ChatsController {
     @Body() dto: MessageEditDto,
   ) {
     return this.chats.editTranscript(u.tenantId, id, messageId, u, dto.body);
+  }
+
+  /** #4933: автор убирает (или возвращает) карточку ссылки под своим сообщением — у всех. */
+  @Patch(':id/messages/:messageId/cards')
+  setCardsHidden(
+    @CurrentUser() u: AuthUser,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: CardsHiddenDto,
+  ) {
+    return this.chats.setCardsHidden(u.tenantId, id, messageId, u, dto.hidden);
   }
 
   @Delete(':id/messages/:messageId')

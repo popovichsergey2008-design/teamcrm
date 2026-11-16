@@ -1,5 +1,9 @@
 /* #4902, п. 3: живые карточки ссылок под сообщением — свой файл в ленивом куске, в первый экран не едет */
-.lc-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; max-width: 560px; }
+.lc-list { position: relative; display: flex; flex-direction: column; gap: 6px; margin: 6px 0 2px; max-width: 560px; }
+/* #4933: крестик как у предпросмотра в Telegram */
+.lc-close { position: absolute; top: 4px; right: 4px; z-index: 1; display: inline-flex; padding: 4px; border: 0; border-radius: 6px; background: none; color: var(--text-dim); cursor: pointer; }
+.lc-close:hover { background: var(--hover); color: var(--text); }
+.lc-restore { display: block; margin-top: 4px; font-size: 12px; color: var(--text-dim); }
 .lc-card { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm, 8px); background: var(--bg-elev); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .lc-card.lc-done { border-left-color: var(--ok); }
 .lc-card.lc-hidden { flex-direction: row; align-items: center; gap: 6px; color: var(--text-dim); font-size: var(--fs-sm); border-left-color: var(--border); }

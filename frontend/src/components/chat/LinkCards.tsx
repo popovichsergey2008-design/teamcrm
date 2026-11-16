@@ -124,7 +124,7 @@ function tomorrow() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T18:00`;
 }
 
-function TaskCard({ c, url }: { c: Extract<Card, { kind: 'task'; title: string }>; url: string }) {
+function TaskCard({ c, url, noTitle }: { c: Extract<Card, { kind: 'task'; title: string }>; url: string; noTitle?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [picking, setPicking] = useState(false);
@@ -146,10 +146,13 @@ function TaskCard({ c, url }: { c: Extract<Card, { kind: 'task'; title: string }
 
   return (
     <div className={`lc-card${c.closed ? ' lc-done' : ''}`}>
-      <button type="button" className="lc-title" onClick={() => navigate(c.path)} title="Открыть задачу">
-        <Icon name={c.closed ? 'check-circle' : 'board'} size={15} />
-        <span>{c.title}</span>
-      </button>
+      {/* #4933: название уже стоит в тексте сообщения ссылкой — второй раз не повторяем */}
+      {!noTitle && (
+        <button type="button" className="lc-title" onClick={() => navigate(c.path)} title="Открыть задачу">
+          <Icon name={c.closed ? 'check-circle' : 'board'} size={15} />
+          <span>{c.title}</span>
+        </button>
+      )}
       <div className="lc-meta">
         <span className={`lc-chip${c.closed ? ' lc-chip-ok' : ''}`}>{c.status || 'без статуса'}</span>
         <span><Icon name="user" size={13} /> {c.assigneeName ?? 'без исполнителя'}</span>
@@ -175,12 +178,12 @@ function TaskCard({ c, url }: { c: Extract<Card, { kind: 'task'; title: string }
   );
 }
 
-function OneCard({ c, url }: { c: Card; url: string }) {
+function OneCard({ c, url, text }: { c: Card; url: string; text: string }) {
   if (c.hidden) {
     const what = c.kind === 'task' ? 'задаче' : c.kind === 'meeting' ? 'встрече' : 'файлу';
     return <div className="lc-card lc-hidden"><Icon name="lock" size={14} /> Нет доступа к {what}</div>;
   }
-  if (c.kind === 'task') return <TaskCard c={c} url={url} />;
+  if (c.kind === 'task') return <TaskCard c={c} url={url} noTitle={!!c.title && text.includes(c.title)} />;
   if (c.kind === 'meeting') {
     const min = c.durationSec ? Math.max(1, Math.round(c.durationSec / 60)) : null;
     return (
@@ -241,18 +244,56 @@ function OneCard({ c, url }: { c: Card; url: string }) {
   );
 }
 
+/* #4933: скрытые у себя карточки — на этом устройстве (чужое сообщение у всех не правится) */
+const LOCAL_KEY = 'qevo.lc.hidden';
+function localHidden(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as string[]); } catch { return new Set(); }
+}
+function hideLocally(id: string) {
+  try { const s = [...localHidden(), id].slice(-500); localStorage.setItem(LOCAL_KEY, JSON.stringify(s)); } catch { /* приватное окно — скроется до перезагрузки */ }
+}
+
 /**
  * Живые карточки под сообщением (#4902, п. 3): задача, встреча, файл, Google-таблица.
  * Текст со ссылкой остаётся как был — карточка добавляется под ним, не больше трёх.
+ *
+ * #4933: «×» как у предпросмотра в Telegram. Автор сообщения убирает карточку у всех
+ * (и может вернуть), остальные — только у себя.
  */
-export default function LinkCards({ text }: { text: string }) {
+export default function LinkCards({ text, messageId, hidden, mine, onHide }: {
+  text: string;
+  messageId?: string;
+  /** Автор убрал карточку у всех. */
+  hidden?: boolean;
+  mine?: boolean;
+  /** Убрать / вернуть у всех — только для своего сообщения. */
+  onHide?: (hidden: boolean) => Promise<void> | void;
+}) {
   const links = useMemo(() => extractQevoLinks(text, typeof window !== 'undefined' ? window.location.hostname : ''), [text]);
   const urls = useMemo(() => links.map((l) => l.url), [links]);
-  const cards = useCards(urls);
-  if (!cards.some(Boolean)) return null;
+  const [mineHidden, setMineHidden] = useState(() => !!messageId && localHidden().has(messageId));
+  const cards = useCards(hidden || mineHidden ? [] : urls);
+  if (hidden) {
+    // своё сообщение — можно вернуть карточку; чужое — её просто нет
+    return mine && onHide && urls.length ? (
+      <button type="button" className="lc-link lc-restore" onClick={() => void onHide(false)}>показать карточку ссылки</button>
+    ) : null;
+  }
+  if (mineHidden || !cards.some(Boolean)) return null;
+  const close = () => {
+    if (mine && onHide) { void onHide(true); return; }
+    if (messageId) hideLocally(messageId);
+    setMineHidden(true);
+  };
   return (
     <div className="lc-list">
-      {cards.map((c, i) => (c ? <OneCard key={links[i].key} c={c} url={urls[i]} /> : null))}
+      {messageId && (
+        <button type="button" className="lc-close" onClick={close}
+          title={mine && onHide ? 'Убрать карточку у всех' : 'Скрыть карточку у себя'} aria-label="Убрать карточку ссылки">
+          <Icon name="close" size={13} />
+        </button>
+      )}
+      {cards.map((c, i) => (c ? <OneCard key={links[i].key} c={c} url={urls[i]} text={text} /> : null))}
     </div>
   );
 }
