@@ -14,7 +14,10 @@ import { apiUrl } from './origin';
 
 /** #4832: увиденный чат или ветка — их всплывашки гаснут (Toasts слушает 'qevo:seen'). */
 const seen = (detail: Record<string, string>) => window.dispatchEvent(new CustomEvent('qevo:seen', { detail }));
-import { splitMessage } from './split-message';
+import { MESSAGE_MAX, splitMessage } from './split-message';
+
+/** Сообщение задачи — как сообщение чата: до 8000 знаков одним (CommentDto), длиннее — частями. */
+const TASK_COMMENT_MAX = MESSAGE_MAX;
 
 const ACCESS_KEY = 'teamcrm.access';
 const REFRESH_KEY = 'teamcrm.refresh';
@@ -971,13 +974,21 @@ export const api = {
   addComment: (
     taskId: string, body: string, isClientVisible?: boolean, replyToId?: string, replyExcerpt?: string,
     thread?: { rootId?: string | null; alsoInChannel?: boolean },
-  ) =>
+  ) => {
     // текст уходит через офлайн-очередь: без сети ляжет и отправится позже (волна 9)
-    queued<any>('POST', `/tasks/${taskId}/comments`, {
-      body, isClientVisible, replyToId, replyExcerpt,
-      threadRootId: thread?.rootId ?? undefined,
-      alsoInChannel: thread?.alsoInChannel || undefined,
-    }, { label: 'Сообщение в задаче', preview: body }),
+    const send = (part: string, first: boolean) =>
+      queued<any>('POST', `/tasks/${taskId}/comments`, {
+        body: part, isClientVisible,
+        replyToId: first ? replyToId : undefined, replyExcerpt: first ? replyExcerpt : undefined,
+        threadRootId: thread?.rootId ?? undefined,
+        alsoInChannel: thread?.alsoInChannel || undefined,
+      }, { label: 'Сообщение в задаче', preview: part });
+    // #4955: как в чатах (#4786) — до 8000 знаков одним сообщением, длиннее — несколькими
+    // подряд; цитата — у первого, наружу — последнее
+    const parts = splitMessage(body, TASK_COMMENT_MAX);
+    if (parts.length === 1) return send(body, true);
+    return parts.reduce<Promise<any>>((prev, part, i) => prev.then(() => send(part, i === 0)), Promise.resolve(null));
+  },
   /** «Дочитал до сюда»: по этим отметкам собирается строка «Просмотрено». */
   markTaskChatRead: (taskId: string, lastReadId: string) =>
     request<{ ok: true; lastReadId: string }>('POST', `/tasks/${taskId}/comments/read`, { lastReadId }),
@@ -3174,11 +3185,18 @@ export const api = {
     taskId: string, file: File | File[], body: string, replyToId?: string, replyExcerpt?: string,
     threadRootId?: string | null, signal?: AbortSignal,
   ) => {
+    // #4955: длинная подпись — первая часть с файлом, остальное следом сообщениями
+    const [head, ...rest] = body ? splitMessage(body, TASK_COMMENT_MAX) : [''];
     // общий загрузчик: обновит истёкший токен и переведёт ответ nginx в понятную ошибку (#4664)
-    return upload<any>(`/api/tasks/${taskId}/comments/file`, {
+    const res = await upload<any>(`/api/tasks/${taskId}/comments/file`, {
       files: Array.isArray(file) ? file : [file],
-      body: body || undefined, replyToId, replyExcerpt, threadRootId: threadRootId || undefined,
+      body: head || undefined, replyToId, replyExcerpt, threadRootId: threadRootId || undefined,
     }, signal);
+    for (const part of rest) {
+      await queued<any>('POST', `/tasks/${taskId}/comments`, { body: part, threadRootId: threadRootId || undefined },
+        { label: 'Сообщение в задаче', preview: part });
+    }
+    return res;
   },
 
   /**

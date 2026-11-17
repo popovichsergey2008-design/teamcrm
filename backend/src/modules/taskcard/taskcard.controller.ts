@@ -16,7 +16,8 @@ import { TaskReviewService } from './task-review.service';
 import { TaskCardService } from './taskcard.service';
 
 class CommentDto {
-  @IsString() @MinLength(1) @MaxLength(5000) body!: string;
+  // #4955: как в чатах (MESSAGE_MAX на фронте) — длинное сообщение уходит одним, а не ошибкой
+  @IsString() @MinLength(1) @MaxLength(8000) body!: string;
   @IsOptional() @IsBoolean() isClientVisible?: boolean;
   /** Ответ на конкретное сообщение: в длинной переписке без этого не разобраться. */
   @IsOptional() @IsString() @MaxLength(32) replyToId?: string;
@@ -36,7 +37,7 @@ class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string;
 }
 class CommentEditDto {
-  @IsString() @MinLength(1) @MaxLength(5000) body!: string;
+  @IsString() @MinLength(1) @MaxLength(8000) body!: string;
 }
 class ChecklistDto {
   @IsString() @MinLength(1) @MaxLength(500) text!: string;
@@ -133,7 +134,7 @@ export class TaskCardController {
     if (!list.length) throw AppException.validation('Файл не приложен');
     return this.svc.addCommentWithFile(
       u.tenantId, id, u.userId, list,
-      String(body?.body ?? '').slice(0, 5000),
+      String(body?.body ?? '').slice(0, 8000),
       body?.replyToId ?? null,
       body?.replyExcerpt ? String(body.replyExcerpt).slice(0, 600) : null,
       body?.threadRootId ?? null,
