@@ -6,6 +6,7 @@ import { billingApi, type BillingView } from '../../lib/billing-api';
 import { useEscape } from '../../hooks/useEscape';
 import { overlayProps } from '../../lib/overlay';
 import { TeamBonusBlock } from './TeamBonusBlock';
+import { isNativeShell } from '../../platform';
 import '../ai-plan.css';
 import './billing.css';
 
@@ -113,7 +114,8 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                         {year && <div className="dim bil-note">≈ {rub(Math.round(p.priceYear! / 12))} в месяц{p.priceYear! < p.price * 12 ? `, выгода ${rub(p.price * 12 - p.priceYear!)}` : ''}</div>}
                         <div className="dim bil-plan-text">{p.maxMembers ? `До ${p.maxMembers} сотрудников. ` : 'Без ограничения сотрудников. '}{p.description}</div>
                         </>)}
-                        {canPay && v.configured && (
+                        {/* 17.11: в приложении для Android оплаты нет — только в веб-версии */}
+                        {canPay && v.configured && !isNativeShell() && (
                           <button
                             className="ui-btn ui-btn-primary ui-btn-sm"
                             disabled={!!busy || tooSmall}
@@ -128,6 +130,9 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                   })}
                 </div>
                 {!canPay && <div className="dim bil-note">Оплачивает владелец компании.</div>}
+                {canPay && v.configured && isNativeShell() && (
+                  <div className="bil-note"><Icon name="info" size={14} /> Оплата — в веб-версии: откройте <b>app.qevo.one</b> в браузере на компьютере или телефоне, «Настройки → Тариф и оплата».</div>
+                )}
                 {v.lockedPrice != null && v.plan && <div className="dim bil-note">Продление — по цене, за которую вы платили: {rub(v.lockedPrice)} {v.period === 'year' ? 'за год' : 'в месяц'}. Если прайс изменится, предупредим заранее.</div>}
                 {v.priceChange && <div className="bil-note"><b>Цена меняется:</b> {v.priceChange.nextPeriod ? `со следующего продления после ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}` : `с продления ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`} — {rub(v.priceChange.price)} {v.period === 'year' ? 'за год' : 'в месяц'}.</div>}
                 {canPay && v.autopayAvailable && v.plan && (
