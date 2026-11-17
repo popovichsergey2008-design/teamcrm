@@ -675,7 +675,8 @@ export class TasksService {
     */
     const blocking = missing.filter((m) => m.blocking);
     if (blocking.length) {
-      throw AppException.conflict('Задачу нельзя сдать: не выполнен чек-лист', {
+      // #4952: текст — по тому, чего на самом деле не хватает (раньше всегда «чек-лист»)
+      throw AppException.conflict(`Задачу нельзя сдать: ${blocking.map((m) => m.text.toLowerCase()).join('; ')}`, {
         gate: { column: column.name, missing, blocking: true },
         hint: 'отметьте все пункты чек-листа — постановщик не принимает задачу без него',
       });

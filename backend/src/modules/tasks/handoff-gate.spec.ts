@@ -53,9 +53,10 @@ describe('обязательный чек-лист (задача #1386)', () => 
 
 describe('#4763 — скриншоты результата обязательны', () => {
   const req = { checklist: false, comment: false, attachment: true };
-  it('нет ни одного снимка — сдать нельзя', () => {
+  // #4952: напоминание, а не запрет — «Сдать всё равно» работает
+  it('нет ни одного снимка — напоминание, не запрет', () => {
     expect(handoffGate(req, { checklistTotal: 0, checklistDone: 0, ownComments: 1, attachments: 1, images: 0 }, false, true))
-      .toEqual([{ code: 'shots', text: 'Не приложены скриншоты результата', blocking: true }]);
+      .toEqual([{ code: 'shots', text: 'Не приложены скриншоты результата' }]);
   });
   it('снимок есть или требование снято — не держит', () => {
     expect(handoffGate(req, { checklistTotal: 0, checklistDone: 0, ownComments: 1, attachments: 1, images: 2 }, false, true)).toEqual([]);

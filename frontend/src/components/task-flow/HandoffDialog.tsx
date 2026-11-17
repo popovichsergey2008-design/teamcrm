@@ -74,6 +74,7 @@ export function HandoffDialog({ task, columnId, columnName, position, users, can
       <HandoffGateDialog
         block={gate.block}
         busy={busy}
+        taskId={String(task.id)}
         onCancel={() => setGate(null)}
         onForce={(reason) => { const g = gate; setGate(null); void send(g.empty, true, reason); }}
       />

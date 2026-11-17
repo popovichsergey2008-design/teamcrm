@@ -853,6 +853,7 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
         {gate && (
           <HandoffGateDialog
             block={gate.block}
+            taskId={String(gate.taskId)}
             onCancel={() => setGate(null)}
             onForce={(reason) => moveTask(gate.taskId, gate.columnId, gate.position, true, reason)}
           />

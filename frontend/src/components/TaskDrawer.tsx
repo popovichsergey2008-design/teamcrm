@@ -816,6 +816,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           <HandoffGateDialog
             block={gate.block}
             busy={moving}
+            taskId={String(task.id)}
             onCancel={() => setGate(null)}
             onForce={(reason) => moveToColumn(gate.columnId, true, reason)}
           />
@@ -1558,21 +1559,19 @@ function ChecklistTab({ taskId, onRefresh, required, shotsRequired, canSetRequir
             onCheckedChange={(on) => void toggleShots(on)}
             label={(
               <span className="tv2-rule-text">
-                <b>Не принимать задачу без скриншотов результата</b>
-                <span>Нужен хотя бы один снимок в файлах или обсуждении — по нему ИИ и вы проверите результат. Включено по умолчанию.</span>
+                <b>Просить скриншоты результата</b>
+                <span>При сдаче без снимка исполнитель увидит напоминание (сдать всё равно можно — с отметкой в истории). По снимку ИИ и вы проверите результат. Включено по умолчанию.</span>
               </span>
             )}
           />
         </div>
       ) : (strict && items.length > 0) || shots ? (
         <div className="tv2-callout tv2-callout-info">
-          <Icon name="lock" size={14} /> {[
-            strict && items.length > 0 ? 'не отмечены все пункты чек-листа' : '',
-            shots ? 'нет скриншотов результата' : '',
-          ].filter(Boolean).length ? `Задачу не сдать, пока: ${[
-            strict && items.length > 0 ? 'не отмечены все пункты' : '',
-            shots ? 'не приложены скриншоты результата' : '',
-          ].filter(Boolean).join(' и ')} — так решил постановщик.` : ''}
+          {/* #4952: чек-лист — запрет, скриншоты — просьба постановщика (сдать можно и без них) */}
+          <Icon name={strict && items.length > 0 ? 'lock' : 'info'} size={14} /> {[
+            strict && items.length > 0 ? 'Задачу не сдать, пока не отмечены все пункты чек-листа — так решил постановщик.' : '',
+            shots ? 'Постановщик просит приложить скриншоты результата.' : '',
+          ].filter(Boolean).join(' ')}
         </div>
       ) : null}
       {items.length > 0 && (

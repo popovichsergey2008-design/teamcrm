@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from './Icon';
+import { api, ApiError } from '../lib/api';
 import { overlayProps } from '../lib/overlay';
 import { useEscape } from '../hooks/useEscape';
 
@@ -37,9 +38,11 @@ const AFTER_REASONS = [
   'Не получилось сделать снимок',
 ];
 
-export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
+export function HandoffGateDialog({ block, busy, taskId, onCancel, onForce }: {
   block: GateBlock;
   busy?: boolean;
+  /** #4952: есть номер задачи — пункты чек-листа можно отметить прямо отсюда, одним нажатием. */
+  taskId?: string;
   onCancel: () => void;
   /** noAfterReason — почему нет снимков «после» (если сервер о ней спросил). */
   onForce: (noAfterReason?: string) => void;
@@ -55,6 +58,24 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
     и почему. Исполнитель должен понять правило сразу, а не из возврата задачи.
   */
   const locked = block.blocking || block.missing.some((m) => m.blocking);
+  /*
+    #4952: «очень много действий, чтобы закрыть задачу». Сделал, но пункты не отмечены —
+    раньше нужно было вернуться в карточку, отметить каждый и снова сдавать. Теперь одна
+    кнопка: отметить все пункты и сдать (остальные нехватки — как обычно, с отметкой).
+  */
+  const checklistLock = block.missing.find((m) => m.code === 'checklist' && m.blocking);
+  const [ticking, setTicking] = useState(false);
+  const [tickErr, setTickErr] = useState('');
+  const tickAllAndSend = async () => {
+    if (!taskId) return;
+    setTicking(true); setTickErr('');
+    try {
+      const items = await api.listChecklist(taskId);
+      for (const it of items) if (!(it.isDone ?? it.is_done)) await api.patchChecklist(taskId, String(it.id), { isDone: true });
+      onForce(askAfter ? reason || undefined : undefined);
+    } catch (e) { setTickErr(e instanceof ApiError ? e.message : 'Не получилось отметить пункты'); }
+    finally { setTicking(false); }
+  };
   return (
     <div className="modal-overlay" {...overlayProps(onCancel)}>
       <div className="modal-card gate-card" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Приёмка работы">
@@ -63,10 +84,11 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
         </h3>
         {locked && (
           <div className="gate-locked">
-            Постановщик не принимает эту задачу без выполненного чек-листа. Отметьте все
-            пункты — тогда задачу можно будет сдать.
+            Постановщик не принимает эту задачу без выполненного чек-листа.
+            {checklistLock && taskId ? ' Всё сделано — отметьте пункты одной кнопкой ниже.' : ' Отметьте все пункты — тогда задачу можно будет сдать.'}
           </div>
         )}
+        {tickErr && <div className="error-text" role="alert">{tickErr}</div>}
         <div className="dim gate-hint">
           Задача уходит в «{block.column}». Проверяющий увидит только то, что есть в карточке:
         </div>
@@ -108,7 +130,12 @@ export function HandoffGateDialog({ block, busy, onCancel, onForce }: {
           </div>
         )}
         <div className="gate-actions">
-          <button className="ui-btn ui-btn-primary ui-btn-md" onClick={onCancel} disabled={busy}>
+          {locked && checklistLock && taskId && (
+            <button className="ui-btn ui-btn-primary ui-btn-md" onClick={() => void tickAllAndSend()} disabled={busy || ticking}>
+              {ticking ? 'Отмечаю…' : 'Отметить все пункты и сдать'}
+            </button>
+          )}
+          <button className={`ui-btn ${locked && checklistLock && taskId ? 'ui-btn-outline' : 'ui-btn-primary'} ui-btn-md`} onClick={onCancel} disabled={busy || ticking}>
             {locked ? 'Вернуться к чек-листу' : 'Вернуться и дополнить'}
           </button>
           {!locked && (

@@ -51,9 +51,12 @@ export const DEFAULT_GATE: GateRequirements = { checklist: true, comment: true, 
  */
 export function handoffGate(req: GateRequirements, facts: GateFacts, strictChecklist = false, strictShots = false): GateMiss[] {
   const missing: GateMiss[] = [];
-  // #4763: постановщик не принимает без скриншотов результата — нет ни одного снимка
+  // #4763: постановщик просит скриншоты результата — нет ни одного снимка.
+  // #4952: напоминание, а не запрет: у части задач снимать нечего (текст, звонок), а запрет
+  // заставлял прикладывать что попало, чтобы просто закрыть задачу. «Сдать всё равно» —
+  // с отметкой в истории, как у остальных мягких нехваток.
   if (strictShots && facts.images !== undefined && facts.images === 0) {
-    missing.push({ code: 'shots', text: 'Не приложены скриншоты результата', blocking: true });
+    missing.push({ code: 'shots', text: 'Не приложены скриншоты результата' });
   }
 
   // Чек-листа нет — и требовать нечего: пустой список не признак недоделанной работы.
