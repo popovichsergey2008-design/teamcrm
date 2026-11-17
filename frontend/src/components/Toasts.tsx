@@ -32,6 +32,21 @@ function isTyping(el: Element | null): boolean {
  * оттуда его можно открыть. Пока мышь на всплывашке, она не гаснет. Как в Telegram:
  * столбиком, у сообщения — «Прочитано», над столбиком — «Прочитать все» и «Скрыть все».
  */
+/*
+  #4967: свёрнутый колокольчик «Пропущенные» стоит в правом нижнем углу — ровно над кнопкой
+  отправки в чате. Его можно перетащить (как плавающий колокольчик, #4929): короткое нажатие
+  открывает список, перетаскивание только двигает. Отступ от правого нижнего угла помним в браузере.
+*/
+type Shift = { right: number; bottom: number };
+const SHIFT_KEY = 'qevo.toasts.shift';
+const loadShift = (): Shift | null => {
+  try { const v = JSON.parse(localStorage.getItem(SHIFT_KEY) ?? 'null'); return v && Number.isFinite(v.right) && Number.isFinite(v.bottom) ? v : null; } catch { return null; }
+};
+const clampShift = (v: Shift): Shift => ({
+  right: Math.min(Math.max(4, v.right), Math.max(4, window.innerWidth - 64)),
+  bottom: Math.min(Math.max(4, v.bottom), Math.max(4, window.innerHeight - 44)),
+});
+
 export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, onOpenSupport, onOpenInbox }: {
   onOpenChat: (chatId?: string, threadId?: string) => void;
   onOpenFeed?: () => void;
@@ -45,6 +60,14 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
   const [items, setItems] = useState<Toast[]>([]);
   const [missed, setMissed] = useState<Toast[]>([]);
   const [missedOpen, setMissedOpen] = useState(false);
+  const [shift, setShift] = useState<Shift | null>(loadShift);
+  const drag = useRef<{ sx: number; sy: number; right: number; bottom: number; moved: boolean } | null>(null);
+  const justDragged = useRef(false);
+  useEffect(() => {
+    const fit = () => setShift((v) => (v ? clampShift(v) : v));
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
   /*
     #4830: пока человек пишет сообщение или комментарий, всплывашки уходят с глаз —
     они стояли поверх поля ввода (особенно на ноутбуке). Ничего не теряется: погасшее
@@ -209,7 +232,10 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
     <div
       className={`toasts${typing && !missedOpen ? ' toasts-typing' : ''}`}
       aria-hidden={typing && !missedOpen ? true : undefined}
-      style={missedOpen ? { maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' } : undefined}
+      style={{
+        ...(missedOpen ? { maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' } : {}),
+        ...(shift ? { right: shift.right, bottom: shift.bottom } : {}),
+      }}
     >
       {shownCards.length >= 2 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -224,7 +250,36 @@ export function Toasts({ onOpenChat, onOpenFeed, onOpenFocus, onOpenMeetings, on
       {missedOpen && missed.map((t) => card(t, false))}
       {missed.length > 0 && (
         // #4830: свёрнутые «Пропущенные» — маленький значок с числом, а не карточка во всю ширину над полем ввода
-        <button className={`toast${missedOpen ? '' : ' toast-missed'}`} onClick={() => setMissedOpen((v) => !v)} aria-expanded={missedOpen} aria-label={`Пропущенные уведомления: ${missed.length}`} title={missedOpen ? 'Свернуть' : 'Пропущенные уведомления — показать, что пришло, пока вас не было'}>
+        <button
+          className={`toast${missedOpen ? '' : ' toast-missed'}`}
+          onClick={() => { if (justDragged.current) { justDragged.current = false; return; } setMissedOpen((v) => !v); }}
+          aria-expanded={missedOpen}
+          aria-label={`Пропущенные уведомления: ${missed.length}`}
+          title={missedOpen ? 'Свернуть' : 'Пропущенные уведомления — показать, что пришло, пока вас не было · можно перетащить'}
+          style={missedOpen ? undefined : { touchAction: 'none' }}
+          onPointerDown={missedOpen ? undefined : (e) => {
+            if ((e.target as HTMLElement).closest('.toast-close')) return;
+            const box = e.currentTarget.parentElement!.getBoundingClientRect();
+            drag.current = { sx: e.clientX, sy: e.clientY, right: window.innerWidth - box.right, bottom: window.innerHeight - box.bottom, moved: false };
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d) return;
+            // до 6 точек — нажатие, а не перетаскивание
+            if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
+            d.moved = true;
+            setShift(clampShift({ right: d.right - (e.clientX - d.sx), bottom: d.bottom - (e.clientY - d.sy) }));
+          }}
+          onPointerUp={() => {
+            const d = drag.current;
+            drag.current = null;
+            if (!d?.moved) return;
+            justDragged.current = true;
+            setShift((v) => { if (v) { try { localStorage.setItem(SHIFT_KEY, JSON.stringify(v)); } catch { /* без хранилища — до перезагрузки */ } } return v; });
+          }}
+          onPointerCancel={() => { drag.current = null; }}
+        >
           <Icon name="bell" size={16} />
           {missedOpen ? (
             <span className="toast-text">

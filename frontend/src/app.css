@@ -2346,7 +2346,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .toasts { transition: opacity .15s, transform .15s; }
 .toasts-typing { opacity: 0; transform: translateY(8px); pointer-events: none; }
 /* свёрнутые «Пропущенные» — круглый значок с числом справа, а не карточка над полем ввода */
-.toast.toast-missed { align-self: flex-end; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; }
+.toast.toast-missed { align-self: flex-end; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px; cursor: grab; user-select: none; }
+.toast.toast-missed:active { cursor: grabbing; }
 .toast-missed-n { font-size: var(--fs-sm); font-weight: 600; }
 .toast-missed .toast-close { display: none; }
 /* ноутбуки: карточки уже и ниже, чтобы закрывать меньше рабочей области */
