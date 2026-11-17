@@ -84,14 +84,15 @@ const guardedLookup: typeof dnsLookup = ((host: string, opts: any, cb: any) => {
 
 const TEXT_TYPES = /^(text\/(html|plain|xml|markdown)|application\/(xhtml\+xml|xml|json|rss\+xml|atom\+xml))/i;
 
-export interface FetchedPage { url: string; status: number; contentType: string; body: string; bytes: number; truncated: boolean }
+export interface FetchedPage { url: string; status: number; contentType: string; body: string; bytes: number; truncated: boolean; raw?: Buffer }
 
-export async function safeFetch(raw: string, opts: { maxBytes?: number; timeoutMs?: number; maxRedirects?: number; types?: RegExp } = {}): Promise<FetchedPage> {
+/** `raw` — вернуть и сами байты: документ (docx, xlsx, pdf) по ссылке, а не страницу. */
+export async function safeFetch(raw: string, opts: { maxBytes?: number; timeoutMs?: number; maxRedirects?: number; types?: RegExp; raw?: boolean; headers?: Record<string, string> } = {}): Promise<FetchedPage> {
   const maxBytes = opts.maxBytes ?? 1_500_000;
   const timeoutMs = opts.timeoutMs ?? 12_000;
   let url = checkUrl(raw);
   for (let hop = 0; hop <= (opts.maxRedirects ?? 3); hop += 1) {
-    const r = await once(url, maxBytes, timeoutMs, opts.types ?? TEXT_TYPES);
+    const r = await once(url, maxBytes, timeoutMs, opts.types ?? TEXT_TYPES, !!opts.raw, opts.headers);
     if (r.redirect) {
       url = checkUrl(new URL(r.redirect, url).toString());
       continue;
@@ -101,7 +102,7 @@ export async function safeFetch(raw: string, opts: { maxBytes?: number; timeoutM
   throw new UnsafeUrlError('Слишком много перенаправлений');
 }
 
-function once(url: URL, maxBytes: number, timeoutMs: number, types: RegExp): Promise<{ redirect?: string; page?: FetchedPage }> {
+function once(url: URL, maxBytes: number, timeoutMs: number, types: RegExp, raw = false, extra?: Record<string, string>): Promise<{ redirect?: string; page?: FetchedPage }> {
   return new Promise((resolve, reject) => {
     const lib = url.protocol === 'https:' ? https : http;
     const req = lib.request(url, {
@@ -112,6 +113,7 @@ function once(url: URL, maxBytes: number, timeoutMs: number, types: RegExp): Pro
         'User-Agent': 'QEVO-Bot/1.0 (+https://qevo.one)',
         Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1',
         'Accept-Language': 'ru,en;q=0.8',
+        ...(extra ?? {}),
       },
     }, (res) => {
       const status = res.statusCode ?? 0;
@@ -133,7 +135,10 @@ function once(url: URL, maxBytes: number, timeoutMs: number, types: RegExp): Pro
         if (bytes > maxBytes) { truncated = true; chunks.push(c.subarray(0, Math.max(0, c.length - (bytes - maxBytes)))); res.destroy(); return; }
         chunks.push(c);
       });
-      const finish = () => resolve({ page: { url: url.toString(), status, contentType, body: decode(Buffer.concat(chunks), contentType), bytes: Math.min(bytes, maxBytes), truncated } });
+      const finish = () => {
+        const buf = Buffer.concat(chunks);
+        resolve({ page: { url: url.toString(), status, contentType, body: raw ? '' : decode(buf, contentType), bytes: Math.min(bytes, maxBytes), truncated, ...(raw ? { raw: buf } : {}) } });
+      };
       res.on('end', finish);
       res.on('close', () => { if (truncated) finish(); });
       res.on('error', (e) => (truncated ? finish() : reject(e)));

@@ -4,6 +4,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { extractText, MAX_FILE_BYTES } from './file-text';
 import { extractGoogleLinks, fetchGoogleDocText } from '../gdocs/gdocs.util';
+import { fetchDocLinkText, isDocLink } from './doc-link';
 import { DbService } from '../../database/db.service';
 import { RabbitMQService, Q_EMBEDDINGS } from '../../messaging/rabbitmq.service';
 import { AiService } from '../ai/ai.service';
@@ -293,6 +294,11 @@ ${extracted.text}`,
     if (g) {
       const got = await fetchGoogleDocText(g.docType, g.docKey).catch(() => null);
       if (got?.ok && got.text) docText = `Текст документа:\n${got.text}`;
+    } else if (r.url && (r.category === 'doc' || isDocLink(String(r.url)))) {
+      // #4968: Word, Excel, PDF по ссылке (Яндекс Диск, OneDrive, прямой адрес) — тоже текстом
+      const got = await fetchDocLinkText(String(r.url));
+      if (got.ok) docText = `Текст документа:\n${got.text}`;
+      else this.log.warn(`инфоцентр ${id}: документ по ссылке не прочитан — ${got.reason}`);
     }
     const text = [
       `Инфоцентр проекта «${r.project}», ${hubSectionLabel(r.section, r.category)}: ${r.title}`,

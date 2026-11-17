@@ -18,6 +18,7 @@ export const HUB_CATEGORIES: Record<HubSection, { value: string; label: string }
     { value: 'admin', label: 'Админка' },
     { value: 'social', label: 'Соцсети' },
     { value: 'bot', label: 'Бот' },
+    { value: 'doc', label: 'Документ по ссылке' },
     { value: 'other', label: 'Другое' },
   ],
   knowledge: [

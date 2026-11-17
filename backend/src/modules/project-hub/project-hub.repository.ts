@@ -537,7 +537,7 @@ export class ProjectHubRepository {
   recentGoogleItems(days: number): Promise<{ tenant_id: string; id: string }[]> {
     return this.db.many(
       `SELECT i.tenant_id::text, i.id::text FROM project_hub_items i
-        WHERE i.removed_at IS NULL AND i.url LIKE 'https://docs.google.com/%'
+        WHERE i.removed_at IS NULL AND (i.url LIKE 'https://docs.google.com/%' OR (i.url IS NOT NULL AND i.category = 'doc'))
           AND i.created_at > now() - make_interval(days => $1)
         ORDER BY i.id DESC LIMIT 500`,
       [days],

@@ -134,7 +134,18 @@ function PassportTab({ ctx }: { ctx: Ctx }) {
         </dl>
       )}
       <h3 className="hub-sub">Сайт, приложение, соцсети</h3>
-      <ItemsBlock ctx={ctx} section="passport" items={ctx.view.passport} kinds={['link', 'note']} empty="Добавьте сайт, веб-приложение, админку, Telegram-канал или бота." />
+      <ItemsBlock ctx={ctx} section="passport" items={ctx.view.passport.filter((i) => i.category !== 'doc')} kinds={['link', 'note']} empty="Добавьте сайт, веб-приложение, админку, Telegram-канал или бота." />
+      {/*
+        #4968: большой документ (Word, Excel, PDF) в поле не вставить — даём ссылку, а нейроагент
+        сам скачивает и читает его целиком: текст ложится в базу знаний проекта.
+      */}
+      <h3 className="hub-sub">Документы по ссылке</h3>
+      <p className="hub-hint">
+        Word, Excel, PDF, Google Документы и Таблицы — ссылкой на Яндекс Диск, Google Диск, OneDrive или прямой адрес файла.
+        Нейроагент прочитает документ целиком и будет отвечать по нему. Доступ — «всем, у кого есть ссылка».
+      </p>
+      <ItemsBlock ctx={ctx} section="passport" items={ctx.view.passport.filter((i) => i.category === 'doc')} kinds={['link']} defaultCategory="doc"
+        addLabel="Добавить ссылку на документ" empty="Добавьте ссылку на ТЗ, бриф, договор или таблицу проекта." />
     </>
   );
 }
@@ -182,8 +193,10 @@ function EditableText({ label, hint, value, max, rows, canEdit, onSave }: {
 
 // ── Записи: список, добавление, правка ─────────────────────────────────────────
 
-function ItemsBlock({ ctx, section, items, kinds, empty, grouped, startAdd }: {
+function ItemsBlock({ ctx, section, items, kinds, empty, grouped, startAdd, defaultCategory, addLabel }: {
   ctx: Ctx; section: HubSection; items: HubItem[]; kinds: HubKind[]; empty: string; grouped?: boolean; startAdd?: boolean;
+  /** #4968: блок «Документы по ссылке» — новая запись сразу в своей категории. */
+  defaultCategory?: string; addLabel?: string;
 }) {
   const [adding, setAdding] = useState(!!startAdd && ctx.canEdit);
   const [editing, setEditing] = useState<HubItem | null>(null);
@@ -224,27 +237,27 @@ function ItemsBlock({ ctx, section, items, kinds, empty, grouped, startAdd }: {
         </div>
       ))}
       {ctx.canEdit && (adding
-        ? <ItemForm ctx={ctx} section={section} kinds={kinds} onDone={() => setAdding(false)} />
-        : <Button variant="outline" size="sm" className="hub-add" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Добавить</Button>)}
+        ? <ItemForm ctx={ctx} section={section} kinds={kinds} defaultCategory={defaultCategory} onDone={() => setAdding(false)} />
+        : <Button variant="outline" size="sm" className="hub-add" onClick={() => setAdding(true)}><Icon name="plus" size={14} /> {addLabel ?? 'Добавить'}</Button>)}
     </div>
   );
 }
 
 const KIND_LABEL: Record<HubKind, string> = { link: 'Ссылка', file: 'Файл', note: 'Заметка', contact: 'Контакт' };
 
-function ItemForm({ ctx, section, kinds, item, onDone }: {
-  ctx: Ctx; section: HubSection; kinds: HubKind[]; item?: HubItem; onDone: () => void;
+function ItemForm({ ctx, section, kinds, item, defaultCategory, onDone }: {
+  ctx: Ctx; section: HubSection; kinds: HubKind[]; item?: HubItem; defaultCategory?: string; onDone: () => void;
 }) {
   const [kind, setKind] = useState<HubKind>(item?.kind ?? kinds[0]);
   const [title, setTitle] = useState(item?.title ?? '');
   const [url, setUrl] = useState(item?.url ?? '');
   const [body, setBody] = useState(item?.body ?? '');
-  const [category, setCategory] = useState(item?.category ?? (section === 'team' ? 'contractor' : 'other'));
+  const [category, setCategory] = useState(item?.category ?? defaultCategory ?? (section === 'team' ? 'contractor' : 'other'));
   const [contact, setContact] = useState({ name: '', role: '', phone: '', email: '', telegram: '', ...(item?.contact ?? {}) });
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
-  const touchedCategory = useRef(!!item);
+  const touchedCategory = useRef(!!item || !!defaultCategory);
   const cats = HUB_CATEGORIES[section];
 
   const onUrl = (v: string) => {
