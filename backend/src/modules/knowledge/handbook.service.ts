@@ -12,6 +12,12 @@ const PREFIX = 'Справочник QEVO · ';
 const BOOT_DELAY_MS = 30_000;
 /** Как часто сверяться потом: организации заводятся и после выкладки. */
 const SYNC_EVERY_MS = 6 * 60 * 60 * 1000;
+/**
+ * #4837 (17.11): новое пространство — справочник в течение минуты. Раньше он грузился
+ * при первом обращении в службу заботы или общей сверкой раз в 6 часов, и QEVO Bot в
+ * только что созданном пространстве отвечал «в справочнике нет» и угадывал пути.
+ */
+const NEW_EVERY_MS = 60 * 1000;
 
 /**
  * Справочник по системе — то, из чего отвечает помощник в службе заботы.
@@ -54,6 +60,8 @@ export class HandbookService implements OnModuleInit {
     // помощник до следующего релиза отвечал бы «не нашёл» на любой вопрос о системе.
     const every = setInterval(() => void this.syncAll(), SYNC_EVERY_MS);
     every.unref?.();
+    const fresh = setInterval(() => void this.syncNew(), NEW_EVERY_MS);
+    fresh.unref?.();
   }
 
   /**
@@ -227,6 +235,25 @@ export class HandbookService implements OnModuleInit {
    * Иначе документация живёт в репозитории, а помощник отвечает по прошлогодней:
    * помнить о кнопке после каждого релиза никто не будет.
    */
+  private newBusy = false;
+  /** Пространства за последнюю неделю без справочника — загрузить (одно за другим). */
+  async syncNew(): Promise<void> {
+    if (this.newBusy) return;
+    this.newBusy = true;
+    try {
+      const rows = await this.db.many<{ id: string }>(
+        `SELECT t.id::text FROM tenants t
+          WHERE t.created_at > now() - interval '7 days'
+            AND NOT EXISTS (SELECT 1 FROM regulations r WHERE r.tenant_id = t.id AND r.title LIKE $1)
+          ORDER BY t.id LIMIT 5`,
+        [`${PREFIX}%`],
+      );
+      for (const r of rows) await this.ensure(r.id);
+    } catch (e) {
+      this.log.warn(`справочник новым пространствам: ${(e as Error).message}`);
+    } finally { this.newBusy = false; }
+  }
+
   async syncAll(): Promise<void> {
     try {
       const tenants = await this.db.many<{ id: string }>(`SELECT id::text FROM tenants`);
