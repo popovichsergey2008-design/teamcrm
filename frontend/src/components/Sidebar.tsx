@@ -9,6 +9,7 @@ import { setQuietSource, setStatusQuiet } from '../lib/quiet';
 import { Avatar } from './Avatar';
 import { ThemeSwitch } from './ThemeSwitch';
 import { AuthedMedia } from './AuthedMedia';
+import { Logo } from './Logo';
 import { buildPath, isConsoleHost, navigate, Route, Section } from '../lib/router';
 import { roleLabel } from '../lib/labels';
 import { NavCounters } from '../hooks/useNavCounters';
@@ -675,8 +676,12 @@ export function Sidebar({
         <div className="nav-top">
           {/* #4807 §5, п. 1: строка 36 px — переключатель пространства и «Свернуть» справа */}
           <div className="nav-ws-row">
-            {/* #4928: кнопка меню — бургер слева сверху, как привыкли; сворачивает и разворачивает панель */}
-            <button className="nav-ws-fold" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>
+            {/* #4939: на компьютере вместо бургера — логотип, ведёт на главную («Фокус дня»);
+                бургер (#4928) остаётся только на телефоне и в приложении */}
+            <button className="nav-home" onClick={() => { setOpen(false); navigate({ section: 'focus' }); }} title="Фокус дня — главная" aria-label="На главную: Фокус дня">
+              <Logo size={26} />
+            </button>
+            <button className="nav-ws-fold nav-burger" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>
               <Icon name="menu" size={18} />
             </button>
             <DropdownMenu
@@ -696,6 +701,10 @@ export function Sidebar({
               <MenuSeparator />
               <MenuItem onSelect={() => onSwitchOrg('__new__')} icon={<Icon name="plus" size={15} />}>Создать пространство…</MenuItem>
             </DropdownMenu>
+            {/* #4939: свернуть меню на компьютере — стрелкой справа, раз бургера там нет */}
+            <button className="nav-ws-fold nav-fold-desk" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>
+              <Icon name="chevron-left" size={16} />
+            </button>
           </div>
           <div className="nav-org">
             {/*

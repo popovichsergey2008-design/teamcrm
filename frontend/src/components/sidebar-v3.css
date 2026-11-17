@@ -10,6 +10,9 @@
 .nav-ws-text span { font-size: calc(11px * var(--fs-scale)); color: var(--text-mut); }
 .nav-ws-fold { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-mut); cursor: pointer; }
 .nav-ws-fold:hover { background: var(--hover); color: var(--text); }
+/* #4939: логотип и стрелка — на компьютере, бургер — на телефоне */
+.nav-home{display:none;place-items:center;flex:none;padding:2px;border:0;border-radius:var(--radius-sm);background:none;cursor:pointer}.nav-fold-desk{display:none;margin-left:auto}.nav-collapsed .nav-fold-desk{margin:0;transform:rotate(180deg)}
+@media(min-width:900px){.nav-home,.nav-fold-desk{display:grid}.nav-burger{display:none}}
 .nav-collapsed .nav-ws-row { flex-direction: column; }
 .nav-count.nav-count-info { background: var(--fill-info); }
 .nav-count.nav-count-warn { background: var(--attn); color: var(--on-attn); }
