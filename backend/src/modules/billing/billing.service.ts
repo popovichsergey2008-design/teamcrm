@@ -4,7 +4,7 @@ import { AppException } from '../../common/http/app-exception';
 import { amountValue, effective, Effective, extendPeriod, moveFor, moveKey, movePrice, moveReady, noticeDue, PriceMove, TEAM_BONUS_INVITES, TEAM_BONUS_MONTHS, TRIAL_DAYS } from './billing-rules';
 import { BillingRepository, PlanRow, TenantSubRow } from './billing.repository';
 import { billingLetter, priceMoveLetter } from './billing-letters';
-import { ProviderPayment, YooKassaClient, YooKassaError } from './yookassa.client';
+import { ProviderPayment, Receipt, YooKassaClient, YooKassaError } from './yookassa.client';
 
 import { runsBackground } from '../../common/process-role';
 /** Сколько живёт решение «можно ли писать» для компании: на каждый запрос в базу не ходим. */
@@ -33,6 +33,12 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     this.kassa = shop && key ? new YooKassaClient(shop, key) : null;
     // автоплатежи магазину включает ЮKassa по заявке — до этого карту не сохраняем
     this.autopayAllowed = String(config.get('YOOKASSA_AUTOPAY') ?? 'off') === 'on';
+    // Чек 54-ФЗ: НДС по умолчанию «без НДС» (1 — ИП на УСН), система налогообложения —
+    // только если в магазине их несколько. Выключить чеки — YOOKASSA_RECEIPTS=off.
+    this.receipts = String(config.get('YOOKASSA_RECEIPTS') ?? 'on') !== 'off';
+    this.vatCode = Number(config.get('YOOKASSA_VAT_CODE') ?? 1) || 1;
+    const tax = Number(config.get('YOOKASSA_TAX_SYSTEM') ?? 0);
+    this.taxSystem = tax > 0 ? tax : null;
   }
 
   onModuleInit(): void {
@@ -148,6 +154,26 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
   // ───────────── оплата ─────────────
 
   /** Начать оплату: платёж в ЮKassa и ссылка на её страницу. Только владелец (проверяет контроллер). */
+  private readonly receipts: boolean;
+  private readonly vatCode: number;
+  private readonly taxSystem: number | null;
+
+  /** Чек 54-ФЗ к платежу: покупатель — почта плательщика (или первого владельца). */
+  private async receiptFor(tenantId: string, userId: string | null, description: string, amount: string): Promise<Receipt | undefined> {
+    if (!this.receipts) return undefined;
+    const owners = await this.repo.owners(tenantId);
+    const email = (owners.find((o) => String(o.id) === String(userId)) ?? owners[0])?.email;
+    if (!email) return undefined;
+    return {
+      customer: { email },
+      items: [{
+        description: description.slice(0, 128), quantity: '1.00', amount: { value: amount, currency: 'RUB' },
+        vat_code: this.vatCode, payment_mode: 'full_payment', payment_subject: 'service',
+      }],
+      ...(this.taxSystem ? { tax_system_code: this.taxSystem } : {}),
+    };
+  }
+
   async checkout(tenantId: string, userId: string, planCode: string, period: 'month' | 'year' = 'month'): Promise<{ confirmationUrl: string; paymentId: string }> {
     if (!this.kassa) throw AppException.validation('Оплата ещё не подключена — напишите в поддержку');
     const plan = await this.repo.plan(planCode);
@@ -164,10 +190,12 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const sub = await this.repo.sub(tenantId);
     const id = await this.repo.createPayment({ tenantId, planCode, amountRub: price, kind: 'checkout', createdBy: userId, periodMonths: months, planVersion: plan.version });
     let pay: ProviderPayment;
+    const description = `QEVO, тариф «${plan.title}», ${months === 12 ? '1 год' : '1 месяц'} — ${sub?.tenant_name ?? 'компания'}`;
     try {
       pay = await this.kassa.createRedirect({
         amount: amountValue(price),
-        description: `QEVO, тариф «${plan.title}», ${months === 12 ? '1 год' : '1 месяц'} — ${sub?.tenant_name ?? 'компания'}`,
+        description,
+        receipt: await this.receiptFor(tenantId, userId, `Подписка QEVO, тариф «${plan.title}», ${months === 12 ? '1 год' : '1 месяц'}`, amountValue(price)),
         returnUrl: `${this.base()}/settings/billing?paid=${id}`,
         metadata: { tenant_id: tenantId, plan: planCode, payment: id, months: String(months) },
         savePaymentMethod: this.autopayAllowed,
@@ -333,6 +361,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     });
     const pay = await this.kassa.createRecurring({
       amount: amountValue(price), paymentMethodId: row.payment_method_id,
+      receipt: await this.receiptFor(row.tenant_id, null, `Подписка QEVO, тариф «${plan.title}», продление на ${months === 12 ? '1 год' : '1 месяц'}`, amountValue(price)),
       description: `QEVO, тариф «${plan.title}», продление на ${months === 12 ? '1 год' : '1 месяц'}`,
       metadata: { tenant_id: row.tenant_id, plan: plan.code, payment: id }, idempotenceKey: key,
     });

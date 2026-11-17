@@ -19,6 +19,19 @@ export interface ProviderPayment {
   test?: boolean;
 }
 
+/**
+ * Чек 54-ФЗ (17.11.2026): в боевом магазине включена фискализация — платёж без данных
+ * для чека ЮKassa отклоняет. Покупатель — почта плательщика, строка — подписка.
+ */
+export interface Receipt {
+  customer: { email: string };
+  items: {
+    description: string; quantity: string; amount: { value: string; currency: 'RUB' };
+    vat_code: number; payment_mode: 'full_payment'; payment_subject: 'service';
+  }[];
+  tax_system_code?: number;
+}
+
 export class YooKassaError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) { super(message); }
 }
@@ -58,7 +71,7 @@ export class YooKassaClient {
    */
   createRedirect(p: {
     amount: string; description: string; returnUrl: string; metadata: Record<string, string>;
-    savePaymentMethod: boolean; idempotenceKey?: string;
+    savePaymentMethod: boolean; idempotenceKey?: string; receipt?: Receipt;
   }): Promise<ProviderPayment> {
     return this.call('POST', '/payments', {
       amount: { value: p.amount, currency: 'RUB' },
@@ -67,17 +80,19 @@ export class YooKassaClient {
       description: p.description.slice(0, 128),
       metadata: p.metadata,
       ...(p.savePaymentMethod ? { save_payment_method: true } : {}),
+      ...(p.receipt ? { receipt: p.receipt } : {}),
     }, p.idempotenceKey ?? randomUUID());
   }
 
   /** Автопродление сохранённым способом оплаты — без участия человека. */
-  createRecurring(p: { amount: string; description: string; paymentMethodId: string; metadata: Record<string, string>; idempotenceKey: string }): Promise<ProviderPayment> {
+  createRecurring(p: { amount: string; description: string; paymentMethodId: string; metadata: Record<string, string>; idempotenceKey: string; receipt?: Receipt }): Promise<ProviderPayment> {
     return this.call('POST', '/payments', {
       amount: { value: p.amount, currency: 'RUB' },
       capture: true,
       payment_method_id: p.paymentMethodId,
       description: p.description.slice(0, 128),
       metadata: p.metadata,
+      ...(p.receipt ? { receipt: p.receipt } : {}),
     }, p.idempotenceKey);
   }
 
