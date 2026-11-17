@@ -18,6 +18,7 @@ import { useAuth } from '../state/auth';
 import { OptionSelect } from './ui/option-select';
 import { confirmAction } from './ui/dialog';
 import { initialsOf } from '../lib/initials';
+import qrcode from 'qrcode-generator';
 import { lazyComponent } from '../lib/lazy';
 
 import { InboxPrefs } from './InboxPrefs';
@@ -424,6 +425,7 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
                 </div>
               )}
             </div>
+            {!isNativeShell() && <AppQr />}
           </>
         )}
 
@@ -641,5 +643,26 @@ function PromptsLibrary() {
         </div>
       ))}
     </>
+  );
+}
+
+/**
+ * #4937: приложение на телефон — QR-код в профиле. Камерой телефона навёл — открылась
+ * страница /get: на Android там файл приложения, на iPhone — как добавить QEVO на экран «Домой».
+ */
+function AppQr() {
+  const url = `${window.location.origin}/get`;
+  const svg = useMemo(() => { const q = qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [url]);
+  return (
+    <div className="drawer-section">
+      <div className="drawer-section-title">Приложение на телефон</div>
+      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ width: 132, height: 132, background: '#fff', borderRadius: 8, padding: 4, flex: 'none' }} role="img" aria-label="QR-код для скачивания приложения QEVO" dangerouslySetInnerHTML={{ __html: svg }} />
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div>Наведите камеру телефона на код — откроется страница скачивания.</div>
+          <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>Android — файл приложения с нашего сервера, iPhone — QEVO на экран «Домой». Или откройте ссылку: <a href={url} target="_blank" rel="noopener noreferrer">{url.replace(/^https?:\/\//, '')}</a></div>
+        </div>
+      </div>
+    </div>
   );
 }
