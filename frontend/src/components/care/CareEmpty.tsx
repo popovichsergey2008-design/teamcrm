@@ -1,4 +1,5 @@
 import './care-empty.css';
+import { useState } from 'react';
 import { Icon, IconName } from '../Icon';
 import { openSupport } from '../support/SupportDock';
 
@@ -36,9 +37,30 @@ const CHATS = 'Помочь создать рабочие каналы по от
 const TRUST = 'Добавляйте новых участников в проекты за 5 секунд без ожидания оплаты банковских счетов — мы включаем доступы мгновенно на полном доверии';
 const BADGE = 'Личный Отдел заботы (ответ за 30 сек в рабочее время, видеосозвоны Huddle, бесплатный перенос задач и настройка проектов руками наших инженеров) уже включён в каждый тариф бесплатно';
 
-function Card({ icon, title, text, button, source }: { icon: IconName; title: string; text: string; button: string; source: string }) {
+/*
+  #4957: предложение заботы можно закрыть «×» — раньше оно стояло посреди доски навсегда
+  (в чужом, гостевом пространстве особенно мешало). Закрытое помним в браузере по виду.
+*/
+const CLOSED_KEY = 'qevo.care.closed';
+function readClosed(): string[] {
+  try { const v = JSON.parse(localStorage.getItem(CLOSED_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+function rememberClosed(k: string): void {
+  try { localStorage.setItem(CLOSED_KEY, JSON.stringify([...new Set([...readClosed(), k])])); } catch { /* без хранилища — закроется до перезагрузки */ }
+}
+
+function Close({ onClose }: { onClose: () => void }) {
+  return (
+    <button type="button" className="care-close" aria-label="Закрыть" title="Закрыть" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <Icon name="close" size={16} />
+    </button>
+  );
+}
+
+function Card({ icon, title, text, button, source, onClose }: { icon: IconName; title: string; text: string; button: string; source: string; onClose?: () => void }) {
   return (
     <section className="care-card">
+      {onClose && <Close onClose={onClose} />}
       <span className="care-icon"><Icon name={icon} size={22} /></span>
       <h3 className="care-title">{title}</h3>
       <p className="care-text">{text}</p>
@@ -63,18 +85,24 @@ function Badge() {
 
 export function CareEmpty({ k }: { k: CareKind }) {
   const source = `empty:${k}`;
-  if (k === 'tasks') return <div className="care-wrap"><Card icon="folder" source={source} {...TASKS} /></div>;
+  const [closed, setClosed] = useState(() => readClosed().includes(k));
+  const close = () => { rememberClosed(k); setClosed(true); };
+  if (closed && k !== 'team' && k !== 'badge') return null;
+  if (k === 'tasks') return <div className="care-wrap"><Card icon="folder" source={source} onClose={close} {...TASKS} /></div>;
   if (k === 'board') {
     // пустой проект — та самая «пустая воронка»: карточка переноса и кнопка спасения по центру
-    return <div className="care-wrap"><Card icon="board" source={source} {...TASKS} /><Rescue source={source} /></div>;
+    return <div className="care-wrap"><Card icon="board" source={source} onClose={close} {...TASKS} /><Rescue source={source} /></div>;
   }
-  if (k === 'rescue') return <div className="care-wrap"><Rescue source={source} /></div>;
-  if (k === 'secretary') return <div className="care-wrap"><Card icon="mic" source={source} {...SECRETARY} /></div>;
+  if (k === 'rescue') return <div className="care-wrap care-closable"><Rescue source={source} /><Close onClose={close} /></div>;
+  if (k === 'secretary') return <div className="care-wrap"><Card icon="mic" source={source} onClose={close} {...SECRETARY} /></div>;
   if (k === 'chats') {
     return (
-      <button type="button" className="care-plaque" onClick={() => askCare(CHATS, source)}>
-        <Icon name="support" size={16} /> <span>{CHATS}</span>
-      </button>
+      <div className="care-closable">
+        <button type="button" className="care-plaque" onClick={() => askCare(CHATS, source)}>
+          <Icon name="support" size={16} /> <span>{CHATS}</span>
+        </button>
+        <Close onClose={close} />
+      </div>
     );
   }
   if (k === 'team') {

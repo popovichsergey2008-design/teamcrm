@@ -1025,7 +1025,8 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
                 <Button variant="ghost" size="sm" onClick={() => setAccessNote('')}>Понятно</Button>
               </div>
             )}
-            {!isClient && boardEmpty && <CareEmpty k="board" />}
+            {/* #4957: перенос задач предлагаем тем, кто управляет пространством; участнику и гостю — нет */}
+            {(user?.role === 'owner' || user?.role === 'manager') && boardEmpty && <CareEmpty k="board" />}
             {filterActive(filterOpts) && shownCount === 0 && !boardEmpty ? (
               <EmptyState
                 icon="filter"
