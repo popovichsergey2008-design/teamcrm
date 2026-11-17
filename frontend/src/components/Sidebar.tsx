@@ -679,7 +679,7 @@ export function Sidebar({
             {/* #4939: на компьютере вместо бургера — логотип, ведёт на главную («Фокус дня»);
                 бургер (#4928) остаётся только на телефоне и в приложении */}
             <button className="nav-home" onClick={() => { setOpen(false); navigate({ section: 'focus' }); }} title="Фокус дня — главная" aria-label="На главную: Фокус дня">
-              <Logo size={26} />
+              {orgLogo ? <AuthedMedia bare fileId={orgLogo} name={orgName} mime="image/png" className="nav-ws-logo is-img" fallback={<Logo size={26} />} /> : <Logo size={26} />}
             </button>
             <button className="nav-ws-fold nav-burger" onClick={toggleCollapsed} title={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-label={collapsed ? 'Развернуть меню' : 'Свернуть меню'} aria-expanded={!collapsed}>
               <Icon name="menu" size={18} />
@@ -688,7 +688,8 @@ export function Sidebar({
               align="start"
               trigger={(
                 <button className="nav-ws" title={`Пространство: ${orgName}`}>
-                  {(() => { const letter = <span className="nav-ws-logo" aria-hidden="true">{orgName.trim().charAt(0).toUpperCase()}</span>; return orgLogo ? <AuthedMedia bare fileId={orgLogo} name={orgName} mime="image/png" className="nav-ws-logo is-img" fallback={letter} /> : letter; })()}
+                  {/* #4939: логотип (компании или QEVO) теперь на кнопке «на главную» — у пространства первая буква */}
+                  <span className="nav-ws-logo" aria-hidden="true">{orgName.trim().charAt(0).toUpperCase()}</span>
                   <span className="nav-label nav-ws-text"><b>{orgName} <Icon name="chevron-down" size={12} /></b><span>пространство</span></span>
                 </button>
               )}
