@@ -155,7 +155,8 @@ function onceAcrossTabs(play: () => void): void {
     } catch { /* без хранилища — звеним, как раньше */ }
     play();
   };
-  if (!document.hidden) claim();
+  // вне браузера (проверки логики) вкладок нет — звеним сразу
+  if (typeof document === 'undefined' || !document.hidden) claim();
   else window.setTimeout(claim, 200 + Math.floor(Math.random() * 300));
 }
 
