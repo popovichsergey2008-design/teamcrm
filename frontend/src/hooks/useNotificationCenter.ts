@@ -54,9 +54,13 @@ export function useNotificationCenter(signedIn: boolean): void {
       const key = p.eventKey ?? '';
       if (quietFor({ personal: key.endsWith('.mention') }) || !inboxToastAllowed(key)) return;
       if (document.hidden) showNotification(p.title, p.body ?? '', () => openInboxItem(p.id, p.path), { key: p.path });
-      // не гаснут сами, пока не прочитают: «Задача поставлена от вас» ждёт «Ок/Править» (#4742),
-      // приглашение на встречу — в том числе поставленную агентом из переписки (#4749)
-      else showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path, sticky: STICKY_EVENTS.has(p.eventKey ?? '') });
+      /*
+        #4974: всплывашка — ВСЕГДА, и в фоновой вкладке. Раньше в фоне был только системный
+        показ (без разрешения браузера его нет), а звук — был: «пилик», заходишь — пусто.
+        Не гаснут сами, пока не прочитают: «Задача поставлена от вас» ждёт «Ок/Править» (#4742),
+        приглашение на встречу — в том числе поставленную агентом из переписки (#4749).
+      */
+      showToast({ title: p.title, body: p.body ?? '', section: 'inbox', inboxId: p.id, inboxPath: p.path, sticky: STICKY_EVENTS.has(p.eventKey ?? '') });
       const now = Date.now();
       if (!OWN_CHIME.has(p.eventKey ?? '') && now - lastChime > CHIME_GAP_MS) {
         lastChime = now;

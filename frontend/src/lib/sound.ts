@@ -130,11 +130,33 @@ export function playNotes(notes: [number, number, number, number, OscillatorType
 /** Короткий сигнал о новом сообщении: две ноты вверх, не похоже на системную ошибку. */
 export function playMessageChime(): void {
   if (doNotDisturb || !soundPrefs().messages) return;
-  const audio = context();
-  if (!audio) return;
-  const now = audio.currentTime;
-  note(now, 660, 0.18, 0.14);
-  note(now + 0.09, 880, 0.22, 0.14);
+  onceAcrossTabs(() => {
+    const audio = context();
+    if (!audio) return;
+    const now = audio.currentTime;
+    note(now, 660, 0.18, 0.14);
+    note(now + 0.09, 880, 0.22, 0.14);
+  });
+}
+
+/*
+  #4974: событие приходит во ВСЕ открытые вкладки CRM, и сигнал звучал из каждой (у
+  Константина их восемь), а показывалось — где-то в одной. Теперь звучит одна вкладка:
+  видимая сразу, фоновые — с небольшой задержкой и только если никто ещё не прозвенел.
+*/
+const CHIME_KEY = 'qevo.chime.at';
+const CHIME_GAP_MS = 1500;
+function onceAcrossTabs(play: () => void): void {
+  const claim = () => {
+    try {
+      const last = Number(localStorage.getItem(CHIME_KEY) || 0);
+      if (Date.now() - last < CHIME_GAP_MS) return;
+      localStorage.setItem(CHIME_KEY, String(Date.now()));
+    } catch { /* без хранилища — звеним, как раньше */ }
+    play();
+  };
+  if (!document.hidden) claim();
+  else window.setTimeout(claim, 200 + Math.floor(Math.random() * 300));
 }
 
 /**
