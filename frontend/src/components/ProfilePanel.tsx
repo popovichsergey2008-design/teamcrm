@@ -130,7 +130,12 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
   }, [tgCode]);
 
   // profile
+  /* #4975: после «Сохранить» кнопка выглядела так, будто на неё не нажимали. Теперь видно:
+     «Сохраняю…» (бледная, неактивная), затем «Сохранено» на пару секунд. */
+  const [profileSave, setProfileSave] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveProfile = async () => {
+    if (profileSave === 'saving') return;
+    setProfileSave('saving');
     try {
       await api.updateProfile({
         fullName: me.fullName,
@@ -144,7 +149,9 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
         birthDate: me.birthDate ?? '',
       });
       flash('Профиль сохранён'); loadMe();
-    } catch (e) { flash(e instanceof ApiError ? e.message : 'Ошибка'); }
+      setProfileSave('saved');
+      window.setTimeout(() => setProfileSave((v) => (v === 'saved' ? 'idle' : v)), 2500);
+    } catch (e) { setProfileSave('idle'); flash(e instanceof ApiError ? e.message : 'Ошибка'); }
   };
   const onAvatarPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
@@ -363,7 +370,10 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
               Не ставить мне встречи на занятое время
             </label>
 
-            <button className="ui-btn ui-btn-primary ui-btn-md" style={{ width: '100%' }} onClick={saveProfile}>Сохранить</button>
+            <button className="ui-btn ui-btn-primary ui-btn-md" style={{ width: '100%', opacity: profileSave === 'saving' ? 0.6 : undefined }}
+              onClick={saveProfile} disabled={profileSave === 'saving'} aria-busy={profileSave === 'saving'}>
+              {profileSave === 'saving' ? 'Сохраняю…' : profileSave === 'saved' ? <><Icon name="check" size={15} /> Сохранено</> : 'Сохранить'}
+            </button>
 
             <div className="drawer-section">
               <div className="drawer-section-title">Письма на почту</div>
