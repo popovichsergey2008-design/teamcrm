@@ -484,7 +484,8 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 .tv2-callout-info   { background: var(--accent-soft); border-color: var(--accent-line); }
 .tv2-callout-warn   { background: var(--warn-soft); border-color: var(--warn-line); }
 .tv2-callout-danger { background: var(--danger-soft); border-color: var(--danger-line); color: var(--danger); }
-.tv2-callout-block { flex-direction: column; align-items: stretch; }
+/* #4981: nowrap — в колонке с переносом строки тянулись до самого длинного текста и вылезали из окна */
+.tv2-callout-block { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
 .tv2-callout-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .tv2-callout-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .tv2-callout-sub { color: var(--text-dim); font-size: var(--fs-xs); }
@@ -552,8 +553,13 @@ input.ui-input:focus-visible, .ui-input-group:focus-within {
 
 .tc-row { display: flex; gap: 8px; align-items: center; }
 .tc-grid3 { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .8fr); gap: 12px; }
-.tc-dupe { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 400; }
-.tc-dupe-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #4981: строка похожей задачи не шире окна — длинное название переносится, проект и кнопка уходят на новую строку */
+.tc-dupe { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; font-weight: 400; }
+.tc-dupe-title {
+  flex: 1 1 220px; min-width: 0; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.tc-dupe .ui-cell-dim { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-drop { border-radius: var(--radius); }
 /* голосом прямо в форме (#4618): крупная кнопка первой строкой — фишку должно быть видно */
 .tc-voice { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: var(--radius); background: var(--accent-soft); }
