@@ -633,9 +633,10 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <div className="dim">{DATE_FMT.format(new Date())}</div>
         </div>
         <div className="fd-head-side">
+          {/* #4977: «главных миссий» — было просто «главных», без слова */}
           {top.length > 0 && (
-            <div className="fd-score" aria-label={`Сделано ${doneCount} из ${top.length} главных`}>
-              <b>{doneCount} / {top.length}</b> <span className="dim">главных</span>
+            <div className="fd-score" aria-label={`Сделано ${doneCount} из ${top.length} ${plural(top.length, 'главной миссии', 'главных миссий', 'главных миссий')}`}>
+              <b>{doneCount} / {top.length}</b> <span className="dim">{plural(top.length, 'главной миссии', 'главных миссий', 'главных миссий')}</span>
             </div>
           )}
           {streak > 1 && <span className="fp-streak" title="Выходные и отпуск серию не прерывают, один пропущенный день — тоже">{streak} {plural(streak, 'день', 'дня', 'дней')} с планом</span>}
@@ -653,7 +654,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <div className="fp-head"><b><Icon name="check-circle" size={16} /> Сделано{doneInfo.title ? `: ${doneInfo.title}` : ''}</b>
             <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" aria-label="Закрыть" onClick={() => setDoneInfo(null)}><Icon name="close" size={14} /></button></div>
           <div className="dim">
-            {dur(doneInfo.minutes)} в фокусе · {doneInfo.progress.done} из {doneInfo.progress.total} главных · глубокой работы сегодня {dur(doneInfo.progress.deepMin)}
+            {dur(doneInfo.minutes)} в фокусе · {doneInfo.progress.done} из {doneInfo.progress.total} {plural(doneInfo.progress.total, 'главной миссии', 'главных миссий', 'главных миссий')} · глубокой работы сегодня {dur(doneInfo.progress.deepMin)}
             {doneInfo.notified ? ` · уведомление получил(а): ${doneInfo.notified}` : ''}
           </div>
           {doneInfo.next && (
