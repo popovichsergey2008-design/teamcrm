@@ -36,6 +36,9 @@ import { dur, focusApi, PlusDay } from './focus/focus-api';
 import { useAuth } from '../state/auth';
 import { helloName } from '../lib/hello-name';
 import { feedback } from '../lib/feedback';
+import { FavoriteStar } from '../components/FavoriteStar';
+import { FAVORITES_CHANGED, initFavorites, isFavorite, toggleFavorite } from '../lib/favorites';
+import { toastSaved } from '../lib/notifications';
 // приглашение на демо ИИ-созвона (ТЗ-24) — отдельным куском, не в стартовой сборке
 const AiDemoInvite = lazy(() => import('../components/AiDemoInvite'));
 // персональный брифинг (ТЗ-27) — своим куском: экран и тройка не ждут его загрузки
@@ -226,6 +229,21 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
   useEffect(() => { if (backlogOpen && backlog === null) void loadBacklog(); }, [backlogOpen, backlog, loadBacklog]);
 
   const top = useMemo(() => [...day.top].sort((a, b) => a.rank - b.rank), [day.top]);
+  // #4983: задачи тройки, которых ещё нет в избранном
+  initFavorites(user?.uiPrefs);
+  const [favTick, setFavTick] = useState(0);
+  const favTop = top.filter((i) => i.taskId && i.title && !isFavorite('task', i.taskId));
+  void favTick;
+  useEffect(() => {
+    const on = () => setFavTick((n) => n + 1);
+    window.addEventListener(FAVORITES_CHANGED, on);
+    return () => window.removeEventListener(FAVORITES_CHANGED, on);
+  }, []);
+  const starTop = () => {
+    for (const i of favTop) toggleFavorite({ kind: 'task', id: String(i.taskId), title: String(i.title), projectId: i.projectId ?? undefined });
+    setFavTick((n) => n + 1);
+    toastSaved('В избранном', 'задачи тройки — в меню слева, в «Избранном»');
+  };
   const activeItems = top.filter((i) => i.status === 'active');
   const freeRanks = [1, 2, 3].filter((r) => !top.some((i) => i.rank === r));
   const doneItems = top.filter((i) => i.status === 'done');
@@ -358,6 +376,10 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <span className="fd-rank">#{item.rank} {RANK_LABEL[item.rank]}</span>
           {item.pinned && !editing && <span className="fd-pin" title="Закреплено вами — пересчёт его не вытеснит"><Icon name="pin" size={12} /></span>}
           {done && <Badge tone="ok"><Icon name="check" size={11} /> Сделано</Badge>}
+          {/* #4983: задачу тройки — в избранное (сайдбар): там она остаётся при любом статусе */}
+          {item.taskId && item.title && (
+            <FavoriteStar kind="task" id={item.taskId} title={item.title} projectId={item.projectId ?? undefined} className="ui-btn ui-btn-ghost ui-btn-sm fd-fav" />
+          )}
           {editing && done && (
             <span className="fd-edit">
               <Button variant="ghost" size="sm" disabled={busy} title="Убрать из тройки — место освободится" onClick={() => void run(() => api.focusRemove(item.id, 'done'))}><Icon name="close" size={14} /> Убрать</Button>
@@ -378,6 +400,20 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           )}
         </div>
 
+        {/*
+          #4982: сделанная задача держит место в тройке — заменить её прямо здесь: новую подберёт
+          ИИ (сделанное уходит, свободное место добирается лучшей задачей) или выбрать самому.
+        */}
+        {done && !editing && (
+          <div className="fd-done-acts">
+            <Button variant="outline" size="sm" disabled={busy} title="Сделанное уйдёт из тройки, на его место ИИ подберёт новую задачу" onClick={() => void run(api.focusRefresh)}>
+              <Icon name="sparkles" size={13} /> Заменить новой — подберёт ИИ
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(async () => { const r = await api.focusRemove(item.id, 'done'); setBacklogOpen('all'); return r; })}>
+              <Icon name="list" size={13} /> Выбрать вручную
+            </Button>
+          </div>
+        )}
         {item.unavailable ? (
           <div className="fd-gone-body">
             <span className="dim">Эта задача больше недоступна.</span>
@@ -672,6 +708,14 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         <div className="fd-accepted fd-secondary">
           <span className="dim"><Icon name="check" size={13} /> План на сегодня принят</span>
           <Button variant="ghost" size="sm" aria-pressed={editing} onClick={() => setEditing((v) => !v)}><Icon name="edit" size={13} /> {editing ? 'Готово' : 'Настроить'}</Button>
+          {/* #4982: выбрать задачи фокуса самому — не только через «Настроить» */}
+          <Button variant="ghost" size="sm" onClick={() => setBacklogOpen('all')}><Icon name="list" size={13} /> Выбрать задачи вручную</Button>
+          {/* #4983: все три задачи — в избранное одним нажатием */}
+          {favTop.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={starTop} title="Задачи тройки останутся в «Избранном» в меню при любом статусе">
+              <Icon name="star" size={13} /> Тройку — в избранное
+            </Button>
+          )}
           <Button
             variant={doneItems.length ? 'outline' : 'ghost'} size="sm" disabled={busy}
             title={doneItems.length ? 'Сделанное уйдёт из тройки, на его место ИИ подберёт новые задачи' : 'ИИ подберёт новые задачи вместо незакреплённых'}

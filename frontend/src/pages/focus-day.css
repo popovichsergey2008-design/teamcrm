@@ -324,3 +324,8 @@
 .dr-ring-fg { fill: none; stroke: var(--ok); stroke-width: 6; stroke-linecap: round; }
 /* тройка дня: одно место под очередь решений (п. 13) */
 .fd-bundle-sub { font-size: 13px; }
+
+/* #4983: звёздочка «в избранное» — справа в шапке карточки тройки */
+.fd-card-top .fd-fav { margin-left: auto; }
+/* #4982: заменить сделанную задачу — новой от ИИ или вручную */
+.fd-done-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
