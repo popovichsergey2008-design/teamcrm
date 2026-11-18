@@ -5,7 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { zonedParts, zonedToUtc } from '../calendar/find-time';
 import { ChatText, onChatText } from '../chats/chat-hooks';
 import { ChatsRepository } from '../chats/chats.repository';
-import { pickDay } from '../nl/event-draft';
+import { numeralsToDigits, pickDay, pickTime } from '../nl/event-draft';
 import { RealtimeService } from '../realtime/realtime.service';
 import { bestTime } from './best-time';
 import { CalendarPlusRepository, ProposalRow } from './calendar-plus.repository';
@@ -83,11 +83,22 @@ export class ChatMeetingService implements OnModuleInit {
     const day = pickDay(text, localNow);
     let notBefore: number | null = null;
     if (day) notBefore = zonedToUtc(day.getFullYear(), day.getMonth() + 1, day.getDate(), 0, 0, tz);
+    /*
+      #4978: время названо — «завтра в 10 по Москве созвон» — первым вариантом ставим ЕГО,
+      а не ближайшее общее окно: раньше предлагались три чужих слота, а нужного не было.
+    */
+    const at = day ? pickTime(numeralsToDigits(text)) : null;
+    const namedMs = day && at ? zonedToUtc(day.getFullYear(), day.getMonth() + 1, day.getDate(), at.hour, at.minute, tz) : null;
+    const named = namedMs && namedMs > now
+      ? { startsAt: new Date(namedMs).toISOString(), endsAt: new Date(namedMs + minutes * 60_000).toISOString(), reasons: ['время из сообщения'] }
+      : null;
     const people = await this.plus.peopleFor(tenantId, authorId, members.map((x) => x.id), [], now - DAY, now + 12 * DAY);
     const res = bestTime({ now, minutes, people: people.map((p) => ({ ...p, me: p.id === String(authorId) })), viewerTimeZone: tz, days: 10, limit: 3, notBefore });
-    if (!res.slots.length) throw AppException.conflict(res.message ?? 'Нет общего свободного времени');
-    const slots = [...res.slots].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+    if (!res.slots.length && !named) throw AppException.conflict(res.message ?? 'Нет общего свободного времени');
+    const free = [...res.slots].sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+      .filter((s) => !named || s.startsAt !== named.startsAt)
       .map((s) => ({ startsAt: s.startsAt, endsAt: s.endsAt, reasons: s.reasons }));
+    const slots = named ? [named, ...free].slice(0, 3) : free;
     const topic = pickTopic(isMeetingCommand(text) ? text.replace(/^\s*\/\S+\s*/, '') : text) ?? null;
     const id = await this.repo.createProposal({
       tenantId, chatId, authorId, sourceMessageId, topic, minutes, memberIds: members.map((x) => x.id), slots,
@@ -96,7 +107,9 @@ export class ChatMeetingService implements OnModuleInit {
     const labels = slots.map((s) => this.label(s.startsAt, tz)).join(', ');
     const msg = await this.chats.addMessage({
       tenantId, chatId, authorId, fileId: null, isAi: true,
-      body: `Похоже на встречу. Свободны ${who}: ${labels}. Голосуйте — встреча назначится, когда ответят все.`,
+      body: named
+        ? `Похоже на встречу: ${this.label(named.startsAt, tz)}, как в сообщении. Нажмите «Назначить» — событие встанет в календарь${slots.length > 1 ? `; или другое время: ${slots.slice(1).map((s) => this.label(s.startsAt, tz)).join(', ')}` : ''}.`
+        : `Похоже на встречу. Свободны ${who}: ${labels}. Голосуйте — встреча назначится, когда ответят все.`,
     });
     await this.repo.attachProposalMessage(id, String(msg.id));
     this.realtime.emitToUsers(tenantId, members.map((x) => x.id), 'chat.message', { chatId, message: { ...msg, proposal_id: id } });

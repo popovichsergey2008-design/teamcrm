@@ -1128,7 +1128,9 @@ export class ChatsService {
     await this.repo.markRead(tenantId, chatId, user.userId);
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message', { chatId, message });
-    if (stt) void trackBackground(this.clipText(tenantId, chatId, String(row.id), file, keep, to, timing));
+    // #4978: расшифровка голосового — как текст сообщения для хуков («завтра в 10 созвон» → встреча)
+    const hook = kind === 'voice' ? { chatKind: chat.kind, chatTitle: chat.title ?? null, authorId: String(user.userId) } : undefined;
+    if (stt) void trackBackground(this.clipText(tenantId, chatId, String(row.id), file, keep, to, timing, hook));
     else this.diag.write({ tenantId, scope: 'chat', refId: chatId, userId: user.userId, side: 'server', event: 'clip.timing', data: { ...timing, stt: false } });
     return message;
   }
@@ -1141,6 +1143,7 @@ export class ChatsService {
     tenantId: string, chatId: string, messageId: string,
     file: { buffer: Buffer; originalname: string }, caption: string, to: string[],
     timing: Record<string, unknown>,
+    hook?: { chatKind: string; chatTitle: string | null; authorId: string },
   ) {
     const t1 = Date.now();
     let heard = '';
@@ -1180,6 +1183,7 @@ export class ChatsService {
     this.realtime.emitToUsers(tenantId, to, 'chat.message.transcript', {
       chatId, messageId, transcript: text || null, status: text ? 'ready' : 'failed', body,
     });
+    if (hook && text) emitChatText({ tenantId, chatId: String(chatId), chatKind: hook.chatKind, chatTitle: hook.chatTitle, messageId: String(messageId), authorId: hook.authorId, text });
   }
 
   /**
