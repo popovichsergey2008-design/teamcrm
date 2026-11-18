@@ -38,12 +38,6 @@ export function MorningPlan({ day, accepted, busy, onDay, onEdit, onRefresh, onR
     window.dispatchEvent(new Event('teamcrm:tasks-changed'));
     toastSaved('План принят', 'задачи поставлены в календарь');
   });
-  const listen = () => {
-    try {
-      const u = new SpeechSynthesisUtterance([day.brief.yesterday, day.brief.text].filter(Boolean).join('. '));
-      u.lang = 'ru-RU'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-    } catch { /* озвучки нет — текст на экране */ }
-  };
   const total = Math.max(1, c.workMin);
   const seg = (min: number) => `${Math.max(0, (min / total) * 100)}%`;
 
@@ -113,7 +107,7 @@ export function MorningPlan({ day, accepted, busy, onDay, onEdit, onRefresh, onR
             <button type="button" className="ui-btn ui-btn-primary ui-btn-md" disabled={busy || working} onClick={() => void accept()}>Принять план</button>
             <button type="button" className="ui-btn ui-btn-outline ui-btn-md" onClick={onEdit}>Изменить</button>
             <button type="button" className="ui-btn ui-btn-outline ui-btn-md" disabled={busy} onClick={onRefresh}>Пересмотреть с ИИ</button>
-            <button type="button" className="ui-btn ui-btn-ghost ui-btn-md" onClick={listen}><Icon name="play" size={13} /> Прослушать</button>
+            {/* #4979: «Прослушать» убрана — голос браузера читал план с искажениями и неверными ударениями */}
           </div>
         )}
         <button type="button" className="fp-link" aria-expanded={why} onClick={() => setWhy((v) => !v)}>Почему такой план</button>
@@ -168,8 +162,8 @@ export function Timeline({ slots, onMoved }: { slots: DaySlot[]; onMoved: () => 
     setDrag(null);
   };
   return (
-    <aside className="fp-card fp-timeline" id="fp-timeline" aria-label="Сегодня по часам">
-      <div className="fp-title">Сегодня</div>
+    <aside className="fp-card fp-timeline" id="fp-timeline" aria-label="План на сегодня по часам">
+      <div className="fp-title">План на сегодня</div>
       {slots.map((s, i) => (
         <div key={`${s.kind}${i}`} className="fp-tl-row"
           onDragOver={(e) => { if (drag && s.kind === 'reserve') e.preventDefault(); }}

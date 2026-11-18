@@ -68,14 +68,6 @@ export function CalendarAgent({ initial, onClose, onApplied }: { initial?: strin
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось применить'); }
     finally { setBusy(false); }
   };
-  const listen = () => {
-    try {
-      const u = new SpeechSynthesisUtterance(plan?.text ?? '');
-      u.lang = 'ru-RU';
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
-    } catch { /* озвучки нет — текст и так на экране */ }
-  };
   const setTime = (i: number, v: string) => setPlan((p) => {
     if (!p) return p;
     const items = [...p.items];
@@ -105,7 +97,7 @@ export function CalendarAgent({ initial, onClose, onApplied }: { initial?: strin
         {plan && plan.kind === 'summary' && (
           <div className="cal-agent-card">
             {plan.text.split('\n').map((l, i) => <div key={i} className={i === 0 ? 'cal-agent-title' : 'cal-small'}>{l}</div>)}
-            <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={listen}><Icon name="play" size={13} /> Прослушать</button>
+            {/* #4979: «Прослушать» убрана — голос браузера читал с искажениями и неверными ударениями */}
           </div>
         )}
         {plan && plan.kind !== 'summary' && (
