@@ -708,14 +708,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
         <div className="fd-accepted fd-secondary">
           <span className="dim"><Icon name="check" size={13} /> План на сегодня принят</span>
           <Button variant="ghost" size="sm" aria-pressed={editing} onClick={() => setEditing((v) => !v)}><Icon name="edit" size={13} /> {editing ? 'Готово' : 'Настроить'}</Button>
-          {/* #4982: выбрать задачи фокуса самому — не только через «Настроить» */}
-          <Button variant="ghost" size="sm" onClick={() => setBacklogOpen('all')}><Icon name="list" size={13} /> Выбрать задачи вручную</Button>
-          {/* #4983: все три задачи — в избранное одним нажатием */}
-          {favTop.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={starTop} title="Задачи тройки останутся в «Избранном» в меню при любом статусе">
-              <Icon name="star" size={13} /> Тройку — в избранное
-            </Button>
-          )}
+
           <Button
             variant={doneItems.length ? 'outline' : 'ghost'} size="sm" disabled={busy}
             title={doneItems.length ? 'Сделанное уйдёт из тройки, на его место ИИ подберёт новые задачи' : 'ИИ подберёт новые задачи вместо незакреплённых'}
@@ -792,11 +785,22 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
             ].filter(Boolean).join(' · ');
             return line ? <div className="dim fd-split" style={{ fontSize: 13 }}>{line}</div> : null;
           })()}
+          {/* #4982: выбрать задачи фокуса самому; #4983: все три — в избранное одним нажатием */}
+          {top.length > 0 && (
+            <div className="fd-top-acts">
+              <Button variant="ghost" size="sm" onClick={() => setBacklogOpen('all')}><Icon name="list" size={13} /> Выбрать задачи вручную</Button>
+              {favTop.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={starTop} title="Задачи тройки останутся в «Избранном» в меню при любом статусе">
+                  <Icon name="star" size={13} /> Тройку — в избранное
+                </Button>
+              )}
+            </div>
+          )}
           {plus?.main && mainItem && mainItem.rank === 1 && mainItem.status !== 'done' && !editing && !session ? (
             <MainCard card={plus.main} minutes={focusMin} onMinutes={pickFocusMin} busy={busy}
               onStart={() => void startFocus(mainItem)} onOpen={() => open(mainItem)}
               onTakeToWork={mainItem.kind === 'task' && !mainItem.startedAt ? () => void takeToWork(mainItem) : undefined}
-              onWhy={() => undefined} reasons={mainItem.reasons} />
+              onWhy={() => undefined} reasons={mainItem.reasons} projectId={mainItem.projectId} />
           ) : mission ? card(mission) : emptySlot(1)}
           {mission?.status === 'done' && activeItems.length < 3 && (
             <div className="fd-note">

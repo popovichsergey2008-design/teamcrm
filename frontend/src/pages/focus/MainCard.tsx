@@ -4,6 +4,7 @@ import { DropdownMenu, MenuItem } from '../../components/ui/dropdown-menu';
 import { ApiError, FocusCandidate } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import { dur, focusApi, MainCard as Card } from './focus-api';
+import { FavoriteStar } from '../../components/FavoriteStar';
 
 /**
  * Карточка главного результата (#4891, п. 3): название, «Главный результат дня · 1 из 3»,
@@ -11,8 +12,8 @@ import { dur, focusApi, MainCard as Card } from './focus-api';
  * «Открыть задачу», остальное — в «···». Оценки нет — ИИ предлагает «≈ 2 ч · верно / изменить»;
  * подтверждённая записывается в задачу. Шага нет — подсказка «Какой первый шаг?», без выдумок.
  */
-export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWork, onWhy, reasons, busy }: {
-  card: Card; minutes: number; onMinutes: (m: number) => void;
+export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWork, onWhy, reasons, busy, projectId }: {
+  card: Card; minutes: number; onMinutes: (m: number) => void; projectId?: string | null;
   onStart: () => void; onOpen: () => void; onTakeToWork?: () => void; onWhy: () => void; reasons: string[]; busy: boolean;
 }) {
   const [est, setEst] = useState(card.estimate);
@@ -43,6 +44,8 @@ export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWo
       <div className="fp-head">
         <span className="fp-kicker">Главный результат дня · {card.position} из {card.of}</span>
         <span className="dim fp-small">{card.taskId ? `#${card.taskId}` : ''}{card.projectName ? ` · ${card.projectName}` : ''}{card.deadlineAt ? ` · срок ${new Date(card.deadlineAt).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}` : ''}</span>
+        {/* #4983: главную задачу — в избранное */}
+        {card.taskId && card.title && <FavoriteStar kind="task" id={card.taskId} title={card.title} projectId={projectId ?? undefined} />}
       </div>
       <h2 className="fp-maintitle">{card.title}</h2>
       <div className="fp-row">

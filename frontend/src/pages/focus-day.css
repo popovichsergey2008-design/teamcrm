@@ -329,3 +329,4 @@
 .fd-card-top .fd-fav { margin-left: auto; }
 /* #4982: заменить сделанную задачу — новой от ИИ или вручную */
 .fd-done-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.fd-top-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 2px; }
