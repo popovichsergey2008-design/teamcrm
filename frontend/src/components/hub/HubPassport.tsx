@@ -337,7 +337,7 @@ function ItemForm({ ctx, section, kinds, item, defaultCategory, onDone }: {
       {kind === 'link' && (
         <label className="hub-form-row">
           <span className="hub-field-label">Адрес</span>
-          <input className="ui-input ui-input-md" value={url} onChange={(e) => onUrl(e.target.value)} placeholder="https://figma.com/…" inputMode="url" maxLength={2000} autoFocus={!item} />
+          <input className="ui-input ui-input-md" value={url} onChange={(e) => onUrl(e.target.value)} placeholder={defaultCategory === 'doc' ? 'https://disk.yandex.ru/d/… или docs.google.com/…' : 'https://figma.com/…'} inputMode="url" maxLength={2000} autoFocus={!item} />
         </label>
       )}
       {kind === 'file' && !item && (
