@@ -72,6 +72,12 @@ export function BoardBar({
   hubSlot?: React.ReactNode;
 }) {
   const [rolesOpen, setRolesOpen] = useState(false);
+  /*
+    Строка быстрых условий прокручивается вбок (#4841, планшет), а прокрутка обрезает всё,
+    что из неё выпадает: меню «Мои задачи / Все задачи» открывалось, но его не было видно.
+    Меню — поверх страницы (fixed), координаты — от кнопки.
+  */
+  const [rolesAt, setRolesAt] = useState<{ top: number; left: number } | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const closeRoles = useCallback(() => setRolesOpen(false), []);
   const closeFilters = useCallback(() => setFiltersOpen(false), []);
@@ -181,14 +187,19 @@ export function BoardBar({
           <button
             className={`bb-chip bb-roles-btn is-main${query.scope === 'mine' ? ' is-on' : ''}`}
             aria-expanded={rolesOpen}
-            onClick={() => setRolesOpen((v) => !v)}
+            onClick={(e) => {
+              const b = e.currentTarget.getBoundingClientRect();
+              setRolesAt({ top: b.bottom + 6, left: Math.max(8, Math.min(b.left, window.innerWidth - 348)) });
+              setRolesOpen((v) => !v);
+            }}
             title="Мои роли в задачах: можно выбрать несколько — подойдёт любая"
           >
             {rolesLabel} <span className="bb-n bb-n-big">{query.scope === 'all' ? counts.shown : counts.mine}</span>
             <Icon name="chevron-down" size={13} />
           </button>
           {rolesOpen && (
-            <div className="bb-pop" data-pop role="dialog" aria-label="Мои роли на задачах">
+            <div className="bb-pop" data-pop role="dialog" aria-label="Мои роли на задачах"
+              style={rolesAt ? { position: 'fixed', top: rolesAt.top, left: rolesAt.left, zIndex: 60 } : undefined}>
               <div className="bb-seg2">
                 <button className={query.scope === 'mine' ? 'is-on' : ''} onClick={() => set({ scope: 'mine', roles: query.roles.length ? query.roles : [...ALL_ROLES] })}>Мои задачи</button>
                 <button className={query.scope === 'all' ? 'is-on' : ''} onClick={() => set({ scope: 'all' })}>Все задачи на доске</button>
