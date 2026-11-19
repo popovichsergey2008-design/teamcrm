@@ -17,7 +17,7 @@
 .stk-legend-foot { display: flex; justify-content: flex-end; gap: 6px; }
 .stk-selbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 14px; }
 
-.stk-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.stk-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: start; }
 .stk-col { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; min-height: 140px; transition: border-color .12s, background .12s; }
 .stk-col.is-today { border-color: var(--accent); }
 .stk-col.is-over { background: var(--accent-soft); border-color: var(--accent); }
