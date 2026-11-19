@@ -66,6 +66,12 @@ export function loadQuery(tenantId: string | undefined, userId: string | undefin
   }
 }
 
+/** Человек уже выбирал условия на этой доске (иначе — умолчания, их можно поправить за него). */
+export function hasSavedQuery(tenantId: string | undefined, userId: string | undefined, projectId: string | null): boolean {
+  if (!tenantId || !userId || !projectId) return false;
+  try { return localStorage.getItem(key(tenantId, userId, projectId)) !== null; } catch { return false; }
+}
+
 export function saveQuery(tenantId: string | undefined, userId: string | undefined, projectId: string | null, q: BoardQuery): void {
   if (!tenantId || !userId || !projectId) return;
   try {

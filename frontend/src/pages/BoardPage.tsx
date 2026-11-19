@@ -16,7 +16,7 @@ import {
   countMatching, filterActive, filterBoard, PAUSED_STAGES, QuickKey, realPosition, REVIEW_STAGES,
 } from '../lib/board-filter';
 import { takeDraftOpen, TASK_DRAFT_OPEN, type TaskDraft } from '../lib/task-draft';
-import { BoardQuery, loadQuery, normalize, QUICK, saveQuery, toFilter } from '../lib/board-query';
+import { BoardQuery, hasSavedQuery, loadQuery, normalize, QUICK, saveQuery, toFilter } from '../lib/board-query';
 import { commonLabels } from '../lib/board-card';
 import { BoardBar } from '../components/board/BoardBar';
 import { ViewsMenu } from '../components/board/ViewsMenu';
@@ -678,6 +678,20 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
       .entries()].sort((a, b) => a[1].localeCompare(b[1], 'ru'))
     : [];
   const shownCount = board && user ? countMatching(board.columns, filterOpts) : 0;
+  /*
+    «Мои задачи» включены по умолчанию (#1570). Но у клиента или нового участника своих
+    задач на доске часто нет — и он видел «Показано 0 · Активные 9» и пустую доску, будто
+    задач не видно. Условия сам не выбирал, а его задач ноль — показываем все задачи
+    проекта и говорим почему. Выбрал «Мои» сам — не трогаем.
+  */
+  useEffect(() => {
+    if (!board || !user || String(board.project?.id ?? '') !== String(selected)) return;
+    if (query.scope !== 'mine' || query.quick.length || query.search || shownCount > 0) return;
+    if (!board.columns.some((c) => c.tasks.length)) return;
+    if (hasSavedQuery(user.tenantId, user.id, selected)) return;
+    setQueryState((q) => ({ ...q, scope: 'all' }));
+    setAccessNote('Ваших задач на этой доске пока нет — показаны все задачи проекта. Вернуться к своим — кнопка «Мои задачи».');
+  }, [board, user, selected, query.scope, query.quick.length, query.search, shownCount]);
   /*
     Числа у быстрых условий — каждое отдельно, в текущем режиме, ролях и фильтрах
     (#4799 §3.4); итог после всех «И» — отдельной строкой «Показано N».
