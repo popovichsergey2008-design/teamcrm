@@ -76,3 +76,21 @@
 .st-link { border: 0; background: transparent; padding: 0; color: var(--st-ink-dim); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; }
 .st-edit { width: 100%; border: 0; background: rgba(255, 255, 255, .45); color: var(--st-ink); font: inherit; border-radius: 3px; padding: 4px; resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .st-note { transition: none; transform: none; } }
+
+/* «Стикеры на сегодня» в Фокусе дня (шаг 8.1) */
+.fst { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); }
+.fst-head { display: flex; align-items: center; justify-content: space-between; }
+.fst-title { border: 0; background: transparent; padding: 0; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; }
+.fst-add { width: 28px; height: 28px; border-radius: 50%; border: 1px dashed var(--border-2); background: transparent; color: var(--text-dim); display: grid; place-items: center; cursor: pointer; }
+.fst-add:hover { color: var(--accent); border-color: var(--accent); }
+.fst-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.fst-note { display: inline-flex; align-items: flex-start; gap: 6px; max-width: 260px; padding: 8px 10px; border-radius: 3px; background: var(--st-bg); color: var(--st-ink); font-size: 14px; box-shadow: 0 2px 6px rgba(0, 0, 0, .15); }
+.fst-check { flex: none; width: 18px; height: 18px; margin-top: 1px; border-radius: 4px; border: 1.5px solid rgba(31, 36, 48, .45); background: rgba(255, 255, 255, .5); color: var(--st-ink); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.fst-check .icon { opacity: 0; }
+.fst-check:hover .icon { opacity: 1; }
+.fst-over { align-self: flex-start; border: 0; background: transparent; padding: 0; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; }
+
+/* стикеры в шапке дня Календаря (шаг 8.2) */
+.std-dots { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 2px 4px; border: 0; background: transparent; cursor: pointer; vertical-align: middle; }
+.std-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--st-bg); border: 1px solid rgba(0, 0, 0, .2); }
+.std-dots span { font-size: 10px; color: var(--text-mut); }

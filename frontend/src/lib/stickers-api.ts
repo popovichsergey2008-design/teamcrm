@@ -9,6 +9,8 @@ export interface Sticker {
   source: string; sourceRef: { chatId?: string; messageId?: string; title?: string } | null;
   doneAt: string | null; deletedAt: string | null; taskId: string | null; eventId: string | null;
   position: number; createdAt: string;
+  /** Напоминание ушло, а стикер не закрыт — красная точка (шаг 6.1). */
+  reminded?: boolean;
 }
 export interface StickerBoard { items: Sticker[]; today: string; colors: { key: StickerColor; name: string }[] }
 
@@ -23,6 +25,7 @@ export const stickersApi = {
     request<Sticker>('PATCH', `/stickers/${id}`, p),
   mark: (ids: string[], action: 'done' | 'undone' | 'delete' | 'restore') =>
     request<{ changed: number }>('POST', '/stickers/mark', { ids, action }),
+  snooze: (id: string, minutes: number) => request<{ snoozed: number }>('POST', `/stickers/${id}/snooze`, { minutes }),
   overdueToToday: () => request<{ moved: number }>('POST', '/stickers/overdue-to-today', {}),
   colors: (names: Record<string, string>) => request<{ key: StickerColor; name: string }[]>('PUT', '/stickers/colors', { names }),
 };

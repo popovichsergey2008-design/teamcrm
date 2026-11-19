@@ -37,6 +37,7 @@ import { useAuth } from '../state/auth';
 import { helloName } from '../lib/hello-name';
 import { feedback } from '../lib/feedback';
 import { FavoriteStar } from '../components/FavoriteStar';
+import { FocusStickers } from '../components/stickers/FocusStickers';
 import { FAVORITES_CHANGED, initFavorites, isFavorite, toggleFavorite } from '../lib/favorites';
 import { toastSaved } from '../lib/notifications';
 // приглашение на демо ИИ-созвона (ТЗ-24) — отдельным куском, не в стартовой сборке
@@ -685,6 +686,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
             onEdit={() => setEditing(true)} onRefresh={() => void run(async () => { const r = await api.focusRefresh(); void loadPlus(); return r; })} onReload={() => void loadPlus()} />
         </div>
       )}
+      {/* #4997, шаг 8.1: стикеры на сегодня — под планом */}
+      <div className="fd-secondary"><FocusStickers /></div>
 
       {!plus && day.brief && day.brief.enabled && (
         <div className="fd-secondary">

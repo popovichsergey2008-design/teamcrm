@@ -34,6 +34,9 @@ class MarkDto {
   @IsArray() @ArrayMaxSize(500) @IsString({ each: true }) ids!: string[];
   @IsIn(['done', 'undone', 'delete', 'restore']) action!: 'done' | 'undone' | 'delete' | 'restore';
 }
+class SnoozeDto {
+  @IsNumber() minutes!: number;
+}
 class ColorsDto {
   @IsObject() names!: Record<string, string>;
 }
@@ -86,6 +89,13 @@ export class StickersController {
   @HttpCode(200)
   mark(@CurrentUser() u: AuthUser, @Body() dto: MarkDto) {
     return this.svc.mark(u.tenantId, u.userId, dto.ids, dto.action);
+  }
+
+  /** «Через 15 мин» / «Через час» (шаг 6.1). «Завтра» — обычный перенос даты. */
+  @Post(':id/snooze')
+  @HttpCode(200)
+  snooze(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SnoozeDto) {
+    return this.svc.snooze(u.tenantId, u.userId, id, dto.minutes);
   }
 
   @Post('overdue-to-today')

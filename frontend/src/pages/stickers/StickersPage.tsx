@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/button';
 import { ApiError } from '../../lib/api';
 import { navigate } from '../../lib/router';
 import {
-  addDays, dayLabel, dayMonth, nextWeekday, openQuickSticker, parseYmd, STICKER_COLORS, stickersApi, STICKERS_CHANGED,
+  addDays, dayLabel, dayMonth, nextWeekday, openQuickSticker, parseYmd, STICKER_COLORS, stickersApi, stickersChanged, STICKERS_CHANGED,
   weekdayShort, ymd, type Sticker, type StickerBoard, type StickerColor,
 } from '../../lib/stickers-api';
 import { StickerToTask } from './StickerToTask';
@@ -234,7 +234,7 @@ export function StickerNote({ s, showDate, today, selected, onDone, onRemove, on
       ) : <div className="st-note-text">{s.text}</div>}
       {s.body && open && <div className="st-note-body">{s.body}</div>}
       <div className="st-note-meta">
-        {overdue && <span className="stk-red-dot" title="Просрочено" />}
+        {(overdue || s.reminded) && <span className="stk-red-dot" title={s.reminded ? 'Напомнил — ещё не закрыт' : 'Просрочено'} />}
         {showDate && s.date && <span>{dayLabel(s.date)}</span>}
         {s.time && <span>{s.time}</span>}
         {s.body && <button className="st-link" onClick={() => setOpen((v) => !v)}>{open ? 'свернуть' : 'развернуть'}</button>}
@@ -247,6 +247,14 @@ export function StickerNote({ s, showDate, today, selected, onDone, onRemove, on
         <button className="st-act" title="Удалить" aria-label="Удалить" onClick={() => onRemove(s)}><Icon name="trash" size={13} /></button>
         <button className="st-act" title="Ещё" aria-label="Ещё" onClick={() => setMenu(menu === 'more' ? null : 'more')}><Icon name="more" size={13} /></button>
       </div>
+      {/* шаг 6.1: напомнил, а стикер не закрыт — отложить одним нажатием */}
+      {s.reminded && !compact && (
+        <div className="st-note-meta">
+          <button className="st-link" onClick={() => void stickersApi.snooze(s.id, 15).then(stickersChanged)}>через 15 мин</button>
+          <button className="st-link" onClick={() => void stickersApi.snooze(s.id, 60).then(stickersChanged)}>через час</button>
+          <button className="st-link" onClick={() => onMove(s, addDays(today, 1))}>завтра</button>
+        </div>
+      )}
       {menu === 'move' && (
         <div className="stk-menu" role="menu">
           <button onClick={() => later(today, nowHm(60))}>Через час <span className="dim">{nowHm(60)}</span></button>

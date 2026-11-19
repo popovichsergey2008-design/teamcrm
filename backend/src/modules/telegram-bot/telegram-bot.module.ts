@@ -14,13 +14,16 @@ import { TelegramBotRepository } from './telegram-bot.repository';
 import { TelegramBotService } from './telegram-bot.service';
 import { TelegramBotWorkRepository } from './telegram-bot-work.repository';
 import { TelegramBotWorkService } from './telegram-bot-work.service';
+import { StickersModule } from '../stickers/stickers.module';
 
 /**
  * Telegram-бот QEVO (#4619): диспетчер вебхука, демо, аккаунт в один клик, вход без пароля;
  * этап 4 — рабочий бот команды (задачи из пересылки/голоса, «Принять / Вернуть», 09:30, 4-й день).
  */
 @Module({
-  imports: [TelegramModule, StandupModule, AuthModule, UsersModule, ProjectsModule, TasksModule, InvitesModule, LeadsModule, NlModule, NotificationsModule],
+  imports: [TelegramModule, StandupModule, AuthModule, UsersModule, ProjectsModule, TasksModule, InvitesModule, LeadsModule, NlModule, NotificationsModule,
+    // #4997: «напомни…», «идея…» в Telegram — стикер на доску
+    StickersModule],
   controllers: [TelegramBotController],
   providers: [TelegramBotService, TelegramBotRepository, TelegramBotWorkService, TelegramBotWorkRepository],
   exports: [TelegramBotWorkService],

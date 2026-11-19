@@ -83,6 +83,15 @@ export class StickersRepository {
     return r.rowCount ?? 0;
   }
 
+  /** «Через 15 мин» / «Через час» из напоминания: напомнит ещё раз. */
+  async snooze(tenantId: string, userId: string, id: string, minutes: number): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE stickers SET snooze_until = now() + make_interval(mins => $4::int), updated_at = now()
+        WHERE tenant_id=$1 AND user_id=$2 AND id=$3 AND deleted_at IS NULL AND done_at IS NULL`,
+      [tenantId, userId, id, minutes]);
+    return (r.rowCount ?? 0) > 0;
+  }
+
   /** «Всё просроченное → на сегодня». */
   async overdueToToday(tenantId: string, userId: string, today: string): Promise<number> {
     const r = await this.db.query(

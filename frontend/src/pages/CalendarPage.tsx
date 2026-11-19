@@ -55,6 +55,7 @@ import { CallCard } from './calendar/CallCard';
 import { getSocket } from '../lib/socket';
 import './calendar/calendar.css';
 import { DateInput } from '../components/DateInput';
+import { StickerDots, useDayStickers } from '../components/stickers/StickerDots';
 
 type View = 'day' | 'week' | 'month' | 'list';
 
@@ -851,6 +852,7 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
 
   // колонок ровно столько, сколько дней в виде: одна в дне, семь в неделе
   const columns = { ['--cal-days' as string]: String(days.length) } as React.CSSProperties;
+  const dayStickers = useDayStickers();
 
   return (
     <div className="cal-grid" style={columns}>
@@ -859,6 +861,8 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
         <div key={`h${d.getTime()}`} className={`cal-dayhead ${startOfDay(d).getTime() === today ? 'today' : ''} ${isDayOff(d, work) ? 'off' : ''}`}>
           <span className="cal-dayname">{d.toLocaleDateString('ru-RU', { weekday: 'short' })}</span>
           <span className="cal-daynum">{d.getDate()}</span>
+          {/* #4997, шаг 8.2: стикеры дня — точками, текст при наведении */}
+          <StickerDots day={d} map={dayStickers} />
         </div>
       ))}
 

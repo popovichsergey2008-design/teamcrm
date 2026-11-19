@@ -24,6 +24,8 @@ import { TelegramBotRepository } from './telegram-bot.repository';
 import { TelegramBotWorkRepository } from './telegram-bot-work.repository';
 
 import { runsBackground } from '../../common/process-role';
+import { StickersService } from '../stickers/stickers.service';
+import { looksLikeSticker, stripCommand } from '../stickers/sticker-rules';
 const TICK_MS = 60_000;
 
 interface Own { tenantId: string; userId: string }
@@ -58,6 +60,7 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
     private readonly tasks: TasksService,
     private readonly notify: NotificationsService,
     private readonly inbox: InboxRepository,
+    private readonly stickers: StickersService,
   ) {
     this.base = (config.get<string>('APP_BASE_URL') || 'https://app.qevo.one').replace(/\/+$/, '');
   }
@@ -110,6 +113,12 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
       const agent = await askCalendarAgent(own.tenantId, { userId: own.userId, role: 'member' }, msg.text);
       if (agent) return this.say(chatId, { text: agent.text, markup: { inline_keyboard: [[{ text: 'Открыть в QEVO', url: `${this.base}${agent.url}` }]] } as never });
     }
+    /*
+      #4997, шаг 10.2: «напомни завтра…», «не забыть…», «мысль…», «идея…» — стикер на доску, а не
+      задача и не дейлик. Ответ: «📌 Приклеил на завтра» с кнопками «Изменить дату» и «Отменить».
+    */
+    const said = typeof msg.text === 'string' ? msg.text : typeof msg.caption === 'string' ? msg.caption : '';
+    if (said && !said.startsWith('/') && looksLikeSticker(said)) return this.makeSticker(own, chatId, said);
     const intent = staffIntent(msg, await this.work.state(tgId));
     switch (intent.kind) {
       case 'standup':
@@ -138,7 +147,7 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
 
   /** Кнопки рабочего бота. false — не наша кнопка. */
   async onButton(tgId: string, chatId: string, action: string, arg: string, cbMessageId: number | null): Promise<boolean> {
-    if (!['tq', 'dq', 'ux', 'ap', 'rw'].includes(action)) return false;
+    if (!['tq', 'dq', 'ux', 'ap', 'rw', 'sx'].includes(action)) return false;
     const actor = await this.telegram.resolveActor(tgId);
     if (!actor) { await this.say(chatId, { text: T.NO_SPACE }); return true; }
     const own: Own = { tenantId: String(actor.tenant_id), userId: String(actor.user_id) };
@@ -149,6 +158,8 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
       case 'ux': return this.cancel(chatId, own, id).then(() => true);
       case 'ap': return this.approve(chatId, own, id, cbMessageId).then(() => true);
       case 'rw': return this.askReason(tgId, chatId, own, id).then(() => true);
+      case 'sx': return this.stickers.mark(own.tenantId, own.userId, [id], 'delete')
+        .then(() => this.say(chatId, { text: 'Стикер убран.' })).catch(() => this.say(chatId, { text: 'Этого стикера уже нет.' })).then(() => true);
     }
     return false;
   }
@@ -388,6 +399,21 @@ export class TelegramBotWorkService implements OnModuleInit, OnModuleDestroy {
     }
     this.log.warn(`действие в Telegram: ${(e as Error).message}`);
     return T.SOMETHING_WRONG;
+  }
+
+  /** Стикер из Telegram (#4997, шаг 10.2): дата и время — из текста, без даты — в «Идеи без даты». */
+  private async makeSticker(own: Own, chatId: string, text: string): Promise<void> {
+    const s = await this.stickers.create(own.tenantId, own.userId, { text: stripCommand(text), source: 'telegram', fallbackDate: 'none' });
+    const when = s.date
+      ? new Date(`${s.date}T12:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' })
+      : null;
+    await this.say(chatId, {
+      text: `📌 Приклеил${when ? ` на ${when}${s.time ? `, ${s.time}` : ''}` : ' в «Идеи без даты»'}: «${s.text}»${s.time ? '\nНапомню в это время.' : ''}`,
+      markup: { inline_keyboard: [[
+        { text: 'Изменить дату', url: `${this.base}/stickers` },
+        { text: 'Отменить', callback_data: `b:sx:${s.id}` },
+      ]] } as never,
+    });
   }
 
   private async say(chatId: string, m: { text: string; markup?: T.Keyboard }): Promise<void> {

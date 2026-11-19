@@ -82,6 +82,7 @@ import { initialsOf } from '../lib/initials';
 import { DeepFocusGuard } from '../components/DeepFocusGuard';
 import { useTitleHint } from '../lib/page-title';
 import { splitMessage } from '../lib/split-message';
+import { openQuickSticker } from '../lib/stickers-api';
 
 /** Сенсорный экран: подсказки «Tab — вставить» там не работают. */
 
@@ -1935,6 +1936,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
     },
     { label: 'Выделить', icon: 'check-circle' as const, onClick: () => { selAt.current = String(m.id); setSel([String(m.id)]); } },
     { label: 'Напомнить', icon: 'clock' as const, onClick: () => setRemindFor(String(m.id)) },
+    // #4997, шаг 10.1: мысль из переписки — на стикер, со ссылкой «открыть сообщение»
+    ...(String(m.body ?? '').trim() ? [{
+      label: '📌 На стикер',
+      icon: 'pin' as const,
+      onClick: () => openQuickSticker({ text: String(m.body).trim().slice(0, 600), source: 'chat', sourceRef: { chatId: String(activeId ?? ''), messageId: String(m.id) } }),
+    }] : []),
     ...(!mine && !m.is_ai && !m.thread_root_id ? [{
       label: 'Пометить как непрочитанное',
       icon: 'mail' as const,

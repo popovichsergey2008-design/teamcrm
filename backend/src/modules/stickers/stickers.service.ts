@@ -11,6 +11,8 @@ export interface StickerOut {
   id: string; text: string; body: string | null; date: string | null; time: string | null; color: string;
   source: string; sourceRef: Record<string, unknown> | null; doneAt: string | null; deletedAt: string | null;
   taskId: string | null; eventId: string | null; position: number; createdAt: string;
+  /** Напоминание ушло, а стикер не закрыт — красная точка (шаг 6.1). */
+  reminded: boolean;
 }
 
 export const stickerOut = (r: StickerRow): StickerOut => ({
@@ -18,6 +20,7 @@ export const stickerOut = (r: StickerRow): StickerOut => ({
   sourceRef: r.source_ref, doneAt: r.done_at ? new Date(r.done_at).toISOString() : null,
   deletedAt: r.deleted_at ? new Date(r.deleted_at).toISOString() : null, taskId: r.task_id, eventId: r.event_id,
   position: Number(r.position), createdAt: new Date(r.created_at).toISOString(),
+  reminded: !!r.reminded_at && !r.snooze_until && !r.done_at,
 });
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -122,6 +125,12 @@ export class StickersService {
     const clean = ids.filter((x) => /^\d+$/.test(x)).slice(0, 500);
     if (!clean.length) throw AppException.validation('Не выбрано ни одного стикера');
     return { changed: await this.repo.mark(tenantId, userId, clean, action) };
+  }
+
+  async snooze(tenantId: string, userId: string, id: string, minutes: number) {
+    const m = Math.min(24 * 60, Math.max(5, Math.round(minutes)));
+    if (!(await this.repo.snooze(tenantId, userId, id, m))) throw AppException.notFound('Стикер не найден');
+    return { snoozed: m };
   }
 
   async overdueToToday(tenantId: string, userId: string) {
