@@ -29,6 +29,11 @@ import { MailboxService } from '../mailbox/mailbox.service';
 import { PulseService } from '../radar/pulse.service';
 import { classify, digestText, unansweredText } from './chat-digest-rules';
 import { BUFFER_MIN, conflicts, dayRu, findSlots, slotRu, timeRu } from './slot-rules';
+import { StickersService } from '../stickers/stickers.service';
+import { stripCommand } from '../stickers/sticker-rules';
+
+/** «пн, 23 ноября» — день стикера по-человечески. */
+const stickerDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long', timeZone: 'UTC' });
 
 /** Почты нет — не одна строка «подключите», а путь по шагам со снимками (заказчик, 12.11). */
 /*
@@ -116,6 +121,8 @@ export interface ToolDeps {
   proactive: ProactiveService;
   /** Тариф ИИ (ТЗ-33): интернет — только при «Расширенном», с резервом и списанием кредитов. */
   plan: AiPlanService;
+  /** #4997: стикеры-напоминалки — «напомни…», «мысль…», «идея…» приклеиваются стикером. */
+  stickers: StickersService;
 }
 
 /** Сколько знаков прочитанной страницы отдаём модели: суть статьи, а не весь сайт. */
@@ -126,7 +133,7 @@ const dateRu = (d: Date | string | null | undefined) => (d ? new Date(d).toLocal
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 export function buildTools(deps: ToolDeps): ToolDef[] {
-  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload, proactive, plan } = deps;
+  const { repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload, proactive, plan, stickers } = deps;
 
   /** Клиент по названию или номеру — тем же поиском, что в разделе, и с теми же правами. */
   const findClient = async (ctx: ToolContext, key: string) => {
@@ -1129,6 +1136,24 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     },
     // ── сводки секретаря (ТЗ-18) ──
     {
+      name: 'list_stickers', kind: 'read',
+      description: 'Стикеры человека: «что у меня на завтра», «покажи идеи», «что на стикерах». when — today, tomorrow, week, overdue, ideas или дата YYYY-MM-DD.',
+      params: { when: 'today | tomorrow | week | overdue | ideas | YYYY-MM-DD' },
+      async run(ctx, p) {
+        const board = await stickers.board(ctx.tenantId, ctx.user.userId);
+        const today = board.today;
+        const add = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+        const w = str(p.when, 20) || 'today';
+        const pick = w === 'ideas' ? board.items.filter((s) => !s.date)
+          : w === 'overdue' ? board.items.filter((s) => s.date && s.date < today)
+          : w === 'week' ? board.items.filter((s) => s.date && s.date >= today && s.date <= add(today, 6))
+          : board.items.filter((s) => s.date === (w === 'tomorrow' ? add(today, 1) : /^\d{4}-\d{2}-\d{2}$/.test(w) ? w : today));
+        if (!pick.length) return { text: 'Стикеров на это время нет. Вся доска — раздел «Стикеры».', sources: [] };
+        const lines = pick.slice(0, 30).map((s) => `• [${s.id}] ${s.text}${s.date && w !== 'today' && w !== 'tomorrow' ? ` — ${stickerDay(s.date)}` : ''}${s.time ? `, ${s.time}` : ''}`);
+        return { text: `Стикеры (${pick.length}):\n${lines.join('\n')}\nОтметить «Готово» или перенести — скажите, какой. Вся доска — раздел «Стикеры».`, sources: [] };
+      },
+    },
+    {
       name: 'my_day', kind: 'read',
       description: 'Сводка дня человека: встречи сегодня, просрочки, сроки сегодня, блокеры, что ждёт его решения, непрочитанные личные. Для «что у меня сегодня», «утренний брифинг», «что горит». kind — morning (что сегодня) или evening (итоги дня: что сделано, что завтра).',
       params: { kind: 'morning | evening (по умолчанию morning)' },
@@ -1583,6 +1608,65 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async execute(ctx, p) {
         await calendar.remove(ctx.tenantId, ctx.user, String(p.eventId));
         return { text: `Встреча «${p.title}» отменена.${Number(p.participants) ? ' Участникам ушла отмена.' : ''}`, output: { eventId: String(p.eventId) }, sources: [] };
+      },
+    },
+    {
+      name: 'create_sticker', kind: 'write',
+      description: 'Приклеить стикер — по словам «напомни…», «не забыть…», «мысль…», «идея…», «заметка…»: это стикер, а не задача. '
+        + 'text — сама мысль без слова-команды; date — YYYY-MM-DD, если день назван или ясен из слов («в понедельник», «завтра»), '
+        + 'пусто — если это идея или мысль без срока (уйдёт в «Идеи без даты»); time — HH:MM, если назван час (тогда напомнит в это время); '
+        + 'color — yellow (мысль), pink (срочно), green (идея), blue (звонок/встреча), lilac (личное), можно не указывать. '
+        + 'Если неясно, на какой день («позвонить Ивану» без дня), спроси одним вопросом: «Куда приклеить? Сегодня · Завтра · Без даты».',
+      params: { text: 'что не забыть', date: 'YYYY-MM-DD или пусто', time: 'HH:MM или пусто', color: 'yellow | pink | green | blue | lilac (необязательно)' },
+      async preview(_ctx, p) {
+        const text = stripCommand(str(p.text, 600));
+        if (!text) throw new Error('Не понял, что приклеить');
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(str(p.date, 20)) ? str(p.date, 20) : null;
+        const time = date && /^\d{2}:\d{2}$/.test(str(p.time, 10)) ? str(p.time, 10) : null;
+        const color = str(p.color, 16);
+        return {
+          text: `📌 Приклеить${date ? ` на ${stickerDay(date)}${time ? `, ${time}` : ''}` : ' в «Идеи без даты»'}: «${text}»`,
+          params: { text, date, time, ...(color ? { color } : {}) },
+        };
+      },
+      async execute(ctx, p) {
+        const s = await stickers.create(ctx.tenantId, ctx.user.userId, {
+          text: str(p.text, 600), date: (p.date as string | null) ?? null, time: (p.time as string | null) ?? null,
+          color: (p.color as string | undefined) ?? null, source: 'bot',
+        });
+        return {
+          text: `📌 Приклеил${s.date ? ` на ${stickerDay(s.date)}${s.time ? `, ${s.time}` : ''}` : ' в «Идеи без даты»'}: «${s.text}».${s.time ? ' Напомню в это время.' : ''} Доска — раздел «Стикеры».`,
+          output: { stickerId: s.id }, sources: [],
+        };
+      },
+      async undo(ctx, output) {
+        await stickers.mark(ctx.tenantId, ctx.user.userId, [String(output.stickerId)], 'delete');
+        return 'Стикер убран.';
+      },
+    },
+    {
+      name: 'sticker_update', kind: 'write',
+      description: 'Отметить стикер «Готово» или перенести на другой день. id — номер из list_stickers; action — done или move; date — YYYY-MM-DD для move (пусто — «без даты»).',
+      params: { id: 'номер стикера', action: 'done | move', date: 'YYYY-MM-DD для move' },
+      async preview(_ctx, p) {
+        const id = str(p.id, 20);
+        if (!/^\d+$/.test(id)) throw new Error('Не понял, какой стикер');
+        const action = p.action === 'move' ? 'move' : 'done';
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(str(p.date, 20)) ? str(p.date, 20) : null;
+        return { text: action === 'done' ? 'Отметить стикер «Готово»?' : `Перенести стикер ${date ? `на ${stickerDay(date)}` : 'в «Идеи без даты»'}?`, params: { id, action, date } };
+      },
+      async execute(ctx, p) {
+        const id = String(p.id);
+        if (p.action === 'move') {
+          const s = await stickers.update(ctx.tenantId, ctx.user.userId, id, { date: (p.date as string | null) ?? null });
+          return { text: `Перенёс «${s.text}»${s.date ? ` на ${stickerDay(s.date)}` : ' в «Идеи без даты»'}.`, output: { stickerId: id, moved: true }, sources: [] };
+        }
+        await stickers.mark(ctx.tenantId, ctx.user.userId, [id], 'done');
+        return { text: 'Готово — стикер снят с доски (30 дней лежит в «Сделано»).', output: { stickerId: id, done: true }, sources: [] };
+      },
+      async undo(ctx, output) {
+        if (output.done) await stickers.mark(ctx.tenantId, ctx.user.userId, [String(output.stickerId)], 'undone');
+        return 'Вернул как было.';
       },
     },
     {

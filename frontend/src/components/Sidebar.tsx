@@ -29,6 +29,7 @@ import { AppUpdateRow } from './AppUpdateRow';
 import './sidebar-v3.css';
 import { initialsOf } from '../lib/initials';
 import { restartTour } from '../lib/tour';
+import { openBotPanel, openQuickSticker } from '../lib/stickers-api';
 
 /**
  * Левая панель — единственная навигация приложения.
@@ -142,6 +143,13 @@ const MENU: Item[] = [
     label: 'Календарь',
     icon: 'calendar',
     hint: 'Встречи, приглашения и сроки задач — неделей, днём, месяцем или списком',
+  },
+  {
+    // #4997: стикеры-напоминалки — доска мыслей по датам, под «Календарём»
+    section: 'stickers',
+    label: 'Стикеры',
+    icon: 'pin',
+    hint: 'Мысли и «не забыть» — цветными стикерами по дням',
   },
   {
     /*
@@ -726,6 +734,18 @@ export function Sidebar({
                 aria-label="Голосовой поиск"
               >
                 <Icon name="mic" size={16} />
+              </button>
+            </div>
+            {/*
+              #4997, шаг 0.3: QEVO Bot и «＋ Стикер» — вверху меню, видны на любой странице:
+              ими пользуются по десять раз в день. Бот открывается справа, поверх страницы.
+            */}
+            <div className="nav-quick" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+              <button className="ui-btn ui-btn-primary ui-btn-sm nav-quick-bot" style={{ flex: 1 }} onClick={() => { setOpen(false); openBotPanel(); }} title="QEVO Bot — справа, поверх страницы" aria-label="QEVO Bot">
+                <QevoBotMark size={20} /> <span className="nav-label">QEVO Bot</span>
+              </button>
+              <button className="ui-btn ui-btn-outline ui-btn-sm nav-quick-sticker" onClick={() => { setOpen(false); openQuickSticker(); }} title="Новый стикер (Alt+N)" aria-label="Новый стикер">
+                <Icon name="plus" size={15} /> <span className="nav-label">Стикер</span>
               </button>
             </div>
           </div>

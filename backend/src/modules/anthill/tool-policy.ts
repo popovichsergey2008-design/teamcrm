@@ -89,11 +89,15 @@ export const TOOL_POLICY: Record<string, ToolPolicy> = {
   unanswered: { ...READ, permission: 'chat.view' },
   time_audit: READ,
   my_events: READ,
+  list_stickers: READ,
 
   create_reminder: { risk: 'low_write', group: 'self', affectsOthers: false },
   create_scheduled_task: { risk: 'low_write', group: 'self', affectsOthers: false, alwaysConfirm: true },
   create_skill: { risk: 'low_write', group: 'self', affectsOthers: false },
   remember: { risk: 'low_write', group: 'self', affectsOthers: false },
+  // #4997: стикеры — личные, сразу, с «Отменить»
+  create_sticker: { risk: 'low_write', group: 'self', affectsOthers: false },
+  sticker_update: { risk: 'low_write', group: 'self', affectsOthers: false },
 
   create_task: { risk: 'high_write', group: 'tasks', permission: 'task.create', affectsOthers: true },
   update_task: {

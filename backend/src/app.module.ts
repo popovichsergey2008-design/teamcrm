@@ -102,6 +102,7 @@ import { LinkCardsModule } from './modules/link-cards/link-cards.module';
 import { MigrationImportModule } from './modules/migration-import/migration-import.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { CalendarPlusModule } from './modules/calendar-plus/calendar-plus.module';
+import { StickersModule } from './modules/stickers/stickers.module';
 import { FocusPlusModule } from './modules/focus-plus/focus-plus.module';
 import { BookingModule } from './modules/booking/booking.module';
 import { FeedModule } from './modules/feed/feed.module';
@@ -198,6 +199,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     MediaModule,
     CalendarModule,
     CalendarPlusModule,
+    StickersModule, // #4997: стикеры-напоминалки
     FocusPlusModule,
     BookingModule,
     FeedModule,

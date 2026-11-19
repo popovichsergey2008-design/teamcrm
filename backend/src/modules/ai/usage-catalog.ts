@@ -47,6 +47,7 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'onboarding_demo', title: 'Демо AI-созвона в онбординге', where: 'Онбординг → «Протестировать магию AI-созвона»', group: 'meetings' },
   { key: 'meeting_summary_quick', title: 'Итоги встречи: «Кратко»', where: 'Экран итогов после звонка', group: 'meetings' },
   { key: 'meeting_summary_addendum', title: 'Итоги встречи: дополнение голосом', where: 'Протокол встречи → «Дополнить голосом»', group: 'meetings' },
+  { key: 'sticker_title', title: 'Стикеры: заголовок длинной надиктовки', where: 'Стикеры → надиктовать', group: 'meetings' },
   { key: 'meeting_agenda', title: 'Повестка перед встречей', where: 'Секретарь, за 5 минут до начала', group: 'meetings' },
   { key: 'standup_parse', title: 'Разбор дейлика из Telegram', where: 'Бот QEVO в Telegram', group: 'meetings' },
 

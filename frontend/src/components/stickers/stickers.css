@@ -1,0 +1,78 @@
+/*
+  Стикеры (#4997). Листки — пастельные, как настоящая бумага, в обеих темах одинаковые:
+  тёмный текст на светлом цвете читается и в тёмном интерфейсе.
+*/
+:root {
+  --st-yellow: #fde68a; --st-pink: #fbb6ce; --st-green: #bbf0a8; --st-blue: #a9dbff; --st-lilac: #dccbfb;
+  --st-ink: #1f2430; --st-ink-dim: #4a5160;
+}
+.st-yellow { --st-bg: var(--st-yellow); }
+.st-pink { --st-bg: var(--st-pink); }
+.st-green { --st-bg: var(--st-green); }
+.st-blue { --st-bg: var(--st-blue); }
+.st-lilac { --st-bg: var(--st-lilac); }
+
+/* ── быстрое окно «＋ Стикер» ── */
+.qs-veil { position: fixed; inset: 0; z-index: 70; background: rgba(10, 14, 24, .35); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+.qs-card {
+  width: min(560px, 100%); background: var(--st-bg); color: var(--st-ink); border-radius: 6px; padding: 16px 18px 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .35); transform: rotate(-.6deg); display: flex; flex-direction: column; gap: 10px;
+}
+.qs-kicker { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--st-ink-dim); }
+.qs-text {
+  width: 100%; border: 0; border-bottom: 1px dashed rgba(31, 36, 48, .35); background: transparent; color: var(--st-ink);
+  font: inherit; font-size: 20px; line-height: 1.35; resize: none; padding: 2px 0 8px; outline: none;
+}
+.qs-text::placeholder { color: rgba(31, 36, 48, .5); }
+.qs-hint { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--st-ink-dim); }
+.qs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.qs-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid rgba(31, 36, 48, .3); background: rgba(255, 255, 255, .35); color: var(--st-ink); font: inherit; font-size: 14px; cursor: pointer;
+}
+.qs-chip:hover { background: rgba(255, 255, 255, .6); }
+.qs-chip.is-on { background: var(--st-ink); color: #fff; border-color: var(--st-ink); }
+.qs-pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.qs-time { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; margin-left: 4px; }
+.qs-x { border: 0; background: transparent; color: var(--st-ink-dim); cursor: pointer; padding: 2px; display: inline-grid; }
+.qs-bottom { justify-content: space-between; }
+.qs-colors { display: inline-flex; gap: 8px; }
+.qs-dot { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(31, 36, 48, .25); background: var(--st-bg); cursor: pointer; padding: 0; }
+.qs-dot.is-on { outline: 2px solid var(--st-ink); outline-offset: 2px; }
+.qs-mic {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer;
+  background: rgba(31, 36, 48, .12); color: var(--st-ink);
+}
+.qs-mic:hover { background: rgba(31, 36, 48, .2); }
+.qs-mic.is-rec { background: #e5484d; color: #fff; animation: qs-pulse 1.2s ease-in-out infinite; }
+@keyframes qs-pulse { 50% { box-shadow: 0 0 0 8px rgba(229, 72, 77, .2); } }
+.qs-err { font-size: 13px; color: #b42318; }
+.qs-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; font-size: 12px; color: var(--st-ink-dim); }
+.qs-foot kbd { font: inherit; font-size: 11px; padding: 1px 6px; border: 1px solid rgba(31, 36, 48, .3); border-radius: 4px; background: rgba(255, 255, 255, .4); }
+.qs-save { margin-left: auto; border: 0; border-radius: 8px; height: 32px; padding: 0 14px; background: var(--st-ink); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.qs-save:disabled { opacity: .5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .qs-card { transform: none; } .qs-mic.is-rec { animation: none; } }
+
+/* ── листок на доске ── */
+.st-note {
+  position: relative; background: var(--st-bg); color: var(--st-ink); border-radius: 4px; padding: 12px 14px 10px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, .08), 0 6px 14px rgba(0, 0, 0, .18); cursor: grab; font-size: 15px; line-height: 1.35;
+  transform: rotate(var(--st-tilt, 0deg)); transition: transform .12s, box-shadow .12s, opacity .3s;
+  overflow-wrap: anywhere; user-select: none;
+}
+.st-note:hover { transform: rotate(0deg) translateY(-1px); box-shadow: 0 10px 22px rgba(0, 0, 0, .25); }
+.st-note.is-drag { opacity: .45; }
+.st-note.is-done { text-decoration: line-through; opacity: .45; transform: scale(.96); }
+.st-note.is-sel { outline: 3px solid var(--accent); outline-offset: 2px; }
+.st-note-meta { margin-top: 6px; font-size: 12px; color: var(--st-ink-dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.st-note-body { margin-top: 6px; font-size: 13px; color: var(--st-ink-dim); white-space: pre-wrap; }
+.st-note-acts { position: absolute; top: -12px; right: 6px; display: none; gap: 3px; }
+.st-note:hover .st-note-acts, .st-note:focus-within .st-note-acts { display: flex; }
+.st-act {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border-2); background: var(--bg-elev); color: var(--text);
+  display: grid; place-items: center; cursor: pointer; padding: 0; box-shadow: var(--shadow);
+}
+.st-act:hover { border-color: var(--accent); color: var(--accent); }
+.st-link { border: 0; background: transparent; padding: 0; color: var(--st-ink-dim); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12px; }
+.st-edit { width: 100%; border: 0; background: rgba(255, 255, 255, .45); color: var(--st-ink); font: inherit; border-radius: 3px; padding: 4px; resize: vertical; }
+@media (prefers-reduced-motion: reduce) { .st-note { transition: none; transform: none; } }

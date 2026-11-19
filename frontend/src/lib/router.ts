@@ -22,7 +22,9 @@ export type Section = 'focus' | 'calendar' | 'news' | 'tasks' | 'projects' | 'ch
   /** #4807 §6: «Входящие» — `/inbox`, вкладка — `/inbox/ai` и т. п. */
   | 'inbox'
   /** #4922: страница поиска `/search/<запрос>`; запрос — в `view` */
-  | 'search';
+  | 'search'
+  /** #4997: стикеры-напоминалки — `/stickers` */
+  | 'stickers';
 
 /**
  * Разобранный адрес. Плоский на одном уровне: сузить тип по секции можно и в месте
@@ -59,7 +61,7 @@ export type Route = {
 };
 
 const SECTIONS: Section[] = [
-  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients', 'inbox', 'search',
+  'focus', 'calendar', 'news', 'tasks', 'projects', 'chat', 'radar', 'support', 'console', 'settings', 'profile', 'meet', 'clients', 'inbox', 'search', 'stickers',
 ];
 
 /** По ТЗ приложение открывается на «Фокусе дня», а не на досках. */

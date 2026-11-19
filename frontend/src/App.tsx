@@ -25,7 +25,6 @@ import { useNavCounters } from './hooks/useNavCounters';
 import { useTabAlert } from './hooks/useTabAlert';
 import { Sidebar } from './components/Sidebar';
 import { BottomNav } from './components/BottomNav';
-import { Icon } from './components/Icon';
 import { Toasts } from './components/Toasts';
 import { isConsoleHost, mainSiteHref, navigate, parsePath, Section, useRoute } from './lib/router';
 import { pageTitleFor, TITLE_HINTS_EVENT } from './lib/page-title';
@@ -58,6 +57,7 @@ import { useSeedStickyChecks } from './lib/sticky-checks';
 import { setEffectsPrefs } from './lib/feedback';
 import { seedTour, useTourWanted, useWelcome } from './lib/tour';
 import { promptText } from './components/ui/dialog';
+import { BOT_PANEL_OPEN, STICKER_NEW, stickerTaskCreated } from './lib/stickers-api';
 
 /*
   Разделы, которые открывают не каждый день, грузятся по требованию (ТЗ-15, этап 0).
@@ -129,6 +129,10 @@ const FocusSessionHost = lazyComponent(() => import('./components/FocusSessionHo
 const LockScreen = lazyComponent(() => import('./components/LockScreen').then((m) => m.LockScreen));
 const ProfilePanel = lazyComponent(() => import('./components/ProfilePanel').then((m) => m.ProfilePanel));
 const NlCommandModal = lazyComponent(() => import('./components/NlCommandModal').then((m) => m.NlCommandModal));
+// #4997: стикеры — окно, раздел и QEVO Bot справа грузятся по первому вызову, не в стартовую сборку
+const QuickSticker = lazyComponent(() => import('./components/stickers/QuickSticker').then((m) => m.QuickSticker));
+const StickersPage = lazy(() => import('./pages/stickers/StickersPage').then((m) => ({ default: m.StickersPage })));
+const BotDrawer = lazyComponent(() => import('./components/stickers/BotDrawer').then((m) => m.BotDrawer));
 const InboxPanel = lazyComponent(() => import('./components/InboxPanel').then((m) => m.InboxPanel));
 // центр уведомлений (#4655): в первом экране — только значок со счётчиком
 const NotificationCenter = lazyComponent(() => import('./components/notifications/NotificationCenter').then((m) => m.NotificationCenter));
@@ -280,6 +284,23 @@ export function App() {
   */
   // окно быстрой команды: null — закрыто; текст и голос приходят из командной строки
   const [nl, setNl] = useState<{ text?: string; voice?: boolean; draft?: TaskDraft } | null>(null);
+  /*
+    #4997: быстрый стикер — кнопкой «＋ Стикер», Alt+N с любого экрана или из меню сообщения;
+    QEVO Bot — панелью справа поверх страницы.
+  */
+  const [sticker, setSticker] = useState<{ text?: string; sourceRef?: Record<string, unknown>; source?: string } | null>(null);
+  const [botPanel, setBotPanel] = useState(false);
+  useEffect(() => {
+    const on = (e: Event) => setSticker((e as CustomEvent).detail ?? {});
+    const bot = () => setBotPanel(true);
+    const key = (e: KeyboardEvent) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === 'KeyN') { e.preventDefault(); setSticker({}); }
+    };
+    window.addEventListener(STICKER_NEW, on);
+    window.addEventListener(BOT_PANEL_OPEN, bot);
+    window.addEventListener('keydown', key);
+    return () => { window.removeEventListener(STICKER_NEW, on); window.removeEventListener(BOT_PANEL_OPEN, bot); window.removeEventListener('keydown', key); };
+  }, []);
   // «Создать задачу» из любого места с готовым текстом (ТЗ-20 §50: комментарий новости → задача)
   useEffect(() => {
     const open = (e: Event) => setNl({ text: (e as CustomEvent<{ text?: string }>).detail?.text ?? '' });
@@ -909,6 +930,7 @@ export function App() {
         )}
         {route.section === 'radar' && canManage && <Suspense fallback={pageFallback}><PulsePage /></Suspense>}
         {route.section === 'search' && <Suspense fallback={pageFallback}><SearchPage query={route.view ?? ''} /></Suspense>}
+        {route.section === 'stickers' && <Suspense fallback={pageFallback}><StickersPage /></Suspense>}
         {route.section === 'clients' && CLIENTS_ENABLED && (
           <Suspense fallback={pageFallback}><ClientsPage clientId={route.clientId} /></Suspense>
         )}
@@ -1026,10 +1048,12 @@ export function App() {
           onDecline={decline}
         />
       )}
-      {/* Кнопка диктовки под большим пальцем: на телефоне до Ctrl+K не дотянуться.
-          Где есть своё поле ввода (переписка, чат задачи, бот, поддержка) — прячется в CSS по DOM. */}
-      <button className="voice-fab" onClick={() => setPaletteOpen({ voice: true })} aria-label="Продиктовать">
-        <Icon name="mic" size={22} />
+      {/*
+        #4997, шаг 0.1: плавающего микрофона больше нет — голос теперь удержанием центральной
+        кнопки бота. «Ещё» на телефоне — меню по аватарке вверху справа.
+      */}
+      <button className="mob-avatar" onClick={() => window.dispatchEvent(new Event('teamcrm:open-sidebar'))} aria-label="Меню и все разделы">
+        {(user.fullName || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
       </button>
 
       {/*
@@ -1088,9 +1112,11 @@ export function App() {
           currentProjectId={route.projectId ?? boardReported.current.projectId ?? null}
           /* ТЗ-31: на доске — она и есть проект; не на доске — последняя доска лишь среди вариантов */
           currentKind={route.projectId ? 'board' : 'last'}
-          onCreated={(projectId, taskId) => navigate({ section: 'projects', projectId, taskId })}
+          onCreated={(projectId, taskId) => { void stickerTaskCreated(String(taskId)); navigate({ section: 'projects', projectId, taskId }); }}
         />
       )}
+      {sticker && <QuickSticker prefill={sticker} onClose={() => setSticker(null)} />}
+      {botPanel && <BotDrawer onClose={() => setBotPanel(false)} />}
     </div>
   );
 }

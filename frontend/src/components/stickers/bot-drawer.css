@@ -1,0 +1,9 @@
+/* QEVO Bot справа поверх страницы (#4997, шаг 0.3) */
+.botd-veil { position: fixed; inset: 0; z-index: 65; background: rgba(10, 14, 24, .25); display: flex; justify-content: flex-end; }
+.botd {
+  width: min(440px, 100vw); height: 100%; background: var(--bg-elev); border-left: 1px solid var(--border-2);
+  box-shadow: var(--shadow-lg); display: flex; flex-direction: column; min-height: 0; animation: botd-in .18s ease-out;
+}
+.botd > * { flex: 1; min-height: 0; }
+@keyframes botd-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .botd { animation: none; } }

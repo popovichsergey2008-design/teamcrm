@@ -34,6 +34,7 @@ import { answerRows, NextButton, nextSteps } from './next-steps';
 import { xlsxFrom } from './xlsx';
 import { detectKind, extractText } from '../knowledge/file-text';
 import { decodeUploadName } from '../files/files.validation';
+import { StickersService } from '../stickers/stickers.service';
 
 /** Что открыто у человека — для «что здесь нужно сделать» без ссылки (разд. 4–5). */
 export interface PageContext { type: 'task' | 'project' | 'chat' | 'meeting'; id: string }
@@ -99,8 +100,9 @@ export class AnthillService {
     tasks: TasksService, chats: ChatsService, search: SearchService, nl: NlService, ask: AskService,
     files: FilesService, taskcard: TaskCardService, forecast: ForecastService, calendar: CalendarService,
     knowledge: KnowledgeService, clients: ClientsService, briefs: BriefService, mail: MailboxService, pulse: PulseService, feed: FeedService, workload: WorkloadGuardService, proactive: ProactiveService,
+    stickers: StickersService,
   ) {
-    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload, proactive, plan: aiPlan });
+    this.tools = buildTools({ repo, admin, calendar, tasks, chats, search, nl, ask, files, taskcard, forecast, knowledge, clients, briefs, mail, pulse, feed, workload, proactive, plan: aiPlan, stickers });
   }
 
   private base() { return (process.env.APP_BASE_URL || 'https://app.qevo.one').replace(/\/+$/, ''); }
@@ -1239,7 +1241,9 @@ const PLAN_SYSTEM = [
   + 'рынок, конкуренты, новости отрасли — web_search; клиенты — client_overview, search_clients; '
   + 'учёт времени и продуктивность — time_audit; документы и шаблоны — create_document. '
   + 'Всё, что звучит как «каждый день / каждую пятницу / присылай / напоминай регулярно», — create_scheduled_task или create_reminder, а не разовый ответ. '
-  + '«Напомни по каждому…» — по шагу create_reminder на каждый пункт, найденный read-инструментом.',
+  + '«Напомни по каждому…» — по шагу create_reminder на каждый пункт, найденный read-инструментом. '
+  + 'Разовое «напомни…», «не забыть…», «мысль…», «идея…», «заметка…» — create_sticker (стикер на доске по датам; со временем — напомнит), '
+  + 'а не задача и не create_reminder; create_reminder — только для повторов («каждый понедельник»). «Что у меня на завтра / покажи идеи / мои стикеры» — list_stickers.',
 ].join(' ');
 
 /** Правила ответа без строки «кто ты»: под чужим именем (служба заботы) они те же. */

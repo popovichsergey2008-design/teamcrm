@@ -4186,7 +4186,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .focus-template:focus-visible, .focus-clear:focus-visible,
 .settings-card:focus-visible,
 .palette-item:focus-visible, .palette-mic:focus-visible, .palette-input:focus-visible,
-.voice-fab:focus-visible, .call-pill-btn:focus-visible, .call-pill-back:focus-visible,
+.call-pill-btn:focus-visible, .call-pill-back:focus-visible,
 .project-item:focus-visible, .menu-item:focus-visible,
 .add-column:focus-visible, .chat-ai-toggle:focus-visible, .chat-row:focus-visible,
 .col-btn:focus-visible, .call-ai-status:focus-visible, .dp-chip:focus-visible, .dp-nav:focus-visible, .dp-year:focus-visible, .dp-trigger:focus-visible,
@@ -4264,20 +4264,11 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 /* Кому движение мешает — тому ровные полоски: запись видна и без пульсации. */
 @media (prefers-reduced-motion: reduce) { .voice-wave i { animation: none; } }
 
-/* кнопка диктовки под большим пальцем — только на узком экране */
-.voice-fab { display: none; }
-@media (max-width: 1100px) {
-  .voice-fab {
-    display: grid; place-items: center; position: fixed; right: 16px; bottom: calc(16px + var(--bottom-nav-h)); z-index: 44;
-    width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
-    background: var(--accent-2); color: var(--on-accent); border: none; box-shadow: var(--shadow-lg);
-  }
-  /*
-    Где на экране есть своё поле ввода с микрофоном — переписка, чат задачи, QEVO Bot,
-    служба заботы — кружок не нужен: он ложился на правый край поля и кнопку «Отправить».
-    Решаем по DOM, а не по маршруту: бот и карточка задачи адреса не меняют.
-  */
-  body:has(.chat-input, .comment-input, .support-compose) .voice-fab { display: none; }
+/* #4997, шаг 0.1–0.2: QEVO Bot — большая круглая кнопка по центру нижней панели; удержать — голос */
+.bn-bot { flex: 1 1 0; display: flex; justify-content: center; align-items: flex-start; background: none; border: 0; padding: 0; position: relative; }
+.mob-avatar { display: none; }
+@media (max-width: 720px) {
+  .mob-avatar { display: grid; place-items: center; position: fixed; z-index: 45; top: calc(var(--safe-top, 0px) + 10px); right: 54px; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
 }
 
 /* планирование дня на карточке: намеренно неброско — это личный план, а не срок */

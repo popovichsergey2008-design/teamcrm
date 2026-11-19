@@ -27,6 +27,7 @@ import { RadarModule } from '../radar/radar.module';
 import { BotDelivery } from './bot-delivery.service';
 import { BriefRepository } from './brief.repository';
 import { BriefService } from './brief.service';
+import { StickersModule } from '../stickers/stickers.module';
 
 /**
  * QEVO Bot — оркестратор над существующими модулями: задачи, чаты, поиск,
@@ -36,6 +37,8 @@ import { BriefService } from './brief.service';
   imports: [
     AiModule, TasksModule, ChatsModule, SearchModule, NlModule, AssistantModule, RealtimeModule,
     FilesModule, TaskCardModule, ForecastModule, CalendarModule,
+    // #4997: стикеры — «напомни…», «идея…» бот приклеивает стикером
+    StickersModule,
     // #4890: «ждут вашего решения» — одна очередь на все экраны
     DecisionQueueModule,
     // База знаний: из неё агент отвечает на вопросы о том, как работает сама система.
