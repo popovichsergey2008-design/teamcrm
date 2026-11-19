@@ -16,7 +16,7 @@ import {
   countMatching, filterActive, filterBoard, PAUSED_STAGES, QuickKey, realPosition, REVIEW_STAGES,
 } from '../lib/board-filter';
 import { takeDraftOpen, TASK_DRAFT_OPEN, type TaskDraft } from '../lib/task-draft';
-import { BoardQuery, hasSavedQuery, loadQuery, normalize, QUICK, saveQuery, toFilter } from '../lib/board-query';
+import { BoardQuery, hasConditions, hasSavedQuery, loadQuery, normalize, QUICK, saveQuery, showAll, toFilter } from '../lib/board-query';
 import { commonLabels } from '../lib/board-card';
 import { BoardBar } from '../components/board/BoardBar';
 import { ViewsMenu } from '../components/board/ViewsMenu';
@@ -1042,12 +1042,25 @@ export function BoardPage({ initial, onNavigate, onVoiceTask }: {
             {/* #4957: перенос задач предлагаем тем, кто управляет пространством; участнику и гостю — нет */}
             {(user?.role === 'owner' || user?.role === 'manager') && boardEmpty && <CareEmpty k="board" />}
             {filterActive(filterOpts) && shownCount === 0 && !boardEmpty ? (
-              <EmptyState
-                icon="filter"
-                title="По этим условиям задач нет"
-                hint="Условия перечислены над доской — снимите лишнее крестиком или сбросьте их разом. Режим и роли при сбросе останутся."
-                action={{ label: 'Сбросить условия', onClick: () => setQuery({ ...query, quick: [], creatorId: '', assigneeId: '', columnId: '', priority: '', labelId: '', search: '' }) }}
-              />
+              /*
+                Пусто из-за режима «Мои задачи» (своих на доске нет) — «Сбросить условия» не помогал:
+                режим он не трогает, и клиент жал кнопку впустую. Тогда кнопка — «Показать все задачи».
+              */
+              query.scope === 'mine' && !hasConditions(query) ? (
+                <EmptyState
+                  icon="filter"
+                  title="Ваших задач на этой доске нет"
+                  hint={`На доске ${board ? board.columns.reduce((n, c) => n + c.tasks.length, 0) : 0} задач — показать их все?`}
+                  action={{ label: 'Показать все задачи', onClick: () => setQuery(showAll(query)) }}
+                />
+              ) : (
+                <EmptyState
+                  icon="filter"
+                  title="По этим условиям задач нет"
+                  hint="Условия перечислены над доской — снимите лишнее крестиком или сбросьте их разом."
+                  action={{ label: 'Показать все задачи', onClick: () => setQuery(showAll(query)) }}
+                />
+              )
             ) : view === 'list' ? (
               <TaskListView
                 board={shownBoard!}
