@@ -2285,7 +2285,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
   ).map((x) => x.section);
   // Заметки — чат с собой: ссылки и мысли на потом складывают именно туда,
   // а без него пишут их коллеге «чтобы не потерять».
-  const notesRow = selfChat
+  // #4996: «Заметки» в избранном — они уже есть строкой там; запасную кнопку не рисуем,
+  // иначе в списке два «Заметки»
+  const notesRow = favorites.some((c) => c.kind === 'self') ? null : selfChat
     ? (
       <ChatRow
         key={selfChat.id} chat={selfChat} active={String(selfChat.id) === String(activeId)}
