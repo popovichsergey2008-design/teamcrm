@@ -500,12 +500,23 @@ export class RealAiProvider implements AiProvider {
     form.append('response_format', format);
     form.append('language', 'ru');
     if (hint) form.append('prompt', hint.slice(0, 880)); // Whisper читает не больше ~224 токенов
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    /*
+      #4998 (19.11.2026): связь до OpenAI идёт через выходной узел и изредка рвётся —
+      «fetch failed», и человек надиктовывал одно и то же по три раза. Обрыв сети
+      (не ответ сервера с ошибкой) — повторяем один раз через секунду.
+    */
+    const send = () => fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.openaiKey!}` },
       body: form,
       // час записи режется на куски, но каждый кусок — минуты; короткой команде столько не надо
       signal: AbortSignal.timeout(timeoutMs ?? (model === 'whisper-1' ? 300_000 : 20_000)),
+    });
+    const res = await send().catch(async (e: Error) => {
+      if (e?.name === 'TimeoutError' || !/fetch failed|ECONNRESET|socket|network|terminated/i.test(String(e?.message))) throw e;
+      providerLog.warn(`распознавание: сеть оборвалась (${e.message}) — повтор`);
+      await new Promise((r) => setTimeout(r, 1000));
+      return send();
     });
     if (!res.ok) throw new Error(`Whisper HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
     return res.json();
