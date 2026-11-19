@@ -645,6 +645,42 @@ export class MeetingsService implements OnModuleInit {
    * удался (кончились деньги на API) или вышел пустым. Созданные задачи не трогаем —
    * пересобираются только неподтверждённые черновики. Стенограммы нет — полный повтор.
    */
+  /**
+   * Дополнить сводку (19.11.2026): участник надиктовал то, что ИИ пропустил. Модель встраивает
+   * дополнение в сводку, ничего из неё не удаляя; без ИИ — дописываем отдельным абзацем.
+   * Слова человека важнее догадок модели: противоречие решается в пользу дополнения.
+   */
+  async addToSummary(tenantId: string, id: string, userId: string, text: string) {
+    const meeting = await this.repo.get(tenantId, id);
+    if (!meeting) throw AppException.notFound('Встреча не найдена');
+    const add = text.trim();
+    if (add.length < 3) throw AppException.validation('Дополнение пустое — надиктуйте ещё раз');
+    const current = (await this.repo.summary(tenantId, id))?.summary ?? '';
+    const who = (await this.db.one<{ full_name: string }>(`SELECT full_name FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId]))?.full_name ?? 'участник';
+    const appended = `${current ? `${current}
+
+` : ''}Дополнение (${who}): ${add}`;
+    let next = appended;
+    if (current) {
+      const r = await this.ai.generateWithModel(tenantId,
+        'Ниже сводка рабочей встречи и дополнение, которое надиктовал её участник: ИИ пропустил это при разборе. '
+        + 'Встрой дополнение в сводку: ничего из сводки не удаляй и не сокращай, факты из дополнения поставь в подходящие '
+        + 'места или отдельным абзацем; если дополнение противоречит сводке — верно дополнение. Пиши тем же простым языком, '
+        + 'без списков и вступлений. Верни только итоговый текст сводки.',
+        `Сводка:
+${current}
+
+Дополнение (${who}):
+${add}`, 'meeting_summary_addendum',
+      ).catch(() => null);
+      const merged = r && !r.degraded ? cleanSummary(String(r.text ?? '').trim()) : '';
+      // модель потеряла часть сводки — надёжнее просто дописать
+      if (merged && merged.length >= current.length * 0.8) next = merged;
+    }
+    await this.repo.saveSummaryText(tenantId, id, next.slice(0, 8000));
+    return { summary: next.slice(0, 8000) };
+  }
+
   async reanalyze(tenantId: string, id: string) {
     const meeting = await this.repo.get(tenantId, id);
     if (!meeting) throw AppException.notFound('Встреча не найдена');
@@ -819,7 +855,7 @@ ${PRIVACY_PROMPT_RULE}`, text.slice(0, 60_000), 'meeting_summary_quick', {
       .then(async (r) => {
         // ИИ не ответил — заглушку за итоги не выдаём
         if (r.degraded) return null;
-        const summary = cleanSummary(String(r.text ?? '').trim()).slice(0, 4000);
+        const summary = cleanSummary(String(r.text ?? '').trim()).slice(0, 6000);
         if (!summary) return null;
         await this.repo.saveSummaryText(tenantId, meetingId, summary);
         await this.postcall.mark(tenantId, meetingId, { summary: 'ready' });

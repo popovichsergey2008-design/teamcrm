@@ -16,6 +16,7 @@ import { PostcallQuality } from '../components/meetings/PostcallQuality';
 import { useAuth } from '../state/auth';
 import { OptionSelect } from '../components/ui/option-select';
 import { confirmAction } from '../components/ui/dialog';
+import { SummaryAddendum } from '../components/meetings/SummaryAddendum';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'В очереди',
@@ -384,6 +385,8 @@ function MeetingDetails({ id, projects, users, onChanged, seek = null }: {
         <>
           <div className="drawer-section-title">Сводка</div>
           <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{summary.summary}</div>
+          {/* 19.11.2026: ИИ что-то пропустил — дополнить голосом и сохранить */}
+          <SummaryAddendum meetingId={id} onSaved={onChanged} />
           {summary.decisions?.length > 0 && (
             <div style={{ marginTop: 6 }}>
               <div className="dim" style={{ fontSize: 12 }}>Решения:</div>

@@ -17,6 +17,10 @@ class CreateMeetingDto {
   @IsOptional() @IsString() chatId?: string;
 }
 
+class SummaryAddDto {
+  @IsString() @MinLength(3) @MaxLength(6000) text!: string;
+}
+
 class CompletePostcallDto {
   /** Письмо клиенту отправлено с экрана итогов — разбор закрыт полностью. */
   @IsOptional() @IsBoolean() followupSent?: boolean;
@@ -147,6 +151,13 @@ export class MeetingsController {
   async retry(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
     return this.meetings.retry(u.tenantId, id);
+  }
+
+  /** Дополнить сводку голосом или текстом (19.11.2026): то, что ИИ пропустил. */
+  @Post(':id/summary/add')
+  async addToSummary(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: SummaryAddDto) {
+    await this.meetings.assertVisible(u.tenantId, id, { userId: u.userId, role: u.role });
+    return this.meetings.addToSummary(u.tenantId, id, u.userId, dto.text);
   }
 
   /** «Разобрать заново»: итоги и задачи по готовой стенограмме, без повторного распознавания. */
