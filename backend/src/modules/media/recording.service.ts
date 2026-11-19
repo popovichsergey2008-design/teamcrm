@@ -133,14 +133,24 @@ export class RecordingService {
   /** Кто-то включил микрофон уже во время записи — добавляем его дорожку на ходу. */
   async attachLate(room: MeetingRoom, participant: Participant): Promise<void> {
     const session = this.sessions.get(room.id);
-    if (!session || session.tracks.has(participant.userId)) return;
+    if (!session) return;
     await this.attach(room, session, participant).catch((e) =>
       this.log.warn(`дорожка ${participant.userId}: ${(e as Error).message}`));
   }
 
+  /*
+    Дорожка — на ЗВУКОВОЙ ПОТОК, а не на человека (19.11.2026, созвон с Альфабетом).
+    Человека переподключило (rejoin) — у него новый поток, старый закрыт. Раньше «у него
+    уже есть дорожка» — и новую не заводили: запись висела на закрытом потоке, всё, что
+    он сказал после переподключения, терялось, и важное не попадало в сводку.
+    Теперь новый поток того же человека — ещё одна дорожка; при расшифровке все его
+    дорожки подписываются его именем.
+  */
   private async attach(room: MeetingRoom, session: Session, participant: Participant): Promise<void> {
     const audio = [...participant.producers.values()].find((p) => p.kind === 'audio');
-    if (!audio || session.tracks.has(participant.userId)) return;
+    if (!audio) return;
+    if ([...session.tracks.values()].some((t) => t.consumer.producerId === audio.id)) return;
+    const key = session.tracks.has(participant.userId) ? `${participant.userId}~${audio.id.slice(0, 8)}` : participant.userId;
 
     const port = this.allocPort();
     const transport = await room.router.createPlainTransport({
@@ -162,8 +172,8 @@ export class RecordingService {
     if (!codec) throw new Error('нет кодека в потоке');
 
     const safe = participant.displayName.replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 40);
-    const file = join(session.dir, `${participant.userId}-${safe}.ogg`);
-    const sdpPath = join(session.dir, `${participant.userId}.sdp`);
+    const file = join(session.dir, `${key}-${safe}.ogg`);
+    const sdpPath = join(session.dir, `${key}.sdp`);
     await writeFile(sdpPath, [
       'v=0',
       'o=- 0 0 IN IP4 127.0.0.1',
@@ -179,7 +189,7 @@ export class RecordingService {
     proc.stderr?.on('data', (d) => this.log.warn(`ffmpeg ${participant.userId}: ${String(d).slice(0, 200)}`));
 
     await consumer.resume();
-    session.tracks.set(participant.userId, {
+    session.tracks.set(key, {
       userId: participant.userId, displayName: participant.displayName,
       transport, consumer, proc, file, port,
       offsetSec: Math.max(0, (Date.now() - session.startedAt) / 1000),
