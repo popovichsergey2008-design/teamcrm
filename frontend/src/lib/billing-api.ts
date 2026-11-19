@@ -10,6 +10,8 @@ export interface BillingView {
   plan: BillingPlan | null;
   /** За что платили: период и цена продления (не меняются вместе с прайсом). */
   period: 'month' | 'year';
+  /** На сколько месяцев оплачен текущий период (1–12). */
+  months?: number;
   lockedPrice: number | null;
   /** Ближайшее продление — по новой цене (перевод владельцем платформы, §5.4). */
   priceChange: { at: string; price: number; nextPeriod: boolean } | null;
@@ -28,7 +30,20 @@ export interface BillingView {
 
 export const billingApi = {
   view: () => request<BillingView>('GET', '/billing'),
-  checkout: (plan: string, period: 'month' | 'year' = 'month') => request<{ confirmationUrl: string; paymentId: string }>('POST', '/billing/checkout', { plan, period }),
+  /** 19.11.2026: срок — 1–12 месяцев; 12 — год со скидкой, остальное — цена месяца × месяцы. */
+  checkout: (plan: string, months = 1) => request<{ confirmationUrl: string; paymentId: string }>('POST', '/billing/checkout', { plan, months, period: months === 12 ? 'year' : 'month' }),
   check: (paymentId: string) => request<{ status: string }>('POST', `/billing/payments/${paymentId}/check`, {}),
   autopay: (on: boolean) => request<BillingView>('POST', '/billing/autopay', { on }),
 };
+
+/** Цена за срок — так же, как считает сервер (billing-rules.periodPrice). */
+export function periodPrice(month: number, year: number | null, months: number): number {
+  return months === 12 && year != null ? year : month * months;
+}
+
+/** «1 месяц», «3 месяца», «5 месяцев», «1 год». */
+export function periodLabel(months: number): string {
+  if (months === 12) return '1 год';
+  const a = months % 100; const b = months % 10;
+  return `${months} ${a > 10 && a < 20 ? 'месяцев' : b === 1 ? 'месяц' : b >= 2 && b <= 4 ? 'месяца' : 'месяцев'}`;
+}

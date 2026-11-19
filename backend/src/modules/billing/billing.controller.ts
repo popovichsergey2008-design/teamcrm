@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Logger, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser, Public, Roles } from '../../common/auth/decorators';
 import { AuthUser } from '../../common/auth/jwt.types';
 import { BillingService } from './billing.service';
@@ -9,6 +10,8 @@ import { TrialLimitsService } from './trial-limits.service';
 class CheckoutDto {
   @IsString() @MaxLength(32) plan!: string;
   @IsOptional() @IsIn(['month', 'year']) period?: 'month' | 'year';
+  /** 19.11.2026: срок в месяцах (1–12); 12 — год со скидкой. Есть — главнее period. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(12) months?: number;
 }
 class AutopayDto {
   @IsBoolean() on!: boolean;
@@ -41,7 +44,7 @@ export class BillingController {
   @Roles('owner')
   @HttpCode(200)
   checkout(@CurrentUser() u: AuthUser, @Body() dto: CheckoutDto) {
-    return this.billing.checkout(u.tenantId, u.userId, dto.plan, dto.period ?? 'month');
+    return this.billing.checkout(u.tenantId, u.userId, dto.plan, dto.period ?? 'month', dto.months);
   }
 
   /** Вернулся со страницы ЮKassa: сверить платёж сразу, не дожидаясь уведомления. */

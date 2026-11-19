@@ -12,3 +12,7 @@
 /* «Пригласить команду · +1 мес»: полоска «сколько из 6» */
 .team-bonus-bar { height: 6px; border-radius: 999px; background: var(--bg-elev-2); overflow: hidden; }
 .team-bonus-bar > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+/* 19.11.2026: срок оплаты в месяцах — выпадающий список и быстрые кнопки */
+.bil-term { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 4px; }
+.bil-term-label { font-size: var(--fs-sm); color: var(--text-dim); }
+.bil-term-select { width: auto; min-width: 150px; }

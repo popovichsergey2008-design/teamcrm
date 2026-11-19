@@ -116,7 +116,24 @@ export function moveFor(
   return fit.sort((a, b) => b.to_version - a.to_version || Number(b.id) - Number(a.id))[0] ?? null;
 }
 
-export const movePrice = (m: PriceMove, months: number): number => Number(months === 12 ? m.price_year_rub : m.price_month_rub);
+export const movePrice = (m: PriceMove, months: number): number => periodPrice(Number(m.price_month_rub), m.price_year_rub == null ? null : Number(m.price_year_rub), months);
+
+/**
+ * Цена за срок (19.11.2026): на 1–11 месяцев — цена месяца × число месяцев, без скидки;
+ * на год (12) — годовая цена со скидкой, если она есть, иначе тоже × 12.
+ */
+export function periodPrice(month: number, year: number | null, months: number): number {
+  const n = Math.min(12, Math.max(1, Math.round(months)));
+  return n === 12 && year != null ? year : month * n;
+}
+
+/** «1 месяц», «3 месяца», «5 месяцев», «1 год» — для чека и описания платежа. */
+export function periodLabel(months: number): string {
+  if (months === 12) return '1 год';
+  const a = months % 100; const b = months % 10;
+  const w = a > 10 && a < 20 ? 'месяцев' : b === 1 ? 'месяц' : b >= 2 && b <= 4 ? 'месяца' : 'месяцев';
+  return `${months} ${w}`;
+}
 
 /** Новую цену списываем, только если о ней сказали заранее; иначе — ещё период по прежней. */
 export function moveReady(notifiedAt: unknown, periodEnd: Date): boolean {

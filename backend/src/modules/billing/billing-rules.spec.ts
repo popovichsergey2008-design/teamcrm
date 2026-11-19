@@ -1,4 +1,4 @@
-import { allowedWhenReadOnly, amountValue, effective, extendPeriod, moveFor, movePrice, moveReady, noticeDue, PriceMove, SubRow } from './billing-rules';
+import { allowedWhenReadOnly, amountValue, effective, extendPeriod, moveFor, movePrice, moveReady, noticeDue, periodLabel, periodPrice, PriceMove, SubRow } from './billing-rules';
 
 const day = 86_400_000;
 const now = new Date('2026-10-30T12:00:00Z');
@@ -82,5 +82,20 @@ describe('перевод на новую цену (§5.4)', () => {
     expect(moveReady('2026-11-25T10:00:00Z', dec5)).toBe(false);
     expect(moveReady(undefined, dec5)).toBe(false);
     expect(moveReady(true, dec5)).toBe(false);
+  });
+});
+
+describe('срок оплаты в месяцах (19.11.2026)', () => {
+  it('1–11 месяцев — цена месяца × месяцы, без скидки; год — годовая цена', () => {
+    expect(periodPrice(990, 9900, 1)).toBe(990);
+    expect(periodPrice(990, 9900, 3)).toBe(2970);
+    expect(periodPrice(990, 9900, 11)).toBe(10890);
+    expect(periodPrice(990, 9900, 12)).toBe(9900);
+    expect(periodPrice(990, null, 12)).toBe(11880);
+    expect(periodPrice(990, 9900, 0)).toBe(990);
+    expect(periodPrice(990, 9900, 40)).toBe(9900);
+  });
+  it('подпись срока склоняется', () => {
+    expect([1, 2, 5, 11, 12].map(periodLabel)).toEqual(['1 месяц', '2 месяца', '5 месяцев', '11 месяцев', '1 год']);
   });
 });

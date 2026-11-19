@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../Icon';
 import { SkeletonList } from '../Skeleton';
 import { ApiError } from '../../lib/api';
-import { billingApi, type BillingView } from '../../lib/billing-api';
+import { billingApi, periodLabel, periodPrice, type BillingView } from '../../lib/billing-api';
 import { useEscape } from '../../hooks/useEscape';
 import { overlayProps } from '../../lib/overlay';
 import { TeamBonusBlock } from './TeamBonusBlock';
@@ -19,7 +19,7 @@ export function statusLine(v: BillingView): string {
   if (v.complimentary) return 'Подписка действует без ограничений.';
   switch (v.status) {
     case 'TRIAL': return `Пробный период до ${day(v.until)}. Карта не нужна — выберите тариф, когда будете готовы.`;
-    case 'ACTIVE': return `Оплачено до ${day(v.until)}${v.plan ? `, тариф «${v.plan.title}»${v.period === 'year' ? ' на год' : ''}` : ''}.`;
+    case 'ACTIVE': return `Оплачено до ${day(v.until)}${v.plan ? `, тариф «${v.plan.title}»${v.months && v.months > 1 ? ` на ${periodLabel(v.months)}` : ''}` : ''}.`;
     case 'GRACE': return `Подписка не оплачена. До ${day(v.until)} всё работает, потом QEVO перейдёт в режим «только чтение».`;
     default: return 'QEVO в режиме «только чтение»: смотреть можно, менять — нет. Данные сохранены — после оплаты всё заработает сразу.';
   }
@@ -35,7 +35,11 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
   const [err, setErr] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState('');
-  const [period, setPeriod] = useState<'month' | 'year'>('month');
+  /*
+    19.11.2026: срок оплаты — любое число месяцев. На 1–11 месяцев сумма = цена месяца ×
+    месяцы (скидки нет), на год — годовая цена со скидкой.
+  */
+  const [months, setMonths] = useState(1);
 
   const load = () => billingApi.view().then(setV).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить'));
 
@@ -54,7 +58,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
   const pay = async (code: string) => {
     setBusy(code); setErr('');
     try {
-      const r = await billingApi.checkout(code, period);
+      const r = await billingApi.checkout(code, months);
       window.location.href = r.confirmationUrl; // страница ЮKassa: данные карты к нам не попадают
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не получилось начать оплату');
@@ -88,17 +92,26 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
             {!v.complimentary && (
               <div className="drawer-section">
                 <div className="drawer-section-title">Тарифы</div>
-                {v.plans.some((p) => p.priceYear != null) && (
-                  <div className="kv2-seg bil-period" role="group" aria-label="Период оплаты">
-                    <button type="button" className="kv2-seg-btn" aria-pressed={period === 'month'} onClick={() => setPeriod('month')}>Помесячно</button>
-                    <button type="button" className="kv2-seg-btn" aria-pressed={period === 'year'} onClick={() => setPeriod('year')}>На год</button>
-                  </div>
-                )}
+                <div className="bil-term">
+                  <label className="bil-term-label" htmlFor="bil-months">Оплатить на</label>
+                  <select id="bil-months" className="ui-input ui-input-sm bil-term-select" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+                    {Array.from({ length: 11 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{periodLabel(n)}</option>)}
+                    <option value={12}>1 год{v.plans.some((p) => p.priceYear != null && p.priceYear < p.price * 12) ? ' — со скидкой' : ''}</option>
+                  </select>
+                  <span className="kv2-seg" role="group" aria-label="Быстрый выбор срока">
+                    {[1, 3, 6, 12].map((n) => (
+                      <button key={n} type="button" className="kv2-seg-btn" aria-pressed={months === n} onClick={() => setMonths(n)}>{n === 12 ? 'Год' : `${n} мес`}</button>
+                    ))}
+                  </span>
+                </div>
+                <div className="dim bil-note">Скидка — только при оплате сразу за год. На 1–11 месяцев сумма — цена месяца × число месяцев.</div>
                 {!v.configured && <div className="dim">Оплата скоро появится. Пока всё работает — напишите в поддержку, если нужен счёт.</div>}
                 <div className="bil-plans">
-                  {v.plans.filter((p) => period === 'month' || p.priceYear != null).map((p) => {
+                  {v.plans.map((p) => {
                     const tooSmall = p.maxMembers !== null && v.members > p.maxMembers;
-                    const year = period === 'year' && p.priceYear != null;
+                    const year = months === 12 && p.priceYear != null;
+                    const sum = periodPrice(p.price, p.priceYear, months);
+                    const term = months === 1 ? 'в месяц' : `за ${periodLabel(months)}`;
                     const current = v.plan?.code === p.code && v.status === 'ACTIVE';
                     return (
                       <div key={p.code} className={`bil-plan ${current ? 'bil-plan-current' : ''}`}>
@@ -108,9 +121,10 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                           <div className="bil-plan-price">от {rub(p.priceYear != null ? Math.round(p.priceYear / 12) : p.price)} <span className="dim">за пользователя в месяц</span></div>
                           <div className="dim bil-note">{p.priceYear != null ? `${rub(Math.round(p.priceYear / 12))} при оплате за год, ` : ''}{rub(p.price)} при помесячной оплате</div>
                           <div className="dim bil-plan-text">{p.description}</div>
-                          <div className="bil-note">К оплате: {v.members} {v.members % 10 === 1 && v.members % 100 !== 11 ? 'пользователь' : 'польз.'} × {rub(year ? p.priceYear! : p.price)} = <b>{rub((year ? p.priceYear! : p.price) * Math.max(1, v.members))}</b> {year ? 'за год' : 'в месяц'}</div>
+                          <div className="bil-note">К оплате: {v.members} {v.members % 10 === 1 && v.members % 100 !== 11 ? 'пользователь' : 'польз.'} × {rub(sum)} = <b>{rub(sum * Math.max(1, v.members))}</b> {term}{year && p.priceYear! < p.price * 12 ? `, выгода ${rub((p.price * 12 - p.priceYear!) * Math.max(1, v.members))}` : ''}</div>
                         </>) : (<>
-                        <div className="bil-plan-price">{rub(year ? p.priceYear! : p.price)} <span className="dim">{year ? '/ год' : '/ мес'}</span></div>
+                        <div className="bil-plan-price">{rub(sum)} <span className="dim">{term}</span></div>
+                        {months > 1 && !year && <div className="dim bil-note">{rub(p.price)} × {months}</div>}
                         {year && <div className="dim bil-note">≈ {rub(Math.round(p.priceYear! / 12))} в месяц{p.priceYear! < p.price * 12 ? `, выгода ${rub(p.price * 12 - p.priceYear!)}` : ''}</div>}
                         <div className="dim bil-plan-text">{p.maxMembers ? `До ${p.maxMembers} сотрудников. ` : 'Без ограничения сотрудников. '}{p.description}</div>
                         </>)}
@@ -122,7 +136,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                             title={tooSmall ? `В компании ${v.members} сотрудников — тариф не подходит` : undefined}
                             onClick={() => void pay(p.code)}
                           >
-                            {busy === p.code ? '...' : current ? (year ? 'Продлить на год' : 'Продлить на месяц') : 'Оплатить'}
+                            {busy === p.code ? '...' : `${current ? 'Продлить' : 'Оплатить'} на ${periodLabel(months)}`}
                           </button>
                         )}
                       </div>
@@ -133,8 +147,8 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                 {canPay && v.configured && isNativeShell() && (
                   <div className="bil-note"><Icon name="info" size={14} /> Оплата — в веб-версии: откройте <b>app.qevo.one</b> в браузере на компьютере или телефоне, «Настройки → Тариф и оплата».</div>
                 )}
-                {v.lockedPrice != null && v.plan && <div className="dim bil-note">Продление — по цене, за которую вы платили: {rub(v.lockedPrice)} {v.period === 'year' ? 'за год' : 'в месяц'}. Если прайс изменится, предупредим заранее.</div>}
-                {v.priceChange && <div className="bil-note"><b>Цена меняется:</b> {v.priceChange.nextPeriod ? `со следующего продления после ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}` : `с продления ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`} — {rub(v.priceChange.price)} {v.period === 'year' ? 'за год' : 'в месяц'}.</div>}
+                {v.lockedPrice != null && v.plan && <div className="dim bil-note">Продление — по цене, за которую вы платили: {rub(v.lockedPrice)} {v.months && v.months > 1 ? `за ${periodLabel(v.months)}` : 'в месяц'}. Если прайс изменится, предупредим заранее.</div>}
+                {v.priceChange && <div className="bil-note"><b>Цена меняется:</b> {v.priceChange.nextPeriod ? `со следующего продления после ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}` : `с продления ${new Date(v.priceChange.at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}`} — {rub(v.priceChange.price)} {v.months && v.months > 1 ? `за ${periodLabel(v.months)}` : 'в месяц'}.</div>}
                 {canPay && v.autopayAvailable && v.plan && (
                   <label className="bil-note">
                     <input type="checkbox" checked={v.autopay} onChange={(e) => void billingApi.autopay(e.target.checked).then(setV).catch(() => undefined)} />
@@ -152,7 +166,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                     <li key={p.id}>
                       <span>{day(p.createdAt)}</span>
                       <span>{v.plans.find((x) => x.code === p.plan)?.title ?? p.plan}</span>
-                      <span>{rub(p.amount)}{p.months === 12 ? ' · год' : ''}{p.test ? ' · тест' : ''}</span>
+                      <span>{rub(p.amount)}{p.months && p.months > 1 ? ` · ${periodLabel(p.months)}` : ''}{p.test ? ' · тест' : ''}</span>
                       <span className="dim">{PAY_STATUS[p.status] ?? p.status}{p.periodEnd && p.status === 'succeeded' ? ` · до ${day(p.periodEnd)}` : ''}</span>
                     </li>
                   ))}

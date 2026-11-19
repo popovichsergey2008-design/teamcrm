@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '../../common/http/app-exception';
-import { amountValue, effective, Effective, extendPeriod, moveFor, moveKey, movePrice, moveReady, noticeDue, PriceMove, TEAM_BONUS_INVITES, TEAM_BONUS_MONTHS, TRIAL_DAYS } from './billing-rules';
+import { amountValue, effective, Effective, extendPeriod, moveFor, moveKey, movePrice, moveReady, noticeDue, periodLabel, periodPrice, PriceMove, TEAM_BONUS_INVITES, TEAM_BONUS_MONTHS, TRIAL_DAYS } from './billing-rules';
 import { BillingRepository, PlanRow, TenantSubRow } from './billing.repository';
 import { billingLetter, priceMoveLetter } from './billing-letters';
 import { ProviderPayment, Receipt, YooKassaClient, YooKassaError } from './yookassa.client';
@@ -98,6 +98,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       complimentary: eff.complimentary,
       plan: plan ? this.planOut(plan) : null,
       period: (row?.period_months ?? 1) === 12 ? 'year' as const : 'month' as const,
+      months,
       lockedPrice: row?.price_rub != null ? Number(row.price_rub) : null,
       autopay: !!row?.autopay && !!row?.payment_method_id,
       autopayAvailable: this.autopayAllowed,
@@ -174,15 +175,15 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async checkout(tenantId: string, userId: string, planCode: string, period: 'month' | 'year' = 'month'): Promise<{ confirmationUrl: string; paymentId: string }> {
+  async checkout(tenantId: string, userId: string, planCode: string, period: 'month' | 'year' = 'month', monthsWanted?: number): Promise<{ confirmationUrl: string; paymentId: string }> {
     if (!this.kassa) throw AppException.validation('Оплата ещё не подключена — напишите в поддержку');
     const plan = await this.repo.plan(planCode);
     if (!plan || !plan.is_active) throw AppException.validation('Такого тарифа нет');
-    if (period === 'year' && plan.price_year_rub == null) throw AppException.validation(`Тариф «${plan.title}» на год не продаётся`);
-    const months = period === 'year' ? 12 : 1;
+    // 19.11.2026: срок — любое число месяцев 1–12; суммы складываются, скидка — только за год
+    const months = monthsWanted ? Math.min(12, Math.max(1, Math.round(monthsWanted))) : period === 'year' ? 12 : 1;
     const members = await this.repo.membersCount(tenantId);
     // ТЗ 10.11: тариф «QEVO» — цена за пользователя, сумма = цена × сотрудники (не меньше одного)
-    const unit = Number(period === 'year' ? plan.price_year_rub! : plan.price_rub);
+    const unit = periodPrice(Number(plan.price_rub), plan.price_year_rub == null ? null : Number(plan.price_year_rub), months);
     const price = String(plan.per_member ? unit * Math.max(1, members) : unit);
     if (plan.max_members !== null && members > plan.max_members) {
       throw AppException.validation(`В компании ${members} сотрудников, а тариф «${plan.title}» — до ${plan.max_members}. Выберите тариф побольше`);
@@ -190,12 +191,12 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const sub = await this.repo.sub(tenantId);
     const id = await this.repo.createPayment({ tenantId, planCode, amountRub: price, kind: 'checkout', createdBy: userId, periodMonths: months, planVersion: plan.version });
     let pay: ProviderPayment;
-    const description = `QEVO, тариф «${plan.title}», ${months === 12 ? '1 год' : '1 месяц'} — ${sub?.tenant_name ?? 'компания'}`;
+    const description = `QEVO, тариф «${plan.title}», ${periodLabel(months)} — ${sub?.tenant_name ?? 'компания'}`;
     try {
       pay = await this.kassa.createRedirect({
         amount: amountValue(price),
         description,
-        receipt: await this.receiptFor(tenantId, userId, `Подписка QEVO, тариф «${plan.title}», ${months === 12 ? '1 год' : '1 месяц'}`, amountValue(price)),
+        receipt: await this.receiptFor(tenantId, userId, `Подписка QEVO, тариф «${plan.title}», ${periodLabel(months)}`, amountValue(price)),
         returnUrl: `${this.base()}/settings/billing?paid=${id}`,
         metadata: { tenant_id: tenantId, plan: planCode, payment: id, months: String(months) },
         savePaymentMethod: this.autopayAllowed,
@@ -353,7 +354,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const months = row.period_months || 1;
     const move = moveFor(row, periodEnd, moves);
     const moved = move && moveReady(row.notified?.[moveKey(move.id)], periodEnd) ? move : null;
-    const price = moved ? amountValue(movePrice(moved, months)) : row.price_rub ?? (months === 12 ? plan.price_year_rub ?? plan.price_rub : plan.price_rub);
+    const price = moved ? amountValue(movePrice(moved, months)) : row.price_rub ?? amountValue(periodPrice(Number(plan.price_rub), plan.price_year_rub == null ? null : Number(plan.price_year_rub), months));
     const key = `qevo-renew-${row.tenant_id}-${periodEnd.toISOString().slice(0, 10)}`;
     const id = await this.repo.createPayment({
       tenantId: row.tenant_id, planCode: plan.code, amountRub: price, kind: 'autopay', createdBy: null,
@@ -361,8 +362,8 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     });
     const pay = await this.kassa.createRecurring({
       amount: amountValue(price), paymentMethodId: row.payment_method_id,
-      receipt: await this.receiptFor(row.tenant_id, null, `Подписка QEVO, тариф «${plan.title}», продление на ${months === 12 ? '1 год' : '1 месяц'}`, amountValue(price)),
-      description: `QEVO, тариф «${plan.title}», продление на ${months === 12 ? '1 год' : '1 месяц'}`,
+      receipt: await this.receiptFor(row.tenant_id, null, `Подписка QEVO, тариф «${plan.title}», продление на ${periodLabel(months)}`, amountValue(price)),
+      description: `QEVO, тариф «${plan.title}», продление на ${periodLabel(months)}`,
       metadata: { tenant_id: row.tenant_id, plan: plan.code, payment: id }, idempotenceKey: key,
     });
     await this.repo.attachProviderId(id, pay.id);
