@@ -139,14 +139,22 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
   // Сначала рисуем невидимым там, где позвали, меряем — и ставим так, чтобы влезло целиком.
   const box = useRef<HTMLSpanElement | null>(null);
   const [place, setPlace] = useState<Placed | null>(null);
+  /*
+    Длинное меню не влезает по высоте (низкое окно, много пунктов) — пункты в две колонки.
+    Раньше оно прокручивалось внутри, полосы почти не видно, и «Изменить» / «Удалить»
+    внизу просто терялись. Две колонки — если по ширине есть место; нет — прокрутка, как было.
+  */
+  const [cols, setCols] = useState(false);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
     const vv = window.visualViewport;
     const vh = vv?.height ?? window.innerHeight;
     const vw = vv?.width ?? window.innerWidth;
-    setPlace(placeMenu(at.x, at.y, el.offsetWidth, el.scrollHeight, vw, vh, safeInsets()));
-  }, [at.x, at.y, items.length]);
+    const p = placeMenu(at.x, at.y, el.offsetWidth, el.scrollHeight, vw, vh, safeInsets());
+    if (p.maxH && !cols && vw >= 2 * el.offsetWidth + 24) { setCols(true); setPlace(null); return; }
+    setPlace(p);
+  }, [at.x, at.y, items.length, cols]);
 
   return (
     <>
@@ -158,11 +166,12 @@ export function MessageMenu({ at, reactions, onReact, onMoreEmoji, items, onClos
       />
       <span
         ref={box}
-        className="msg-ctx"
+        className={`msg-ctx${cols ? ' msg-ctx-cols' : ''}`}
         role="menu"
         style={place
           ? { left: place.x, top: place.y, maxHeight: place.maxH ?? undefined, overflowY: place.maxH ? 'auto' : undefined }
-          : { left: at.x, top: at.y, visibility: 'hidden' }}
+          // меряем у левого края: у правого края экрана fixed-блок сжимается, и ширина врёт
+          : { left: 0, top: 0, visibility: 'hidden' }}
         onClick={(e) => e.stopPropagation()}
       >
         {!!reactions?.length && onReact && (

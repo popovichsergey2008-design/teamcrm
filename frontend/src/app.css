@@ -6013,3 +6013,7 @@ body.is-dragging { user-select: none; cursor: grabbing; }
 .screen-crash-actions { display: flex; gap: 8px; justify-content: center; }
 /* #4852: вместо полосы «Сохранить» — тихая строка, пока идёт автосохранение */
 .task-autosave { position: sticky; bottom: 0; align-self: flex-end; margin-top: 6px; padding: 4px 10px; border-radius: 999px; background: var(--bg-elev-2); color: var(--text-mut); font-size: var(--fs-xs); }
+
+/* Длинное меню сообщения в низком окне — две колонки, а не прокрутка с потерянными «Изменить» / «Удалить» */
+.msg-ctx.msg-ctx-cols { display: grid; grid-template-columns: 1fr 1fr; column-gap: 4px; max-width: min(560px, calc(100vw - 16px)); }
+.msg-ctx.msg-ctx-cols .msg-ctx-react { grid-column: 1 / -1; }
