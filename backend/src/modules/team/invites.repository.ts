@@ -31,6 +31,21 @@ export interface InviteLinkRow {
 export class InvitesRepository {
   constructor(private readonly db: DbService) {}
 
+  /**
+   * #4992: активный участник с тем же именем, но другой почтой — так один человек дважды
+   * вступал по ссылке (две почты — два «Никиты»). Имя сравниваем без регистра и лишних пробелов.
+   */
+  sameNameOtherEmail(tenantId: string, fullName: string, email: string): Promise<{ email: string } | null> {
+    return this.db.one<{ email: string }>(
+      `SELECT u.email FROM users u
+        WHERE u.tenant_id = $1 AND u.is_active
+          AND lower(regexp_replace(trim(u.full_name), '[[:space:]]+', ' ', 'g')) = lower(regexp_replace(trim($2::text), '[[:space:]]+', ' ', 'g'))
+          AND lower(u.email) <> lower(trim($3::text))
+        LIMIT 1`,
+      [tenantId, fullName, email],
+    );
+  }
+
   create(input: {
     tenantId: string;
     email: string;

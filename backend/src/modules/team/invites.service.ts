@@ -8,6 +8,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AccountSecurityService } from '../auth/account-security.service';
 import { assertPasswordStrong } from '../../common/auth/password-policy';
 
+/** «nikita@gmail.com» → «n•••@gmail.com»: узнать свою почту можно, чужую — нет. */
+export function maskEmail(email: string): string {
+  const [name, domain] = String(email).split('@');
+  return domain ? `${name.slice(0, 1)}•••@${domain}` : '•••';
+}
+
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 дней
 
 @Injectable()
@@ -182,6 +188,18 @@ export class InvitesService {
     const link = await this.repo.findActiveLinkByHash(this.sha256(input.token));
     if (!link) throw AppException.unauthorized('Ссылка недействительна, истекла или исчерпана');
     assertPasswordStrong(input.password, input.email);
+    /*
+      #4992: один человек вступил по ссылке дважды с разных почт — в команде два «Никиты»,
+      и коллеги пишут в пустую учётку. Тот же человек — пусть войдёт под прежней почтой;
+      другой с тем же именем — добавит фамилию, и дубля не будет.
+    */
+    const twin = await this.repo.sameNameOtherEmail(String(link.tenant_id), input.fullName, input.email);
+    if (twin) {
+      throw AppException.conflict(
+        `В команде «${link.tenant_name}» уже есть участник «${input.fullName.trim()}» (${maskEmail(twin.email)}). `
+        + 'Если это вы — войдите под этой почтой. Если вы другой человек — укажите имя вместе с фамилией.',
+      );
+    }
     const created = await this.users.createUser(link.tenant_id, {
       email: input.email, password: input.password, fullName: input.fullName,
       role: link.role_code as any, positionId: link.position_id,
