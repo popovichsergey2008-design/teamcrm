@@ -25,6 +25,12 @@ export function useDismiss(open: boolean, close: () => void, ignore?: string): v
     const onDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement | null;
       if (el?.closest('[data-pop]')) return;
+      /*
+        #4991: выпадающий список (ui/select, меню) рисуется порталом поверх страницы — вне
+        всплывашки. Щелчок по его пункту считался «мимо», окно «Фильтры» закрывалось раньше,
+        чем выбор применялся: «выбираешь — окно закрывается, а выбор не применяется».
+      */
+      if (el?.closest('.ui-positioner, .ui-popup, [role="listbox"], [role="menu"]')) return;
       if (ignore && el?.closest(ignore)) return;
       close();
     };
