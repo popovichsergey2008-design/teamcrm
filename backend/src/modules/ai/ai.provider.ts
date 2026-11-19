@@ -225,6 +225,36 @@ export const KIMI_FALLBACK_MODELS = ['kimi-k3.1-pro', 'kimi-k3', 'kimi-k2.6', 'k
 export const isKimiModel = (m?: string | null) => /^kimi/i.test(m ?? '');
 
 /*
+  Kimi на паузе (19.11.2026). Кончились деньги на счёте («suspended due to insufficient balance»)
+  или ключ отозван — раньше каждый запрос сначала стучался в Kimi (до трёх попыток) и лишь потом
+  шёл к запасной модели: лишние секунды на каждом ответе. Теперь такая ошибка ставит Kimi на паузу
+  на KIMI_PAUSE_MS: запросы сразу идут к запасной модели, а по истечении паузы следующий запрос
+  снова пробует Kimi сам. Пополнили счёт — Kimi вернётся без перезапуска и без чьих-то действий.
+  Пауза — по ключу: у каждой компании свой ключ и свой счёт.
+*/
+const KIMI_PAUSE_MS = 10 * 60_000;
+const kimiPausedUntil = new Map<string, number>();
+/** Ошибка, после которой бессмысленно стучаться ещё: нет денег, ключ не принят, доступ закрыт. */
+export const isKimiAccountError = (msg: string) =>
+  /insufficient|balance|suspend|recharge|quota|billing|invalid[_ ]api[_ ]key|unauthori[sz]ed|HTTP 40[123]\b/i.test(msg);
+const kimiKeyOf = (key: string | null | undefined) => (key ?? '').slice(-12);
+export function kimiPaused(key: string | null | undefined, now = Date.now()): boolean {
+  const until = kimiPausedUntil.get(kimiKeyOf(key));
+  if (!until) return false;
+  if (until <= now) { kimiPausedUntil.delete(kimiKeyOf(key)); return false; }
+  return true;
+}
+export function noteKimiResult(key: string | null | undefined, error: string | null, now = Date.now()): void {
+  const k = kimiKeyOf(key);
+  if (!k) return;
+  if (error === null) { if (kimiPausedUntil.delete(k)) providerLog.log('Kimi снова отвечает — пауза снята'); return; }
+  if (isKimiAccountError(error) && !kimiPausedUntil.has(k)) {
+    kimiPausedUntil.set(k, now + KIMI_PAUSE_MS);
+    providerLog.warn(`Kimi на паузе ${KIMI_PAUSE_MS / 60_000} мин: ${error.slice(0, 160)} — работает запасная модель, потом проверю снова`);
+  }
+}
+
+/*
   Yandex AI Studio (16.11): OpenAI-совместимый chat/completions. Модели в выборе — «yandex:<id>»
   (yandex:yandexgpt/latest): у самого Яндекса адрес gpt://<каталог>/<id>, каталог знает ключ.
   Из России отвечает напрямую — поэтому он и запасной путь, когда OpenAI или Kimi недоступны.
@@ -340,6 +370,8 @@ export class RealAiProvider implements AiProvider {
         ...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mime};base64,${i.base64}` } })),
       ]
       : user;
+    // на паузе (нет денег на счёте) — сразу к запасной модели, без похода в сеть
+    if (kimiPaused(this.kimiKey)) throw new Error('Kimi на паузе: счёт не пополнен — отвечает запасная модель');
     const res = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
@@ -348,20 +380,31 @@ export class RealAiProvider implements AiProvider {
       signal: withSignal(AbortSignal.timeout(Number(process.env.KIMI_TIMEOUT_MS ?? 180_000)), signal),
     });
     const json: any = await res.json().catch(() => ({}));
-    if (json?.error) throw new Error(typeof json.error === 'string' ? json.error : (json.error.message || JSON.stringify(json.error)));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (json?.error) {
+      const msg = typeof json.error === 'string' ? json.error : (json.error.message || JSON.stringify(json.error));
+      noteKimiResult(this.kimiKey, msg);
+      throw new Error(msg);
+    }
+    if (!res.ok) { noteKimiResult(this.kimiKey, `HTTP ${res.status}`); throw new Error(`HTTP ${res.status}`); }
+    noteKimiResult(this.kimiKey, null);
     // рассуждение приходит отдельно (reasoning_content) — в ответ идёт только content
     return json?.choices?.[0]?.message?.content ?? '';
   }
 
   private async kimiStream(model: string, system: string, user: string, maxTokens: number, onDelta: (t: string) => void): Promise<string> {
+    if (kimiPaused(this.kimiKey)) throw new Error('Kimi на паузе: счёт не пополнен — отвечает запасная модель');
     const res = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
       body: this.kimiBody(model, system, user, maxTokens, true),
       signal: AbortSignal.timeout(Number(process.env.KIMI_TIMEOUT_MS ?? 180_000)),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    if (!res.ok) {
+      const msg = `HTTP ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`;
+      noteKimiResult(this.kimiKey, msg);
+      throw new Error(msg);
+    }
+    noteKimiResult(this.kimiKey, null);
     let full = '';
     await this.readSSE(res, (o) => { const d = o?.choices?.[0]?.delta?.content; if (d) { full += d; onDelta(d); } });
     return full;
