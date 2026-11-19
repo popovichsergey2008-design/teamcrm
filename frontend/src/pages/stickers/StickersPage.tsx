@@ -82,10 +82,11 @@ export function StickersPage() {
     (!onlyColor || s.color === onlyColor)
     && (!q.trim() || `${s.text} ${s.body ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))), [data, onlyColor, q]);
 
-  // колонки недели: сегодня, завтра и дни до воскресенья (не меньше пяти дней)
+  // колонки недели: сегодня, завтра и дни до ближайшего воскресенья (в выходные — хотя бы три дня)
   const cols = useMemo<Col[]>(() => {
     const days: string[] = [today];
-    while (days.length < 5 || weekdayShort(days[days.length - 1]) !== 'вс') days.push(addDays(days[days.length - 1], 1));
+    while (weekdayShort(days[days.length - 1]) !== 'вс') days.push(addDays(days[days.length - 1], 1));
+    while (days.length < 3) days.push(addDays(days[days.length - 1], 1));
     const last = days[days.length - 1];
     const overdue = items.filter((s) => s.date && s.date < today);
     const out: Col[] = [];

@@ -715,7 +715,7 @@ export function Sidebar({
               <Icon name="chevron-left" size={16} />
             </button>
           </div>
-          <div className="nav-org">
+          <div className="nav-org" style={{ flexWrap: 'wrap' }}>
             {/*
               Верхнего меню больше нет (#4717, 02.11): наверху — сквозной поиск, он открывается
               из любого раздела (и по Ctrl+K). Аккаунт и личный кабинет — внизу (#4716). Знак
@@ -740,7 +740,7 @@ export function Sidebar({
               #4997, шаг 0.3: QEVO Bot и «＋ Стикер» — вверху меню, видны на любой странице:
               ими пользуются по десять раз в день. Бот открывается справа, поверх страницы.
             */}
-            <div className="nav-quick" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+            <div className="nav-quick" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, flexBasis: '100%', width: '100%' }}>
               <button className="ui-btn ui-btn-primary ui-btn-sm nav-quick-bot" style={{ flex: 1 }} onClick={() => { setOpen(false); openBotPanel(); }} title="QEVO Bot — справа, поверх страницы" aria-label="QEVO Bot">
                 <QevoBotMark size={20} /> <span className="nav-label">QEVO Bot</span>
               </button>
