@@ -57,6 +57,15 @@ export class BillingController {
     return this.billing.afterReturn(u.tenantId, id);
   }
 
+  /** #5001: отменить неоплаченный счёт (владелец). */
+  @ApiBearerAuth()
+  @Post('payments/:id/cancel')
+  @Roles('owner')
+  @HttpCode(200)
+  cancel(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.billing.cancelPending(u.tenantId, id);
+  }
+
   @ApiBearerAuth()
   @Post('autopay')
   @Roles('owner')

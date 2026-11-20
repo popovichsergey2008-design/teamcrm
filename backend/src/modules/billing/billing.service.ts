@@ -276,6 +276,23 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     return pay.status;
   }
 
+  /**
+   * #5001: отменить неоплаченный счёт, чтобы выставить новый. Сначала сверяемся с ЮKassa:
+   * если деньги уже прошли — платёж засчитывается, а не отменяется.
+   */
+  async cancelPending(tenantId: string, localPaymentId: string) {
+    const rows = await this.repo.payments(tenantId, 50);
+    const p = rows.find((r) => r.id === String(localPaymentId));
+    if (!p) throw AppException.notFound('Платёж не найден');
+    if (p.status === 'pending' && p.provider_payment_id) {
+      const st = await this.sync(p.provider_payment_id).catch(() => 'pending');
+      if (st === 'succeeded' || st === 'already') throw AppException.conflict('Этот платёж уже оплачен — подписка продлена');
+    }
+    await this.repo.cancelByOwner(tenantId, String(localPaymentId));
+    this.forget(tenantId);
+    return this.view(tenantId);
+  }
+
   /** Человек вернулся со страницы оплаты — не ждём уведомления, сверяем сразу. */
   async afterReturn(tenantId: string, localPaymentId: string): Promise<{ status: string }> {
     const rows = await this.repo.payments(tenantId, 50);

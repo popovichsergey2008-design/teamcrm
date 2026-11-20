@@ -196,6 +196,15 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                       <span>{v.plans.find((x) => x.code === p.plan)?.title ?? p.plan}</span>
                       <span>{rub(p.amount)}{p.months && p.months > 1 ? ` · ${periodLabel(p.months)}` : ''}{p.test ? ' · тест' : ''}</span>
                       <span className="dim">{PAY_STATUS[p.status] ?? p.status}{p.periodEnd && p.status === 'succeeded' ? ` · до ${day(p.periodEnd)}` : ''}</span>
+                      {p.status === 'pending' && (
+                        <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" disabled={busy === `cancel:${p.id}`}
+                          title="Счёт не оплачен — отменить и выставить новый"
+                          onClick={async () => {
+                            if (!window.confirm('Отменить этот неоплаченный счёт? Потом можно выставить новый.')) return;
+                            setBusy(`cancel:${p.id}`);
+                            try { setV(await billingApi.cancelPayment(p.id)); } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось отменить'); void load(); } finally { setBusy(''); }
+                          }}>Отменить</button>
+                      )}
                     </li>
                   ))}
                 </ul>

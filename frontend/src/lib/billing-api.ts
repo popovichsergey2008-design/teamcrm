@@ -35,6 +35,8 @@ export const billingApi = {
   /** 19.11.2026: срок — 1–12 месяцев; 12 — год со скидкой, остальное — цена месяца × месяцы. */
   checkout: (plan: string, months = 1, seats?: number) => request<{ confirmationUrl: string; paymentId: string }>('POST', '/billing/checkout', { plan, months, seats, period: months === 12 ? 'year' : 'month' }),
   check: (paymentId: string) => request<{ status: string }>('POST', `/billing/payments/${paymentId}/check`, {}),
+  /** #5001: отменить неоплаченный счёт, чтобы выставить новый. */
+  cancelPayment: (paymentId: string) => request<BillingView>('POST', `/billing/payments/${paymentId}/cancel`, {}),
   autopay: (on: boolean) => request<BillingView>('POST', '/billing/autopay', { on }),
 };
 

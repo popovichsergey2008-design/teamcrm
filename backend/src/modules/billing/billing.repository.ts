@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { DbService } from '../../database/db.service';
 import { PriceMove, SubRow } from './billing-rules';
 
+/**
+ * #5001: причина отмены счёта владельцем. Если по старой ссылке всё же заплатят, такой
+ * платёж засчитывается — деньги не теряются (см. applySucceeded).
+ */
+export const OWNER_CANCEL = 'отменён владельцем';
+
 export interface PlanRow {
   code: string; title: string; price_rub: string; price_year_rub: string | null; max_members: number | null;
   description: string; sort_order: number; is_active: boolean; version: number;
@@ -195,8 +201,9 @@ export class BillingRepository {
       // цена, период и версия — из самого платежа: подписка продлевается так, как за неё заплатили
       const upd = await c.query<{ amount_rub: string; period_months: number; plan_version: number | null; seats: number | null }>(
         `UPDATE billing_payments SET status='succeeded', paid_at=now(), period_end=$2, is_test=$3::boolean
-          WHERE id=$1 AND status='pending' RETURNING amount_rub::text, period_months, plan_version, seats`,
-        [p.paymentId, p.periodEnd.toISOString(), !!p.isTest],
+          WHERE id=$1 AND (status='pending' OR (status='canceled' AND cancel_reason=$4))
+          RETURNING amount_rub::text, period_months, plan_version, seats`,
+        [p.paymentId, p.periodEnd.toISOString(), !!p.isTest, OWNER_CANCEL],
       );
       if (!upd.rowCount) return false; // уже учтён (повтор уведомления)
       const paid = upd.rows[0];
@@ -273,6 +280,14 @@ export class BillingRepository {
     return this.db.many<{ version: number; title: string; price_month_rub: string; price_year_rub: string | null; max_members: number | null; is_active: boolean; changed_by: string | null; created_at: Date }>(
       `SELECT version, title, price_month_rub::text, price_year_rub::text, max_members, is_active, changed_by, created_at
          FROM billing_plan_versions WHERE plan_code=$1 ORDER BY version DESC LIMIT 50`, [code]);
+  }
+
+  /** #5001: владелец отменил неоплаченный счёт у себя (в ЮKassa ссылка просто истечёт). */
+  async cancelByOwner(tenantId: string, paymentId: string): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE billing_payments SET status='canceled', cancel_reason=$3 WHERE id=$1 AND tenant_id=$2 AND status='pending'`,
+      [paymentId, tenantId, OWNER_CANCEL]);
+    return (r.rowCount ?? 0) > 0;
   }
 
   async markCanceled(paymentId: string, reason: string | null): Promise<void> {
