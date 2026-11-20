@@ -295,3 +295,25 @@
   .cal-body.with-plan { flex-direction: column; }
   .cal-body.with-plan .cal-side { flex: 0 0 auto; position: static; max-height: none; overflow: visible; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; width: 100%; }
 }
+
+/*
+  20.11.2026: «всё очень плохо помещается». Час выше (56 вместо 44 — константа HOUR_HEIGHT в
+  CalendarPage), короткой плитке — только название одной строкой (время — в подсказке),
+  узкой плитке пересекающихся встреч — название переносится по буквам, а не обрезается пустотой.
+*/
+.cal-v2 .cal-hour, .cal-v2 .cal-slot { height: 56px; }
+.cal-v2 .cal-event { min-height: 28px; padding: 3px 6px; }
+.cal-v2 .cal-event-title { line-height: 1.25; }
+@container cal-tile (max-height: 38px) {
+  .cal-event-time, .cal-event-sub, .cal-event-who { display: none; }
+  .cal-event-title { white-space: nowrap; }
+}
+@container cal-tile (max-width: 72px) {
+  .cal-event-sub, .cal-event-who { display: none; }
+  .cal-event-time { white-space: normal; line-height: 1.15; }
+  .cal-event-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.15; }
+}
+.cal-due-mark { transform: none; }
+/* правая панель не выходит за край экрана при увеличенном масштабе — текст переносится */
+.cal-v2 .cal-body { min-width: 0; max-width: 100%; }
+.cal-side { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }

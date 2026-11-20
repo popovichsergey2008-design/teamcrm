@@ -127,7 +127,8 @@ const REMINDER_CHOICES = [0, 5, 10, 15, 60, 1440];
  */
 const DEFAULT_REMINDERS = [0, 5, 10, 60]; // #4766: и в момент начала
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
-const HOUR_HEIGHT = 44; // высота часа в сетке, совпадает с .cal-hour в стилях
+// 20.11.2026: 56 вместо 44 — получасовой встрече хватает места и на время, и на название
+const HOUR_HEIGHT = 56; // высота часа в сетке, совпадает с .cal-v2 .cal-hour в calendar.css
 const hhmm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 const pad = (n: number) => String(n).padStart(2, '0');
 /** Локальное значение для DatePicker. Через toISOString нельзя — он уводит в UTC и сдвигает день. */
@@ -912,12 +913,28 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
             {HOURS.map((h) => (
               <button key={h} className="cal-slot" onClick={() => onCreate(d, h)} aria-label={`Создать событие ${d.toLocaleDateString('ru-RU')} в ${h}:00`} />
             ))}
-            {dueTasks.filter((t) => !t.closed_at && !isTimeless(t.deadline_at) && startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime()).map((t) => (
-              <button key={`dm${t.id}`} className="cal-due-mark" style={{ top: `${((Date.parse(t.deadline_at) - startOfDay(d).getTime()) / 86_400_000) * 100}%` }}
-                onClick={() => openTask(t)} title={`Срок: ${t.title} ${hhmm(t.deadline_at)}`}>
-                Срок: {t.title} {hhmm(t.deadline_at)}
-              </button>
-            ))}
+            {/*
+              20.11.2026: несколько сроков на одно время ложились друг на друга, и текст превращался в
+              кашу. Теперь они идут столбиком вниз от своего часа: первый на месте, следующие — ниже.
+            */}
+            {(() => {
+              const marks = dueTasks.filter((t) => !t.closed_at && !isTimeless(t.deadline_at) && startOfDay(new Date(t.deadline_at)).getTime() === startOfDay(d).getTime())
+                .sort((a, b) => Date.parse(a.deadline_at) - Date.parse(b.deadline_at));
+              const lastTop: number[] = [];
+              return marks.map((t) => {
+                const frac = (Date.parse(t.deadline_at) - startOfDay(d).getTime()) / 86_400_000;
+                let px = frac * 24 * HOUR_HEIGHT;
+                const prev = lastTop[lastTop.length - 1];
+                if (prev !== undefined && px - prev < 22) px = prev + 22;
+                lastTop.push(px);
+                return (
+                  <button key={`dm${t.id}`} className="cal-due-mark" style={{ top: `${px}px` }}
+                    onClick={() => openTask(t)} title={`Срок: ${t.title} ${hhmm(t.deadline_at)}`}>
+                    Срок: {t.title} {hhmm(t.deadline_at)}
+                  </button>
+                );
+              });
+            })()}
             {windows.filter((w) => startOfDay(new Date(w.startsAt)).getTime() === startOfDay(d).getTime()).map((w) => {
               const top = (Date.parse(w.startsAt) - startOfDay(d).getTime()) / 86_400_000;
               const h = (Date.parse(w.endsAt) - Date.parse(w.startsAt)) / 86_400_000;
