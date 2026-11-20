@@ -48,9 +48,13 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
     #5000: «оплатить 5 человек на 2 месяца», а в команде пока четверо — число пользователей
     выбирают сами: не меньше, чем сейчас в команде (вместе с владельцем), больше — можно.
   */
-  const [seats, setSeats] = useState<number | null>(null);
-  /** Сколько платим: выбранное, но не меньше текущей команды; по умолчанию — оплаченное раньше или текущий состав. */
-  const seatsFor = (view: BillingView) => Math.max(Math.max(1, view.members), seats ?? view.seats ?? view.members);
+  /*
+    20.11.2026 (заказчик): считается каждый человек в пространстве — автоматически, а сверху
+    можно добавить ещё мест (для тех, кого пригласят). Итого = (в пространстве + добавлено) × цена.
+  */
+  const [extra, setExtra] = useState(0);
+  /** Сколько мест оплачиваем: все, кто в пространстве, плюс добавленные. */
+  const seatsFor = (view: BillingView) => Math.max(1, view.members) + extra;
 
   const load = () => billingApi.view().then(setV).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить'));
 
@@ -132,14 +136,22 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                           <div className="bil-plan-price">от {rub(p.priceYear != null ? Math.round(p.priceYear / 12) : p.price)} <span className="dim">за пользователя в месяц</span></div>
                           <div className="dim bil-note">{p.priceYear != null ? `${rub(Math.round(p.priceYear / 12))} при оплате за год, ` : ''}{rub(p.price)} при помесячной оплате</div>
                           <div className="dim bil-plan-text">{p.description}</div>
-                          <label className="bil-seats">
-                            <span>Пользователей</span>
-                            <input type="number" className="ui-input ui-input-sm" min={Math.max(1, v.members)} max={1000} step={1}
-                              value={seatsFor(v)} onChange={(e) => setSeats(Number(e.target.value) || null)}
-                              onBlur={() => setSeats((n) => (n ? Math.max(Math.max(1, v.members), Math.min(1000, Math.round(n))) : null))}
-                              aria-label="Сколько пользователей оплатить" />
-                          </label>
-                          <div className="dim bil-note">Не меньше, чем сейчас в команде ({v.members}, вместе с вами). Можно больше — места для тех, кого ещё пригласите.</div>
+                          <div className="bil-seats-box">
+                            <div className="bil-seats-row">
+                              <span>В пространстве</span>
+                              <b>{Math.max(1, v.members)} {people(Math.max(1, v.members))}</b>
+                            </div>
+                            <div className="bil-seats-row">
+                              <span>Добавить мест</span>
+                              <span className="bil-stepper">
+                                <button type="button" onClick={() => setExtra((n) => Math.max(0, n - 1))} disabled={extra === 0} aria-label="Меньше">−</button>
+                                <input type="number" min={0} max={500} value={extra} aria-label="Сколько мест добавить"
+                                  onChange={(e) => setExtra(Math.max(0, Math.min(500, Math.round(Number(e.target.value) || 0))))} />
+                                <button type="button" onClick={() => setExtra((n) => Math.min(500, n + 1))} aria-label="Больше">+</button>
+                              </span>
+                            </div>
+                            <div className="dim bil-note">Каждый человек в пространстве считается сам. Добавленные места — для тех, кого ещё пригласите.</div>
+                          </div>
                           <div className="bil-note">К оплате: {seatsFor(v)} {people(seatsFor(v))} × {rub(sum)} = <b>{rub(sum * seatsFor(v))}</b> {term}{year && p.priceYear! < p.price * 12 ? `, выгода ${rub((p.price * 12 - p.priceYear!) * seatsFor(v))}` : ''}</div>
                         </>) : (<>
                         <div className="bil-plan-price">{rub(sum)} <span className="dim">{term}</span></div>
