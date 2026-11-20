@@ -340,6 +340,12 @@ test('календарь раскладывает события по дням �
   assert.notEqual(byId.a.column, byId.b.column, 'наложенные события в разных колонках');
   assert.equal(byId.c.columns, 1, 'непересекающееся событие занимает всю ширину');
 
+  // 20.11.2026: короткие встречи без пересечения по времени — друг под другом на всю ширину, а не узкими столбиками
+  const at = (h, m, len) => ({ id: `${h}${m}`, title: 'x', startsAt: new Date(2026, 7, 26, h, m).toISOString(), endsAt: new Date(2026, 7, 26, h, m + len).toISOString() });
+  const shorts = g.layoutDay([at(9, 20, 2), at(9, 31, 5), at(9, 43, 2)].flatMap((e) => g.splitByDay(e, [days[2]])));
+  assert.ok(shorts.every((s) => s.columns === 1), 'короткие непересекающиеся — по одной колонке');
+  assert.ok(shorts[1].top >= shorts[0].top + shorts[0].height - 1e-9, 'следующая — под предыдущей, без наезда');
+
   // выходные и праздники — по настройке организации
   const work = { weekendDays: [0, 6], holidays: ['2026-08-26'] };
   assert.ok(g.isDayOff(new Date(2026, 7, 29), work), 'суббота — выходной');

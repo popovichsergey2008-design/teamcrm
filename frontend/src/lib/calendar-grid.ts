@@ -32,6 +32,8 @@ export interface DaySegment<T extends GridEvent = GridEvent> {
   /** колонка при наложении и сколько всего колонок */
   column: number;
   columns: number;
+  /** Настоящая длительность (0…1) — без минимальной высоты плитки. */
+  realHeight?: number;
 }
 
 const DAY_MS = 86_400_000;
@@ -100,6 +102,7 @@ export function splitByDay<T extends GridEvent>(event: T, days: Date[]): DaySegm
       top,
       // событие не должно вылезать за нижний край суток
       height: Math.min(height, 1 - top),
+      realHeight: Math.min((to - from) / DAY_MS, 1 - top),
       continuesFrom: start < dayStart,
       continuesTo: end > dayEnd,
       column: 0,
@@ -119,6 +122,23 @@ export function splitByDay<T extends GridEvent>(event: T, days: Date[]): DaySegm
  */
 export function layoutDay<T extends GridEvent>(segments: DaySegment<T>[]): DaySegment<T>[] {
   const sorted = [...segments].sort((a, b) => a.top - b.top || b.height - a.height);
+  /*
+    20.11.2026: короткие встречи, которые по времени НЕ пересекаются (09:20–09:22, 09:31–09:36),
+    наезжали друг на друга только из-за минимальной высоты плитки — и делили колонку на узкие
+    столбики, где не читалось ни слова. Такую встречу ставим сразу под предыдущей, на всю ширину:
+    время на плитке написано, а цепочка сдвигов — не больше трёх минимальных высот (~1,5 ч).
+  */
+  let realEnd = 0;
+  let shownEnd = 0;
+  for (const seg of sorted) {
+    const real = seg.realHeight ?? seg.height;
+    const start = seg.top;
+    if (start >= realEnd - 1e-9 && start < shownEnd - 1e-9 && shownEnd - start <= 3 * MIN_HEIGHT + 1e-9) {
+      seg.top = Math.min(shownEnd, 1 - seg.height);
+    }
+    realEnd = Math.max(realEnd, start + real);
+    shownEnd = Math.max(shownEnd, seg.top + seg.height);
+  }
   let group: DaySegment<T>[] = [];
   let groupEnd = 0;
 
