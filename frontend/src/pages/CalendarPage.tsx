@@ -925,7 +925,7 @@ function TimeGrid({ days, work, segments, allDayOf, onOpen, onOpenBlock, onCreat
                 const frac = (Date.parse(t.deadline_at) - startOfDay(d).getTime()) / 86_400_000;
                 let px = frac * 24 * HOUR_HEIGHT;
                 const prev = lastTop[lastTop.length - 1];
-                if (prev !== undefined && px - prev < 22) px = prev + 22;
+                if (prev !== undefined && px - prev < 34) px = prev + 34; // срок — в две строки, ~32 px
                 lastTop.push(px);
                 return (
                   <button key={`dm${t.id}`} className="cal-due-mark" style={{ top: `${px}px` }}
