@@ -99,6 +99,8 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
       plan: plan ? this.planOut(plan) : null,
       period: (row?.period_months ?? 1) === 12 ? 'year' as const : 'month' as const,
       months,
+      /** #5000: за сколько пользователей оплачен текущий период (null — за состав на момент оплаты). */
+      seats: row?.seats ?? null,
       lockedPrice: row?.price_rub != null ? Number(row.price_rub) : null,
       autopay: !!row?.autopay && !!row?.payment_method_id,
       autopayAvailable: this.autopayAllowed,
@@ -175,7 +177,7 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async checkout(tenantId: string, userId: string, planCode: string, period: 'month' | 'year' = 'month', monthsWanted?: number): Promise<{ confirmationUrl: string; paymentId: string }> {
+  async checkout(tenantId: string, userId: string, planCode: string, period: 'month' | 'year' = 'month', monthsWanted?: number, seatsWanted?: number): Promise<{ confirmationUrl: string; paymentId: string }> {
     if (!this.kassa) throw AppException.validation('Оплата ещё не подключена — напишите в поддержку');
     const plan = await this.repo.plan(planCode);
     if (!plan || !plan.is_active) throw AppException.validation('Такого тарифа нет');
@@ -184,19 +186,25 @@ export class BillingService implements OnModuleInit, OnModuleDestroy {
     const members = await this.repo.membersCount(tenantId);
     // ТЗ 10.11: тариф «QEVO» — цена за пользователя, сумма = цена × сотрудники (не меньше одного)
     const unit = periodPrice(Number(plan.price_rub), plan.price_year_rub == null ? null : Number(plan.price_year_rub), months);
-    const price = String(plan.per_member ? unit * Math.max(1, members) : unit);
+    /*
+      #5000: число пользователей выбирают сами — не меньше, чем сейчас в команде (вместе с
+      владельцем), больше — можно: места для тех, кого ещё пригласят.
+    */
+    const seats = plan.per_member ? Math.min(1000, Math.max(Math.max(1, members), Math.round(seatsWanted ?? 0))) : null;
+    const price = String(plan.per_member ? unit * (seats ?? 1) : unit);
     if (plan.max_members !== null && members > plan.max_members) {
       throw AppException.validation(`В компании ${members} сотрудников, а тариф «${plan.title}» — до ${plan.max_members}. Выберите тариф побольше`);
     }
     const sub = await this.repo.sub(tenantId);
-    const id = await this.repo.createPayment({ tenantId, planCode, amountRub: price, kind: 'checkout', createdBy: userId, periodMonths: months, planVersion: plan.version });
+    const id = await this.repo.createPayment({ tenantId, planCode, amountRub: price, kind: 'checkout', createdBy: userId, periodMonths: months, planVersion: plan.version, seats });
     let pay: ProviderPayment;
-    const description = `QEVO, тариф «${plan.title}», ${periodLabel(months)} — ${sub?.tenant_name ?? 'компания'}`;
+    const who = seats ? `, ${seats} ${seats % 10 === 1 && seats % 100 !== 11 ? 'пользователь' : seats % 10 >= 2 && seats % 10 <= 4 && (seats % 100 < 10 || seats % 100 >= 20) ? 'пользователя' : 'пользователей'}` : '';
+    const description = `QEVO, тариф «${plan.title}», ${periodLabel(months)}${who} — ${sub?.tenant_name ?? 'компания'}`;
     try {
       pay = await this.kassa.createRedirect({
         amount: amountValue(price),
         description,
-        receipt: await this.receiptFor(tenantId, userId, `Подписка QEVO, тариф «${plan.title}», ${periodLabel(months)}`, amountValue(price)),
+        receipt: await this.receiptFor(tenantId, userId, `Подписка QEVO, тариф «${plan.title}», ${periodLabel(months)}${who}`, amountValue(price)),
         returnUrl: `${this.base()}/settings/billing?paid=${id}`,
         metadata: { tenant_id: tenantId, plan: planCode, payment: id, months: String(months) },
         savePaymentMethod: this.autopayAllowed,

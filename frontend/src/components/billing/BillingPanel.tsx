@@ -29,6 +29,10 @@ export function statusLine(v: BillingView): string {
  * «Настройки → Тариф и оплата» (мастер-план релиза, этап 4): состояние подписки, тарифы,
  * оплата на странице ЮKassa и история платежей. Платит владелец; остальные видят состояние.
  */
+/** «1 пользователь», «3 пользователя», «5 пользователей». */
+const people = (n: number) => { const a = n % 100; const b = n % 10; return a > 10 && a < 20 ? 'пользователей' : b === 1 ? 'пользователь' : b >= 2 && b <= 4 ? 'пользователя' : 'пользователей'; };
+const colleagues = (n: number) => { const a = n % 100; const b = n % 10; return a > 10 && a < 20 ? 'сотрудников' : b === 1 ? 'сотрудник' : b >= 2 && b <= 4 ? 'сотрудника' : 'сотрудников'; };
+
 export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onClose: () => void }) {
   useEscape(onClose);
   const [v, setV] = useState<BillingView | null>(null);
@@ -40,6 +44,13 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
     месяцы (скидки нет), на год — годовая цена со скидкой.
   */
   const [months, setMonths] = useState(1);
+  /*
+    #5000: «оплатить 5 человек на 2 месяца», а в команде пока четверо — число пользователей
+    выбирают сами: не меньше, чем сейчас в команде (вместе с владельцем), больше — можно.
+  */
+  const [seats, setSeats] = useState<number | null>(null);
+  /** Сколько платим: выбранное, но не меньше текущей команды; по умолчанию — оплаченное раньше или текущий состав. */
+  const seatsFor = (view: BillingView) => Math.max(Math.max(1, view.members), seats ?? view.seats ?? view.members);
 
   const load = () => billingApi.view().then(setV).catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось загрузить'));
 
@@ -58,7 +69,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
   const pay = async (code: string) => {
     setBusy(code); setErr('');
     try {
-      const r = await billingApi.checkout(code, months);
+      const r = await billingApi.checkout(code, months, v ? seatsFor(v) : undefined);
       window.location.href = r.confirmationUrl; // страница ЮKassa: данные карты к нам не попадают
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Не получилось начать оплату');
@@ -83,7 +94,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
             <div className="drawer-section">
               <div className="drawer-section-title">Подписка</div>
               <div className={v.status === 'READ_ONLY' || v.status === 'GRACE' ? 'error-text' : ''}>{statusLine(v)}</div>
-              <div className="dim bil-note">Сотрудников в компании: {v.members}.</div>
+              <div className="dim bil-note">В команде сейчас {v.members} {people(v.members)} — вы и {Math.max(0, v.members - 1)} {colleagues(v.members - 1)}.{v.seats ? ` Оплачено мест: ${v.seats}.` : ''}</div>
               {v.testMode && <div className="dim bil-note">Тестовый режим ЮKassa: настоящие деньги не списываются.</div>}
             </div>
 
@@ -121,7 +132,15 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                           <div className="bil-plan-price">от {rub(p.priceYear != null ? Math.round(p.priceYear / 12) : p.price)} <span className="dim">за пользователя в месяц</span></div>
                           <div className="dim bil-note">{p.priceYear != null ? `${rub(Math.round(p.priceYear / 12))} при оплате за год, ` : ''}{rub(p.price)} при помесячной оплате</div>
                           <div className="dim bil-plan-text">{p.description}</div>
-                          <div className="bil-note">К оплате: {v.members} {v.members % 10 === 1 && v.members % 100 !== 11 ? 'пользователь' : 'польз.'} × {rub(sum)} = <b>{rub(sum * Math.max(1, v.members))}</b> {term}{year && p.priceYear! < p.price * 12 ? `, выгода ${rub((p.price * 12 - p.priceYear!) * Math.max(1, v.members))}` : ''}</div>
+                          <label className="bil-seats">
+                            <span>Пользователей</span>
+                            <input type="number" className="ui-input ui-input-sm" min={Math.max(1, v.members)} max={1000} step={1}
+                              value={seatsFor(v)} onChange={(e) => setSeats(Number(e.target.value) || null)}
+                              onBlur={() => setSeats((n) => (n ? Math.max(Math.max(1, v.members), Math.min(1000, Math.round(n))) : null))}
+                              aria-label="Сколько пользователей оплатить" />
+                          </label>
+                          <div className="dim bil-note">Не меньше, чем сейчас в команде ({v.members}, вместе с вами). Можно больше — места для тех, кого ещё пригласите.</div>
+                          <div className="bil-note">К оплате: {seatsFor(v)} {people(seatsFor(v))} × {rub(sum)} = <b>{rub(sum * seatsFor(v))}</b> {term}{year && p.priceYear! < p.price * 12 ? `, выгода ${rub((p.price * 12 - p.priceYear!) * seatsFor(v))}` : ''}</div>
                         </>) : (<>
                         <div className="bil-plan-price">{rub(sum)} <span className="dim">{term}</span></div>
                         {months > 1 && !year && <div className="dim bil-note">{rub(p.price)} × {months}</div>}

@@ -12,6 +12,8 @@ export interface BillingView {
   period: 'month' | 'year';
   /** На сколько месяцев оплачен текущий период (1–12). */
   months?: number;
+  /** #5000: за сколько пользователей оплачен текущий период (null — за состав на момент оплаты). */
+  seats?: number | null;
   lockedPrice: number | null;
   /** Ближайшее продление — по новой цене (перевод владельцем платформы, §5.4). */
   priceChange: { at: string; price: number; nextPeriod: boolean } | null;
@@ -31,7 +33,7 @@ export interface BillingView {
 export const billingApi = {
   view: () => request<BillingView>('GET', '/billing'),
   /** 19.11.2026: срок — 1–12 месяцев; 12 — год со скидкой, остальное — цена месяца × месяцы. */
-  checkout: (plan: string, months = 1) => request<{ confirmationUrl: string; paymentId: string }>('POST', '/billing/checkout', { plan, months, period: months === 12 ? 'year' : 'month' }),
+  checkout: (plan: string, months = 1, seats?: number) => request<{ confirmationUrl: string; paymentId: string }>('POST', '/billing/checkout', { plan, months, seats, period: months === 12 ? 'year' : 'month' }),
   check: (paymentId: string) => request<{ status: string }>('POST', `/billing/payments/${paymentId}/check`, {}),
   autopay: (on: boolean) => request<BillingView>('POST', '/billing/autopay', { on }),
 };

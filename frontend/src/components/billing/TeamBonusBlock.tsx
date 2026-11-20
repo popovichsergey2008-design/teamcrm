@@ -45,7 +45,7 @@ export function TeamBonusBlock({ bonus, canInvite, onChanged }: {
             <span style={{ width: `${Math.min(100, Math.round((bonus.invited / bonus.need) * 100))}%` }} />
           </div>
           <p className="dim" style={{ margin: '6px 0 8px', fontSize: 13 }}>
-            В команде {Math.min(bonus.invited, bonus.need)} из {bonus.need}{left ? ` — осталось ${left}` : ''}. Считаются те, кто принял приглашение.
+            Пригласили {Math.min(bonus.invited, bonus.need)} из {bonus.need}{left ? ` — осталось ${left}` : ''}. Считаются те, кто принял приглашение; вы сами в это число не входите.
           </p>
           {canInvite && (
             <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => setInviteOpen(true)}>

@@ -21,6 +21,8 @@ export interface TenantSubRow extends SubRow {
   period_months: number;
   price_rub: string | null;
   plan_version: number | null;
+  /** #5000: за сколько пользователей оплачен период (только в sub()). */
+  seats?: number | null;
   /** Тестовая компания — её может продлить тестовый платёж (только в sub()). */
   is_test?: boolean;
   /** Начало пробного периода (только в sub()). */
@@ -88,7 +90,7 @@ export class BillingRepository {
               COALESCE(s.complimentary, FALSE) AS complimentary, s.payment_method_id,
               COALESCE(s.autopay, FALSE) AS autopay, COALESCE(s.notified, '{}'::jsonb) AS notified,
               COALESCE(s.period_months, 1) AS period_months, s.price_rub::text, s.plan_version, t.is_test,
-              t.trial_started_at
+              t.trial_started_at, s.seats
          FROM tenants t LEFT JOIN tenant_subscriptions s ON s.tenant_id = t.id
         WHERE t.id = $1`,
       [tenantId],
@@ -152,12 +154,12 @@ export class BillingRepository {
 
   async createPayment(p: {
     tenantId: string; planCode: string; amountRub: string; kind: 'checkout' | 'autopay'; createdBy: string | null;
-    periodMonths?: number; planVersion?: number | null;
+    periodMonths?: number; planVersion?: number | null; seats?: number | null;
   }): Promise<string> {
     const row = await this.db.one<{ id: string }>(
-      `INSERT INTO billing_payments (tenant_id, plan_code, amount_rub, kind, created_by, period_months, plan_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id::text`,
-      [p.tenantId, p.planCode, p.amountRub, p.kind, p.createdBy, p.periodMonths ?? 1, p.planVersion ?? null],
+      `INSERT INTO billing_payments (tenant_id, plan_code, amount_rub, kind, created_by, period_months, plan_version, seats)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::int) RETURNING id::text`,
+      [p.tenantId, p.planCode, p.amountRub, p.kind, p.createdBy, p.periodMonths ?? 1, p.planVersion ?? null, p.seats ?? null],
     );
     return row!.id;
   }
@@ -191,23 +193,23 @@ export class BillingRepository {
   }): Promise<boolean> {
     return this.db.withTransaction(async (c) => {
       // цена, период и версия — из самого платежа: подписка продлевается так, как за неё заплатили
-      const upd = await c.query<{ amount_rub: string; period_months: number; plan_version: number | null }>(
+      const upd = await c.query<{ amount_rub: string; period_months: number; plan_version: number | null; seats: number | null }>(
         `UPDATE billing_payments SET status='succeeded', paid_at=now(), period_end=$2, is_test=$3::boolean
-          WHERE id=$1 AND status='pending' RETURNING amount_rub::text, period_months, plan_version`,
+          WHERE id=$1 AND status='pending' RETURNING amount_rub::text, period_months, plan_version, seats`,
         [p.paymentId, p.periodEnd.toISOString(), !!p.isTest],
       );
       if (!upd.rowCount) return false; // уже учтён (повтор уведомления)
       const paid = upd.rows[0];
       await c.query(
         `INSERT INTO tenant_subscriptions (tenant_id, status, plan_code, current_period_end, payment_method_id, autopay, notified,
-                                           period_months, price_rub, plan_version)
-         VALUES ($1, 'ACTIVE', $2, $3, $4::text, $4::text IS NOT NULL, '{}'::jsonb, $5::int, $6::numeric, $7::int)
+                                           period_months, price_rub, plan_version, seats)
+         VALUES ($1, 'ACTIVE', $2, $3, $4::text, $4::text IS NOT NULL, '{}'::jsonb, $5::int, $6::numeric, $7::int, $8::int)
          ON CONFLICT (tenant_id) DO UPDATE SET status='ACTIVE', plan_code=$2, current_period_end=$3,
            payment_method_id = COALESCE($4::text, tenant_subscriptions.payment_method_id),
            autopay = CASE WHEN $4::text IS NOT NULL THEN TRUE ELSE tenant_subscriptions.autopay END,
-           period_months=$5::int, price_rub=$6::numeric, plan_version=$7::int,
+           period_months=$5::int, price_rub=$6::numeric, plan_version=$7::int, seats=$8::int,
            notified='{}'::jsonb, updated_at=now()`,
-        [p.tenantId, p.planCode, p.periodEnd.toISOString(), p.paymentMethodId, paid.period_months, paid.amount_rub, paid.plan_version],
+        [p.tenantId, p.planCode, p.periodEnd.toISOString(), p.paymentMethodId, paid.period_months, paid.amount_rub, paid.plan_version, paid.seats],
       );
       return true;
     });

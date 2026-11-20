@@ -16,3 +16,6 @@
 .bil-term { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 4px; }
 .bil-term-label { font-size: var(--fs-sm); color: var(--text-dim); }
 .bil-term-select { width: auto; min-width: 150px; }
+/* #5000: сколько пользователей оплатить */
+.bil-seats { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--fs-sm); }
+.bil-seats input { width: 90px; }
