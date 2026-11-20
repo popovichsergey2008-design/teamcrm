@@ -137,10 +137,7 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                           <div className="dim bil-note">{p.priceYear != null ? `${rub(Math.round(p.priceYear / 12))} при оплате за год, ` : ''}{rub(p.price)} при помесячной оплате</div>
                           <div className="dim bil-plan-text">{p.description}</div>
                           <div className="bil-seats-box">
-                            <div className="bil-seats-row">
-                              <span>В пространстве</span>
-                              <b>{Math.max(1, v.members)} {people(Math.max(1, v.members))}</b>
-                            </div>
+                            <div>В пространстве: <b>{Math.max(1, v.members)} {people(Math.max(1, v.members))}</b></div>
                             <div className="bil-seats-row">
                               <span>Добавить мест</span>
                               <span className="bil-stepper">
