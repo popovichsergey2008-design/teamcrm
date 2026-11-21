@@ -157,6 +157,27 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     throw new Error(`Не нашёл сотрудника «${name}»`);
   };
 
+  /**
+   * #5004: адресат сообщения по имени. Голосом говорят в падеже — «отправь Сергею»,
+   * «напиши Глебу Соколову»: не нашли как есть — пробуем основу слов без окончания.
+   * Себе не пишем — для этого «Заметки».
+   */
+  const findPeer = async (ctx: ToolContext, name: string) => {
+    const users = (await repo.users(ctx.tenantId)).filter((u) => String(u.id) !== String(ctx.user.userId));
+    const words = name.trim().toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);
+    if (!words.length) throw new Error('Не понял, кому написать');
+    const pick = (stems: string[]) => users.filter((u) => {
+      const full = u.full_name.toLowerCase().replace(/ё/g, 'е');
+      return stems.every((w) => full.split(/\s+/).some((part) => part.startsWith(w)));
+    });
+    const stem = (w: string) => (w.length > 4 ? w.replace(/(ому|ему|ой|ей|ым|им|ою|ею|ю|у|е|и|а|я|ы)$/, '') : w.replace(/(ю|у|е)$/, ''));
+    let hits = pick(words);
+    if (!hits.length) hits = pick(words.map(stem).filter((w) => w.length >= 2));
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw new Error(`Под «${name}» подходят несколько: ${hits.map((u) => u.full_name).join(', ')} — назовите точнее`);
+    throw new Error(`Не нашёл сотрудника «${name}»`);
+  };
+
   /** Файл целиком в память: разбор текста иначе не сделать, размер ограничен выше. */
   const fileBuffer = async (tenantId: string, fileId: string): Promise<Buffer> => {
     const { stream } = await files.getForDownload(tenantId, fileId);
@@ -929,14 +950,19 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     },
     {
       name: 'send_message', kind: 'write',
-      description: 'Отправить сообщение в чат от имени человека: «напиши Глебу, что созвон в 15», «напиши в чат проекта, что макеты готовы». Номер чата бери из chat_recent, search_messages или контекста страницы.',
-      params: { chatId: 'номер чата', text: 'что написать' },
+      description: 'Отправить сообщение от имени человека — лично сотруднику или в чат: «отправь сообщение Сергею: Сергей, как дела?», «напиши Глебу, что созвон в 15», «напиши в чат проекта, что макеты готовы». Лично человеку — to = его имя (как сказали, можно в любом падеже), chatId не нужен: личный чат найду или заведу сам. В чат — chatId из chat_recent, search_messages или контекста страницы. text — сами слова сообщения, как их продиктовали (без «отправь сообщение Сергею»).',
+      params: { to: 'кому лично — имя сотрудника (если пишем человеку)', chatId: 'номер чата (если пишем в чат)', text: 'что написать' },
       async preview(ctx, p) {
-        const chatId = str(p.chatId, 20);
         const text = String(p.text ?? '').trim().slice(0, 4000);
+        if (text.length < 2) throw new Error('Не понял, что написать');
+        // #5004: «отправь сообщение Сергею» — адресат по имени, личный чат заводим при отправке
+        if (!str(p.chatId, 20) && str(p.to, 120)) {
+          const u = await findPeer(ctx, str(p.to, 120));
+          return { text: `Отправить лично — ${u.full_name}?\n«${clip(text, 600)}»`, params: { toUserId: String(u.id), toName: u.full_name, text } };
+        }
+        const chatId = str(p.chatId, 20);
         const chat = await repo.chatTitle(ctx.tenantId, ctx.user.userId, chatId);
         if (!chat) throw new Error('Такого чата у вас нет');
-        if (text.length < 2) throw new Error('Не понял, что написать');
         return { text: `Отправить в «${chat.title}»?\n«${clip(text, 600)}»`, params: { chatId, text } };
       },
       fields: [{ key: 'text', label: 'Сообщение', type: 'multiline' }],
@@ -944,15 +970,19 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async edit(ctx, p, patch) {
         const text = String(patch.text ?? p.text ?? '').trim().slice(0, 4000);
         if (text.length < 2) throw new Error('Сообщение пустое');
+        if (p.toUserId) return { text: `Отправить лично — ${String(p.toName ?? 'сотруднику')}?\n«${clip(text, 600)}»`, params: { ...p, text } };
         const chat = await repo.chatTitle(ctx.tenantId, ctx.user.userId, String(p.chatId));
         return { text: `Отправить в «${chat?.title ?? 'чат'}»?\n«${clip(text, 600)}»`, params: { ...p, text } };
       },
       async execute(ctx, p) {
-        const chatId = str(p.chatId, 20);
+        const chatId = p.toUserId
+          ? String((await chats.openDm(ctx.tenantId, ctx.user.userId, String(p.toUserId))).id)
+          : str(p.chatId, 20);
         const m: any = await chats.send(ctx.tenantId, chatId, ctx.user, String(p.text), null);
         const chat = await repo.chatTitle(ctx.tenantId, ctx.user.userId, chatId);
+        const where = p.toUserId ? String(p.toName ?? chat?.title ?? 'сотруднику') : `«${chat?.title ?? 'чат'}»`;
         return {
-          text: `Сообщение отправлено в «${chat?.title ?? 'чат'}».`,
+          text: p.toUserId ? `Сообщение отправлено: ${where}.` : `Сообщение отправлено в ${where}.`,
           output: { chatId, messageId: String(m?.id ?? '') },
           sources: [{ kind: 'chat', id: chatId, title: chat?.title ?? 'Чат', url: `${ctx.base}/chat/${chatId}` }],
         };
