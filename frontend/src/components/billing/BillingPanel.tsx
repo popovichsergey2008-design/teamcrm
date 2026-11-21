@@ -113,11 +113,6 @@ export default function BillingPanel({ canPay, onClose }: { canPay: boolean; onC
                     {Array.from({ length: 11 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{periodLabel(n)}</option>)}
                     <option value={12}>1 год{v.plans.some((p) => p.priceYear != null && p.priceYear < p.price * 12) ? ' — со скидкой' : ''}</option>
                   </select>
-                  <span className="kv2-seg" role="group" aria-label="Быстрый выбор срока">
-                    {[1, 3, 6, 12].map((n) => (
-                      <button key={n} type="button" className="kv2-seg-btn" aria-pressed={months === n} onClick={() => setMonths(n)}>{n === 12 ? 'Год' : `${n} мес`}</button>
-                    ))}
-                  </span>
                 </div>
                 <div className="dim bil-note">Скидка — только при оплате сразу за год. На 1–11 месяцев сумма — цена месяца × число месяцев.</div>
                 {!v.configured && <div className="dim">Оплата скоро появится. Пока всё работает — напишите в поддержку, если нужен счёт.</div>}
