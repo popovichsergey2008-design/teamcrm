@@ -1,5 +1,6 @@
 /* Раздел «Стикеры» (#4997): доска по датам, месяц, лента на телефоне. */
-.stk-page { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 80px; min-width: 0; }
+/* #5003: свой скролл — .app-main обрезает лишнее (overflow: hidden), и на низких экранах низ доски был не виден */
+.stk-page { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 80px; min-width: 0; flex: 1; min-height: 0; overflow-y: auto; }
 .stk-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .stk-crumb { font-size: 13px; }
 .stk-title { margin: 2px 0 0; font-size: 26px; }
