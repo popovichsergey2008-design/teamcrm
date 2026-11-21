@@ -10,6 +10,7 @@ import './anthill-attach.css';
 import { Lightbox } from '../LightboxLazy';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { openTarget, resolveOpen } from './open-command';
 import { stampLabel } from '../../lib/chat-text';
 
 /*
@@ -281,6 +282,21 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     const question = text.trim() || (ready.length ? 'Посмотри вложение: что на нём и что с этим делать?' : '');
     if (!question || busy || reading) return;
     setErr('');
+    // #5005: «открой календарь / задачу 5005 / проект QEVO» — переходим сразу, без модели
+    const target = ready.length ? null : openTarget(question);
+    if (target) {
+      const r = await resolveOpen(target, user?.role ?? 'member').catch(() => null);
+      if (r) {
+        const now = new Date().toISOString();
+        setDraft('');
+        setMessages((prev) => [...prev,
+          { id: `me-${Date.now()}`, role: 'user', content: question, citations: [], createdAt: now, action: null },
+          { id: `nav-${Date.now()}`, role: 'assistant', content: 'error' in r ? r.error : `Открываю ${r.title}.`, citations: [], createdAt: now, action: null },
+        ]);
+        if (!('error' in r)) { navigate(r.route); onClose?.(); }
+        return;
+      }
+    }
     let id: string;
     try { id = sessionId ?? await fresh(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : 'Не удалось начать разговор'); return; }
@@ -382,10 +398,60 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     return () => window.removeEventListener('qevo:bot-ask', take);
   }, []);
 
+  /*
+    #5005: микрофон как в Telegram. Удерживать — говорить, отпустить — сразу отправка;
+    смахнуть вверх — отмена. Короткое нажатие — запись до второго нажатия, и тоже сразу
+    отправка: раньше после «стоп» текст ложился в поле и нужно было жать «Отправить».
+  */
+  const voiceSend = useRef(false);
+  const voiceCancel = useRef(false);
+  const holdOn = useRef(false);
+  const holdTimer = useRef(0);
+  const holdY = useRef(0);
+  const [holding, setHolding] = useState(false);
+  const [holdCancel, setHoldCancel] = useState(false);
   const voice = useVoiceInput((text) => {
+    if (voiceCancel.current) { voiceCancel.current = false; return; }
+    if (voiceSend.current) {
+      voiceSend.current = false;
+      const d = draft.trim();
+      void sendRef.current(d ? `${d} ${text}` : text);
+      return;
+    }
     setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text));
     inputRef.current?.focus();
   });
+  const micDown = (e: React.PointerEvent) => {
+    if (busy || e.button > 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    holdY.current = e.clientY;
+    if (voice.recording) return; // запись по нажатию — остановим на отпускании
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => {
+      holdOn.current = true; setHolding(true); setHoldCancel(false);
+      voiceCancel.current = false; voiceSend.current = true;
+      try { navigator.vibrate?.(15); } catch { /* без вибрации */ }
+      // отпустили, пока браузер спрашивал доступ к микрофону, — сразу останавливаем
+      void voice.start().then(() => { if (!holdOn.current) voice.stop(); });
+    }, 220);
+  };
+  const micMove = (e: React.PointerEvent) => {
+    if (!holdOn.current) return;
+    const up = holdY.current - e.clientY > 60;
+    voiceCancel.current = up; setHoldCancel(up);
+  };
+  const micUp = () => {
+    window.clearTimeout(holdTimer.current);
+    if (holdOn.current) { holdOn.current = false; setHolding(false); voice.stop(); return; }
+    if (voice.recording) { voice.stop(); return; }
+    if (busy) return;
+    voiceCancel.current = false; voiceSend.current = true;
+    void voice.start();
+  };
+  const micAbort = () => {
+    window.clearTimeout(holdTimer.current);
+    if (holdOn.current) { holdOn.current = false; setHolding(false); voiceCancel.current = true; voice.stop(); }
+  };
 
   const act = async (messageId: string, actionId: string, what: 'confirm' | 'reject' | 'undo') => {
     setErr('');
@@ -533,12 +599,13 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
               <Icon name="maximize" size={14} />
             </button>
           )}
-          {onClose && (
-            <button className="ui-btn ui-btn-ghost ui-btn-sm chat-overlay-close" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть">
-              <Icon name="close" size={16} />
-            </button>
-          )}
         </span>
+        {/* #5005: крестик — отдельно от ряда кнопок: в узкой панели и на телефоне он уезжал за край */}
+        {onClose && (
+          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-overlay-close anthill-close" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть">
+            <Icon name="close" size={18} />
+          </button>
+        )}
       </div>
 
       <Tabs
@@ -810,7 +877,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         >
           <Icon name="search" size={13} /> Глубокий анализ
         </Toggle>
-        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="нажмите «стоп», когда закончите" />
+        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint={holding ? (holdCancel ? 'отпустите — отменю' : 'отпустите — отправлю · смахните вверх — отмена') : 'нажмите ещё раз — отправлю'} />
         {att.length > 0 && (
           <div className="anthill-att-list">
             {att.map((a) => (
@@ -858,11 +925,17 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
             aria-label="Вопрос QEVO Bot"
           />
           <button
-            className={voice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
-            onClick={voice.toggle}
+            className={`${voice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'} anthill-mic`}
+            onPointerDown={micDown}
+            onPointerMove={micMove}
+            onPointerUp={micUp}
+            onPointerCancel={micAbort}
+            onContextMenu={(e) => e.preventDefault()}
+            // с клавиатуры (Enter/пробел) pointer-событий нет — переключаем запись кликом
+            onClick={(e) => { if (e.detail === 0) { voiceCancel.current = false; voiceSend.current = !voice.recording; voice.toggle(); } }}
             disabled={busy}
-            title={voice.recording ? 'Остановить и распознать' : 'Спросить голосом'}
-            aria-label="Спросить голосом"
+            title={voice.recording ? 'Нажмите — отправлю' : 'Удерживайте и говорите — отпустите, отправлю. Или нажмите один раз'}
+            aria-label={voice.recording ? 'Закончить и отправить' : 'Спросить голосом'}
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />
           </button>
