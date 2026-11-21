@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import './chat-notes.css';
 import { QevoBotMark } from '../components/QevoBotMark';
 import { Avatar } from '../components/Avatar';
 import { editFocusTarget } from '../lib/chat-focus';
@@ -1852,7 +1853,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
 
   const removeMessage = async (messageId: string) => {
     if (!activeId) return;
-    if (!(await confirmAction({ title: 'Удалить сообщение?', description: 'У собеседников оно тоже исчезнет.', danger: true }))) return;
+    if (!(await confirmAction({ title: 'Удалить сообщение?', description: chats.find((c) => String(c.id) === String(activeId))?.kind === 'self' ? 'Запись пропадёт из заметок.' : 'У собеседников оно тоже исчезнет.', danger: true }))) return;
     try {
       await api.deleteMessage(activeId, messageId);
       // Ветка — отдельный список сообщений: без этой строки удалённое исчезало
@@ -1969,6 +1970,10 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       },
       { label: 'Удалить', icon: 'trash' as const, danger: true, onClick: () => { void removeMessage(String(m.id)); } },
     ] : []),
+    // #5002: в «Заметках» хозяин удаляет и не свои записи (итоги встреч, карточки бота)
+    ...(!mine && active?.kind === 'self'
+      ? [{ label: 'Удалить', icon: 'trash' as const, danger: true, onClick: () => { void removeMessage(String(m.id)); } }]
+      : []),
   ];
 
   /**
@@ -3156,11 +3161,17 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   предложено сделать. Иначе разбор оседает в разделе встреч, куда надо
                   специально пойти, и половина договорённостей теряется.
                 */
+                // #5002: карточки встреч и системные строки без меню — в «Заметках» у них своя кнопка «Удалить»
+                const noteDel = active?.kind === 'self' ? (
+                  <button className="note-del" onClick={() => { void removeMessage(String(m.id)); }} title="Удалить из заметок">
+                    <Icon name="trash" size={12} /> Удалить
+                  </button>
+                ) : null;
                 if (m.proposal_id) {
                   return (
                     <div key={m.id} data-msg={String(m.id)}>
                       {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
-                      <Suspense fallback={<div className="chat-system">{m.body}</div>}><ProposalCard id={String(m.proposal_id)} body={String(m.body ?? '')} /></Suspense>
+                      <div className={noteDel ? 'note-wrap' : undefined}><Suspense fallback={<div className="chat-system">{m.body}</div>}><ProposalCard id={String(m.proposal_id)} body={String(m.body ?? '')} /></Suspense>{noteDel}</div>
                     </div>
                   );
                 }
@@ -3170,6 +3181,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   return (
                     <div key={m.id} data-msg={String(m.id)}>
                       {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
+                      <div className={noteDel ? 'note-wrap' : undefined}>
                       <Suspense fallback={
                       <div className="meet-card">
                         <div className="meet-card-head">
@@ -3190,6 +3202,8 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                         <MeetingChatCard messageId={String(m.id)} meetingId={String(m.meeting_id)} body={String(m.body ?? '')}
                           stamp={stampLabel(m.created_at)} stampTitle={new Date(m.created_at).toLocaleString('ru-RU')} />
                       </Suspense>
+                      {noteDel}
+                      </div>
                     </div>
                   );
                 }
@@ -3198,7 +3212,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   return (
                     <div key={m.id}>
                       {newDay && <div className="chat-day">{dayOf(m.created_at)}</div>}
-                      <div className="chat-system">{m.body}</div>
+                      <div className={noteDel ? 'note-wrap' : undefined}><div className="chat-system">{m.body}</div>{noteDel}</div>
                     </div>
                   );
                 }

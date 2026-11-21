@@ -1,0 +1,8 @@
+/* #5002: «Заметки» — кнопка удаления под карточкой встречи и системной строкой (видна всегда — на телефоне нет наведения) */
+.note-wrap { display: flex; flex-direction: column; }
+.note-del {
+  align-self: flex-end; display: inline-flex; align-items: center; gap: 4px;
+  margin: 2px 4px 6px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-elev); color: var(--text-dim); cursor: pointer; font-size: var(--fs-xs, 12px);
+}
+.note-del:hover, .note-del:focus-visible { color: var(--danger); border-color: var(--danger-line); }

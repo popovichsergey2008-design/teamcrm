@@ -1770,7 +1770,11 @@ export class ChatsService {
     const chat = await this.access(tenantId, chatId, user);
     const message = await this.repo.message(tenantId, messageId);
     if (!message || String(message.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
-    if (String(message.author_id) !== String(user.userId)) throw AppException.forbidden('Это не ваше сообщение');
+    // #5002: «Заметки» — чат с собой, в нём хозяин чистит всё, в т. ч. карточки итогов встреч
+    // (их автор — система). Участник чата с собой — только сам хозяин (проверено в access).
+    const own = String(message.author_id) === String(user.userId)
+      || (chat.kind === 'self' && String(chat.created_by) === String(user.userId));
+    if (!own) throw AppException.forbidden('Это не ваше сообщение');
     await this.repo.softDelete(messageId);
     const to = await this.recipients(chat, tenantId);
     this.realtime.emitToUsers(tenantId, to, 'chat.message_deleted', { chatId, messageId });
