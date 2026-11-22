@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { QevoBotMark } from './QevoBotMark';
 import { navigate, Route } from '../lib/router';
@@ -6,6 +6,7 @@ import type { NavCounters } from '../hooks/useNavCounters';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { ApiError } from '../lib/api';
 import { dayLabel, stickersApi, stickersChanged, type Sticker } from '../lib/stickers-api';
+import { askFor, guessIntent, INTENT_LABEL, type IntentKind } from '../lib/voice-intent';
 
 type Tab = { key: string; label: string; icon: 'target' | 'board' | 'chat' | 'pin'; go: () => void; match: (r: Route) => boolean };
 
@@ -81,22 +82,38 @@ function BotButton({ active }: { active: boolean }) {
 
   const voice = useVoiceInput((text) => {
     if (cancelled.current) return;
-    void route(text);
+    route(text);
   });
 
-  const route = async (text: string) => {
+  // #5006: красная плашка ошибки не висит вечно
+  const { error: voiceError, clearError } = voice;
+  useEffect(() => {
+    if (!voiceError) return;
+    const t = window.setTimeout(clearError, 6000);
+    return () => window.clearTimeout(t);
+  }, [voiceError, clearError]);
+
+  /*
+    #5007/#5008: сказанное не раскладываем молча — спрашиваем «что сделать?», догадка выделена.
+    Раньше по умолчанию был стикер, и «поставь задачу Сергею…» превращалось в стикер.
+  */
+  const [choice, setChoice] = useState<{ text: string; guess: IntentKind } | null>(null);
+  const route = (text: string) => {
     const t = text.trim();
-    if (!t) return;
-    if (/^(постав|созда|заведи)\S*\s+задач/i.test(t)) {
-      window.dispatchEvent(new CustomEvent('teamcrm:quick-task', { detail: { text: t.replace(/^(постав|созда|заведи)\S*\s+задач\S*\s*/i, '') } }));
+    if (t) setChoice({ text: t, guess: guessIntent(t) });
+  };
+  const askBot = (q: string) => {
+    (window as { qevoAsk?: string }).qevoAsk = q;
+    navigate({ section: 'chat', chatId: 'anthill' });
+    window.setTimeout(() => window.dispatchEvent(new Event('qevo:bot-ask')), 300);
+  };
+  const run = async (kind: IntentKind, t: string) => {
+    setChoice(null);
+    if (kind === 'task') {
+      window.dispatchEvent(new CustomEvent('teamcrm:quick-task', { detail: { text: t.replace(/^(постав|созда|заведи)\S*\s+(мне\s+)?задач\S*\s*/i, '') || t } }));
       return;
     }
-    if (/\?\s*$/.test(t) || /^(что|как|когда|где|кто|почему|сколько|покажи|какие|есть ли)\b/i.test(t)) {
-      (window as { qevoAsk?: string }).qevoAsk = t;
-      navigate({ section: 'chat', chatId: 'anthill' });
-      window.setTimeout(() => window.dispatchEvent(new Event('qevo:bot-ask')), 300);
-      return;
-    }
+    if (kind !== 'sticker') { askBot(askFor(kind, t)); return; }
     try {
       const s = await stickersApi.create({ text: t.replace(/^(напомни(те)?(\s+мне)?|не\s+забыть|стикер)\s*[:,—-]?\s*/i, '') || t, source: 'voice', fallback: 'today' });
       stickersChanged();
@@ -124,7 +141,8 @@ function BotButton({ active }: { active: boolean }) {
     window.clearTimeout(timer.current);
     if (!held.current) { navigate({ section: 'chat', chatId: 'anthill' }); return; }
     held.current = false; setHolding(false);
-    voice.stop();
+    // #5006: смахнули вверх — отмена: запись выбрасываем, не распознаём и не ругаемся
+    if (cancelled.current) voice.cancel(); else voice.stop();
   };
 
   return (
@@ -132,7 +150,7 @@ function BotButton({ active }: { active: boolean }) {
       <button className={`bn-bot${active ? ' active' : ''}${voice.recording ? ' is-rec' : ''}`} data-tour="tab-bot"
         aria-label="QEVO Bot — нажать: открыть, удерживать: сказать"
         onPointerDown={down} onPointerMove={moveP} onPointerUp={upP}
-        onPointerCancel={() => { window.clearTimeout(timer.current); if (held.current) { cancelled.current = true; held.current = false; setHolding(false); voice.stop(); } }}
+        onPointerCancel={() => { window.clearTimeout(timer.current); if (held.current) { cancelled.current = true; held.current = false; setHolding(false); voice.cancel(); } }}
         onContextMenu={(e) => e.preventDefault()}>
         <span className="bn-bot-ring" style={{
           width: 60, height: 60, marginTop: -22, borderRadius: '50%', display: 'grid', placeItems: 'center', touchAction: 'none',
@@ -144,11 +162,35 @@ function BotButton({ active }: { active: boolean }) {
       {(holding || voice.recording) && (
         <div style={HOLD} role="status">
           <b>{cancel ? 'Отпустите — отменю' : 'Слушаю…'}</b>
-          <div className="dim">Отпустите — сохраню · смахните вверх — отменить</div>
+          <div className="dim">Отпустите — спрошу, что сделать · смахните вверх — отменить</div>
         </div>
       )}
       {voice.transcribing && <div style={HOLD} role="status">Распознаю…</div>}
-      {(err || (voice.error && !voice.recording)) && <div className="error-text" style={HOLD} role="alert">{err || voice.error}</div>}
+      {/* #5006: ошибка закрывается крестиком или нажатием и сама гаснет через 6 с */}
+      {(err || (voice.error && !voice.recording)) && (
+        <div className="error-text" style={{ ...HOLD, display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }} role="alert"
+          onClick={() => { setErr(''); voice.clearError(); }}>
+          <span style={{ flex: 1 }}>{err || voice.error}</span>
+          <button type="button" aria-label="Закрыть" title="Закрыть" onClick={(e) => { e.stopPropagation(); setErr(''); voice.clearError(); }}
+            style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 20, lineHeight: 1, padding: '0 2px', cursor: 'pointer' }}>×</button>
+        </div>
+      )}
+      {choice && (
+        <div style={HOLD} role="dialog" aria-label="Что сделать">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <b style={{ flex: 1 }}>Что сделать?</b>
+            <button type="button" aria-label="Закрыть" onClick={() => setChoice(null)}
+              style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 20, lineHeight: 1, padding: '0 2px', cursor: 'pointer' }}>×</button>
+          </div>
+          <div className="dim" style={{ margin: '4px 0 10px' }}>«{choice.text}»</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {(['task', 'sticker', 'event', 'message', 'ask'] as IntentKind[]).map((k) => (
+              <button key={k} type="button" className={`ui-btn ui-btn-sm ${k === choice.guess ? 'ui-btn-primary' : 'ui-btn-outline'}`}
+                onClick={() => void run(k, choice.text)}>{INTENT_LABEL[k]}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {made && (
         <div style={HOLD} role="status">
           <b>📌 Стикер на {made.date ? dayLabel(made.date) : 'без даты'}{made.time ? `, ${made.time}` : ''}</b>

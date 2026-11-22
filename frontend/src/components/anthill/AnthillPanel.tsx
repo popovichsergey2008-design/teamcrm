@@ -11,6 +11,8 @@ import { Lightbox } from '../LightboxLazy';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
 import { openTarget, resolveOpen } from './open-command';
+import { askFor, INTENT_LABEL, type IntentKind } from '../../lib/voice-intent';
+import { stickersApi, stickersChanged } from '../../lib/stickers-api';
 import { stampLabel } from '../../lib/chat-text';
 
 /*
@@ -49,6 +51,11 @@ import { openSupport } from '../support/SupportDock';
 const CONTEXT_LABEL: Record<AnthillContext['type'], string> = {
   task: 'задача', project: 'проект', chat: 'чат', meeting: 'мит',
 };
+/** #5008: какие карточки можно «переиграть» в другое действие. */
+const KIND_OF_TOOL: Record<string, IntentKind> = {
+  create_task: 'task', create_event: 'event', send_message: 'message', create_sticker: 'sticker', create_reminder: 'sticker',
+};
+
 const SOURCE_ICON: Record<AnthillSource['kind'], 'check-circle' | 'chat' | 'record' | 'board' | 'link' | 'building'> = {
   client: 'building',
   task: 'check-circle', message: 'chat', chat: 'chat', meeting: 'record', project: 'board', web: 'link',
@@ -442,7 +449,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   };
   const micUp = () => {
     window.clearTimeout(holdTimer.current);
-    if (holdOn.current) { holdOn.current = false; setHolding(false); voice.stop(); return; }
+    if (holdOn.current) { holdOn.current = false; setHolding(false); if (voiceCancel.current) voice.cancel(); else voice.stop(); return; }
     if (voice.recording) { voice.stop(); return; }
     if (busy) return;
     voiceCancel.current = false; voiceSend.current = true;
@@ -450,7 +457,27 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   };
   const micAbort = () => {
     window.clearTimeout(holdTimer.current);
-    if (holdOn.current) { holdOn.current = false; setHolding(false); voiceCancel.current = true; voice.stop(); }
+    if (holdOn.current) { holdOn.current = false; setHolding(false); voiceCancel.current = true; voice.cancel(); }
+  };
+
+  /*
+    #5008: у карточки «создать задачу / событие / отправить сообщение / стикер» — сразу выбор,
+    чем это сделать. Выбрали другое — карточку отменяем и делаем выбранное из той же фразы.
+  */
+  const switchKind = async (m: AnthillMessage, kind: IntentKind) => {
+    const i = messages.findIndex((x) => x.id === m.id);
+    const said = [...messages.slice(0, i)].reverse().find((x) => x.role === 'user')?.content?.trim() ?? '';
+    if (!said || !m.action) return;
+    await act(m.id, m.action.id, 'reject');
+    if (kind !== 'sticker') { void send(askFor(kind, said)); return; }
+    try {
+      const st = await stickersApi.create({ text: said.replace(/^(напомни(те)?(\s+мне)?|не\s+забыть|стикер)\s*[:,—-]?\s*/i, '') || said, source: 'voice', fallback: 'today' });
+      stickersChanged();
+      setMessages((prev) => [...prev, {
+        id: `st-${Date.now()}`, role: 'assistant', content: `📌 Стикер сохранён${st.date ? ` на ${st.date.split('-').reverse().slice(0, 2).join('.')}` : ''}${st.time ? `, ${st.time}` : ''}: «${st.text}»`,
+        citations: [], createdAt: new Date().toISOString(), action: null,
+      }]);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Не получилось сохранить стикер'); }
   };
 
   const act = async (messageId: string, actionId: string, what: 'confirm' | 'reject' | 'undo') => {
@@ -777,6 +804,17 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
                     )}
                     <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => { void act(m.id, m.action!.id, 'reject'); }}>Отмена</button>
                     <span className="dim">пока не подтвердите — ничего не создано</span>
+                    {KIND_OF_TOOL[m.action.tool] && !m.action.runId && (
+                      <div className="anthill-kind" role="group" aria-label="Что сделать" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, flexBasis: '100%', marginTop: 6 }}>
+                        <span className="dim">Что сделать:</span>
+                        {(['task', 'event', 'sticker', 'message'] as IntentKind[]).map((k) => (
+                          <button key={k} type="button" aria-pressed={KIND_OF_TOOL[m.action!.tool] === k}
+                            className={`ui-btn ui-btn-sm ${KIND_OF_TOOL[m.action!.tool] === k ? 'ui-btn-primary' : 'ui-btn-outline'}`}
+                            disabled={KIND_OF_TOOL[m.action!.tool] === k}
+                            onClick={() => { void switchKind(m, k); }}>{INTENT_LABEL[k]}</button>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
                 {m.action.status === 'pending' && m.action.runId && (() => {
@@ -877,7 +915,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         >
           <Icon name="search" size={13} /> Глубокий анализ
         </Toggle>
-        <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint={holding ? (holdCancel ? 'отпустите — отменю' : 'отпустите — отправлю · смахните вверх — отмена') : 'нажмите ещё раз — отправлю'} />
+        <VoiceStatus onDismiss={voice.clearError} recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint={holding ? (holdCancel ? 'отпустите — отменю' : 'отпустите — отправлю · смахните вверх — отмена') : 'нажмите ещё раз — отправлю'} />
         {att.length > 0 && (
           <div className="anthill-att-list">
             {att.map((a) => (
