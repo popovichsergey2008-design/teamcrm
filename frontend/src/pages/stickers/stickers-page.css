@@ -1,6 +1,8 @@
 /* Раздел «Стикеры» (#4997): доска по датам, месяц, лента на телефоне. */
 /* #5003: свой скролл — .app-main обрезает лишнее (overflow: hidden), и на низких экранах низ доски был не виден */
 .stk-page { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 80px; min-width: 0; flex: 1; min-height: 0; overflow-y: auto; }
+/* #5009/#5010: дети страницы не сжимаются — иначе доска (overflow-x: auto) ужималась по высоте экрана и прятала низ колонок во внутренний скролл */
+.stk-page > * { flex-shrink: 0; }
 .stk-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .stk-crumb { font-size: 13px; }
 .stk-title { margin: 2px 0 0; font-size: 26px; }
