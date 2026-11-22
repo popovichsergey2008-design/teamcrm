@@ -725,6 +725,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
         </div>
 
         <VoiceStatus
+          onDismiss={voice.clearError}
           recording={voice.recording}
           transcribing={voice.transcribing}
           error={voice.error} quiet={voice.quiet}

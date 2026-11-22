@@ -120,7 +120,12 @@ export function QuickSticker({ prefill, onClose }: { prefill: { text?: string; s
             <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />
           </button>
         </div>
-        {(err || voice.error) && <div className="qs-err" role="alert">{err || voice.error}</div>}
+        {(err || voice.error) && (
+          <div className="qs-err" role="alert" style={{ display: 'flex', gap: 8 }}>
+            <span style={{ flex: 1 }}>{err || voice.error}</span>
+            <button type="button" aria-label="Закрыть" onClick={() => { setErr(''); voice.clearError(); }} style={{ border: 0, background: 'transparent', color: 'inherit', fontSize: 18, lineHeight: 1, cursor: 'pointer' }}>×</button>
+          </div>
+        )}
         {voice.transcribing && <div className="qs-hint">Распознаю…</div>}
         <div className="qs-foot">
           <kbd>Enter</kbd> сохранить · <kbd>Esc</kbd> закрыть · <kbd>Alt+N</kbd> с любого экрана

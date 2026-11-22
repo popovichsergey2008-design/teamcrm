@@ -39,12 +39,15 @@ export function useVoiceInput(onText: (text: string) => void, opts?: { onBlob?: 
    * Длинная надиктовка уходит на сервер целиком: расшифровка идёт минутами, и держать
    * ради неё открытый запрос значит снова упереться в таймаут.
    */
+  // #5006: отмена (смахнули вверх) — запись выбрасываем целиком, без проверок и ошибок
+  const discardRef = useRef(false);
   const blobSink = useRef(opts?.onBlob);
   blobSink.current = opts?.onBlob;
 
   const start = useCallback(async () => {
     setError('');
     if (recRef.current && recRef.current.state !== 'inactive') return;
+    discardRef.current = false;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       return setError('Браузер не поддерживает запись с микрофона');
     }
@@ -68,6 +71,7 @@ export function useVoiceInput(onText: (text: string) => void, opts?: { onBlob?: 
         meter?.close();
         setRecording(false);
         setQuiet(false);
+        if (discardRef.current) { discardRef.current = false; return; }
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
         if (!blob.size) return;
         // тишину не отправляем: модель распознавания сочинит текст, и разбор поставит не то
@@ -99,6 +103,13 @@ export function useVoiceInput(onText: (text: string) => void, opts?: { onBlob?: 
     if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop();
   }, []);
 
+  /** #5006: остановить и ничего не распознавать — для «смахните вверх — отмена». */
+  const cancel = useCallback(() => {
+    setError('');
+    if (recRef.current && recRef.current.state !== 'inactive') { discardRef.current = true; recRef.current.stop(); }
+  }, []);
+  const clearError = useCallback(() => setError(''), []);
+
   const toggle = useCallback(() => { if (recording) stop(); else start(); }, [recording, start, stop]);
 
   // ушли с экрана на середине записи — отпускаем микрофон
@@ -106,7 +117,7 @@ export function useVoiceInput(onText: (text: string) => void, opts?: { onBlob?: 
     if (recRef.current && recRef.current.state !== 'inactive') recRef.current.stop();
   }, []);
 
-  return { recording, transcribing, error, quiet, start, stop, toggle };
+  return { recording, transcribing, error, quiet, start, stop, toggle, cancel, clearError };
 }
 
 /**

@@ -479,7 +479,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
               {adding ? 'Ставлю…' : 'Поставить'}
             </button>
           </form>
-          <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="отпустите кнопку" />
+          <VoiceStatus onDismiss={voice.clearError} recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="отпустите кнопку" />
           {err && <div className="error-text" role="alert">{err}</div>}
         </Spot>
       )}
@@ -612,7 +612,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
           </div>
 
           {err && <div className="error-text wl-err" role="alert">{err}</div>}
-          <VoiceStatus recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="нажмите ещё раз, чтобы закончить" />
+          <VoiceStatus onDismiss={voice.clearError} recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint="нажмите ещё раз, чтобы закончить" />
 
           {(key === 'sphere' || key === 'name' || key === 'team' || key === 'ask') && (
             <form className="wl-compose" onSubmit={(e) => { e.preventDefault(); submit(draft); }}>

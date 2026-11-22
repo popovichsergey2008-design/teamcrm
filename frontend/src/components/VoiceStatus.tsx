@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
  * Один компонент на все места диктовки: в командной строке и в быстрой команде
  * состояние микрофона обязано выглядеть одинаково.
  */
-export function VoiceStatus({ recording, transcribing, error, quiet, hint, className }: {
+export function VoiceStatus({ recording, transcribing, error, quiet, hint, className, onDismiss }: {
   recording: boolean;
   transcribing: boolean;
   error?: string;
@@ -20,6 +20,8 @@ export function VoiceStatus({ recording, transcribing, error, quiet, hint, class
   /** Чем остановить запись — зависит от места: в палитре это ещё и пробел. */
   hint?: string;
   className?: string;
+  /** #5006: крестик у ошибки — красная плашка не должна висеть до перезагрузки. */
+  onDismiss?: () => void;
 }) {
   const [seconds, setSeconds] = useState(0);
 
@@ -46,6 +48,9 @@ export function VoiceStatus({ recording, transcribing, error, quiet, hint, class
       )}
       {!recording && transcribing && 'Распознаю речь…'}
       {!recording && !transcribing && error}
+      {!recording && !transcribing && error && onDismiss && (
+        <button type="button" onClick={onDismiss} style={{ marginLeft: 8, border: 0, background: 'transparent', color: 'inherit', fontSize: 18, lineHeight: 1, cursor: 'pointer', padding: '0 4px' }} aria-label="Закрыть" title="Закрыть">×</button>
+      )}
     </div>
   );
 }
