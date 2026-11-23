@@ -4268,7 +4268,7 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 .bn-bot { flex: 1 1 0; display: flex; justify-content: center; align-items: flex-start; background: none; border: 0; padding: 0; position: relative; }
 .mob-avatar { display: none; }
 @media (max-width: 720px) {
-  .mob-avatar { display: grid; place-items: center; position: fixed; z-index: 45; top: calc(var(--safe-top, 0px) + 10px); right: 54px; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 700; }
+  .mob-avatar { display: grid; place-items: center; position: fixed; z-index: 45; top: calc(var(--safe-top, 0px) + 6px); left: 8px; width: 44px; height: 44px; border-radius: 10px; border: 0; background: transparent; color: var(--text); }
 }
 
 /* планирование дня на карточке: намеренно неброско — это личный план, а не срок */

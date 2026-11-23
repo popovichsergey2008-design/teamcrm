@@ -1,4 +1,5 @@
 import { ScreenBoundary } from './components/ScreenBoundary';
+import { Icon } from './components/Icon';
 import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { CLIENTS_ENABLED } from './config';
 import { useAuth } from './state/auth';
@@ -1050,10 +1051,12 @@ export function App() {
       )}
       {/*
         #4997, шаг 0.1: плавающего микрофона больше нет — голос теперь удержанием центральной
-        кнопки бота. «Ещё» на телефоне — меню по аватарке вверху справа.
+        кнопки бота. #5014: меню на телефоне — бургер вверху слева, откуда и выезжает панель
+        разделов (раньше — кружок с инициалами справа, его не находили). Класс прежний — на него
+        опирается шаг обучения.
       */}
-      <button className="mob-avatar" onClick={() => window.dispatchEvent(new Event('teamcrm:open-sidebar'))} aria-label="Меню и все разделы">
-        {(user.fullName || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
+      <button className="mob-avatar" onClick={() => window.dispatchEvent(new Event('teamcrm:open-sidebar'))} aria-label="Меню и все разделы" title="Меню">
+        <Icon name="menu" size={22} />
       </button>
 
       {/*

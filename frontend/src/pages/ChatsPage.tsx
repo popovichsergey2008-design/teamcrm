@@ -3779,7 +3779,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               {/* Голосовое: сказать быстрее, чем напечатать, — но только если сказанное
                   потом можно найти. Расшифровка приходит с сервера в тело сообщения. */}
               <button
-                className={clip.recording === 'voice' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
+                className={`${clip.recording === 'voice' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'} chat-voice-btn`}
                 onClick={() => (clip.recording ? clip.stop() : activeId && clip.start('voice', activeId))}
                 disabled={clipBusy}
                 title={clip.recording === 'voice' ? 'Остановить и отправить' : 'Голосовое сообщение'}
