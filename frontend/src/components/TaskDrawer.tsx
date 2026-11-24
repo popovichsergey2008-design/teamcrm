@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { askOnConflict } from '../lib/device-prefs';
 import { TaskClientField } from './TaskClientField';
 import { navigate, parsePath } from '../lib/router';
 import { useAuth } from '../state/auth';
@@ -182,6 +183,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
   const [err, setErr] = useState('');
   /** Правка полей столкнулась с чужой (409 по версии): два варианта рядом, решает человек (волна 9). */
   const [conflict, setConflict] = useState<QueuedChange | null>(null);
+  /*
+    #5021: что МЫ уже сохранили в этой карточке — версия из ответа сервера и значения полей.
+    Автосохранение идёт через секунду после каждой паузы: раньше второе уходило со старой
+    версией (карточка ещё не перечитала задачу) и сервер отвечал «Задачу уже изменили» —
+    конфликтом с собственной правкой секундной давности, с двумя одинаковыми текстами.
+  */
+  const savedRef = useRef<{ taskId: string; version: number | null; fields: Record<string, unknown> }>({ taskId: '', version: null, fields: {} });
+  if (savedRef.current.taskId !== String(task.id)) savedRef.current = { taskId: String(task.id), version: null, fields: {} };
   const [desc, setDesc] = useState(task.description ?? '');
   /** Название правится прямо в карточке: раньше его можно было изменить только заново создав задачу. */
   const [title, setTitle] = useState(task.title ?? '');
@@ -363,7 +372,13 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
       // Поля идут с версией задачи (If-Match): если её тем временем правил кто-то ещё,
       // сервер ответит 409, а не перезапишет чужое молча.
       if (Object.keys(patch).length) {
-        try { await api.updateTask(task.id, patch, task.version); } catch (e) {
+        const known = Math.max(Number(task.version ?? 0), Number(savedRef.current.version ?? 0)) || task.version;
+        const remember = (res: unknown) => {
+          const v = Number((res as { version?: unknown } | null)?.version);
+          if (Number.isFinite(v) && v > 0) savedRef.current.version = v;
+          Object.assign(savedRef.current.fields, patch);
+        };
+        try { remember(await api.updateTask(task.id, patch, known)); } catch (e) {
           // Сети нет — правка легла в очередь и уйдёт сама; для человека это «сохранено».
           if (e instanceof ApiError && e.code === QUEUED) {
             toastSaved('Сохранится, когда появится сеть');
@@ -372,6 +387,26 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           const d = (e instanceof ApiError && e.code === 'CONFLICT' ? e.details : null) as
             { reason?: string; task?: Record<string, unknown>; fields?: string[] } | null;
           if (d?.reason === 'version' && d.task) {
+            /*
+              #5021: настоящий ли это конфликт. Чужая правка — только если на сервере в этих
+              полях не наш вариант и не то, что мы сами сохранили раньше (или что было при
+              открытии). Иначе — тихо пишем поверх новой версии, без окна. И окно можно
+              отключить совсем (Профиль → Уведомления): тогда всегда остаётся мой вариант.
+            */
+            const srv = d.task;
+            const col: Record<string, string> = { managerId: 'created_by' };
+            const same = (a: unknown, b: unknown) => String(a ?? '').replace(/\s+/g, ' ').trim() === String(b ?? '').replace(/\s+/g, ' ').trim();
+            const real = Object.keys(patch).some((k) => {
+              const now = srv[col[k] ?? k];
+              const base = k in savedRef.current.fields ? savedRef.current.fields[k] : (task as unknown as Record<string, unknown>)[col[k] ?? k];
+              return !same(now, patch[k]) && !same(now, base);
+            });
+            const srvVersion = Number(srv.version);
+            if ((!real || !askOnConflict()) && Number.isFinite(srvVersion)) {
+              remember(await api.updateTask(task.id, patch, srvVersion));
+              onRefresh();
+              return true;
+            }
             setConflict(enqueueConflict({
               id: newChangeId(), method: 'PATCH', path: `/tasks/${task.id}`, body: patch,
               ifMatch: task.version ?? null, label: `Правка задачи #${task.id}`,
