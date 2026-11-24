@@ -290,7 +290,7 @@ export class AnthillService {
     const web = await this.webState(tenantId, settings, perms);
     const allowed = this.tools.filter((t) => this.toolAllowed(t, settings, perms, web));
     emit({ type: 'status', text: 'Думаю, где искать…' });
-    const plan = await this.plan(tenantId, text, history, pageText, skill ? [] : available, allowed);
+    const plan = await this.plan(tenantId, text, history, pageText, skill ? [] : available, allowed, tctx.timezone ?? null);
     if (aborted()) return;
     if (!skill && plan.skill) skill = available.find((x) => String(x.id) === String(plan.skill)) ?? null;
     if (skill) {
@@ -368,7 +368,7 @@ export class AnthillService {
       sources: numbered || 'нет',
       // ТЗ-33 §7: почему интернета нет — чтобы ответ был «это в Расширенном», а не «ничего не нашёл»
       internet: web.note,
-      now: tctx.now.toLocaleString('ru-RU'),
+      now: nowLocal(tctx.now, tctx.timezone ?? null),
     });
     let answer = '';
     try {
@@ -649,11 +649,11 @@ export class AnthillService {
   /** План — структурированный JSON от модели; сломанный JSON = ответ без инструментов. */
   private async plan(
     tenantId: string, question: string, history: { role: string; text: string }[], page: string,
-    skills: SkillRow[] = [], allowed?: ToolDef[],
+    skills: SkillRow[] = [], allowed?: ToolDef[], tz: string | null = null,
   ) {
     const catalog = (allowed ?? this.tools).map((t) => ({ name: t.name, kind: t.kind, description: t.description, params: t.params }));
     const skillList = skills.map((x) => ({ id: String(x.id), name: x.name, when: x.when_to_use }));
-    const raw = await this.ai.generate(tenantId, PLAN_SYSTEM, JSON.stringify({ question, history, page: page || null, tools: catalog, skills: skillList, now: new Date().toLocaleString('ru-RU') }), 'anthill_plan');
+    const raw = await this.ai.generate(tenantId, PLAN_SYSTEM, JSON.stringify({ question, history, page: page || null, tools: catalog, skills: skillList, now: nowLocal(new Date(), tz) }), 'anthill_plan');
     const json = extractJson(raw);
     const calls = Array.isArray(json?.calls) ? json.calls.filter((c: any) => c && typeof c.tool === 'string').map((c: any) => ({ tool: String(c.tool), params: (c.params && typeof c.params === 'object') ? c.params : {} })) : [];
     // «actions» — список шагов; старое «action» (один шаг) понимаем по-прежнему
@@ -1033,6 +1033,16 @@ function skillView(x: SkillRow, userId: string) {
 
 function memoryView(m: { id: string; type: string; title: string; content: string; source: string; updated_at: Date }) {
   return { id: String(m.id), type: m.type, title: m.title, content: m.content, source: m.source, updatedAt: m.updated_at };
+}
+
+/*
+  #5028: «сейчас» для модели — в поясе человека и с подсказкой формата. Раньше уходило время
+  сервера (UTC) без пояса: «встреча в 15» считалась от него и сохранялась на 3 часа позже.
+*/
+function nowLocal(now: Date, tz: string | null): string {
+  const zone = tz || 'Europe/Moscow';
+  const shown = now.toLocaleString('ru-RU', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `${shown} (часовой пояс человека: ${zone}). Все даты и время в параметрах инструментов — МЕСТНОЕ время человека в формате ISO без смещения, например 2026-11-25T15:00. Не переводи в UTC и не добавляй Z.`;
 }
 
 function scheduleView(s: ScheduleRow, tz: string | null = null) {

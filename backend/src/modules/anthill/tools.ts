@@ -66,6 +66,9 @@ export interface ToolContext {
   timezone?: string | null;
 }
 
+/** Пояс человека для разбора и показа времени; не задан — Москва, как везде в продукте. */
+const tzOf = (ctx?: ToolContext): string => ctx?.timezone || 'Europe/Moscow';
+
 export interface ToolResult { text: string; sources: Source[] }
 
 export interface ToolDef {
@@ -217,8 +220,8 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
     return `Создать задачу?\n${lines.join('\n')}`;
   };
 
-  const reminderCard = (text: string, when: Date, repeat: string | null = null) =>
-    `Напомнить ${when.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}${repeat ? ` и дальше ${repeat.toLowerCase()}` : ''}: «${text}»?`;
+  const reminderCard = (text: string, when: Date, repeat: string | null = null, tz = 'Europe/Moscow') =>
+    `Напомнить ${when.toLocaleString('ru-RU', { timeZone: tz, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}${repeat ? ` и дальше ${repeat.toLowerCase()}` : ''}: «${text}»?`;
 
   const taskSource = (ctx: ToolContext, t: { id: string; title: string; project_id?: string; projectId?: string }): Source => ({
     kind: 'task', id: String(t.id), title: `#${t.id} ${t.title}`,
@@ -674,27 +677,27 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const phrase = str(p.repeat, 200);
         const repeat = phrase ? parseSchedule(phrase) : null;
         if (phrase && !repeat) throw new Error('Не понял, как часто повторять — скажите, например, «каждый понедельник в 10:00»');
-        let when = new Date(str(p.when, 40));
+        let when = atLocal(str(p.when, 40), tzOf(ctx));
         // у повторяющегося первый срок можно не называть: он следует из расписания
         if (Number.isNaN(when.getTime()) && repeat) when = nextRun(repeat, ctx.now, ctx.timezone ?? null);
         if (Number.isNaN(when.getTime())) throw new Error('Не понял, когда напомнить — назовите день и время');
         if (when.getTime() < ctx.now.getTime() + 30_000) throw new Error('Это время уже прошло — назовите будущее');
-        const params = { text, when: when.toISOString(), ...(repeat ? { repeat } : {}) };
-        return { text: reminderCard(text, when, repeat ? scheduleLabel(repeat) : null), params };
+        const params = { text, when: when.toISOString(), tz: tzOf(ctx), ...(repeat ? { repeat } : {}) };
+        return { text: reminderCard(text, when, repeat ? scheduleLabel(repeat) : null, tzOf(ctx)), params };
       },
       fields: [
         { key: 'text', label: 'О чём напомнить', type: 'text' },
         { key: 'when', label: 'Когда', type: 'datetime' },
       ],
       // datetime-local во фронте — без буквы Z и без секунд, иначе поле остаётся пустым
-      values: (p) => ({ text: str(p.text, 500), when: p.when ? new Date(String(p.when)).toISOString().slice(0, 16) : '' }),
+      values: (p) => ({ text: str(p.text, 500), when: p.when ? localInput(new Date(String(p.when)), String(p.tz || 'Europe/Moscow')) : '' }),
       async edit(ctx, p, patch) {
         const text = str(patch.text ?? p.text, 500) || 'Напоминание';
-        const when = new Date(patch.when !== undefined ? patch.when : String(p.when));
+        const when = patch.when !== undefined ? atLocal(patch.when, tzOf(ctx)) : new Date(String(p.when));
         if (Number.isNaN(when.getTime())) throw new Error('Укажите день и время');
         if (when.getTime() < ctx.now.getTime() + 30_000) throw new Error('Это время уже прошло — выберите будущее');
         const repeat = (p.repeat ?? null) as any;
-        return { text: reminderCard(text, when, repeat ? scheduleLabel(repeat) : null), params: { ...p, text, when: when.toISOString() } };
+        return { text: reminderCard(text, when, repeat ? scheduleLabel(repeat) : null, tzOf(ctx)), params: { ...p, text, when: when.toISOString() } };
       },
       async execute(ctx, p) {
         const when = new Date(String(p.when));
@@ -851,7 +854,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const description = str(p.description, 4000);
         if (description) { lines.push('Описание: заменить'); next.description = description; }
         if (p.deadline) {
-          const when = new Date(String(p.deadline));
+          const when = atLocal(p.deadline, tzOf(ctx));
           if (Number.isNaN(when.getTime())) throw new Error('Не понял новый срок');
           lines.push(`Срок: ${task.deadline_at ? dateRu(task.deadline_at) : 'не задан'} → ${dateRu(when)}`);
           next.deadline = when.toISOString();
@@ -1098,11 +1101,12 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async preview(ctx, p) {
         const title = str(p.title, 255);
         if (!title) throw new Error('Не понял, как назвать встречу');
-        const start = new Date(str(p.start, 40));
+        const tz = tzOf(ctx);
+        const start = atLocal(str(p.start, 40), tz);
         if (Number.isNaN(start.getTime())) throw new Error('Не понял, когда встреча — назовите день и время');
         if (start.getTime() < ctx.now.getTime() - 60_000) throw new Error('Это время уже прошло — назовите будущее');
-        const end = p.end && !Number.isNaN(new Date(String(p.end)).getTime())
-          ? new Date(String(p.end))
+        const end = p.end && !Number.isNaN(atLocal(p.end, tz).getTime())
+          ? atLocal(p.end, tz)
           : new Date(start.getTime() + 3600_000);
         if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
 
@@ -1113,10 +1117,10 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           const u = await findUser(ctx.tenantId, n);
           if (u) { ids.push(String(u.id)); shown.push(u.full_name); }
         }
-        const when = `${start.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        const when = `${start.toLocaleString('ru-RU', { timeZone: tzOf(ctx), day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { timeZone: tzOf(ctx), hour: '2-digit', minute: '2-digit' })}`;
         return {
           text: `Поставить встречу?\nЧто: ${title}\nКогда: ${when}\nКто: ${shown.length ? shown.join(', ') : 'только вы'}${p.location ? `\nГде: ${str(p.location, 255)}` : ''}`,
-          params: { title, start: start.toISOString(), end: end.toISOString(), participantIds: ids, location: str(p.location, 255) || null },
+          params: { title, start: start.toISOString(), end: end.toISOString(), participantIds: ids, location: str(p.location, 255) || null, tz },
         };
       },
       fields: [
@@ -1126,18 +1130,18 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       ],
       values: (p) => ({
         title: str(p.title, 255),
-        start: p.start ? new Date(String(p.start)).toISOString().slice(0, 16) : '',
-        end: p.end ? new Date(String(p.end)).toISOString().slice(0, 16) : '',
+        start: p.start ? localInput(new Date(String(p.start)), String(p.tz || 'Europe/Moscow')) : '',
+        end: p.end ? localInput(new Date(String(p.end)), String(p.tz || 'Europe/Moscow')) : '',
       }),
       async edit(ctx, p, patch) {
         const title = str(patch.title ?? p.title, 255);
-        const start = new Date(patch.start !== undefined ? patch.start : String(p.start));
-        const end = new Date(patch.end !== undefined ? patch.end : String(p.end));
+        const start = patch.start !== undefined ? atLocal(patch.start, tzOf(ctx)) : new Date(String(p.start));
+        const end = patch.end !== undefined ? atLocal(patch.end, tzOf(ctx)) : new Date(String(p.end));
         if (!title) throw new Error('Нужно название встречи');
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error('Укажите день и время');
         if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
         if (start.getTime() < ctx.now.getTime() - 60_000) throw new Error('Это время уже прошло — выберите будущее');
-        const when = `${start.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        const when = `${start.toLocaleString('ru-RU', { timeZone: tzOf(ctx), day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}–${end.toLocaleTimeString('ru-RU', { timeZone: tzOf(ctx), hour: '2-digit', minute: '2-digit' })}`;
         return {
           text: `Поставить встречу?\nЧто: ${title}\nКогда: ${when}`,
           params: { ...p, title, start: start.toISOString(), end: end.toISOString() },
@@ -1154,7 +1158,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         });
         const id = String(row?.id ?? row?.event?.id ?? '');
         return {
-          text: `Встреча «${p.title}» поставлена на ${new Date(String(p.start)).toLocaleString('ru-RU')}. Участники получат приглашение.`,
+          text: `Встреча «${p.title}» поставлена на ${new Date(String(p.start)).toLocaleString('ru-RU', { timeZone: tzOf(ctx), day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. Участники получат приглашение.`,
           output: { eventId: id },
           sources: [],
         };
@@ -1398,7 +1402,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       async execute(ctx, p) {
         const post = await feed.createPoll(ctx.tenantId, ctx.user, {
           question: String(p.question), options: (p.options as string[]) ?? [], anonymous: !!p.anonymous,
-          deadlineAt: p.deadline ? new Date(String(p.deadline)).toISOString() : null,
+          deadlineAt: p.deadline ? atLocal(p.deadline, tzOf(ctx)).toISOString() : null,
         });
         return {
           text: 'Опрос опубликован в «Новостях».',
@@ -1500,9 +1504,9 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
           const u = await findUser(ctx.tenantId, n);
           if (u) people.push({ id: String(u.id), name: u.full_name });
         }
-        const from = p.from && !Number.isNaN(new Date(String(p.from)).getTime()) ? new Date(String(p.from)) : ctx.now;
-        const to = p.to && !Number.isNaN(new Date(String(p.to)).getTime())
-          ? new Date(new Date(String(p.to)).getTime() + 86_399_000)
+        const from = p.from && !Number.isNaN(atLocal(p.from, tzOf(ctx)).getTime()) ? atLocal(p.from, tzOf(ctx)) : ctx.now;
+        const to = p.to && !Number.isNaN(atLocal(p.to, tzOf(ctx)).getTime())
+          ? new Date(atLocal(p.to, tzOf(ctx)).getTime() + 86_399_000)
           : new Date(from.getTime() + 7 * 86_400_000);
         const ids = [ctx.user.userId, ...people.map((x) => x.id)];
         const [{ busy }, work] = await Promise.all([calendar.busy(ctx.tenantId, ids, from.toISOString(), to.toISOString()), calendar.work(ctx.tenantId)]);
@@ -1515,7 +1519,7 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         }
         return {
           text: `Свободно для: ${who} (${duration} мин; учтены рабочие часы ${work.workStart}–${work.workEnd}, выходные, отпуска, встречи и буфер ${BUFFER_MIN} мин):\n`
-            + slots.map((s, i) => `${i + 1}. ${slotRu(s, tz)} — ISO ${s.start.toISOString()}`).join('\n')
+            + slots.map((s, i) => `${i + 1}. ${slotRu(s, tz)} — ISO ${localInput(s.start, tz)}`).join('\n')
             + '\nЧтобы поставить встречу, нужен create_event с выбранным временем.',
           sources: [],
         };
@@ -1538,9 +1542,9 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
       params: { from: 'с какой даты, ISO (необязательно)', to: 'по какую дату, ISO (необязательно)', q: 'слово из названия или имя участника (необязательно)' },
       async run(ctx, p) {
         const tz = ctx.timezone || 'Europe/Moscow';
-        const from = p.from && !Number.isNaN(new Date(String(p.from)).getTime()) ? new Date(String(p.from)) : new Date(ctx.now.getTime() - 3600_000);
-        const to = p.to && !Number.isNaN(new Date(String(p.to)).getTime())
-          ? new Date(new Date(String(p.to)).getTime() + 86_399_000)
+        const from = p.from && !Number.isNaN(atLocal(p.from, tzOf(ctx)).getTime()) ? atLocal(p.from, tzOf(ctx)) : new Date(ctx.now.getTime() - 3600_000);
+        const to = p.to && !Number.isNaN(atLocal(p.to, tzOf(ctx)).getTime())
+          ? new Date(atLocal(p.to, tzOf(ctx)).getTime() + 86_399_000)
           : new Date(from.getTime() + 7 * 86_400_000);
         const r: any = await calendar.range(ctx.tenantId, ctx.user, from.toISOString(), to.toISOString(), false);
         const q = str(p.q, 80).toLowerCase();
@@ -1569,11 +1573,11 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         const tz = ctx.timezone || 'Europe/Moscow';
         const ev: any = await calendar.details(ctx.tenantId, ctx.user, str(p.eventId, 20));
         if (!ev.canEdit) throw new Error(`Встречу «${ev.title}» переносит её организатор — попросите его или предложите время в переписке`);
-        const start = new Date(str(p.start, 40));
+        const start = atLocal(str(p.start, 40), tzOf(ctx));
         if (Number.isNaN(start.getTime())) throw new Error('Не понял, на когда перенести');
         if (start.getTime() < ctx.now.getTime() - 60_000) throw new Error('Это время уже прошло — назовите будущее');
         const dur = new Date(ev.endsAt).getTime() - new Date(ev.startsAt).getTime();
-        const end = p.end && !Number.isNaN(new Date(String(p.end)).getTime()) ? new Date(String(p.end)) : new Date(start.getTime() + dur);
+        const end = p.end && !Number.isNaN(atLocal(p.end, tzOf(ctx)).getTime()) ? atLocal(p.end, tzOf(ctx)) : new Date(start.getTime() + dur);
         if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
         const others = (ev.participants ?? []).filter((x: any) => String(x.userId ?? x.user_id) !== String(ctx.user.userId));
         const names = others.map((x: any) => x.fullName ?? x.full_name).filter(Boolean);
@@ -1581,19 +1585,19 @@ export function buildTools(deps: ToolDeps): ToolDef[] {
         return {
           text: `Перенести «${ev.title}»?\n${dayRu(was, tz)} ${timeRu(was, tz)} → ${dayRu(start, tz)} ${timeRu(start, tz)}–${timeRu(end, tz)}`
             + (names.length ? `\nУведомление получат: ${names.join(', ')}` : ''),
-          params: { eventId: String(ev.id), title: ev.title, start: start.toISOString(), end: end.toISOString(), participants: others.length,
+          params: { eventId: String(ev.id), title: ev.title, start: start.toISOString(), end: end.toISOString(), tz: tzOf(ctx), participants: others.length,
             prevStart: new Date(ev.startsAt).toISOString(), prevEnd: new Date(ev.endsAt).toISOString() },
         };
       },
       fields: [{ key: 'start', label: 'Новое начало', type: 'datetime' }, { key: 'end', label: 'Новый конец', type: 'datetime' }],
       values: (p) => ({
-        start: p.start ? new Date(String(p.start)).toISOString().slice(0, 16) : '',
-        end: p.end ? new Date(String(p.end)).toISOString().slice(0, 16) : '',
+        start: p.start ? localInput(new Date(String(p.start)), String(p.tz || 'Europe/Moscow')) : '',
+        end: p.end ? localInput(new Date(String(p.end)), String(p.tz || 'Europe/Moscow')) : '',
       }),
       async edit(ctx, p, patch) {
         const tz = ctx.timezone || 'Europe/Moscow';
-        const start = new Date(patch.start !== undefined ? patch.start : String(p.start));
-        const end = new Date(patch.end !== undefined ? patch.end : String(p.end));
+        const start = patch.start !== undefined ? atLocal(patch.start, tzOf(ctx)) : new Date(String(p.start));
+        const end = patch.end !== undefined ? atLocal(patch.end, tzOf(ctx)) : new Date(String(p.end));
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error('Укажите день и время');
         if (end.getTime() <= start.getTime()) throw new Error('Конец встречи должен быть позже начала');
         const was = new Date(String(p.prevStart));
@@ -1771,6 +1775,32 @@ async function webSearch(key: string, query: string): Promise<{ title: string; u
   } catch {
     return [];
   }
+}
+
+/*
+  #5028: время от модели — это МЕСТНОЕ время человека. Модель пишет «2026-11-25T15:00» без
+  пояса, а сервер живёт в UTC: new Date() читал это как 15:00 UTC = 18:00 по Москве, а
+  карточка показывала «15:00» тоже в UTC — человек подтверждал и получал встречу со сдвигом.
+  Без смещения — читаем в поясе человека; с Z или ±чч:мм (например, из find_slots) — как есть.
+*/
+export function offsetMs(utcMs: number, tz: string): number {
+  const shown = new Date(new Date(utcMs).toLocaleString('en-US', { timeZone: tz }));
+  const utc = new Date(new Date(utcMs).toLocaleString('en-US', { timeZone: 'UTC' }));
+  return shown.getTime() - utc.getTime();
+}
+export function atLocal(value: unknown, tz: string): Date {
+  const v = String(value ?? '').trim();
+  if (!v) return new Date(NaN);
+  if (/(z|[+-]\d\d:?\d\d)$/i.test(v)) return new Date(v);
+  const m = /^(\d{4})-(\d\d)-(\d\d)(?:[T ](\d\d):(\d\d)(?::(\d\d))?)?/.exec(v);
+  if (!m) return new Date(v);
+  const guess = Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0));
+  return new Date(guess - offsetMs(guess, tz));
+}
+/** Для поля «дата и время» в карточке: местное «2026-11-25T15:00» (без пояса). */
+export function localInput(d: Date, tz: string): string {
+  if (Number.isNaN(d.getTime())) return '';
+  return new Date(d.getTime() + offsetMs(d.getTime(), tz)).toISOString().slice(0, 16);
 }
 
 /** Полночь дня в поясе — моментом UTC (для «отчёты за вчера»). */
