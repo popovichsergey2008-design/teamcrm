@@ -20,6 +20,7 @@ import { shrinkImage } from '../lib/image-shrink';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
 import { orderMentions } from '../lib/task-mentions';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useHoldToTalk } from '../hooks/useHoldToTalk';
 import { sendTimed } from '../hooks/useClipRecorder';
 import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useAuth } from '../state/auth';
@@ -783,6 +784,8 @@ export function TaskChat({
       },
     },
   );
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   /**
    * Ответить — и, если человек выделил кусок, ответить именно на него.
@@ -1821,7 +1824,7 @@ export function TaskChat({
           */}
           <button
             className={`chat-tool${voice.recording ? ' chat-tool-stop' : ''}`}
-            onClick={voice.toggle}
+            {...hold.bind}
             disabled={busy || voice.transcribing}
             title={voice.recording ? 'Остановить запись' : 'Записать голосовое'}
             aria-label={voice.recording ? 'Остановить запись' : 'Записать голосовое'}

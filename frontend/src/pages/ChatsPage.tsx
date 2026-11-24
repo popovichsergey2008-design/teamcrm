@@ -16,6 +16,7 @@ import { navigate } from '../lib/router';
 import { useClipRecorder } from '../hooks/useClipRecorder';
 import { clearDraft, readDraft, writeDraft } from '../lib/chat-drafts';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useHoldToTalk } from '../hooks/useHoldToTalk';
 import { notificationPermission, notifyChatsChanged, notifySeen, requestNotificationPermission } from '../lib/notifications';
 import { useAuth } from '../state/auth';
 import { EmptyState } from '../components/EmptyState';
@@ -864,6 +865,12 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
       .then((x) => x.uploadClip(chatId, blob, kind, signal, progress, { toId: r.id, excerpt: r.excerpt }))
       .then((res) => { setReplyTo(null); return res; });
   });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — голосовое ушло, вверх — отмена
+  const voiceHold = useHoldToTalk({
+    start: () => (activeId ? clip.start('voice', activeId) : undefined),
+    stop: clip.stop, cancel: clip.cancel, recording: clip.recording === 'voice',
+  });
+  const aiHold = useHoldToTalk({ start: aiVoice.start, stop: aiVoice.stop, cancel: aiVoice.cancel, recording: aiVoice.recording });
   const clipBusy = clip.sending || !!clip.failed;
 
   /** Закрепить чат сверху или снять: порядок личный, у каждого свои четыре. */
@@ -3780,9 +3787,9 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                   потом можно найти. Расшифровка приходит с сервера в тело сообщения. */}
               <button
                 className={`${clip.recording === 'voice' ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'} chat-voice-btn`}
-                onClick={() => (clip.recording ? clip.stop() : activeId && clip.start('voice', activeId))}
+                {...voiceHold.bind}
                 disabled={clipBusy}
-                title={clip.recording === 'voice' ? 'Остановить и отправить' : 'Голосовое сообщение'}
+                title={clip.recording === 'voice' ? 'Отпустите — отправлю; вверх — отменить' : 'Голосовое сообщение — удерживайте и говорите'}
                 aria-label="Голосовое сообщение"
               >
                 <Icon name={clip.recording === 'voice' ? 'stop' : 'mic'} size={16} />
@@ -3790,7 +3797,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
               {/* Спросить помощника голосом: вопрос расшифровывается и уходит как «@AI». */}
               <button
                 className={aiVoice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'}
-                onClick={aiVoice.toggle}
+                {...aiHold.bind}
                 disabled={aiBusy || aiVoice.transcribing || !!clip.recording}
                 title={aiVoice.recording ? 'Остановить и спросить' : aiVoice.transcribing ? 'Расшифровываю вопрос…' : 'Спросить AI голосом'}
                 aria-label="Спросить AI голосом"

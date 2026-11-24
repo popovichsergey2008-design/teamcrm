@@ -6,6 +6,7 @@ import { confirmTags, EMPTY_TAGS, pendingTagCount } from '../lib/tags';
 import { api, ApiError, TagSettings, VoiceJob } from '../lib/api';
 import { useWorkloadCheck, workloadOf, WorkloadWarning } from './WorkloadWarning';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useHoldToTalk } from '../hooks/useHoldToTalk';
 import { DatePicker } from './DatePicker';
 import { DirectionsPicker } from './DirectionsPicker';
 import { VoiceStatus } from './VoiceStatus';
@@ -295,6 +296,8 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
   };
 
   const voice = useVoiceInput(() => undefined, { onBlob: (blob) => void sendRecording(blob) });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
   const { recording } = voice;
 
   // Пока запись обрабатывается, спрашиваем сервер, как дела: расшифровка длинного
@@ -898,8 +901,10 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
             />
           ))}
           {msg && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {msg}</div>}
-          <div className="nl-actions nla-actions">
-            <Button variant={recording ? 'destructive' : 'outline'} onClick={voice.toggle} disabled={busy || working}>
+          {/* #5029: «Поставить задачу» — всегда на виду внизу панели: при крупном масштабе или длинном
+              черновике кнопка уезжала вниз, и её не находили без прокрутки */}
+          <div className="nl-actions nla-actions" style={{ position: 'sticky', bottom: 0, zIndex: 2, background: 'var(--bg-elev)', paddingBlock: 10, boxShadow: '0 -8px 12px -10px rgba(0, 0, 0, .25)' }}>
+            <Button variant={recording ? 'destructive' : 'outline'} {...hold.bind} disabled={busy || working}>
               {recording ? <><Icon name="stop" size={15} /> Остановить</> : <><Icon name="mic" size={15} /> Голосом</>}
             </Button>
             <VoiceTrialLeft />
@@ -974,7 +979,7 @@ export function NlCommandModal({ onClose, initialText, autoRecord, currentProjec
         <div className="nl-actions">
           <Button
             variant={recording ? 'destructive' : 'outline'}
-            onClick={voice.toggle}
+            {...hold.bind}
             disabled={busy || working}
           >
             {recording

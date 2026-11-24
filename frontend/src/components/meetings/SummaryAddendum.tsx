@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../Icon';
 import { api, ApiError } from '../../lib/api';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { toastSaved } from '../../lib/notifications';
 
 /**
@@ -15,6 +16,8 @@ export function SummaryAddendum({ meetingId, onSaved }: { meetingId: string; onS
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const voice = useVoiceInput((t) => setText((v) => (v.trim() ? `${v.trim()} ${t}` : t)));
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   const save = async () => {
     if (text.trim().length < 3) { setErr('Надиктуйте или напишите, что добавить'); return; }
@@ -47,7 +50,7 @@ export function SummaryAddendum({ meetingId, onSaved }: { meetingId: string; onS
       {(err || voice.error) && <div className="error-text" role="alert" style={{ fontSize: 12 }}>{err || voice.error}</div>}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button type="button" className={`ui-btn ui-btn-sm ${voice.recording ? 'ui-btn-primary' : 'ui-btn-outline'}`}
-          onClick={voice.toggle} disabled={voice.transcribing || busy}>
+          {...hold.bind} disabled={voice.transcribing || busy}>
           <Icon name={voice.recording ? 'stop' : 'mic'} size={13} /> {voice.recording ? 'Стоп' : 'Надиктовать ещё'}
         </button>
         <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => void save()}

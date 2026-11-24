@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { ApiError } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import { navigate } from '../../lib/router';
@@ -42,6 +43,8 @@ export function PhraseBar({ onCreated, onEdit }: {
   }, [text]);
 
   const voice = useVoiceInput(async (heard) => { setText(heard); });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   const when = preview && (useSuggestion && preview.suggestion ? preview.suggestion : preview.startsAt ? { startsAt: preview.startsAt, endsAt: preview.endsAt! } : null);
 
@@ -88,7 +91,7 @@ export function PhraseBar({ onCreated, onEdit }: {
             if (e.key === 'Escape') { setText(''); setPreview(null); }
           }}
         />
-        <button type="button" className={`cal-phrase-mic${voice.recording ? ' on' : ''}`} onClick={voice.toggle} disabled={voice.transcribing}
+        <button type="button" className={`cal-phrase-mic${voice.recording ? ' on' : ''}`} {...hold.bind} disabled={voice.transcribing}
           title={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'} aria-label={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'}>
           <Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} />
         </button>

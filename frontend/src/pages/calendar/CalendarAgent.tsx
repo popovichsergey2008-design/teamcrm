@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../../components/Icon';
 import { Dialog } from '../../components/ui/dialog';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { ApiError, request } from '../../lib/api';
 import { plural } from '../../lib/chat-text';
 import { toastSaved } from '../../lib/notifications';
@@ -58,6 +59,8 @@ export function CalendarAgent({ initial, onClose, onApplied }: { initial?: strin
   };
   useEffect(() => { if (initial) void ask(initial); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const voice = useVoiceInput(async (heard) => { void ask(heard); });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
   const apply = async () => {
     if (!plan) return;
     setBusy(true); setErr('');
@@ -128,7 +131,7 @@ export function CalendarAgent({ initial, onClose, onApplied }: { initial?: strin
           <input className="cal-phrase-input" value={text} disabled={busy} onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void ask(text); } }}
             placeholder="«перенеси все мои встречи завтра после 15:00 на пятницу» · «что у меня завтра?»" aria-label="Команда агенту" />
-          <button type="button" className={`cal-phrase-mic${voice.recording ? ' on' : ''}`} onClick={voice.toggle} disabled={voice.transcribing} aria-label="Сказать голосом"><Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} /></button>
+          <button type="button" className={`cal-phrase-mic${voice.recording ? ' on' : ''}`} {...hold.bind} disabled={voice.transcribing} aria-label="Сказать голосом"><Icon name={voice.transcribing ? 'clock' : 'mic'} size={15} /></button>
           <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" disabled={busy || text.trim().length < 3} onClick={() => void ask(text)}>{busy ? '…' : 'Отправить'}</button>
         </div>
       </div>

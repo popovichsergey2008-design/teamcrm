@@ -10,6 +10,7 @@ import './anthill-attach.css';
 import { Lightbox } from '../LightboxLazy';
 import { navigate } from '../../lib/router';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { openTarget, resolveOpen } from './open-command';
 import { askFor, INTENT_LABEL, type IntentKind } from '../../lib/voice-intent';
 import { stickersApi, stickersChanged } from '../../lib/stickers-api';
@@ -412,11 +413,6 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   */
   const voiceSend = useRef(false);
   const voiceCancel = useRef(false);
-  const holdOn = useRef(false);
-  const holdTimer = useRef(0);
-  const holdY = useRef(0);
-  const [holding, setHolding] = useState(false);
-  const [holdCancel, setHoldCancel] = useState(false);
   const voice = useVoiceInput((text) => {
     if (voiceCancel.current) { voiceCancel.current = false; return; }
     if (voiceSend.current) {
@@ -428,37 +424,13 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     setDraft((d) => (d.trim() ? `${d.trim()} ${text}` : text));
     inputRef.current?.focus();
   });
-  const micDown = (e: React.PointerEvent) => {
-    if (busy || e.button > 0) return;
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    holdY.current = e.clientY;
-    if (voice.recording) return; // запись по нажатию — остановим на отпускании
-    window.clearTimeout(holdTimer.current);
-    holdTimer.current = window.setTimeout(() => {
-      holdOn.current = true; setHolding(true); setHoldCancel(false);
-      voiceCancel.current = false; voiceSend.current = true;
-      try { navigator.vibrate?.(15); } catch { /* без вибрации */ }
-      // отпустили, пока браузер спрашивал доступ к микрофону, — сразу останавливаем
-      void voice.start().then(() => { if (!holdOn.current) voice.stop(); });
-    }, 220);
-  };
-  const micMove = (e: React.PointerEvent) => {
-    if (!holdOn.current) return;
-    const up = holdY.current - e.clientY > 60;
-    voiceCancel.current = up; setHoldCancel(up);
-  };
-  const micUp = () => {
-    window.clearTimeout(holdTimer.current);
-    if (holdOn.current) { holdOn.current = false; setHolding(false); if (voiceCancel.current) voice.cancel(); else voice.stop(); return; }
-    if (voice.recording) { voice.stop(); return; }
-    if (busy) return;
-    voiceCancel.current = false; voiceSend.current = true;
-    void voice.start();
-  };
-  const micAbort = () => {
-    window.clearTimeout(holdTimer.current);
-    if (holdOn.current) { holdOn.current = false; setHolding(false); voiceCancel.current = true; voice.cancel(); }
-  };
+  // #5030: общий для всех мест сценарий микрофона (удержать — говорить, отпустить — отправить, вверх — отмена)
+  const hold = useHoldToTalk({
+    start: () => { voiceCancel.current = false; voiceSend.current = true; return voice.start(); },
+    stop: voice.stop, cancel: voice.cancel, recording: voice.recording, disabled: busy,
+  });
+  const holding = hold.holding;
+  const holdCancel = hold.cancelling;
 
   /*
     #5008: у карточки «создать задачу / событие / отправить сообщение / стикер» — сразу выбор,
@@ -964,15 +936,9 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
           />
           <button
             className={`${voice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'} anthill-mic`}
-            onPointerDown={micDown}
-            onPointerMove={micMove}
-            onPointerUp={micUp}
-            onPointerCancel={micAbort}
-            onContextMenu={(e) => e.preventDefault()}
-            // с клавиатуры (Enter/пробел) pointer-событий нет — переключаем запись кликом
-            onClick={(e) => { if (e.detail === 0) { voiceCancel.current = false; voiceSend.current = !voice.recording; voice.toggle(); } }}
+            {...hold.bind}
             disabled={busy}
-            title={voice.recording ? 'Нажмите — отправлю' : 'Удерживайте и говорите — отпустите, отправлю. Или нажмите один раз'}
+            title={voice.recording ? 'Отпустите — отправлю' : 'Удерживайте и говорите — отпустите, отправлю'}
             aria-label={voice.recording ? 'Закончить и отправить' : 'Спросить голосом'}
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />

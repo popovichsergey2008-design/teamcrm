@@ -9,6 +9,7 @@ import { stampLabel } from '../../lib/chat-text';
 import { useAuth } from '../../state/auth';
 import { apiUrl } from '../../lib/origin';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { Icon } from '../Icon';
 import { VoiceStatus } from '../VoiceStatus';
 import { MessageText } from '../MessageText';
@@ -141,19 +142,11 @@ export default function SupportPanel({ embedded = false, request, open: openProp
     }
     setText((prev) => (prev.trim() ? `${prev.trim()} ${said}` : said));
   });
-  /** Нажатие на микрофон: короткое — переключатель, удержание — сказал и отпустил. */
-  const press = useRef<number | null>(null);
-  const micDown = () => {
-    if (voice.recording) return;
-    press.current = Date.now();
-    void voice.start();
-  };
-  const micUp = () => {
-    if (press.current === null) { if (voice.recording) voice.stop(); return; }
-    const held = Date.now() - press.current >= 400;
-    press.current = null;
-    if (held) { holdSend.current = true; voice.stop(); }
-  };
+  /** #5030: как в Telegram — удерживать и говорить; отпустил — сообщение ушло; вверх — отмена. */
+  const hold = useHoldToTalk({
+    start: voice.start, cancel: voice.cancel, recording: voice.recording,
+    stop: () => { holdSend.current = true; voice.stop(); },
+  });
   /*
     Чужое обращение, открытое специалистом.
 
@@ -1322,13 +1315,9 @@ export default function SupportPanel({ embedded = false, request, open: openProp
                 <button
                   type="button"
                   className={`support-mic${voice.recording ? ' recording' : ''}`}
-                  onPointerDown={(e) => { if (e.button === 0) micDown(); }}
-                  onPointerUp={micUp}
-                  onPointerLeave={() => { if (press.current !== null && voice.recording) micUp(); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); voice.toggle(); } }}
-                  onContextMenu={(e) => e.preventDefault()}
+                  {...hold.bind}
                   disabled={busy || voice.transcribing}
-                  title={voice.recording ? 'Отпустите — отправим; или нажмите ещё раз, чтобы остановить' : 'Зажмите и говорите — отпустите, и сообщение уйдёт. Короткое нажатие — запись с остановкой'}
+                  title={voice.recording ? 'Отпустите — отправим; вверх — отменить' : 'Удерживайте и говорите — отпустите, и сообщение уйдёт'}
                   aria-label={voice.recording ? 'Остановить запись' : 'Сказать голосом'}
                 >
                   <Icon name={voice.recording ? 'stop' : 'mic'} size={20} />

@@ -28,6 +28,7 @@ import { Input } from './ui/input';
 import { Select } from './ui/select';
 import { feedback } from '../lib/feedback';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useHoldToTalk } from '../hooks/useHoldToTalk';
 
 interface Props {
   projectId: string;
@@ -335,6 +336,8 @@ export function TaskCreateModal({ projectId, columnId, columnName, projectName, 
     }
   };
   const voice = useVoiceInput((text) => { setSpeech(text); void fillFromSpeech(text); });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
   const voiceState = voice.recording ? 'rec' : voice.transcribing || voiceBusy ? 'busy' : 'idle';
 
   /** Страж нагрузки (ТЗ-21): сервер предупредил о перегрузе — человек выбирает вариант. */
@@ -504,7 +507,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, projectName, 
             <button
               type="button"
               className="tc-voice-btn"
-              onClick={voice.toggle}
+              {...hold.bind}
               disabled={busy || voiceState === 'busy'}
               aria-pressed={voice.recording}
               aria-label={voice.recording ? 'Закончить и заполнить поля' : 'Наговорить задачу голосом'}

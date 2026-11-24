@@ -3,6 +3,7 @@ import { Icon } from '../Icon';
 import { ApiError } from '../../lib/api';
 import { toastSaved } from '../../lib/notifications';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import {
   addDays, dayLabel, nextWeekday, STICKER_COLORS, stickersApi, stickersChanged, ymd,
   type StickerColor,
@@ -31,6 +32,8 @@ export function QuickSticker({ prefill, onClose }: { prefill: { text?: string; s
   const usedVoice = useRef(false);
   const ta = useRef<HTMLTextAreaElement | null>(null);
   const voice = useVoiceInput((t) => { usedVoice.current = true; setText((v) => (v.trim() ? `${v.trim()} ${t}` : t)); });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   useEffect(() => { ta.current?.focus(); }, []);
   const fri = nextWeekday(today, 5);
@@ -115,7 +118,7 @@ export function QuickSticker({ prefill, onClose }: { prefill: { text?: string; s
                 onClick={() => { touchedColor.current = true; setColor(c); }} aria-label={`Цвет: ${c}`} />
             ))}
           </span>
-          <button type="button" className={`qs-mic${voice.recording ? ' is-rec' : ''}`} onClick={voice.toggle} disabled={voice.transcribing}
+          <button type="button" className={`qs-mic${voice.recording ? ' is-rec' : ''}`} {...hold.bind} disabled={voice.transcribing}
             title={voice.recording ? 'Стоп' : 'Наговорить'} aria-label={voice.recording ? 'Остановить запись' : 'Наговорить'}>
             <Icon name={voice.recording ? 'stop' : 'mic'} size={16} />
           </button>

@@ -9,6 +9,7 @@ import { callTarget, Command, findCommands, looksLikeTask } from '../lib/command
 import { START_CALL_EVENT, type StartCallRequest } from '../lib/notifications';
 import { setThemeChoice } from '../lib/theme';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useHoldToTalk } from '../hooks/useHoldToTalk';
 import { lazyComponent } from '../lib/lazy';
 import type { SearchResults, SemanticHit } from '../types';
 
@@ -208,6 +209,8 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
     setFromVoice(true);
     inputRef.current?.focus();
   });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   useEffect(() => {
     // Окно открылось сразу, содержимое подтягивается следом — ждать сеть, чтобы
@@ -711,7 +714,7 @@ export function CommandPalette({ role, onClose, onCreate, autoVoice }: {
           {searching && <span className="palette-searching" aria-hidden="true" />}
           <button
             className={`palette-mic${voice.recording ? ' recording' : ''}`}
-            onClick={voice.toggle}
+            {...hold.bind}
             title={voice.recording ? 'Остановить и распознать' : 'Продиктовать (или удерживайте пробел при пустой строке)'}
             aria-label="Голосовой ввод"
           >

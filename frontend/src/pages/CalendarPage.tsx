@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Icon } from '../components/Icon';
 import { useAuth } from '../state/auth';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useHoldToTalk } from '../hooks/useHoldToTalk';
 import { addReminder, MAX_REMINDERS, reminderRows, ReminderUnit, toMinutes } from '../lib/reminders';
 import { WorkSettingsPanel } from '../components/WorkSettingsPanel';
 import { meetingUrl, shareMeeting } from './MeetingPage';
@@ -428,6 +429,8 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
       setVoiceErr(e instanceof ApiError ? e.message : 'Не удалось разобрать встречу');
     }
   });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   const openNew = (start: Date) => {
     const end = new Date(start.getTime() + 3600_000);
@@ -551,7 +554,7 @@ export function CalendarPage({ onStartCall }: { onStartCall: (roomId: string) =>
             </DropdownMenu>
             <button
               className={`ui-btn ui-btn-primary ui-btn-sm cal-new-mic${voice.recording ? ' cal-mic-on' : ''}`}
-              onClick={voice.toggle}
+              {...hold.bind}
               disabled={voice.transcribing}
               title={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'}
               aria-label={voice.recording ? 'Остановить запись' : 'Продиктовать встречу голосом'}

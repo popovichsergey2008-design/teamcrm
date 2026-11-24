@@ -3,6 +3,7 @@ import { api, ApiError } from '../../lib/api';
 import type { SupportConcierge } from '../../lib/api';
 import { collectSupportContext } from '../../lib/support-context';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { Avatar } from '../Avatar';
 import { Icon } from '../Icon';
 import { VoiceStatus } from '../VoiceStatus';
@@ -86,6 +87,8 @@ export function CareStart({ onClose, onSent }: { onClose: () => void; onSent: ()
     }
   };
   const voice = useVoiceInput((said) => { void send(VOICE, said); });
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const hold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
 
   const live = d?.engineers.filter((e) => e.status === 'available').length ?? 0;
   return (
@@ -106,7 +109,7 @@ export function CareStart({ onClose, onSent }: { onClose: () => void; onSent: ()
           <button
             className={`wl-source wl-source-voice${voice.recording ? ' is-rec' : ''}`}
             disabled={busy || voice.transcribing}
-            onClick={voice.toggle}
+            {...hold.bind}
             aria-pressed={voice.recording}
           >
             <Icon name={voice.recording ? 'stop' : 'mic'} size={18} /> {VOICE}

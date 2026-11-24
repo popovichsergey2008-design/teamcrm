@@ -7,6 +7,7 @@ import { navigate, useRoute } from '../../lib/router';
 import { forgetProject } from '../../lib/last-project';
 import { askBot } from '../../lib/bot-ask';
 import { useVoiceInput } from '../../hooks/useVoiceInput';
+import { useHoldToTalk } from '../../hooks/useHoldToTalk';
 import { CLIENTS_ENABLED } from '../../config';
 import { Icon } from '../Icon';
 import type { IconName } from '../Icon';
@@ -156,8 +157,9 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
   // ── голос: отвечает на текущий вопрос, в задаче — сама фраза ──
   const sink = useRef<(t: string) => void>(() => undefined);
   const voice = useVoiceInput((t) => sink.current(t));
+  // #5030: микрофон как в Telegram — удерживать и говорить, отпустить — готово, вверх — отмена
+  const micHold = useHoldToTalk({ start: voice.start, stop: voice.stop, cancel: voice.cancel, recording: voice.recording });
   /** «Зажми кнопку микрофона»: держал — отпустил и запись ушла; коротко нажал — запись до второго нажатия. */
-  const press = useRef<{ at: number; mine: boolean }>({ at: 0, mine: false });
 
   // ── шаги ──
   const answerSphere = async (sphere: Sphere | null, text: string) => {
@@ -457,21 +459,11 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
             <button
               type="button"
               className={`wl-mic${voice.recording ? ' is-rec' : ''}`}
-              title="Зажмите и говорите (или нажмите, чтобы начать и закончить)"
+              title="Удерживайте и говорите — отпустите, когда закончите"
               aria-label={voice.recording ? 'Закончить запись' : 'Сказать голосом'}
               aria-pressed={voice.recording}
               disabled={adding || voice.transcribing}
-              onPointerDown={() => {
-                if (voice.recording) { press.current = { at: 0, mine: false }; voice.stop(); return; }
-                press.current = { at: Date.now(), mine: true };
-                void voice.start();
-              }}
-              onPointerUp={() => {
-                if (press.current.mine && Date.now() - press.current.at > 450) voice.stop();
-                press.current.mine = false;
-              }}
-              // с клавиатуры (Enter/пробел) указателя нет — обычное «нажал — начал, нажал — закончил»
-              onClick={(e) => { if (e.detail === 0) voice.toggle(); }}
+              {...micHold.bind}
             >
               <Icon name={voice.recording ? 'stop' : 'mic'} size={18} />
             </button>
@@ -623,7 +615,7 @@ export function GuideBot({ hidden, start, onSave, onEngineer, onClose }: {
                 placeholder={key === 'ask' || noRights ? 'Спросите что угодно…' : answered(s) ? 'Другой ответ…' : 'Напишите ответ…'}
                 aria-label="Ответ Qevo-боту"
               />
-              <button type="button" className={`wl-mic${voice.recording ? ' is-rec' : ''}`} onClick={voice.toggle} disabled={voice.transcribing}
+              <button type="button" className={`wl-mic${voice.recording ? ' is-rec' : ''}`} {...micHold.bind} disabled={voice.transcribing}
                 aria-label={voice.recording ? 'Закончить запись' : 'Сказать голосом'} aria-pressed={voice.recording} title="Сказать голосом">
                 <Icon name={voice.recording ? 'stop' : 'mic'} size={18} />
               </button>
