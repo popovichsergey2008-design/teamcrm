@@ -1429,7 +1429,14 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
           #4852: кнопки «Сохранить» больше нет — правки сохраняются сами. Тихая строка
           остаётся только на время записи: подтверждение, что ничего нажимать не нужно.
         */}
-        {saving && <div className="task-autosave" role="status">Сохраняю…</div>}
+        {/* #5029: кнопка «Сохранить» снова внизу карточки и всегда на виду — автосохранение
+            остаётся, а кнопка сохраняет сразу и подтверждает: так спокойнее, чем гадать */}
+        <div style={{ position: 'sticky', bottom: 0, zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, marginTop: 8, paddingBlock: 10, background: 'var(--bg-elev)', borderTop: '1px solid var(--border)' }}>
+          <span className="dim" role="status" style={{ fontSize: 'var(--fs-xs)' }}>{saving ? 'Сохраняю…' : 'Правки сохраняются сами'}</span>
+          <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" disabled={saving} onClick={() => { void saveAll(false, false); }}>
+            <Icon name="check" size={14} /> Сохранить
+          </button>
+        </div>
         </div>
 
         {/* Правая колонка — чат задачи. Он на виду всегда: обсуждение и есть работа
