@@ -161,9 +161,11 @@
 @media (max-width: 900px) {
   /* ниже шторок и окон (у них 50+): открытая карточка задачи не прячет крестик под значком */
   .notif-bell-float {
-    display: grid; position: fixed; z-index: 45; top: calc(var(--safe-top, 0px) + 10px); right: 10px;
-    width: 36px; height: 36px; background: var(--bg-elev); border: 1px solid var(--border-2); color: var(--text);
+    /* #5025: закреплён и прижат к правому краю «язычком» — не перекрывает прокрутку и содержимое */
+    display: grid; position: fixed; z-index: 45; top: calc(var(--safe-top, 0px) + 10px); right: 0;
+    width: 40px; height: 34px; border-radius: 10px 0 0 10px; background: var(--bg-elev); border: 1px solid var(--border-2); border-right: 0; color: var(--text);
   }
+  .notif-bell-float .notif-bell-badge { right: 1px; top: -4px; }
 }
 
 .nav-search {
