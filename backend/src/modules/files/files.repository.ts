@@ -71,8 +71,15 @@ export class FilesRepository {
           WHEN 'meeting_recording' THEN f.owner_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM meetings m WHERE m.id = f.owner_id AND m.tenant_id = $1
                AND ${meetingVisibleSql('m', { user: '$2', all: '$4', client: '$5' })})
+          -- #5031: файл виден участнику чата, где он лежит, — исходного ИЛИ того, куда сообщение
+          -- переслали (пересылает только тот, кому файл и так доступен). Раньше проверялся лишь
+          -- исходный чат, и пересланный в личку документ не скачивался.
           WHEN 'chat_message' THEN f.owner_id IS NULL OR EXISTS (
-            SELECT 1 FROM chats c WHERE c.id = f.owner_id AND c.tenant_id = $1
+            SELECT 1 FROM chats c WHERE c.tenant_id = $1
+               AND (c.id = f.owner_id
+                    OR c.id IN (SELECT m.chat_id FROM chat_messages m WHERE m.tenant_id = $1 AND m.file_id = f.id AND m.deleted_at IS NULL)
+                    OR c.id IN (SELECT m.chat_id FROM chat_message_files mf JOIN chat_messages m ON m.id = mf.message_id
+                                 WHERE mf.tenant_id = $1 AND mf.file_id = f.id AND m.deleted_at IS NULL))
                AND ((c.kind = 'project' AND (c.project_id IS NULL OR ${proj('c.project_id')}))
                     OR EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2::bigint)))
           -- голосовой бриф (ТЗ-21) — личный: только тому, кому его записали (он же «загрузил»)
