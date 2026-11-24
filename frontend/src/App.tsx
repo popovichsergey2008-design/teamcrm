@@ -32,13 +32,13 @@ import { pageTitleFor, TITLE_HINTS_EVENT } from './lib/page-title';
 import { setPageTitle } from './lib/tab-alert';
 import { lastProject } from './lib/last-project';
 import { dropCache } from './lib/cache';
-import { showToast, START_CALL_EVENT, StartCallRequest } from './lib/notifications';
+import { notificationPermission, showToast, START_CALL_EVENT, StartCallRequest } from './lib/notifications';
 import { useShortcuts } from './hooks/useShortcuts';
 import { lazyComponent } from './lib/lazy';
 import { prefetchFocus } from './pages/FocusPage';
 import { ChatBar } from './components/chatbar/ChatBar';
 import { openSupport, SupportDock } from './components/support/SupportDock';
-import { platform } from './platform';
+import { isNativeShell, platform } from './platform';
 import { useAppLock } from './hooks/useAppLock';
 import { useDeviceRegistration } from './hooks/useDeviceRegistration';
 import { useMobileConfig } from './hooks/useMobileConfig';
@@ -57,7 +57,8 @@ import { ChatOverlay } from './components/chatbar/ChatOverlay';
 import { useSeedStickyChecks } from './lib/sticky-checks';
 import { setEffectsPrefs } from './lib/feedback';
 import { seedTour, useTourWanted, useWelcome } from './lib/tour';
-import { promptText } from './components/ui/dialog';
+import { confirmAction, promptText } from './components/ui/dialog';
+import { dmPushAsked, enableDmPush, setDmPush } from './lib/device-prefs';
 import { BOT_PANEL_OPEN, STICKER_NEW, stickerTaskCreated } from './lib/stickers-api';
 
 /*
@@ -658,6 +659,22 @@ export function App() {
   useEffect(() => { if (user && isAuthPath()) navigate('/focus', { replace: true }); }, [user]);
   // чаты своим куском — подтягиваем в простое, чтобы открывались сразу
   useEffect(() => { if (user) preloadWhenIdle(ChatsPage); }, [user]);
+  /*
+    #5023: один раз на устройстве предлагаем уведомления о личных сообщениях — окном «Да / Нет»
+    (непрошеный системный запрос браузеры глушат). Ответ запоминается; поменять — Профиль → Уведомления.
+  */
+  useEffect(() => {
+    if (!user || user.role === 'client' || isNativeShell() || dmPushAsked() || notificationPermission() !== 'default') return;
+    const t = window.setTimeout(() => {
+      if (document.hidden || dmPushAsked()) return;
+      void confirmAction({
+        title: 'Показывать уведомления о личных сообщениях?',
+        description: 'Когда вам напишут в личку, а QEVO открыт в другой вкладке или свёрнут, браузер покажет уведомление — как в Slack. Сообщения в группах — без уведомлений. Отключить можно в Профиле → Уведомления.',
+        confirmLabel: 'Да', cancelLabel: 'Нет',
+      }).then((yes) => { if (yes) void enableDmPush(); else setDmPush(false); });
+    }, 20_000);
+    return () => window.clearTimeout(t);
+  }, [user]);
   const counters = useNavCounters(crmAlive, route.section);
   const { incoming, accept, decline } = useIncomingCalls(crmAlive);
   // гость ждёт за дверью, а в комнате никого — зов с кнопкой «Войти» в любом разделе

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
+import { askOnConflict, dmPushOn, enableDmPush, setAskOnConflict, setDmPush } from '../lib/device-prefs';
 import { EmptyState } from './EmptyState';
 import { ClientsPanel } from './ClientsPanel';
 import { previewSound, setSoundPref, soundPrefs } from '../lib/sound';
@@ -50,6 +51,23 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
   };
   // эффекты действий (ТЗ-23): звук — на устройстве, остальное — в аккаунте
   const [fxSound, setFxSound] = useState(effectSoundOn);
+  // #5023 / #5021: настройки этого браузера
+  const [dmPush, setDmPushState] = useState(dmPushOn);
+  const [askConflict, setAskConflictState] = useState(askOnConflict);
+  const [pushNote, setPushNote] = useState('');
+  const toggleDmPush = async () => {
+    setPushNote('');
+    if (dmPush) { setDmPush(false); setDmPushState(false); return; }
+    const yes = await confirmAction({
+      title: 'Включить уведомления о личных сообщениях?',
+      description: 'Когда вам напишут в личку, а QEVO открыт в другой вкладке или свёрнут, браузер покажет уведомление. Сообщения в группах и каналах — без уведомлений, чтобы не было спама. Браузер спросит разрешение.',
+      confirmLabel: 'Да, включить', cancelLabel: 'Нет',
+    });
+    if (!yes) return;
+    const ok = await enableDmPush();
+    setDmPushState(ok);
+    if (!ok) setPushNote('Браузер запретил уведомления для QEVO. Разрешите их в настройках сайта (значок замка в адресной строке → Уведомления) и включите здесь ещё раз.');
+  };
   const [fx, setFx] = useState(effectsPrefs);
   const toggleFx = (k: keyof EffectsPrefs) => {
     const next = { ...fx, [k]: !fx[k] };
@@ -507,6 +525,24 @@ export function ProfilePanel({ onClose, onAvatar, initialTab }: { onClose: () =>
                 {label}
               </label>
             ))}
+
+            {!isNativeShell() && (
+              <>
+                <div className="drawer-section-title" style={{ marginTop: 18 }}>Уведомления в этом браузере</div>
+                <label className="notify-row">
+                  <input type="checkbox" checked={dmPush} onChange={() => void toggleDmPush()} />
+                  Уведомление о личном сообщении, когда QEVO в другой вкладке (как в Slack)
+                </label>
+                {pushNote && <div className="error-text" style={{ fontSize: 12 }}>{pushNote}</div>}
+              </>
+            )}
+            <label className="notify-row">
+              <input type="checkbox" checked={askConflict} onChange={() => { setAskOnConflict(!askConflict); setAskConflictState(!askConflict); }} />
+              Спрашивать, какой вариант оставить, если задачу одновременно изменил кто-то ещё
+            </label>
+            <div className="dim" style={{ fontSize: 12 }}>
+              Выключено — сохраняется ваш вариант, без окна «Задачу уже изменили».
+            </div>
 
             {/* Звук — свойство места, а не человека: в опенспейсе его выключают,
                 дома на том же аккаунте оставляют. Поэтому настройка на устройстве. */}

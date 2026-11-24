@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { dmPushOn } from '../lib/device-prefs';
+import { isNativeShell } from '../platform';
 import { quietFor } from '../lib/quiet';
 import { loadChats, setChatsViewer, subscribeChats, type FeedChat } from '../lib/chats-feed';
 import { getSocket } from '../lib/socket';
@@ -71,8 +73,15 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       const personal = kinds.current.get(String(p.chatId)) === 'dm'
         || (p.mentionIds ?? []).map(String).includes(String(meRef.current ?? ''));
       if (quietFor({ personal })) return;
-      // #4710: щелчок по системному уведомлению ведёт в сам чат (и ветку), а не в общий список
-      showNotification(title, body, () => openChats.current(String(p.chatId), threadId), { personal });
+      // #4710: щелчок по системному уведомлению ведёт в сам чат (и ветку), а не в общий список.
+      // #5023: в браузере системное уведомление — только о ЛИЧНОМ сообщении, только когда QEVO
+      // не на экране (другая вкладка, свёрнуто) и если человек его не выключил; на экране
+      // хватает своей всплывашки. В приложении на телефоне — как было.
+      const away = document.hidden || !document.hasFocus();
+      const isDm = kinds.current.get(String(p.chatId)) === 'dm';
+      if (isNativeShell() || (isDm && away && dmPushOn())) {
+        showNotification(title, body, () => openChats.current(String(p.chatId), threadId), { personal });
+      }
       showToast({ title, body, chatId: String(p.chatId), threadId, personal });
       playMessageChime();
     };
