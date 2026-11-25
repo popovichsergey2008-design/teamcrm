@@ -131,12 +131,6 @@ export class ChatTaskDraftService {
     private readonly resolver: ProjectResolverService,
   ) {}
 
-  /** Картинки и видео прикладываем сразу: обычно они и есть половина постановки. */
-  private static visualByDefault(mime: string | null, name: string | null): boolean {
-    const m = String(mime ?? '').toLowerCase();
-    if (m.startsWith('image/') || m.startsWith('video/')) return true;
-    return /\.(png|jpe?g|gif|webp|heic|mp4|mov|webm|mkv)$/i.test(String(name ?? ''));
-  }
 
   /** Наружу отдаём в том виде, в каком это рисует окно. */
   private view(d: DraftRow) {
@@ -423,7 +417,9 @@ export class ChatTaskDraftService {
       fileId: String(f.file_id),
       name: f.file_name,
       mime: f.content_type,
-      include: ChatTaskDraftService.visualByDefault(f.content_type, f.file_name),
+      // #5036: все вложения сообщения отмечены сразу — и документы тоже (раньше только картинки и видео);
+      // лишнее человек снимет галочкой в окне
+      include: true,
     }));
 
     const around = await this.repo.contextText(tenantId, String(draft.message_id));
