@@ -16,6 +16,12 @@ export interface RecurrenceRow {
   last_run_at: string | null;
   active: boolean;
   created_by: string | null;
+  every_n?: number | null;
+  due_days?: number | null;
+  due_time?: string | null;
+  ends_after?: number | null;
+  ends_on?: string | Date | null;
+  runs_count?: number;
 }
 
 /**
@@ -51,9 +57,16 @@ export class TaskRecurrenceRepository {
   ): Promise<RecurrenceRow> {
     const row = (await this.db.one<RecurrenceRow>(
       `INSERT INTO task_recurrences
-         (tenant_id, task_id, freq, weekdays, monthday, interval_days, at_time, tz, next_run_at, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         (tenant_id, task_id, freq, weekdays, monthday, interval_days, at_time, tz, next_run_at, created_by,
+          every_n, due_days, due_time, ends_after, ends_on)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT (task_id) DO UPDATE SET
+         every_n = EXCLUDED.every_n,
+         due_days = EXCLUDED.due_days,
+         due_time = EXCLUDED.due_time,
+         ends_after = EXCLUDED.ends_after,
+         ends_on = EXCLUDED.ends_on,
+         runs_count = 0,
          freq = EXCLUDED.freq,
          weekdays = EXCLUDED.weekdays,
          monthday = EXCLUDED.monthday,
@@ -67,6 +80,7 @@ export class TaskRecurrenceRepository {
       [
         tenantId, taskId, rule.freq, rule.weekdays, rule.monthday,
         rule.intervalDays, rule.atTime, rule.tz, nextRunAt, actorId,
+        rule.every ?? null, rule.dueDays ?? null, rule.dueTime ?? null, rule.endsAfter ?? null, rule.endsOn ?? null,
       ],
     ))!;
     // Образец тоже помечаем: значок повтора должен быть виден на той карточке,
@@ -101,6 +115,14 @@ export class TaskRecurrenceRepository {
     await this.db.query(
       `UPDATE task_recurrences SET last_run_at = $2, next_run_at = $3, updated_at = now() WHERE id = $1`,
       [id, ranAt, nextRunAt],
+    );
+  }
+
+  /** #5016: срабатывание учтено; набралось «после N раз» или прошла дата — повтор выключается. */
+  async countRun(id: string, finished: boolean): Promise<void> {
+    await this.db.query(
+      `UPDATE task_recurrences SET runs_count = runs_count + 1, active = active AND NOT $2, updated_at = now() WHERE id = $1`,
+      [id, finished],
     );
   }
 
@@ -189,5 +211,15 @@ export function ruleOf(row: RecurrenceRow): RecurrenceRule {
     intervalDays: row.interval_days === null ? null : Number(row.interval_days),
     atTime: row.at_time,
     tz: row.tz,
+    ...(row.every_n ? { every: Number(row.every_n) } : {}),
+    ...(row.due_days != null ? { dueDays: Number(row.due_days) } : {}),
+    ...(row.due_time ? { dueTime: row.due_time } : {}),
+    ...(row.ends_after != null ? { endsAfter: Number(row.ends_after) } : {}),
+    ...(row.ends_on ? { endsOn: row.ends_on instanceof Date ? isoDay(row.ends_on) : String(row.ends_on).slice(0, 10) } : {}),
   };
+}
+
+/** DATE из pg приходит полночью по поясу процесса — берём местные год, месяц и день. */
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

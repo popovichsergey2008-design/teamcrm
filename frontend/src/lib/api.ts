@@ -108,6 +108,13 @@ export interface TaskRecurrence {
   lastRunAt: string | null;
   active: boolean;
   description: string;
+  /** #5016: каждые N недель/месяцев, срок новой задачи, окончание и сколько раз уже сработал. */
+  every?: number;
+  dueDays?: number | null;
+  dueTime?: string | null;
+  endsAfter?: number | null;
+  endsOn?: string | null;
+  runs?: number;
 }
 
 /** Что нашлось в загруженном файле — до записи в базу. */
@@ -3221,6 +3228,11 @@ export const api = {
     intervalDays?: number;
     atTime: string;
     tz?: string;
+    every?: number;
+    dueDays?: number | null;
+    dueTime?: string | null;
+    endsAfter?: number | null;
+    endsOn?: string | null;
   }) => request<TaskRecurrence>('PUT', `/tasks/${id}/recurrence`, b),
   clearTaskRecurrence: (id: string) => request<{ cleared: boolean }>('DELETE', `/tasks/${id}/recurrence`),
   /**

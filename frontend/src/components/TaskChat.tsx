@@ -119,7 +119,7 @@ const BOT_TOOL_LABEL: Record<string, string> = {
   create_document: 'приложил документ',
 };
 
-function activityText(a: { kind: string; detail?: Record<string, any> }): string {
+export function activityText(a: { kind: string; detail?: Record<string, any> }): string {
   const label = ACTIVITY_LABEL[a.kind] ?? a.kind;
   if (a.kind === 'moved' && a.detail?.to) return `${label} в «${a.detail.to}»`;
   if (a.kind === 'from_meeting') {

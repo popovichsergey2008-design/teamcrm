@@ -41,8 +41,8 @@ export const google = {
   link: (type: GoogleEntity, id: string, fileIds: string[]) =>
     request<{ items: GoogleFile[]; failed: string[] }>('POST', '/google-drive/links', { entityType: type, entityId: id, fileIds }),
   unlink: (linkId: string) => request<{ removed: boolean }>('DELETE', `/google-drive/links/${linkId}`),
-  createDoc: (type: GoogleEntity, id: string, blank = false) =>
-    request<{ url: string; items: GoogleFile[] }>('POST', '/google-docs/create', { entityType: type, entityId: id, blank }),
+  createDoc: (type: GoogleEntity, id: string, blank = false, format?: 'doc' | 'sheet' | 'slides') =>
+    request<{ url: string; items: GoogleFile[] }>('POST', '/google-docs/create', { entityType: type, entityId: id, blank, ...(format ? { format } : {}) }),
   calendars: () => request<{ id: string; title: string; primary: boolean }[]>('GET', '/google-calendar/calendars'),
   calendarSettings: () => request<GoogleCalendarSettings | null>('GET', '/google-calendar/settings'),
   saveCalendarSettings: (b: Partial<Pick<GoogleCalendarSettings, 'calendarId' | 'calendarTitle' | 'pushMeetings' | 'pullEvents'>>) =>

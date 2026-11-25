@@ -22,6 +22,8 @@ class DocDto {
   @IsIn(ENTITIES) entityType!: EntityType;
   @IsString() @MaxLength(20) entityId!: string;
   @IsOptional() @IsBoolean() blank?: boolean;
+  /** #5016: «Создать документ ▾» в карточке задачи — документ, таблица или презентация. */
+  @IsOptional() @IsIn(['doc', 'sheet', 'slides']) format?: 'doc' | 'sheet' | 'slides';
 }
 
 class CalendarSettingsDto {
@@ -101,7 +103,7 @@ export class GoogleController {
 
   @Post('google-docs/create')
   createDoc(@CurrentUser() u: AuthUser, @Body() dto: DocDto) {
-    return this.wrap(this.drive.createDoc(u, dto.entityType, dto.entityId, dto.blank));
+    return this.wrap(this.drive.createDoc(u, dto.entityType, dto.entityId, dto.blank, dto.format));
   }
 
   // ── Календарь ──

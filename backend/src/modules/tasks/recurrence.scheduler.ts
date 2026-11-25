@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { RecurrenceRow, ruleOf, TaskRecurrenceRepository } from './task-recurrence.repository';
 import { TasksService } from './tasks.service';
 import { TaskActivityRepository } from './task-activity.repository';
-import { describeRule, nextRun } from './recurrence';
+import { describeRule, dueOf, finishedAfter, nextRun } from './recurrence';
 
 import { runsBackground } from '../../common/process-role';
 /**
@@ -98,12 +98,14 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
         return false;
       }
       // НЕ ПЛОДИМ. Прежняя задача жива — двигаем ей срок на новое срабатывание.
-      await this.repo.pushDeadline(row.tenant_id, last.id, dueAt);
+      const shiftTo = dueOf(rule, dueAt);
+      await this.repo.pushDeadline(row.tenant_id, last.id, shiftTo);
       await this.activity.log(row.tenant_id, last.id, null, 'recurrence_shifted', {
         rule: describeRule(rule),
-        deadlineAt: dueAt.toISOString(),
+        deadlineAt: shiftTo.toISOString(),
       });
       await this.repo.markRun(row.id, now, upcoming);
+      await this.repo.countRun(row.id, finishedAfter(rule, Number(row.runs_count ?? 0) + 1, upcoming));
       return false;
     }
 
@@ -135,7 +137,7 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
         assigneeId: template.assignee_id ? String(template.assignee_id) : undefined,
         managerId: template.created_by ? String(template.created_by) : undefined,
         priority: template.priority ?? undefined,
-        deadlineAt: dueAt.toISOString(),
+        deadlineAt: dueOf(rule, dueAt).toISOString(),
         estimateHours: template.estimate_hours !== null ? Number(template.estimate_hours) : undefined,
         labelIds: labelIds.length ? labelIds : undefined,
         checklist: checklist.length ? checklist : undefined,
@@ -153,6 +155,7 @@ export class RecurrenceScheduler implements OnModuleInit, OnModuleDestroy {
       fromTaskId: String(row.task_id),
     });
     await this.repo.markRun(row.id, now, upcoming);
+    await this.repo.countRun(row.id, finishedAfter(rule, Number(row.runs_count ?? 0) + 1, upcoming));
     this.log.log(`повтор ${row.id} (${describeRule(rule)}) → задача ${created.id}`);
     return true;
   }

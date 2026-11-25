@@ -388,6 +388,24 @@ export class TaskRecurrenceDto {
   @IsString()
   @MaxLength(64)
   tz?: string;
+
+  /** #5016: каждые N недель / месяцев. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(52)
+  every?: number;
+
+  /** #5016: срок новой задачи — через N дней после создания, во сколько. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(365)
+  dueDays?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(5)
+  dueTime?: string | null;
+
+  /** #5016: закончить после N раз или после даты ГГГГ-ММ-ДД. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000)
+  endsAfter?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(10)
+  endsOn?: string | null;
 }
 
 /**

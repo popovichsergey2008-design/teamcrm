@@ -94,17 +94,21 @@ export class GoogleDriveService {
    * Создать Google-документ при сущности: пустой файл в Диске человека, затем текст
    * одной правкой (§55). Документ сразу прикреплён — его не нужно искать и прикладывать.
    */
-  async createDoc(v: Viewer, type: EntityType, id: string, blank = false) {
+  async createDoc(v: Viewer, type: EntityType, id: string, blank = false, format: 'doc' | 'sheet' | 'slides' = 'doc') {
+    // #5016: таблица и презентация — пустые файлы с именем по задаче; текст вставляем только в документ
+    if (format !== 'doc') blank = true;
     await this.assertCanSee(v, type, id);
     const { token } = await this.auth.tokenFor(v.tenantId, v.userId, 'drive');
     const tz = await this.timezone(v.tenantId);
     const kind: DocKind = blank ? 'blank' : DOC_FOR[type];
     const { subject, blocks } = await this.content(v, type, id, tz);
-    const name = docName(kind, subject, tz);
+    const name = format === 'sheet' ? `Таблица — ${subject}`.slice(0, 200) : format === 'slides' ? `Презентация — ${subject}`.slice(0, 200) : docName(kind, subject, tz);
+    const mimeType = format === 'sheet' ? 'application/vnd.google-apps.spreadsheet'
+      : format === 'slides' ? 'application/vnd.google-apps.presentation' : 'application/vnd.google-apps.document';
     const file = await googleJson<any>(DRIVE, token, {
       method: 'POST',
       query: { fields: FILE_FIELDS },
-      body: { name, mimeType: 'application/vnd.google-apps.document' },
+      body: { name, mimeType },
     });
     if (!blank) {
       try {

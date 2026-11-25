@@ -24,6 +24,14 @@ export interface RecurrenceRule {
   /** «ЧЧ:ММ» — время срока новой задачи в поясе `tz`. */
   atTime: string;
   tz: string;
+  /** #5016: каждые N недель / месяцев (для weekly / monthly), по умолчанию 1. */
+  every?: number;
+  /** #5016: срок новой задачи — через N дней после создания и во сколько (по умолчанию — момент создания). */
+  dueDays?: number | null;
+  dueTime?: string | null;
+  /** #5016: закончить после N срабатываний или после даты «ГГГГ-ММ-ДД». */
+  endsAfter?: number | null;
+  endsOn?: string | null;
 }
 
 const FREQS: RecurrenceFreq[] = ['daily', 'weekly', 'monthly', 'days'];
@@ -39,6 +47,44 @@ const WEEKDAY_NAMES = ['понедельник', 'вторник', 'среду',
  * потому что человек о нём уже не думает.
  */
 export function normalizeRule(input: Partial<RecurrenceRule> | null | undefined): RecurrenceRule | null {
+  const base = normalizeBase(input);
+  if (!base || !input) return base;
+  // #5016: дополнительные поля — только заданные (у прежних повторов объект не меняется)
+  const extra: Partial<RecurrenceRule> = {};
+  const every = Math.trunc(Number(input.every));
+  if ((base.freq === 'weekly' || base.freq === 'monthly') && every >= 2 && every <= 52) extra.every = every;
+  const dueDays = Math.trunc(Number(input.dueDays));
+  if (input.dueDays != null && dueDays >= 0 && dueDays <= 365) extra.dueDays = dueDays;
+  const dueTime = normalizeTime(input.dueTime);
+  if (dueTime) extra.dueTime = dueTime;
+  const endsAfter = Math.trunc(Number(input.endsAfter));
+  if (input.endsAfter != null && endsAfter >= 1 && endsAfter <= 1000) extra.endsAfter = endsAfter;
+  if (typeof input.endsOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.endsOn)) extra.endsOn = input.endsOn;
+  return { ...base, ...extra };
+}
+
+/** Срок новой задачи (#5016): момент создания или «через N дней в ЧЧ:ММ» в поясе повтора. */
+export function dueOf(rule: RecurrenceRule, runAt: Date): Date {
+  if (rule.dueDays == null && !rule.dueTime) return runAt;
+  const tz = rule.tz || FALLBACK_TZ;
+  const l = localDate(runAt, tz);
+  const day = addDays(l.y, l.m, l.d, rule.dueDays ?? 0);
+  const time = rule.dueTime ?? rule.atTime;
+  return zonedToUtc(day.y, day.m, day.d, time, tz);
+}
+
+/** Повтор закончился (#5016): срабатываний набралось или следующее — после даты окончания. */
+export function finishedAfter(rule: RecurrenceRule, runs: number, upcoming: Date): boolean {
+  if (rule.endsAfter != null && runs >= rule.endsAfter) return true;
+  if (rule.endsOn) {
+    const [y, m, d] = rule.endsOn.split('-').map(Number);
+    const end = endOfLocalDay(zonedToUtc(y, m, d, '12:00', rule.tz || FALLBACK_TZ), rule.tz || FALLBACK_TZ);
+    if (upcoming.getTime() > end.getTime()) return true;
+  }
+  return false;
+}
+
+function normalizeBase(input: Partial<RecurrenceRule> | null | undefined): RecurrenceRule | null {
   if (!input) return null;
   const freq = FREQS.includes(input.freq as RecurrenceFreq) ? (input.freq as RecurrenceFreq) : null;
   if (!freq) return null;
@@ -184,9 +230,23 @@ export function nextRun(rule: RecurrenceRule, after: Date): Date {
     return zonedToUtc(at.y, at.m, at.d, rule.atTime, tz);
   }
 
-  for (let i = 0; i <= 400; i++) {
+  const every = Math.max(1, rule.every ?? 1);
+  // #5016: «каждые N недель/месяцев» — перешли в следующую неделю (месяц) от прошлого
+  // срабатывания — перескакиваем ещё N−1
+  const weekOf = (x: { y: number; m: number; d: number }) => Math.floor((Date.UTC(x.y, x.m - 1, x.d) / 86_400_000 + 3) / 7);
+  const startWeek = weekOf(start);
+  const startMonth = start.y * 12 + start.m;
+  for (let i = 0; i <= 400 * every; i++) {
     const day = addDays(start.y, start.m, start.d, i);
     if (!dayMatches(rule, day)) continue;
+    if (every > 1 && rule.freq === 'weekly') {
+      const gap = weekOf(day) - startWeek;
+      if (gap > 0 && gap < every) continue;
+    }
+    if (every > 1 && rule.freq === 'monthly') {
+      const gap = day.y * 12 + day.m - startMonth;
+      if (gap > 0 && gap < every) continue;
+    }
     const when = zonedToUtc(day.y, day.m, day.d, rule.atTime, tz);
     // сегодняшний день годится, только если время ещё не прошло
     if (when.getTime() > after.getTime()) return when;
@@ -222,10 +282,13 @@ export function describeRule(rule: RecurrenceRule): string {
       return `каждый день${at}`;
     case 'weekly': {
       const days = rule.weekdays.map((d) => WEEKDAY_NAMES[d - 1]).join(', ');
-      return `каждую неделю: ${days}${at}`;
+      const n = rule.every ?? 1;
+      return `${n > 1 ? `каждые ${n} ${n < 5 ? 'недели' : 'недель'}` : 'каждую неделю'}: ${days}${at}`;
     }
-    case 'monthly':
-      return `каждое ${rule.monthday}-е число${at}`;
+    case 'monthly': {
+      const n = rule.every ?? 1;
+      return `${n > 1 ? `раз в ${n} ${n < 5 ? 'месяца' : 'месяцев'}, ` : 'каждое '}${rule.monthday}-е число${at}`;
+    }
     default: {
       const n = rule.intervalDays ?? 1;
       const word = n === 1 ? 'день' : n < 5 ? 'дня' : 'дней';

@@ -72,6 +72,10 @@ export class TimeTrackingService {
     return this.view(stopped);
   }
 
+  taskTime(tenantId: string, userId: string, taskId: string) {
+    return this.repo.taskTime(tenantId, userId, taskId);
+  }
+
   async active(tenantId: string, userId: string) {
     const row = await this.repo.activeTimer(tenantId, userId);
     return row ? this.view(row) : null;

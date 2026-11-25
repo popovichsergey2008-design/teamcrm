@@ -19,6 +19,20 @@ export class TimeTrackingRepository {
     return this.db.one(`SELECT project_id, title FROM tasks WHERE tenant_id=$1 AND id=$2`, [tenantId, taskId]);
   }
 
+  /**
+   * #5016: сколько по задаче учтено таймером (всеми, закрытые отрезки) и идёт ли сейчас мой —
+   * строка «Потрачено» во вкладке «Время» и кнопка таймера карточки.
+   */
+  async taskTime(tenantId: string, userId: string, taskId: string): Promise<{ totalSec: number; runningSince: string | null }> {
+    const r = await this.db.one<{ total: string | null; since: Date | null }>(
+      `SELECT COALESCE(sum(EXTRACT(EPOCH FROM (timestamp_end - timestamp_start))) FILTER (WHERE timestamp_end IS NOT NULL), 0)::bigint AS total,
+              max(timestamp_start) FILTER (WHERE timestamp_end IS NULL AND user_id = $3) AS since
+         FROM time_logs WHERE tenant_id = $1 AND task_id = $2`,
+      [tenantId, taskId, userId],
+    );
+    return { totalSec: Number(r?.total ?? 0), runningSince: r?.since ? new Date(r.since).toISOString() : null };
+  }
+
   activeTimer(tenantId: string, userId: string): Promise<TimeLogRow | null> {
     return this.db.one<TimeLogRow>(
       `SELECT * FROM time_logs WHERE tenant_id=$1 AND user_id=$2 AND timestamp_end IS NULL`,

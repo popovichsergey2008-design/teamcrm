@@ -213,8 +213,9 @@ export class TaskCardRepository {
   }
   listAttachments(tenantId: string, taskId: string) {
     return this.db.many(
-      `SELECT a.id, a.file_id, f.file_name, f.content_type, f.size_bytes, a.created_at
+      `SELECT a.id, a.file_id, f.file_name, f.content_type, f.size_bytes, a.created_at, u.full_name AS uploaded_by_name
          FROM task_attachments a JOIN files f ON f.id=a.file_id
+         LEFT JOIN users u ON u.id = f.uploaded_by AND u.tenant_id = a.tenant_id
         WHERE a.tenant_id=$1 AND a.task_id=$2 ORDER BY a.created_at DESC`,
       [tenantId, taskId],
     );

@@ -1,4 +1,4 @@
-import { describeRule, nextRun, normalizeRule, RecurrenceRule, weekdayOf } from './recurrence';
+import { describeRule, dueOf, finishedAfter, nextRun, normalizeRule, RecurrenceRule, weekdayOf } from './recurrence';
 
 /**
  * Календарь ошибается молча: задача просто появляется не в тот день. Поэтому здесь
@@ -115,5 +115,37 @@ describe('повтор: подпись', () => {
     expect(describeRule(rule({ freq: 'days', intervalDays: 1 }))).toBe('каждые 1 день в 10:00');
     expect(describeRule(rule({ freq: 'days', intervalDays: 3 }))).toBe('каждые 3 дня в 10:00');
     expect(describeRule(rule({ freq: 'days', intervalDays: 10 }))).toBe('каждые 10 дней в 10:00');
+  });
+});
+
+describe('повтор: шаг, срок новой задачи и окончание (#5016)', () => {
+  it('каждые 2 недели: после срабатывания следующая неделя пропускается', () => {
+    // пн 2026-11-23 10:00 МСК прошёл → следующий понедельник через две недели
+    const r = rule({ freq: 'weekly', weekdays: [1], every: 2 });
+    expect(local(nextRun(r, new Date('2026-11-23T07:00:01Z')))).toBe('2026-12-07 10:00');
+    // в той же неделе ещё есть выбранный день — он годится
+    const r2 = rule({ freq: 'weekly', weekdays: [1, 5], every: 2 });
+    expect(local(nextRun(r2, new Date('2026-11-23T07:00:01Z')))).toBe('2026-11-27 10:00');
+  });
+  it('раз в 3 месяца: число месяца через три месяца', () => {
+    const r = rule({ freq: 'monthly', monthday: 5, every: 3 });
+    expect(local(nextRun(r, new Date('2026-11-05T07:00:01Z')))).toBe('2027-02-05 10:00');
+  });
+  it('срок новой задачи: +2 дня в 16:00, без настройки — момент создания', () => {
+    const at = new Date('2026-11-23T07:00:00Z');
+    expect(local(dueOf(rule({ dueDays: 2, dueTime: '16:00' }), at))).toBe('2026-11-25 16:00');
+    expect(dueOf(rule({}), at).getTime()).toBe(at.getTime());
+  });
+  it('окончание: после N раз и после даты', () => {
+    expect(finishedAfter(rule({ endsAfter: 3 }), 3, new Date())).toBe(true);
+    expect(finishedAfter(rule({ endsAfter: 3 }), 2, new Date())).toBe(false);
+    expect(finishedAfter(rule({ endsOn: '2026-12-01' }), 1, new Date('2026-12-01T18:00:00Z'))).toBe(false);
+    expect(finishedAfter(rule({ endsOn: '2026-12-01' }), 1, new Date('2026-12-02T07:00:00Z'))).toBe(true);
+  });
+  it('разбор: лишние поля берутся только заданные и в границах', () => {
+    expect(normalizeRule({ freq: 'weekly', weekdays: [1], atTime: '10:00', every: 2, endsAfter: 5 } as never))
+      .toEqual(rule({ freq: 'weekly', weekdays: [1], every: 2, endsAfter: 5 }));
+    expect(normalizeRule({ freq: 'daily', atTime: '10:00', every: 2 } as never)).toEqual(rule({}));
+    expect(describeRule(rule({ freq: 'weekly', weekdays: [1], every: 2 }))).toBe('каждые 2 недели: понедельник в 10:00');
   });
 });

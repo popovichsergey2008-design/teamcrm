@@ -15,6 +15,7 @@ describe('повтор не откатывает перенесённый сро
       lastInstance: jest.fn(async () => ({ id: '1339', closed_at: null, title: 'Отчёт', project_id: '5', deadline_at: deadline })),
       pushDeadline: jest.fn(async () => undefined),
       markRun: jest.fn(async () => undefined),
+      countRun: jest.fn(async () => undefined),
     };
     const activity = { log: jest.fn(async () => '1') };
     const s = new RecurrenceScheduler(repo as any, {} as any, activity as any);

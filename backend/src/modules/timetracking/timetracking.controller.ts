@@ -21,6 +21,12 @@ export class TimeTrackingController {
     return this.service.stop(user.tenantId, user.userId, id);
   }
 
+  /** #5016: «Потрачено» и таймер в карточке задачи. */
+  @Get('tasks/:id/time')
+  taskTime(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.service.taskTime(user.tenantId, user.userId, id);
+  }
+
   @Get('me/timer')
   active(@CurrentUser() user: AuthUser) {
     return this.service.active(user.tenantId, user.userId);

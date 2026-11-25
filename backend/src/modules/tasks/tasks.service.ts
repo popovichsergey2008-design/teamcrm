@@ -390,6 +390,7 @@ export class TasksService {
       nextRunAt: row.next_run_at,
       lastRunAt: row.last_run_at,
       active: row.active,
+      runs: Number(row.runs_count ?? 0),
       description: describeRule(rule),
     };
   }
