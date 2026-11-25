@@ -228,6 +228,15 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     try { setBacklog(await api.focusBacklog()); } catch { setBacklog([]); }
   }, []);
   useEffect(() => { if (backlogOpen && backlog === null) void loadBacklog(); }, [backlogOpen, backlog, loadBacklog]);
+  /*
+    #5038: «Добавить вручную» у свободного слота. Раньше кнопка раскрывала общий список
+    «Остальные задачи» в самом низу страницы — на экране ничего не менялось (а в Дзене
+    список скрыт совсем), казалось, что кнопка не работает. Теперь выбор открывается
+    прямо в слоте, и задача встаёт на этот номер.
+  */
+  const [slotPick, setSlotPick] = useState<number | null>(null);
+  const [slotQ, setSlotQ] = useState('');
+  useEffect(() => { if (slotPick && backlog === null) void loadBacklog(); }, [slotPick, backlog, loadBacklog]);
 
   const top = useMemo(() => [...day.top].sort((a, b) => a.rank - b.rank), [day.top]);
   // #4983: задачи тройки, которых ещё нет в избранном
@@ -530,13 +539,43 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     );
   };
 
-  const emptySlot = (rank: number) => (
-    <div key={`free-${rank}`} className="fd-card fd-free">
-      <span className="fd-rank">#{rank}</span>
-      <span className="dim">{rank === 1 ? 'Главная миссия свободна.' : 'Слот свободен.'}</span>
-      <Button variant="outline" size="sm" onClick={() => setBacklogOpen('all')}><Icon name="plus" size={14} /> Добавить вручную</Button>
-    </div>
-  );
+  const emptySlot = (rank: number) => {
+    const open = slotPick === rank;
+    const q = slotQ.trim().toLowerCase();
+    const tasks = (backlog ?? []).filter((c) => c.kind === 'task' && (!q || c.title.toLowerCase().includes(q) || (c.projectName ?? '').toLowerCase().includes(q)));
+    return (
+      <div key={`free-${rank}`} className={`fd-card fd-free${open ? ' fd-free-open' : ''}`}>
+        <span className="fd-rank">#{rank}</span>
+        <span className="dim">{rank === 1 ? 'Главная миссия свободна.' : 'Слот свободен.'}</span>
+        {!open ? (
+          <Button variant="outline" size="sm" aria-expanded={false} onClick={() => { setSlotQ(''); setSlotPick(rank); }}>
+            <Icon name="plus" size={14} /> Добавить вручную
+          </Button>
+        ) : (
+          <div className="fd-slot-pick" role="group" aria-label={`Задача на место #${rank}`}>
+            <div className="fd-slot-pick-head">
+              <input className="ui-input ui-input-sm" autoFocus placeholder="Найти задачу или проект" value={slotQ}
+                onChange={(e) => setSlotQ(e.target.value)} aria-label="Найти задачу"
+                onKeyDown={(e) => { if (e.key === 'Escape') setSlotPick(null); }} />
+              <Button variant="ghost" size="sm" onClick={() => setSlotPick(null)}>Отмена</Button>
+            </div>
+            {backlog === null && <SkeletonList rows={3} />}
+            {backlog !== null && tasks.length === 0 && <div className="dim fd-empty">{q ? 'Ничего не нашли.' : 'Других задач нет.'}</div>}
+            <div className="fd-slot-list">
+              {tasks.slice(0, 30).map((c) => (
+                <button key={c.key} type="button" className="fd-slot-item" disabled={busy}
+                  title={`Поставить «${c.title}» на место #${rank}`}
+                  onClick={() => { setSlotPick(null); void run(() => api.focusAdd(c.key, rank)); }}>
+                  <span className="fd-bl-title">{c.title}</span>
+                  {c.projectName && <span className="dim fd-bl-sub">{c.projectName}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   /**
    * Созвон → фокус (п. 74–76): одно поручение — «важнее вашего #N?», несколько —

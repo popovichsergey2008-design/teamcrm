@@ -61,6 +61,19 @@
 .fd-done .fd-title { text-decoration: line-through; color: var(--text-dim); }
 .fd-gone { border-style: dashed; }
 .fd-free { align-items: flex-start; border-style: dashed; border-left-width: 1px; background: transparent; }
+/* #5038: выбор задачи прямо в свободном слоте */
+.fd-free-open { align-items: stretch; }
+.fd-slot-pick { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fd-slot-pick-head { display: flex; gap: 6px; align-items: center; }
+.fd-slot-pick-head .ui-input { flex: 1; min-width: 0; }
+.fd-slot-list { display: flex; flex-direction: column; gap: 2px; max-height: 280px; overflow-y: auto; }
+.fd-slot-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 10px; text-align: left;
+  border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text); font: inherit; cursor: pointer;
+}
+.fd-slot-item:hover { background: var(--hover); border-color: var(--border); }
+.fd-slot-item:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.fd-slot-item:disabled { opacity: .6; cursor: default; }
 .fd-card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 24px; }
 .fd-rank { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
 .fd-mission .fd-rank { color: var(--accent); }
