@@ -10,12 +10,14 @@ import type { Task, User } from '../../types';
  *
  * Верхний ряд из пяти ячеек — исполнитель с соисполнителями, постановщик, срок, статус,
  * наблюдатели; нижняя строка мелким текстом — приоритет, проект, повтор, клиент.
- * Щелчок по ячейке открывает окошко прямо под ней (люди, календарь, статусы); по нижней
- * строке — нужную вкладку («Параметры», «Повтор»).
+ * Щелчок по ячейке открывает окошко прямо под ней (люди, календарь, статусы); приоритет
+ * в нижней строке — тоже окошком, остальное в ней открывает вкладку («Параметры», «Повтор»).
+ * Сколько ячеек в ряду, решает ширина самой карточки (container query в task-single.css):
+ * рядом открыт чат — на ноутбуке это 3 + 2, а не пять обрезанных колонок.
  */
 
 export type FactPerson = { user_id: string; role: string; full_name: string };
-type Pop = 'assignee' | 'co' | 'manager' | 'due' | 'status' | 'watch' | null;
+type Pop = 'assignee' | 'co' | 'manager' | 'due' | 'status' | 'watch' | 'prio' | null;
 
 const PRIORITY_WORD: Record<string, { text: string; cls: string }> = {
   urgent: { text: 'срочно', cls: 'ts-prio-urgent' },
@@ -23,6 +25,8 @@ const PRIORITY_WORD: Record<string, { text: string; cls: string }> = {
   normal: { text: 'обычный', cls: '' },
   low: { text: 'низкий', cls: 'ts-prio-low' },
 };
+/** Порядок в окошке приоритета — от срочного к низкому, как читают сверху вниз. */
+const PRIORITY_ORDER = ['urgent', 'high', 'normal', 'low'];
 
 const p2 = (n: number) => String(n).padStart(2, '0');
 const hm = (d: Date) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
@@ -122,6 +126,8 @@ export function TaskFacts(p: {
   moving: boolean;
   onStatus: (columnId: string) => void;
   priority: string;
+  /** #5016: приоритет меняется прямо здесь, окошком под строкой (раньше — только во вкладке «Параметры»). */
+  setPriority: (v: string) => void;
   projectName: string;
   repeatLabel: string | null;
   clientName: string | null;
@@ -240,7 +246,7 @@ export function TaskFacts(p: {
               <span>{due.main}</span>
             </span>
           </div>
-          {due.sub && <div className="ts-sub ts-nowrap">{due.sub}</div>}
+          {due.sub && <div className="ts-sub">{due.sub}</div>}
           {pop === 'due' && (
             <div className="ts-pop ts-pop-due" onClick={(e) => e.stopPropagation()}>
               <DatePicker value={p.deadline} onChange={p.setDeadline} withTime warnPast placeholder="срок не задан" ariaLabel="Срок задачи" />
@@ -302,7 +308,27 @@ export function TaskFacts(p: {
       </div>
 
       <div className="ts-facts-sec">
-        <button type="button" onClick={() => p.onOpenTab('params')}>Приоритет: <span className={prio.cls}>{prio.text}</span></button>
+        <span className="ts-sec-prio">
+          <button type="button" aria-haspopup="listbox" aria-expanded={pop === 'prio'} onClick={() => toggle('prio')}>
+            Приоритет: <span className={prio.cls}>{prio.text}</span> <Icon name="chevron-down" size={12} />
+          </button>
+          {pop === 'prio' && (
+            <div className="ts-pop ts-pop-prio" onClick={(e) => e.stopPropagation()}>
+              <div className="ts-pop-list" role="listbox" aria-label="Приоритет">
+                {PRIORITY_ORDER.map((k) => {
+                  const on = (PRIORITY_WORD[p.priority] ? p.priority : 'normal') === k;
+                  const w = PRIORITY_WORD[k];
+                  return (
+                    <button key={k} type="button" role="option" aria-selected={on} className={`ts-pop-item${on ? ' is-on' : ''}`}
+                      onClick={() => { if (!on) p.setPriority(k); setPop(null); }}>
+                      <span className={`ts-pop-name ${w.cls}`}>{w.text[0].toUpperCase() + w.text.slice(1)}</span>{on && <Icon name="check" size={14} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </span>
         <button type="button" onClick={() => p.onOpenTab('params')}>Проект: <b>{p.projectName || '—'}</b></button>
         {p.repeatLabel && <button type="button" onClick={() => p.onOpenTab('repeat')}><Icon name="refresh" size={12} /> <b>{p.repeatLabel}</b></button>}
         {p.showClient && <button type="button" onClick={() => p.onOpenTab('params')}>Клиент: {p.clientName ? <b>{p.clientName}</b> : <span className="ts-faint">не указан</span>}</button>}

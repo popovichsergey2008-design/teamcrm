@@ -111,7 +111,30 @@ const ACTIVITY_LABEL: Record<string, string> = {
   closed_irrelevant: 'закрыл как неактуальную',
   decision_undone: 'отменил решение разбора',
   reviewer_changed: 'передал проверку',
+  // #5016: системные события писались в «Историю» кодом («Система deadline_overdue»)
+  deadline_soon: 'напомнила: до срока меньше суток',
+  deadline_overdue: 'отметила: срок прошёл',
+  overdue: 'отметила: срок прошёл',
+  ai_review: 'попросил ИИ проверить работу',
+  project_moved: 'перенёс в другой проект',
+  recurrence_set: 'настроил повтор',
+  recurrence_cleared: 'выключил повтор',
+  directions: 'изменил направления',
+  handoff_submitted: 'сдал работу',
+  checklist_required: 'изменил правило «чек-лист обязателен»',
+  shots_required: 'изменил правило «скриншоты обязательны»',
+  link_added: 'добавил связь',
+  link_removed: 'убрал связь',
+  blocked: 'отметил препятствие',
+  blocker_changed: 'изменил препятствие',
+  unblocked: 'снял препятствие',
+  chat_blocker: 'отметил препятствие из переписки',
+  followup_on_track: 'ответил на вопрос о сроке: успеваю',
+  followup_blocked: 'ответил на вопрос о сроке: есть препятствие',
+  followup_need_shift: 'ответил на вопрос о сроке: нужен перенос',
 };
+
+const VERDICT_WORD: Record<string, string> = { done: 'выполнено', partial: 'частично', not_done: 'не выполнено' };
 
 /** Что именно сделал бот — словами, а не именем инструмента. */
 const BOT_TOOL_LABEL: Record<string, string> = {
@@ -127,6 +150,11 @@ export function activityText(a: { kind: string; detail?: Record<string, any> }):
     return `${label} «${a.detail?.meetingTitle ?? ''}»${Number.isFinite(sec) && a.detail?.sec != null ? ` · ${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}` : ''}${a.detail?.audio ? ' · с аудио' : ''}`;
   }
   if (a.kind === 'approval_returned' && a.detail?.reason) return `${label}: ${a.detail.reason}`;
+  if (a.kind === 'project_moved' && a.detail?.to) return `${label}${a.detail.from ? ` «${a.detail.from}» →` : ''} «${a.detail.to}»`;
+  if (a.kind === 'ai_review' && a.detail?.verdict) return `${label} — ${VERDICT_WORD[String(a.detail.verdict)] ?? 'проверить не удалось'}`;
+  if (a.kind === 'recurrence_set' && a.detail?.rule) return `${label}: ${a.detail.rule}`;
+  if ((a.kind === 'blocked' || a.kind === 'blocker_changed') && a.detail?.need) return `${label}: ${a.detail.need}`;
+  if (a.kind === 'link_added' && a.detail?.dependsOn) return `${label} — ждёт #${a.detail.dependsOn}${a.detail.title ? ` «${a.detail.title}»` : ''}`;
   if (a.kind === 'recurrence_shifted' && a.detail?.deadlineAt) {
     return `${label} — ${new Date(a.detail.deadlineAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`;
   }

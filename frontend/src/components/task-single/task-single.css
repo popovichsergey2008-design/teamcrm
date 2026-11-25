@@ -53,6 +53,11 @@
 .ts3 .ts-faint { color: var(--ts-faint); font-weight: 500; }
 .ts3 .ts-nowrap { white-space: nowrap; }
 .ts3 .ts-ellipsis { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* имя в ячейке «главного» — до двух строк целиком, а не «Конст…» */
+.ts3 .ts-fact .ts-ellipsis {
+  white-space: normal; overflow-wrap: break-word; line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 .ts3 .ts-meta { color: var(--text-mut); font-size: 12.5px; }
 .ts3 .ts-link {
   display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0;
@@ -81,13 +86,37 @@
 .ts3 .ts-card-h { display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-bottom: 1px solid var(--ts-line); }
 .ts3 .ts-card-h h3 { margin: 0; font-size: 14.5px; font-weight: 700; }
 
-/* ── «главное» (п. 2) ── */
+/* ── «главное» (п. 2) ──
+   #5016: число колонок — по ширине самой карточки, а не окна: рядом открыт чат, и на
+   ноутбуке на пять ячеек остаётся ~600 px — имена и статус резались. Пять в ряд — только
+   когда каждой хватает места; уже — 3 + 2, на телефоне — 2 + 2 + 1. */
+/* контейнер может стать своим слоем — поднимаем карточку целиком над описанием, иначе окошки уходят под него */
+.ts3 .ts-facts { container-type: inline-size; container-name: ts-facts; position: relative; z-index: 1; }
 .ts3 .ts-facts-main {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, .75fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.2fr);
 }
 .ts3 .ts-fact { position: relative; padding: 11px 14px; border-right: 1px solid var(--ts-line); cursor: pointer; min-width: 0; outline-offset: -2px; }
 .ts3 .ts-fact:last-child { border-right: 0; }
+@container ts-facts (max-width: 999px) {
+  .ts3 .ts-facts-main { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ts3 .ts-fact:nth-child(3) { border-right: 0; }
+  .ts3 .ts-fact:nth-child(-n+3) { border-bottom: 1px solid var(--ts-line); }
+  .ts3 .ts-fact.ts-watch { grid-column: span 2; }
+  .ts3 .ts-fact:first-child:hover { border-top-left-radius: 10px; }
+  .ts3 .ts-fact:nth-child(3):hover { border-top-right-radius: 10px; }
+  .ts3 .ts-fact:last-child:hover { border-top-right-radius: 0; }
+}
+@container ts-facts (max-width: 539px) {
+  .ts3 .ts-facts-main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ts3 .ts-fact:nth-child(3) { border-right: 1px solid var(--ts-line); }
+  .ts3 .ts-fact:nth-child(2n) { border-right: 0; }
+  .ts3 .ts-fact:nth-child(-n+4) { border-bottom: 1px solid var(--ts-line); }
+  .ts3 .ts-fact.ts-watch { grid-column: 1 / -1; }
+  .ts3 .ts-fact:nth-child(3):hover { border-top-right-radius: 0; }
+  .ts3 .ts-fact:nth-child(2):hover { border-top-right-radius: 10px; }
+  .ts3 .ts-pop-right { right: auto; left: 8px; }
+}
 .ts3 .ts-fact:hover { background: var(--ts-alt); }
 .ts3 .ts-fact:first-child:hover { border-top-left-radius: 10px; }
 .ts3 .ts-fact:last-child:hover { border-top-right-radius: 10px; }
@@ -113,10 +142,14 @@
 }
 .ts3 .ts-plus:hover, .ts3 .ts-plus[aria-expanded="true"] { border-color: var(--ts-blue); background: var(--ts-blue-soft); }
 .ts3 .ts-watch .ts-val { gap: 6px; cursor: default; }
-.ts3 .ts-names { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ts3 .ts-names {
+  font-size: 13.5px; font-weight: 600; min-width: 0; overflow: hidden; line-height: 1.25; overflow-wrap: break-word;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
 .ts3 .ts-due { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; min-width: 0; max-width: 100%; }
 .ts3 .ts-due > span { overflow-wrap: anywhere; }
 .ts3 .ts-fact .ts-val { overflow: hidden; padding: 1px 2px; margin: -1px -2px; }
+.ts3 .ts-fact .ts-val:has(.ts-status) { align-items: flex-start; }
 .ts3 .ts-due svg { opacity: .8; flex: none; }
 .ts3 .ts-due-today { color: var(--ts-blue); }
 .ts3 .ts-due-future { color: var(--text); }
@@ -124,7 +157,8 @@
 .ts3 .ts-due-over { color: var(--danger); background: var(--danger-soft); padding: 1px 8px; border-radius: 6px; }
 .ts3 .ts-status {
   /* длинное название колонки («На тестировании») переносится, а не режется */
-  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; white-space: normal; overflow-wrap: break-word; hyphens: auto; line-height: 1.25; text-align: left; font-size: 13.5px;
+  /* переносим по словам, без «ПРО-ГРАММ-НЫЕ»: слово режем, только если оно длиннее ячейки */
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; white-space: normal; overflow-wrap: break-word; hyphens: manual; line-height: 1.25; text-align: left; font-size: 13.5px;
   background: var(--ts-blue-soft); color: var(--ts-blue); border: 1px solid var(--ts-blue-line);
   padding: 2px 8px; border-radius: 12px; font-weight: 600;
 }
@@ -139,6 +173,10 @@
 }
 .ts3 .ts-facts-sec button:hover { color: var(--text); }
 .ts3 .ts-facts-sec b { color: var(--text); font-weight: 600; }
+.ts3 .ts-sec-prio { position: relative; display: inline-flex; }
+.ts3 .ts-sec-prio > button { border-bottom: 1px dashed var(--ts-strong); }
+.ts3 .ts-sec-prio > button[aria-expanded="true"] { color: var(--text); border-bottom-color: var(--ts-blue); }
+.ts3 .ts-pop-prio { left: -8px; width: 200px; }
 .ts3 .ts-prio-urgent { color: var(--danger); font-weight: 600; }
 .ts3 .ts-prio-high { color: var(--warn); font-weight: 600; }
 .ts3 .ts-prio-low { color: var(--text-mut); }
@@ -291,6 +329,9 @@
 .ts3 .ts-ev { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; padding: 10px 18px; font-size: 13.5px; color: var(--text-mut); }
 .ts3 .ts-ev b { color: var(--text); font-weight: 600; }
 
+/* картинка или длинная строка в сообщении не даёт колонке чата горизонтальную прокрутку */
+.ts3 .task-chat .msg-feed { overflow-x: hidden; }
+
 /* сохранение и чат на телефоне */
 .ts3 .ts-savebar {
   position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 10px;
@@ -307,12 +348,7 @@
   .ts3 .ts-chat-btn { display: inline-flex; gap: 6px; }
 }
 @media (max-width: 900px) {
-  .ts3 .ts-facts-main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .ts3 .ts-fact:nth-child(2n) { border-right: 0; }
-  .ts3 .ts-fact:nth-child(-n+4) { border-bottom: 1px solid var(--ts-line); }
-  .ts3 .ts-fact.ts-watch { grid-column: 1 / -1; }
   .ts3 .ts-opt { display: none; }
-  .ts3 .ts-pop-right { right: auto; left: 8px; }
 }
 @media (max-width: 600px) {
   .ts3.task-v2 .task-main { padding: 12px 16px 0; gap: 12px; }

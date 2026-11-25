@@ -2962,7 +2962,8 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
   вписывается в неё целиком; полный размер открывается по нажатию.
 */
 .chat-img {
-  display: block; width: 320px; height: 220px; margin-top: 4px; padding: 0;
+  /* #5016: в узкой колонке чата коробка сжимается по ширине, пропорции те же — без горизонтальной прокрутки */
+  display: block; width: 320px; max-width: 100%; height: auto; aspect-ratio: 320 / 220; margin-top: 4px; padding: 0;
   border: none; background: var(--bg-elev-2);
   border-radius: 10px; overflow: hidden; line-height: 0; cursor: pointer;
 }
@@ -5212,7 +5213,7 @@ button.chat-pop-row:hover { background: var(--hover); }
 .task-chat-wide .msg-avatar { width: 30px; height: 30px; }
 /* Картинка в широкой ленте показывается картинкой, а не маркой. */
 /* В широком обсуждении задачи коробка больше — но тоже постоянная. */
-.task-chat-wide .chat-img { width: 520px; height: 340px; }
+.task-chat-wide .chat-img { width: 520px; aspect-ratio: 520 / 340; }
 
 @media (max-width: 720px) {
   .task-chat-head { position: sticky; top: 0; z-index: 2; background: var(--bg-elev); }

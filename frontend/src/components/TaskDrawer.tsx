@@ -1085,6 +1085,7 @@ export function TaskDrawer({ task, users, columns = [], canDelete, timerActive, 
               moving={moving}
               onStatus={(id) => void moveToColumn(id)}
               priority={String(priority ?? 'normal')}
+              setPriority={setPriority}
               projectName={projectName}
               repeatLabel={task.recurrence_id ? repeatLabel : null}
               clientName={clientName}
