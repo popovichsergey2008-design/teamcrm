@@ -59,6 +59,44 @@ const shown = new Set<{ n: Notification; key: string | null }>();
 */
 let stickyWatch = false;
 let notifySeq = 0;
+
+/*
+  #5023: уведомления с путём показываем через service worker (public/notify-sw.js, своя узкая
+  область — страницы он не контролирует и запросы не трогает). Так один тег = одно уведомление
+  на все вкладки, а щелчок из Центра уведомлений Windows поднимает вкладку и открывает чат.
+*/
+let swReg: Promise<ServiceWorkerRegistration | null> | null = null;
+const swClicks = new Map<string, () => void>();
+function notifyWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (swReg) return swReg;
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !window.isSecureContext) return (swReg = Promise.resolve(null));
+  swReg = navigator.serviceWorker.register('/notify-sw.js', { scope: '/__qevo-notify/' })
+    .then(async (r) => {
+      navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
+        const d = e.data as { type?: string; path?: string; tag?: string } | null;
+        if (d?.type !== 'qevo-notify-open') return;
+        const own = d.tag ? swClicks.get(d.tag) : undefined;
+        if (d.tag) swClicks.delete(d.tag);
+        window.focus();
+        if (own) { own(); return; }
+        if (d.path && d.path.startsWith('/')) {
+          // щёлкнули уведомление другой вкладки — ведём по пути через свой роутер
+          window.history.pushState(null, '', d.path);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      });
+      // активный воркер нужен для showNotification — ждём, пока установится
+      if (!r.active) await new Promise<void>((res) => {
+        const w = r.installing ?? r.waiting;
+        if (!w) { res(); return; }
+        w.addEventListener('statechange', () => { if (w.state === 'activated') res(); });
+        window.setTimeout(res, 5000);
+      });
+      return r.active ? r : null;
+    })
+    .catch(() => null);
+  return swReg;
+}
 function closeStickyOnReturn() {
   if (stickyWatch || typeof document === 'undefined') return;
   stickyWatch = true;
@@ -69,6 +107,7 @@ function closeStickyOnReturn() {
       try { s.n.close(); } catch { /* уже закрыто */ }
       shown.delete(s);
     }
+    void swReg?.then((r) => r?.getNotifications()).then((list) => list?.forEach((n) => { if (n.requireInteraction) n.close(); })).catch(() => undefined);
   };
   document.addEventListener('visibilitychange', close);
   window.addEventListener('focus', close);
@@ -93,11 +132,25 @@ export const browserBridge: PlatformBridge = {
       if (notificationPermission() === 'unsupported') return 'unsupported';
       try { return await Notification.requestPermission(); } catch { return Notification.permission; }
     },
-    show(title, body, onClick, key) {
+    show(title, body, onClick, key, extra) {
       if (notificationPermission() !== 'granted') return;
       try {
         const sticky = document.hidden || !document.hasFocus();
         if (sticky) closeStickyOnReturn();
+        if (extra?.path) {
+          const tag = extra.tag ?? `qevo-${++notifySeq}`;
+          if (onClick) swClicks.set(tag, onClick);
+          if (swClicks.size > 200) swClicks.delete(swClicks.keys().next().value as string);
+          void notifyWorker().then((r) => {
+            if (r) return r.showNotification(title, { body, tag, requireInteraction: sticky, icon: '/icon-192.png', data: { path: extra.path } } as NotificationOptions);
+            // воркера нет (старый браузер, не https) — обычное уведомление, как раньше
+            const n = new Notification(title, { body, tag, requireInteraction: sticky } as NotificationOptions);
+            n.onclick = () => { window.focus(); n.close(); onClick?.(); };
+            shown.add({ n, key: key ?? null });
+            n.onclose = () => { for (const s of shown) if (s.n === n) shown.delete(s); };
+          }).catch(() => undefined);
+          return;
+        }
         const n = new Notification(title, { body, tag: `qevo-${++notifySeq}`, requireInteraction: sticky } as NotificationOptions);
         n.onclick = () => { window.focus(); n.close(); onClick?.(); };
         shown.add({ n, key: key ?? null });

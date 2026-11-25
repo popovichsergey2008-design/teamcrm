@@ -1,4 +1,4 @@
-import { platform } from '../platform';
+import { isNativeShell, platform } from '../platform';
 import { quietFor } from './quiet';
 
 /**
@@ -32,9 +32,16 @@ export function requestNotificationPermission(): Promise<NotificationPermission 
  * Показ уведомления. Молча ничего не делает, если разрешения нет — и во время
  * глубокой работы, кроме критичного (стук «срочно», безопасность).
  */
-export function showNotification(title: string, body: string, onClick?: () => void, opts?: { critical?: boolean; key?: string; personal?: boolean }): void {
+export function showNotification(title: string, body: string, onClick?: () => void, opts?: {
+  critical?: boolean; key?: string; personal?: boolean;
+  /** #5023: в браузере системное уведомление — только с этим флагом (личка, звонок, стук, консоль). */
+  web?: boolean; tag?: string; path?: string;
+}): void {
   if (quietFor(opts)) return;
-  platform.notifications.show(title, body, onClick, opts?.key);
+  // #5023 (Константин): в браузере — только личные сообщения, остальное (задачи, встречи,
+  // ящик) было спамом; оно и так приходит всплывашкой внутри и во «Входящие». Телефон — как было.
+  if (!isNativeShell() && !opts?.web && !opts?.critical) return;
+  platform.notifications.show(title, body, onClick, opts?.key, { tag: opts?.tag, path: opts?.path });
 }
 
 /**

@@ -64,7 +64,7 @@ export function useConsoleAlerts(enabled: boolean): void {
       const title = 'Ждут специалиста';
       const body = [who(p), p.subject].filter(Boolean).join(' — ') || 'Новое обращение';
       showToast({ title, body, section: 'support', conversationId: p.conversationId });
-      showNotification(title, body, () => openSupport(p.conversationId));
+      showNotification(title, body, () => openSupport(p.conversationId), { web: true });
       flashTab('Ждут специалиста');
       playMessageChime();
     };
@@ -75,7 +75,7 @@ export function useConsoleAlerts(enabled: boolean): void {
       const title = 'Клиент ответил';
       const body = p.preview?.trim() || p.subject || 'Откройте обращение';
       showToast({ title, body, section: 'support', conversationId: p.conversationId });
-      showNotification(title, body, () => openSupport(p.conversationId));
+      showNotification(title, body, () => openSupport(p.conversationId), { web: true });
       flashTab('Клиент ответил');
       playMessageChime();
     };
@@ -85,7 +85,7 @@ export function useConsoleAlerts(enabled: boolean): void {
       const title = 'Клиент просит созвон';
       const body = 'Откройте обращение: «Присоединиться» или «Сейчас неудобно»';
       showToast({ title, body, section: 'support', conversationId: p?.conversationId });
-      showNotification(title, body, () => openSupport(p?.conversationId));
+      showNotification(title, body, () => openSupport(p?.conversationId), { web: true });
       flashTab('Просят созвон');
       playMessageChime();
     };

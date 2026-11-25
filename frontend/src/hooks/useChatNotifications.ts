@@ -47,7 +47,7 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
     refresh();
 
     const socket = getSocket();
-    const onMessage = (p: { chatId: string; message: { author_id: string | null; author_name: string | null; body: string; file_name?: string | null; thread_root_id?: string | null }; mentionIds?: string[] }) => {
+    const onMessage = (p: { chatId: string; message: { id?: string | number; author_id: string | null; author_name: string | null; body: string; file_name?: string | null; thread_root_id?: string | null }; mentionIds?: string[] }) => {
       const m = p.message;
       // Настройка чата: «выключено» — тишина, «только упоминания» — звучит, лишь если позвали меня.
       const mode = modes.current.get(String(p.chatId)) ?? 'all';
@@ -80,7 +80,11 @@ export function useChatNotifications(enabled: boolean, meId: string | null, open
       const away = document.hidden || !document.hasFocus();
       const isDm = kinds.current.get(String(p.chatId)) === 'dm';
       if (isNativeShell() || (isDm && away && dmPushOn())) {
-        showNotification(title, body, () => openChats.current(String(p.chatId), threadId), { personal });
+        // тег = сообщение: две открытые вкладки QEVO показывают ОДНО уведомление; путь — для щелчка из Центра уведомлений
+        showNotification(title, body, () => openChats.current(String(p.chatId), threadId), {
+          personal, web: true, tag: m.id != null ? `qevo-msg-${m.id}` : undefined,
+          path: threadId ? `/chat/${p.chatId}/thread/${threadId}` : `/chat/${p.chatId}`,
+        });
       }
       showToast({ title, body, chatId: String(p.chatId), threadId, personal });
       playMessageChime();

@@ -32,7 +32,7 @@ export function useGuestHostCalls(enabled: boolean): { call: HostCall | null; di
       setCall(p);
       // ждущий гость — стук, как в комнате; напоминание заранее — обычный сигнал
       if (p.kind === 'waiting') playKnock(); else playMessageChime();
-      showNotification(p.title, p.body);
+      showNotification(p.title, p.body, undefined, { web: true }); // гость ждёт — это не спам (#5023)
     };
     socket.on('meet.guest-call-host', on);
     return () => { socket.off('meet.guest-call-host', on); };

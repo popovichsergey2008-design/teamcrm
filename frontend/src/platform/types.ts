@@ -56,7 +56,8 @@ export interface NotificationsBridge {
   requestPermission(): Promise<NotificationPermissionState>;
   /** Показать уведомление, когда приложение не на виду. Молча ничего не делает без разрешения. */
   /** `key` — путь записи ящика: по нему уведомление потом убирается из шторки. */
-  show(title: string, body: string, onClick?: () => void, key?: string): void;
+  /** `extra.tag` — один тег = одно уведомление (две вкладки не дублируют), `extra.path` — куда вести по щелчку (#5023). */
+  show(title: string, body: string, onClick?: () => void, key?: string, extra?: { tag?: string; path?: string }): void;
   /**
    * Убрать из шторки то, что уже прочитано (#1531): оставить только уведомления о
    * непрочитанном, `null` — убрать все. Сопоставляем по пути, а без пути — по тексту.
