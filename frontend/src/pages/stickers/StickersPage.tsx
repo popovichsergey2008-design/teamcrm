@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/ui/button';
 import { ApiError } from '../../lib/api';
@@ -208,7 +209,18 @@ function DropCol({ col, today, onDrop, findSticker, children }: {
 
 /** Листок: ✓ готово, ⏭ перенос, 🗑 удалить, «…» — цвет, правка, задача. */
 export function StickerNote({ s, showDate, today, selected, onDone, onRemove, onMove, onRecolor, onText, onTask, onSelect, compact }: CardProps & { s: Sticker; showDate?: boolean; compact?: boolean }) {
-  const [menu, setMenu] = useState<'move' | 'more' | null>(null);
+  const [menu, setMenuState] = useState<'move' | 'more' | null>(null);
+  /** #5032: меню — порталом в body по координатам кнопки: листки повёрнуты (transform), и меню
+   *  уходило под соседние стикеры и обрезалось прокруткой доски. */
+  const [menuAt, setMenuAt] = useState<{ top: number; right: number; up: boolean } | null>(null);
+  const setMenu = (m: 'move' | 'more' | null, btn?: HTMLElement | null) => {
+    if (m && btn) {
+      const r = btn.getBoundingClientRect();
+      const up = window.innerHeight - r.bottom < 300 && r.top > 300;
+      setMenuAt({ top: up ? r.top - 4 : r.bottom + 4, right: Math.max(8, window.innerWidth - r.right), up });
+    }
+    setMenuState(m);
+  };
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(s.text);
   const [open, setOpen] = useState(false);
@@ -217,9 +229,16 @@ export function StickerNote({ s, showDate, today, selected, onDone, onRemove, on
   useEffect(() => {
     if (!menu) return;
     const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.stk-menu, .st-act')) setMenu(null); };
+    const onScroll = (e: Event) => { if (!(e.target as HTMLElement)?.closest?.('.stk-menu')) setMenu(null); };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => { document.removeEventListener('mousedown', close); window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onScroll); };
   }, [menu]);
+  const menuStyle: React.CSSProperties | undefined = menuAt
+    ? { position: 'fixed', right: menuAt.right, ...(menuAt.up ? { top: 'auto', bottom: window.innerHeight - menuAt.top } : { top: menuAt.top }), margin: 0, zIndex: 80 }
+    : undefined;
+  const portal = (el: React.ReactNode) => createPortal(el, document.body);
   const later = (date: string | null, time?: string | null) => { setMenu(null); onMove(s, date, time); };
   const overdue = !!s.date && s.date < today;
   return (
@@ -244,9 +263,9 @@ export function StickerNote({ s, showDate, today, selected, onDone, onRemove, on
       </div>
       <div className="st-note-acts">
         <button className="st-act" title="Готово" aria-label="Готово" onClick={() => { setLeaving(true); window.setTimeout(() => onDone(s), 600); }}><Icon name="check" size={13} /></button>
-        <button className="st-act" title="Перенести" aria-label="Перенести" onClick={() => setMenu(menu === 'move' ? null : 'move')}><Icon name="chevron-right" size={13} /></button>
+        <button className="st-act" title="Перенести" aria-label="Перенести" onClick={(e) => setMenu(menu === 'move' ? null : 'move', e.currentTarget)}><Icon name="chevron-right" size={13} /></button>
         <button className="st-act" title="Удалить" aria-label="Удалить" onClick={() => onRemove(s)}><Icon name="trash" size={13} /></button>
-        <button className="st-act" title="Ещё" aria-label="Ещё" onClick={() => setMenu(menu === 'more' ? null : 'more')}><Icon name="more" size={13} /></button>
+        <button className="st-act" title="Ещё" aria-label="Ещё" onClick={(e) => setMenu(menu === 'more' ? null : 'more', e.currentTarget)}><Icon name="more" size={13} /></button>
       </div>
       {/* шаг 6.1: напомнил, а стикер не закрыт — отложить одним нажатием */}
       {s.reminded && !compact && (
@@ -256,8 +275,8 @@ export function StickerNote({ s, showDate, today, selected, onDone, onRemove, on
           <button className="st-link" onClick={() => onMove(s, addDays(today, 1))}>завтра</button>
         </div>
       )}
-      {menu === 'move' && (
-        <div className="stk-menu" role="menu">
+      {menu === 'move' && portal(
+        <div className="stk-menu" role="menu" style={menuStyle}>
           <button onClick={() => later(today, nowHm(60))}>Через час <span className="dim">{nowHm(60)}</span></button>
           <button onClick={() => later(today, '18:00')}>Вечером <span className="dim">18:00</span></button>
           <button onClick={() => later(addDays(today, 1))}>Завтра <span className="dim">{dayLabel(addDays(today, 1))}</span></button>
@@ -269,14 +288,15 @@ export function StickerNote({ s, showDate, today, selected, onDone, onRemove, on
           <button className="stk-menu-sep" onClick={() => later(null, null)}>Без даты <span className="dim">→ Идеи</span></button>
         </div>
       )}
-      {menu === 'more' && (
-        <div className="stk-menu" role="menu">
+      {menu === 'more' && portal(
+        <div className="stk-menu" role="menu" style={menuStyle}>
           <div className="stk-menu-colors">
             {STICKER_COLORS.map((c) => <button key={c} className={`qs-dot st-${c}${s.color === c ? ' is-on' : ''}`} aria-label={`Цвет ${c}`} onClick={() => { setMenu(null); onRecolor(s, c); }} />)}
           </div>
           <button onClick={() => { setMenu(null); setDraft(s.text); setEditing(true); }}><Icon name="edit" size={13} /> Изменить текст</button>
           <button onClick={() => { setMenu(null); onTask(s); }}><Icon name="check-circle" size={13} /> Сделать задачей</button>
-          {s.date && s.time && <button onClick={() => { setMenu(null); onTask({ ...s, source: 'calendar' }); }}><Icon name="calendar" size={13} /> В календарь</button>}
+          {/* #5032: событие в календарь — всегда; нет времени у стикера — время выберут в окне */}
+          <button onClick={() => { setMenu(null); onTask({ ...s, source: 'calendar' }); }}><Icon name="calendar" size={13} /> Перенести событие в календарь</button>
         </div>
       )}
     </div>
