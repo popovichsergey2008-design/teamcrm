@@ -481,11 +481,11 @@ describe('QEVO Bot (e2e)', () => {
     expect(offRes.text).toContain('выключен администратором');
     await http$.patch('/api/anthill/admin').set(O).send({ enabled: true }).expect(200);
 
-    // рядовой сотрудник настройки видит? нет — их смотрит руководство, меняет владелец
+    // #5035: «Права и лимиты» видят все (только просмотр), меняет владелец
     const mateEmail = `ab9m_${uniq()}@t.test`;
     await http$.post('/api/users').set(O).send({ email: mateEmail, fullName: 'Глеб', password: 'Test-pass-2026', role: 'member' }).expect(201);
     const M = H((await http$.post('/api/auth/login').send({ email: mateEmail, password: 'Test-pass-2026' }).expect(201)).body.data.accessToken);
-    await http$.get('/api/anthill/admin').set(M).expect(403);
+    await http$.get('/api/anthill/admin').set(M).expect(200);
     await http$.patch('/api/anthill/admin').set(M).send({ enabled: false }).expect(403);
 
     // расход и сбои — для решения о лимитах
