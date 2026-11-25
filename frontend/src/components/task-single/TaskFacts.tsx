@@ -90,6 +90,24 @@ function PeoplePick({ users, picked, multi, onPick, onClose, extra }: {
   );
 }
 
+/** Кто уже в задаче — полным списком, с «убрать» у каждого (имена в ячейке обрезаются). */
+function CurrentPeople({ list, users, onRemove }: { list: FactPerson[]; users: User[]; onRemove: (id: string) => void }) {
+  if (!list.length) return <div className="ts-pop-empty">Пока никого — добавьте ниже</div>;
+  return (
+    <div className="ts-pop-current">
+      {list.map((x) => (
+        <div key={x.user_id} className="ts-pop-item ts-pop-cur">
+          <Ava name={x.full_name} user={users.find((u) => String(u.id) === String(x.user_id))} cls="ts-ava ts-ava-sm" />
+          <span className="ts-pop-name" title={x.full_name}>{x.full_name}</span>
+          <button type="button" className="ts-pop-del" title={`Убрать ${x.full_name}`} aria-label={`Убрать ${x.full_name}`} onClick={() => onRemove(String(x.user_id))}>
+            <Icon name="close" size={13} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TaskFacts(p: {
   task: Task;
   users: User[];
@@ -148,7 +166,12 @@ export function TaskFacts(p: {
           <Ava name={x.full_name} user={byId(x.user_id)} cls="ts-ava ts-ava-sm" />
         </button>
       ))}
-      {list.length > 5 && <span className="ts-ava ts-ava-sm ts-ava-more">+{list.length - 5}</span>}
+      {list.length > 5 && (
+        <button type="button" className="ts-mini-ava" title="Показать всех" aria-label={`Показать всех: ${list.length}`}
+          onClick={(e) => { e.stopPropagation(); toggle(role === 'watcher' ? 'watch' : 'co'); }}>
+          <span className="ts-ava ts-ava-sm ts-ava-more">+{list.length - 5}</span>
+        </button>
+      )}
     </span>
   );
   const plus = (which: Pop, label: string) => (
@@ -184,7 +207,9 @@ export function TaskFacts(p: {
           )}
           {pop === 'co' && (
             <div className="ts-pop" onClick={(e) => e.stopPropagation()}>
-              <div className="ts-pop-title">Соисполнители</div>
+              <div className="ts-pop-title">Соисполнители · {co.length}</div>
+              <CurrentPeople list={co} users={p.users} onRemove={(id) => p.removePerson(id, 'co_assignee')} />
+              <div className="ts-pop-title">Добавить</div>
               <PeoplePick users={p.users} picked={co.map((x) => String(x.user_id))} multi
                 onPick={(id) => (co.some((x) => String(x.user_id) === id) ? p.removePerson(id, 'co_assignee') : p.addPerson(id, 'co_assignee'))}
                 onClose={() => setPop(null)} />
@@ -255,12 +280,19 @@ export function TaskFacts(p: {
             {watch.length > 0 && stack(watch, 'watcher')}
             {plus('watch', 'Добавить наблюдателя')}
             {watch.length > 0
-              ? <span className="ts-names">{watch.map((x) => x.full_name).join(', ')}</span>
+              ? (
+                <button type="button" className="ts-names" title={`${watch.map((x) => x.full_name).join(', ')} — показать всех`}
+                  aria-expanded={pop === 'watch'} onClick={(e) => { e.stopPropagation(); toggle('watch'); }}>
+                  {watch.map((x) => x.full_name).join(', ')}
+                </button>
+              )
               : <span className="ts-faint">нет</span>}
           </div>
           {pop === 'watch' && (
             <div className="ts-pop ts-pop-right" onClick={(e) => e.stopPropagation()}>
-              <div className="ts-pop-title">Наблюдатели</div>
+              <div className="ts-pop-title">Наблюдатели · {watch.length}</div>
+              <CurrentPeople list={watch} users={p.users} onRemove={(id) => p.removePerson(id, 'watcher')} />
+              <div className="ts-pop-title">Добавить</div>
               <PeoplePick users={p.users} picked={watch.map((x) => String(x.user_id))} multi
                 onPick={(id) => (watch.some((x) => String(x.user_id) === id) ? p.removePerson(id, 'watcher') : p.addPerson(id, 'watcher'))}
                 onClose={() => setPop(null)} />
