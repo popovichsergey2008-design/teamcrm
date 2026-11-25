@@ -348,8 +348,8 @@ function PostCall({ meetingId }: { meetingId: string }) {
             <h1 className="pc-title">{meeting.title || 'Встреча'}</h1>
             <div className="pc-sub">
               {!ai ? 'Запись сохранена. Итогов ИИ нет — распознавание речи не подключено.'
-                : processing ? 'QEVO Bot готовит итоги — блоки появятся по мере готовности'
-                  : 'QEVO Bot подготовил итоги'}
+                : processing ? 'QEVO-бот готовит итоги — блоки появятся по мере готовности'
+                  : 'QEVO-бот подготовил итоги'}
             </div>
             {/* #4779, п. 6.7: без распознавания речи — сразу дорога к ключу */}
             {!ai && (
@@ -483,7 +483,7 @@ function PostCall({ meetingId }: { meetingId: string }) {
                 ) : (
                   <>
                     <h2 className="pc-magic-title">
-                      <Icon name="sparkles" size={18} /> QEVO Bot услышал {pending.length} {agreements(pending.length)}
+                      <Icon name="sparkles" size={18} /> QEVO-бот услышал {pending.length} {agreements(pending.length)}
                     </h2>
                     <p className="pc-text">Я подготовил задачи, исполнителей и сроки. Проверьте их и запустите работу одним нажатием.</p>
                     {readyAll.length < pending.length && (

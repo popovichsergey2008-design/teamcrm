@@ -86,7 +86,7 @@ export function AiSettingsSection() {
         </div>
         <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>
           Статус: {s.kimiKeySet ? 'задан (свой)' : s.globalKimi && s.trial?.allowed !== false ? 'используется общий' : '— не задан —'}.
-          {' '}С ключом Kimi через него идёт вся текстовая работа ИИ: QEVO Bot, разбор встреч и чатов, черновики задач,
+          {' '}С ключом Kimi через него идёт вся текстовая работа ИИ: QEVO-бот, разбор встреч и чатов, черновики задач,
           сводки, секретарь. Расшифровки речи, озвучки и поиска по базе знаний у Kimi нет — для них остаётся ключ OpenAI.
           Ключ — на <span className="dim">platform.kimi.ai</span>.
         </div>

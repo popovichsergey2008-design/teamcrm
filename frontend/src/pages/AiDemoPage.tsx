@@ -314,7 +314,7 @@ function Call({ mode, maxSeconds, onDone, onText }: {
       <div className={`aid-bot${speaking ? '' : ' aid-bot-idle'} ai-working`}>
         <Icon name="robot" size={34} />
       </div>
-      <div className="aid-who">QEVO Bot <span className="dim">· виртуальный собеседник</span></div>
+      <div className="aid-who">QEVO-бот <span className="dim">· виртуальный собеседник</span></div>
       <div className="aid-status"><span className={`aid-dot${speaking ? ' on' : ''}`} /> {speaking ? 'слушает вас' : 'слушает'} · {fmt(secs)}</div>
       <p className="aid-bot-line">{botLine}</p>
       {heard && <p className="aid-quote">«{heard}»</p>}
@@ -493,7 +493,7 @@ function Done({ view }: { view: AiDemoView }) {
       <h1>Готово</h1>
       <p className="aid-lead">QEVO создал ваш первый рабочий план</p>
       <ul className="aid-points">
-        <li><Icon name="check" size={14} /> поговорили с QEVO Bot</li>
+        <li><Icon name="check" size={14} /> поговорили с QEVO-ботом</li>
         <li><Icon name="check" size={14} /> получили автоматический протокол</li>
         <li><Icon name="check" size={14} /> создали {n} {n === 1 ? 'задачу' : n < 5 ? 'задачи' : 'задач'} {view.input === 'text' ? 'одной фразой' : 'голосом'}</li>
       </ul>

@@ -126,7 +126,7 @@ export function NavSettingsPanel({ onClose }: { onClose: () => void }) {
             ))}
             <div>
               <div className="ns-group">Закреплено снизу</div>
-              {[['robot', 'QEVO Bot'], ['building', 'Компания'], ['user', 'Аккаунт']].map(([icon, name]) => (
+              {[['robot', 'QEVO-бот'], ['building', 'Компания'], ['user', 'Аккаунт']].map(([icon, name]) => (
                 <div key={name} className="ns-row is-fixed"><span className="ns-grip" aria-hidden="true">⠿</span><Icon name={icon as IconName} size={15} /><span className="ns-name">{name}</span></div>
               ))}
             </div>

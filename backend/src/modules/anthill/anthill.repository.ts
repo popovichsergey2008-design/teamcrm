@@ -93,6 +93,8 @@ export class AnthillRepository {
               (SELECT COUNT(*) FROM ai_messages m WHERE m.session_id = s.id) AS messages
          FROM ai_sessions s
         WHERE s.tenant_id=$1 AND s.user_id=$2
+          -- #5035: пустой разговор (0 сообщений) в истории не показываем
+          AND EXISTS (SELECT 1 FROM ai_messages m WHERE m.session_id = s.id)
         ORDER BY s.updated_at DESC LIMIT $3`,
       [tenantId, userId, limit],
     );

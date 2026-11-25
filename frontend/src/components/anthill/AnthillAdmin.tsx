@@ -14,10 +14,10 @@ const ROLES: { code: string; label: string }[] = [
 
 const LIMITS: { key: keyof Settings['limits']; label: string; hint: string }[] = [
   { key: 'requestsPerDay', label: 'Вопросов в сутки на человека', hint: 'дальше агент честно скажет, что лимит исчерпан' },
-  { key: 'deepPerDay', label: 'Глубоких разборов в сутки', hint: 'каждый дороже обычного вопроса в разы; 0 — выключить' },
+  { key: 'deepPerDay', label: 'Глубоких разборов в сутки', hint: 'разбор идёт дольше обычного ответа; 0 — выключить' },
   { key: 'maxScheduled', label: 'Регулярных задач на человека', hint: 'их выполняет сервер по расписанию' },
   { key: 'maxSkills', label: 'Навыков на человека', hint: 'свои сценарии работы' },
-  { key: 'contextMessages', label: 'Сообщений разговора в подсказке', hint: 'больше памяти в ответе — дороже каждый запрос' },
+  { key: 'contextMessages', label: 'Сообщений разговора в подсказке', hint: 'сколько прошлых сообщений бот учитывает в ответе' },
 ];
 
 /** Действия бота по-человечески — для метрик качества. */
@@ -103,15 +103,15 @@ export function AnthillAdmin() {
 
   return (
     <div className="anthill-pane">
-      {!canEdit && <div className="dim">Настройки меняет владелец организации. Здесь они только показаны.</div>}
+      {!canEdit && <div className="dim">Только просмотр — меняет владелец организации.</div>}
       {err && <div className="error-text">{err}</div>}
       {saved && <div className="dim"><Icon name="check" size={12} /> Сохранено</div>}
 
       <div className="anthill-group">
         <div className="anthill-group-head">Что агенту позволено</div>
         <div className="anthill-card">
-          {toggle('QEVO Bot включён', 'выключенный отвечает понятной фразой, а не молчанием', s.enabled, (v) => void save({ enabled: v }))}
-          {toggle('Может менять CRM', 'создавать задачи, переносить сроки, писать сообщения — всегда с подтверждением человека', s.actionsAllowed, (v) => void save({ actionsAllowed: v }))}
+          {toggle('QEVO-бот включён', 'выключенный отвечает понятной фразой, а не молчанием', s.enabled, (v) => void save({ enabled: v }))}
+          {toggle('Может менять задачи и данные', 'создавать задачи, переносить сроки, писать сообщения — всегда с подтверждением человека', s.actionsAllowed, (v) => void save({ actionsAllowed: v }))}
           {toggle('Может читать файлы и собирать документы', 'вложения задач и чатов: PDF, docx, xlsx, txt, csv', s.filesAllowed, (v) => void save({ filesAllowed: v }))}
           {toggle('Может ходить в интернет', 'поиск и чтение сайтов — только в тарифе «Расширенный» (Настройки → Тариф и ИИ); выключите, чтобы бот отвечал только по данным QEVO', s.webSearch, (v) => void save({ webSearch: v }))}
         </div>
@@ -150,7 +150,7 @@ export function AnthillAdmin() {
           <div className="anthill-group-head">Свой ключ поиска (необязательно)</div>
           <div className="anthill-card">
             <div className="dim">
-              Поиск идёт через Tavily. Без своего ключа — по интернет-лимиту тарифа.
+              Без своего ключа поиск идёт по интернет-лимиту тарифа.
               {s.hasWebSearchKey ? ' Задан свой ключ: поиск идёт за ваш счёт и лимит тарифа не расходует.' : ' Свой ключ — поиск без лимита тарифа, за ваш счёт.'}
             </div>
             {canEdit && (
@@ -160,7 +160,7 @@ export function AnthillAdmin() {
                   type="password"
                   value={key}
                   onChange={(e) => setKey(e.target.value)}
-                  placeholder={s.hasWebSearchKey ? 'новый ключ (оставьте пустым — не менять)' : 'tvly-…'}
+                  placeholder={s.hasWebSearchKey ? 'новый ключ (оставьте пустым — не менять)' : 'ключ поиска'}
                   aria-label="Ключ поиска"
                 />
                 <button className="ui-btn ui-btn-primary ui-btn-sm" disabled={!key.trim()} onClick={() => { void save({ webSearchKey: key.trim() }).then(() => setKey('')); }}>Сохранить ключ</button>
@@ -248,14 +248,13 @@ export function AnthillAdmin() {
       )}
 
       <div className="anthill-group">
-        <div className="anthill-group-head">Расход за две недели</div>
+        <div className="anthill-group-head">Обращения за две недели</div>
         <div className="anthill-card">
           {usage && usage.days.length === 0 && <div className="dim">Агентом пока не пользовались.</div>}
           {usage?.days.map((d) => (
             <div key={d.day} className="anthill-adm-day">
               <span>{d.day}</span>
-              <span className="dim">{d.requests} обращений · {Math.round(d.tokens / 1000)}k токенов</span>
-              <span>${d.cost.toFixed(2)}</span>
+              <span className="dim">{d.requests} обращений</span>
             </div>
           ))}
         </div>

@@ -2459,7 +2459,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
         >
           <span className="chat-section-icon qevo-bot-wrap" aria-hidden="true"><QevoBotMark size={30} /></span>
           <span className="chat-row-main">
-            <span className="chat-row-title">QEVO Bot</span>
+            <span className="chat-row-title">QEVO-бот</span>
             <span className="chat-row-last dim">AI-помощник</span>
           </span>
         </button>
@@ -3284,7 +3284,7 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                             <Icon name="wand" size={14} />
                           </button>
                         )}
-                        {m.is_ai && !grouped && <div className="chat-author"><Icon name="robot" size={11} /> QEVO Bot</div>}
+                        {m.is_ai && !grouped && <div className="chat-author"><Icon name="robot" size={11} /> QEVO-бот</div>}
                         {/* Кто именно писал со стороны: через месяц «внешний участник»
                             без имени в переписке не значит ничего. */}
                         {m.guest_name && !grouped && (

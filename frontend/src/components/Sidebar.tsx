@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
+import { openSupport } from './support/SupportDock';
 import { QevoBotMark } from './QevoBotMark';
 import { CLIENTS_ENABLED } from '../config';
 import { Icon, IconName } from './Icon';
@@ -741,8 +742,8 @@ export function Sidebar({
               ими пользуются по десять раз в день. Бот открывается справа, поверх страницы.
             */}
             <div className="nav-quick" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, flexBasis: '100%', width: '100%' }}>
-              <button className="ui-btn ui-btn-primary ui-btn-sm nav-quick-bot" style={{ flex: 1 }} onClick={() => { setOpen(false); openBotPanel(); }} title="QEVO Bot — справа, поверх страницы" aria-label="QEVO Bot">
-                <QevoBotMark size={20} /> <span className="nav-label">QEVO Bot</span>
+              <button className="ui-btn ui-btn-primary ui-btn-sm nav-quick-bot" style={{ flex: 1 }} onClick={() => { setOpen(false); openBotPanel(); }} title="QEVO-бот — справа, поверх страницы" aria-label="QEVO-бот">
+                <QevoBotMark size={20} /> <span className="nav-label">QEVO-бот</span>
               </button>
               <button className="ui-btn ui-btn-outline ui-btn-sm nav-quick-sticker" onClick={() => { setOpen(false); openQuickSticker(); }} title="Новый стикер (Alt+N)" aria-label="Новый стикер">
                 <Icon name="plus" size={15} /> <span className="nav-label">Стикер</span>
@@ -965,17 +966,17 @@ export function Sidebar({
 
         {/* ── нижний блок ── */}
         <div className="nav-bottom">
-          {/* #4807 §5, п. 14: одна точка помощи — QEVO Bot с кнопкой «Позвать инженера» */}
+          {/* #5035, п. 10: вход в бота — кнопкой сверху и чатом в списке; здесь — сразу к инженеру */}
           <button
             className="nav-item nav-help"
             data-care-hold=""
-            onClick={() => { setOpen(false); navigate({ section: 'chat', chatId: 'anthill' }); }}
-            title="Помощь и бот: QEVO Bot ответит сразу, инженер — за 30 секунд"
-            aria-label="Помощь и бот"
+            onClick={() => { setOpen(false); openSupport(); }}
+            title="Поддержка: живой инженер ответит за 30 секунд"
+            aria-label="Поддержка"
           >
             {/* #4877: знак QEVO Bot (как в шапке бота) с сердечком заботы — помощь и бот в одном */}
             <span className="nav-help-ico" aria-hidden="true"><QevoBotMark size={26} /></span>
-            <span className="nav-label">Помощь и бот</span>
+            <span className="nav-label">Поддержка</span>
             <span className="nav-label nav-help-time">30 сек</span>
           </button>
           <div className="nav-profile" ref={menuRef} style={{ display: 'flex', flexDirection: collapsed ? 'column' : 'row', alignItems: 'center', gap: 6 }}>

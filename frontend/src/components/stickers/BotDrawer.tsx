@@ -16,7 +16,7 @@ export function BotDrawer({ onClose }: { onClose: () => void }) {
   }, [onClose]);
   return (
     <div className="botd-veil" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <aside className="botd" aria-label="QEVO Bot">
+      <aside className="botd" aria-label="QEVO-бот">
         <AnthillPanel onClose={onClose} onFullscreen={() => { onClose(); navigate({ section: 'chat', chatId: 'anthill' }); }} />
       </aside>
     </div>

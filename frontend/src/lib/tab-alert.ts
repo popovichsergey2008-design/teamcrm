@@ -25,8 +25,10 @@ let listening = false;
 let page = '';
 
 /** Спокойный заголовок: с числом непрочитанных, если они есть, и страницей перед именем продукта. */
+/** #5035, п. 10: на странице бота заголовок — просто «(N) QEVO-бот», без мигания. */
+const BOT_PAGE = 'QEVO-бот';
 const calmTitle = () => {
-  const base = page ? `${page} · ${BASE_TITLE}` : BASE_TITLE;
+  const base = page === BOT_PAGE ? BOT_PAGE : page ? `${page} · ${BASE_TITLE}` : BASE_TITLE;
   return unread > 0 ? `(${unread}) ${base}` : base;
 };
 
@@ -68,6 +70,7 @@ export function setTitleUnread(count: number): void {
  */
 export function flashTab(text: string): void {
   if (!document.hidden && document.hasFocus()) return;
+  if (page === BOT_PAGE) return;
   alertText = text;
   inverted = true;
   render();

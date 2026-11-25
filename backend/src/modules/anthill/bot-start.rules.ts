@@ -62,15 +62,17 @@ export function buildCards(f: StartFacts, c: Connections): StartCard[] {
       action: { kind: 'prompt', prompt: `Сведи вчерашние отчёты сотрудников${f.reportChats.length ? ` (${f.reportChats.map((x) => `«${x}»`).join(', ')})` : ''} в одну сводку: по человеку — что сделано, статус «по плану» или «риски», кто не прислал.` },
     });
   }
-  if (cards.length) return cards.slice(0, 4);
+  // #5035: на стартовом экране — не больше 3 карточек
+  if (cards.length) return cards.slice(0, 3);
   // данных нет — первые шаги, а не пустой экран
   const first: StartCard[] = [
-    { id: 'voice', text: 'Расскажите голосом о своей задаче — сделаю план', button: 'Сказать голосом', action: { kind: 'voice' } },
+    { id: 'voice', text: 'Расскажите голосом о задаче, сделаю план', button: 'Сказать голосом', action: { kind: 'voice' } },
   ];
-  if (f.members <= 1) first.push({ id: 'invite', text: 'Пригласите команду — задачи и встречи станут общими', button: 'Пригласить', action: { kind: 'link', href: '/settings/team' } });
-  if (!c.calendar) first.push({ id: 'calendar', text: 'Подключите календарь — встречи появятся в плане дня', button: 'Подключить', action: { kind: 'connect', source: 'calendar' } });
-  if (!c.mail) first.push({ id: 'mail', text: 'Подключите почту — разберу входящие и подготовлю ответы', button: 'Подключить', action: { kind: 'connect', source: 'mail' } });
-  return first.slice(0, 4);
+  // #5035: новая команда — голос, пригласить команду, подключить календарь (до 3 карточек)
+  if (f.members <= 1) first.push({ id: 'invite', text: 'Пригласите команду', button: 'Пригласить', action: { kind: 'link', href: '/settings/team' } });
+  if (!c.calendar) first.push({ id: 'calendar', text: 'Подключите календарь', button: 'Подключить', action: { kind: 'connect', source: 'calendar' } });
+  if (!c.mail && first.length < 3) first.push({ id: 'mail', text: 'Подключите почту — разберу входящие и подготовлю ответы', button: 'Подключить', action: { kind: 'connect', source: 'mail' } });
+  return first.slice(0, 3);
 }
 
 // ── п. 10: матрица Эйзенхауэра ──

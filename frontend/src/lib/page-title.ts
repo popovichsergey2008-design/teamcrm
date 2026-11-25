@@ -43,7 +43,7 @@ export function pageTitleFor(r: Route): string {
   if (r.section === 'clients' && r.clientId) return hint(`client:${r.clientId}`) ?? 'Клиент';
   if (r.section === 'chat') {
     if (r.view === 'meetings') return 'Встречи';
-    if (r.chatId === 'anthill') return 'QEVO Bot';
+    if (r.chatId === 'anthill') return 'QEVO-бот';
     if (r.chatId) return hint(`chat:${r.chatId}`) ?? 'Чат';
   }
   return SECTION_TITLE[r.section] ?? '';

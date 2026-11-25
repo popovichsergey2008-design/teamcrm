@@ -28,11 +28,14 @@ const CONFIRM_LABEL: Record<string, string> = {
   create_scheduled_task: 'Включить', create_event: 'Поставить и пригласить', send_message: 'Отправить',
   mail_send: 'Отправить', create_reminder: 'Напомнить', add_comment: 'Отправить',
 };
-const AnthillTasks = lazy(() => import('./AnthillTasks').then((m) => ({ default: m.AnthillTasks })));
-const AnthillMemory = lazy(() => import('./AnthillMemory').then((m) => ({ default: m.AnthillMemory })));
-const AnthillSkills = lazy(() => import('./AnthillSkills').then((m) => ({ default: m.AnthillSkills })));
-const AnthillResponses = lazy(() => import('./AnthillResponses').then((m) => ({ default: m.AnthillResponses })));
-const AnthillAdmin = lazy(() => import('./AnthillAdmin').then((m) => ({ default: m.AnthillAdmin })));
+// #5035: вкладки «Что умеет бот», «Автопилоты» и экран настроек — своими кусками
+const BotServices = lazy(() => import('./BotServices'));
+const ServiceAsk = lazy(() => import('./BotServices').then((m) => ({ default: m.ServiceAsk })));
+const BotPilots = lazy(() => import('./BotPilots'));
+const BotSettings = lazy(() => import('./BotSettings'));
+const BotMatrix = lazy(() => import('./BotMatrix').then((m) => ({ default: m.BotMatrix })));
+import type { Service } from './bot-services';
+import './bot-v3.css';
 // #4893: стартовый экран, каталог и предпросмотр — своим куском, первый экран за них не платит
 const BotStart = lazy(() => import('./BotStart'));
 const BotSchedule = lazy(() => import('./BotStart').then((m) => ({ default: m.ScheduleFromAnswer })));
@@ -42,8 +45,8 @@ import { getSocket } from '../../lib/socket';
 import { showNotification, showToast } from '../../lib/notifications';
 import { useStickyCheck } from '../../lib/sticky-checks';
 import { confirmAction } from '../ui/dialog';
-import { Tabs } from '../ui/tabs';
-import { Toggle } from '../ui/toggle';
+import { DropdownMenu, MenuItem, MenuSeparator } from '../ui/dropdown-menu';
+import { botApi } from './bot-api';
 import { useEnterSend } from '../../hooks/useEnterSend';
 import { feedback } from '../../lib/feedback';
 import { readDraft, writeDraft } from '../../lib/chat-drafts';
@@ -96,14 +99,8 @@ type Live = { status: string; text: string; sources: AnthillSource[] };
 const LAST_SESSION_KEY = 'qevo.bot.session';
 function rememberSession(id: string) { try { localStorage.setItem(LAST_SESSION_KEY, id); } catch { /* без хранилища — откроем самый свежий */ } }
 function lastSession(): string | null { try { return localStorage.getItem(LAST_SESSION_KEY); } catch { return null; } }
-/**
- * #4873: открытые вкладки разговоров — как в ChatGPT. Новый разговор — новая вкладка;
- * закрыть вкладку не значит удалить: разговор остаётся в «Истории», его можно открыть снова.
- */
-const TABS_KEY = 'qevo.bot.tabs';
-const MAX_TABS = 8;
-function readTabs(): string[] { try { const v = JSON.parse(localStorage.getItem(TABS_KEY) ?? '[]'); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } }
-function writeTabs(ids: string[]) { try { localStorage.setItem(TABS_KEY, JSON.stringify(ids)); } catch { /* вкладки — удобство этого устройства */ } }
+/** #5035, п. 3: последний разговор открывается, если ему меньше 2 часов; иначе — стартовый экран. */
+const RESUME_MS = 2 * 3600_000;
 
 export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscreen, session }: {
   /** Открыть этот разговор: `/chat/anthill/thread/:id` из уведомления (#4665). */
@@ -131,15 +128,31 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   const [historyOpen, setHistoryOpen] = useState(false);
   /** Скриншот из ответа — крупно, по щелчку (как вложения в чатах). */
   const [preview, setPreview] = useState<{ url: string; name: string; mime: string } | null>(null);
-  const [tabs, setTabsState] = useState<string[]>(readTabs);
-  const setTabs = (fn: (ids: string[]) => string[]) => setTabsState((ids) => { const next = fn(ids); writeTabs(next); return next; });
-  // новая вкладка — справа; вкладок больше MAX_TABS — уходит самая старая (разговор цел, он в «Истории»)
-  const addTab = (id: string) => setTabs((ids) => (ids.includes(id) ? ids : [...ids, id].slice(-MAX_TABS)));
   const [votes, setVotes] = useState<Record<string, 1 | -1>>({});
   /** Карточка, открытая на правку: одна за раз — их и бывает одна. */
   const [editing, setEditing] = useState<string | null>(null);
   /** Разговор · Задачи · Навыки · Память (ТЗ-6, MVP 2): вкладки одного помощника. */
-  const [tab, setTab] = useState<'chat' | 'tasks' | 'skills' | 'memory' | 'responses' | 'admin'>('chat');
+  const [tab, setTab] = useState<'chat' | 'services' | 'pilots'>('chat');
+  /** «⋯ → Настройки бота» — отдельный экран (п. 7). */
+  const [screen, setScreen] = useState<'main' | 'settings'>('main');
+  /** Услуга из вкладки «Что умеет бот» — карточкой в чате, без отправки (п. 5). */
+  const [ask, setAsk] = useState<Service | null>(null);
+  const [matrix, setMatrix] = useState(false);
+  const [histQ, setHistQ] = useState('');
+  /** Пока бот грузится — индикатор, а не пустой экран (п. 9). */
+  const [booting, setBooting] = useState(true);
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-width: 640px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const on = () => setCompact(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  /** Что подключено — статусы групп услуг (почта, интернет по тарифу). */
+  const [conn, setConn] = useState({ mail: false, calendar: false, web: false });
+  useEffect(() => {
+    void botApi.start().then((s) => setConn({ mail: !!s.connections.mail, calendar: !!s.connections.calendar, web: !!s.web })).catch(() => undefined);
+  }, []);
   /**
    * «Глубокий анализ» (ТЗ-6, разд. 25).
    *
@@ -158,8 +171,6 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
    */
   const [skill, setSkill] = useState<AnthillSkill | null>(null);
   const [err, setErr] = useState('');
-  /** #1326: быстрый старт поверх идущего разговора — по кнопке в шапке. */
-  const [quickShown, setQuickShown] = useState(false);
   // #4893, п. 2: сценарию нужна почта — карточка «Яндекс / Google / Mail.ru» с исходной просьбой
   const [mailCard, setMailCard] = useState<{ resume?: string } | null>(null);
   // п. 4: «Присылать это каждый будний день в 9:00?» — предпросмотр расписания
@@ -215,8 +226,8 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   useEffect(() => loadSessions(), [loadSessions]);
 
   const openSession = async (id: string) => {
-    setSessionId(id); setHistoryOpen(false); setErr('');
-    rememberSession(id); addTab(id);
+    setSessionId(id); setHistoryOpen(false); setErr(''); setAsk(null); setBooting(false);
+    rememberSession(id);
     try { setMessages(await api.anthillMessages(id)); } catch { setMessages([]); }
   };
 
@@ -229,30 +240,23 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     if (session) { void openSession(session); return; }
     let alive = true;
     api.anthillSessions().then((list) => {
-      if (!alive || !list.length) return;
+      if (!alive) return;
+      const withMessages = list.filter((x) => x.messages > 0);
       const last = lastSession();
-      const pick = list.find((x) => String(x.id) === last) ?? list[0];
-      // первый раз — три последних разговора вкладками; дальше — что человек сам держит открытым,
-      // без вкладок удалённых разговоров
-      const known = new Set(list.map((x) => String(x.id)));
-      setTabs((ids) => (ids.length ? ids.filter((x) => known.has(x)) : list.slice(0, 3).map((x) => String(x.id)).reverse()));
-      void openSession(String(pick.id));
-    }).catch(() => undefined);
+      const pick = withMessages.find((x) => String(x.id) === last) ?? withMessages[0];
+      // свежий (меньше 2 часов) — открываем; иначе — стартовый экран
+      if (pick && Date.now() - new Date(pick.updatedAt).getTime() < RESUME_MS) void openSession(String(pick.id));
+    }).catch(() => undefined).finally(() => { if (alive) setBooting(false); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
-  // активная вкладка — в поле зрения: на телефоне полоса вкладок шире экрана
-  useEffect(() => {
-    document.querySelector('.anthill-convtab.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [sessionId, tabs.length]);
-
   const fresh = useCallback(async () => {
     // открытый разговор ещё пуст — он и есть «новый»: не плодим пустые вкладки
-    if (sessionId && messages.length === 0 && !live) { setQuickShown(false); inputRef.current?.focus(); return sessionId; }
+    if (sessionId && messages.length === 0 && !live) { inputRef.current?.focus(); return sessionId; }
     const s = await api.anthillStart(ctxArg);
-    setSessionId(String(s.id)); setMessages([]); setHistoryOpen(false); setErr(''); setQuickShown(false);
-    rememberSession(String(s.id)); addTab(String(s.id));
+    setSessionId(String(s.id)); setMessages([]); setHistoryOpen(false); setErr('');
+    rememberSession(String(s.id));
     loadSessions();
     return String(s.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -271,8 +275,8 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
       loadSessions();
       // Человек мог давно уйти из агента: без сигнала об отчёте он узнает, только
       // если сам заглянет. Отчёт уже лежит в «Заметках» — сюда даём короткий знак.
-      showToast({ kind: 'saved', title: 'QEVO Bot: задача выполнена', body: p?.title ?? 'Отчёт готов и ждёт в «Заметках»' });
-      showNotification('QEVO Bot', `${p?.title ?? 'Регулярная задача'} — отчёт готов`);
+      showToast({ kind: 'saved', title: 'QEVO-бот: автопилот выполнен', body: p?.title ?? 'Отчёт готов и ждёт в «Заметках»' });
+      showNotification('QEVO-бот', `${p?.title ?? 'Автопилот'} — отчёт готов`);
     };
     socket.on('anthill.task.done', done);
     return () => { socket.off('anthill.task.done', done); };
@@ -365,7 +369,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
     loadSessions();
   };
   /** Заготовка в строку ввода: человек дописывает и отправляет сам. */
-  const fillDraft = (t: string) => { setQuickShown(false); setDraft(t); window.setTimeout(() => inputRef.current?.focus(), 0); };
+  const fillDraft = (t: string) => { setDraft(t); window.setTimeout(() => inputRef.current?.focus(), 0); };
   /** Кнопка следующего шага (#4893, п. 4). Пишущее бот всё равно покажет карточкой. */
   const onNext = async (messageId: string, b: AnthillButton) => {
     if (b.kind === 'prompt') { void send(b.prompt); return; }
@@ -539,142 +543,86 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
   const ctxLine = context
     ? `${CONTEXT_LABEL[context.type]}${ctxName ? ` «${ctxName}»` : ` #${context.id}`}`
     : '';
+  const back = onBack ?? onClose;
+  const newChat = () => {
+    // #5035, п. 3: «+» — стартовый экран; разговор появится в истории с первым сообщением
+    setTab('chat'); setAsk(null); setErr(''); setHistoryOpen(false);
+    if (messages.length === 0 && !live) { inputRef.current?.focus(); return; }
+    setSessionId(null); setMessages([]);
+    try { localStorage.removeItem(LAST_SESSION_KEY); } catch { /* ок */ }
+  };
+  const histFound = sessions.filter((s) => s.messages > 0 && (!histQ.trim() || s.title.toLowerCase().includes(histQ.trim().toLowerCase())));
+
+  if (screen === 'settings') {
+    return (
+      <section className={`anthill anthill-v2 anthill-v3${fullscreen ? ' anthill-full' : ''}`} aria-label="Настройки QEVO-бота">
+        <Suspense fallback={<div className="anthill-pane dim">Загружаю…</div>}>
+          <BotSettings canManage={canManage} onBack={() => setScreen('main')} onRunSkill={(x) => { setSkill(x); setScreen('main'); setTab('chat'); inputRef.current?.focus(); }} />
+        </Suspense>
+      </section>
+    );
+  }
 
   return (
-    <section className={`anthill anthill-v2${fullscreen ? ' anthill-full' : ''}`} aria-label="QEVO Bot">
-      <div className="chat-head anthill-head">
-        {onBack && (
-          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-back" onClick={onBack} title="К списку чатов" aria-label="К списку чатов">
-            <Icon name="chevron-left" size={16} />
+    <section className={`anthill anthill-v2 anthill-v3${fullscreen ? ' anthill-full' : ''}`} aria-label="QEVO-бот">
+      {/* #5035, п. 1: в шапке 3 кнопки — «←», «+» и «⋯» */}
+      <div className="chat-head anthill-head bv-head">
+        {back && (
+          <button type="button" className="bv-icon-btn" onClick={back} title={onBack ? 'К списку чатов' : 'Закрыть (Esc)'} aria-label={onBack ? 'К списку чатов' : 'Закрыть'}>
+            <Icon name="arrow-left" size={18} />
           </button>
         )}
         <span className="anthill-title">
           <QevoBotMark size={32} />
           <span className="anthill-title-text">
-            <b>QEVO Bot</b>
-            <span className="dim">AI-помощник</span>
+            <b>QEVO-бот</b>
+            <span className="dim">AI-помощник<span className="bv-head-eng"> · инженер ответит за 30 сек</span></span>
           </span>
         </span>
-        <span className="anthill-head-acts">
-          {/* #1326: новый разговор — заметной кнопкой; прежние остаются в «Истории» */}
-          <button
-            className="ui-btn ui-btn-primary ui-btn-sm anthill-new"
-            onClick={() => {
-              setTab('chat'); setQuickShown(false);
-              fresh().catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось начать новый разговор'));
-            }}
-            title="Начать новый разговор с чистого листа. Прежние разговоры — в «Истории»"
-          >
-            <Icon name="plus" size={14} /> Новый разговор
-          </button>
-          <button
-            className={`ui-btn ui-btn-ghost ui-btn-sm${quickShown ? ' active' : ''}`}
-            onClick={() => {
-              setTab('chat');
-              // #4876: подсказки встают в начало ленты, а лента стоит внизу — без прокрутки
-              // казалось, что кнопка ничего не делает
-              setQuickShown((v) => { if (!v) requestAnimationFrame(() => feedRef.current?.scrollTo({ top: 0, behavior: 'smooth' })); return !v; });
-            }}
-            aria-expanded={quickShown}
-            title="Быстрый старт: что бот умеет взять на себя"
-          >
-            <QevoBotMark size={18} /> Что умею
-          </button>
-          {/* #4807 §5, п. 14: «Помощь и бот» — одна точка помощи: живой инженер отсюда же */}
-          <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => openSupport()} title="Позвать живого инженера службы заботы — ответит за 30 секунд">
-            <Icon name="support" size={14} /> Позвать инженера
-          </button>
-          <button
-            className={`ui-btn ui-btn-ghost ui-btn-sm${historyOpen ? ' active' : ''}`}
-            onClick={() => { setHistoryOpen((v) => !v); loadSessions(); }}
-            title="История разговоров"
-            aria-label="История разговоров"
-            aria-expanded={historyOpen}
-          >
-            <Icon name="clock" size={14} />
-          </button>
-          {onFullscreen && !fullscreen && (
-            <button className="ui-btn ui-btn-ghost ui-btn-sm" onClick={onFullscreen} title="Открыть на весь экран" aria-label="Открыть на весь экран">
-              <Icon name="maximize" size={14} />
-            </button>
-          )}
-        </span>
-        {/* #5005: крестик — отдельно от ряда кнопок: в узкой панели и на телефоне он уезжал за край */}
-        {onClose && (
-          <button className="ui-btn ui-btn-ghost ui-btn-sm chat-overlay-close anthill-close" onClick={onClose} title="Закрыть (Esc)" aria-label="Закрыть">
-            <Icon name="close" size={18} />
-          </button>
-        )}
+        <span className="bv-sp" />
+        <button type="button" className="bv-icon-btn" onClick={newChat} title="Новый разговор" aria-label="Новый разговор">
+          <Icon name="plus" size={18} />
+        </button>
+        <DropdownMenu trigger={<button type="button" className="bv-icon-btn" title="Ещё" aria-label="Меню бота"><Icon name="more" size={18} /></button>}>
+          <MenuItem onSelect={() => { setTab('chat'); setHistoryOpen(true); loadSessions(); }} icon={<Icon name="clock" size={15} />}>История разговоров</MenuItem>
+          <MenuItem onSelect={() => openSupport()} icon={<Icon name="support" size={15} />}>Позвать инженера · 30 сек</MenuItem>
+          <MenuSeparator />
+          <MenuItem onSelect={() => setScreen('settings')} icon={<Icon name="settings" size={15} />}>
+            <span className="bv-menu-two"><span>Настройки бота</span><span className="dim">навыки, память, быстрые ответы, права</span></span>
+          </MenuItem>
+          {onFullscreen && !fullscreen && <MenuItem onSelect={onFullscreen} icon={<Icon name="maximize" size={15} />}>Открыть на весь экран</MenuItem>}
+        </DropdownMenu>
       </div>
 
-      <Tabs
-        className="anthill-tabs-v2"
-        ariaLabel="Разделы QEVO Bot"
-        value={tab}
-        onValueChange={setTab}
-        items={([
-          { key: 'chat', label: 'Разговор', icon: 'chat' },
-          { key: 'tasks', label: 'Задачи', icon: 'clock' },
-          { key: 'skills', label: 'Навыки', icon: 'sparkles' },
-          { key: 'memory', label: 'Память', icon: 'book' },
-          ...(canManage ? [{ key: 'responses', label: 'Ответы', icon: 'reply' }, { key: 'admin', label: 'Настройки', icon: 'settings' }] as const : []),
-        ] as const).map((t) => ({ value: t.key, label: <><Icon name={t.icon} size={14} /> {t.label}</> }))}
-      />
+      {/* п. 2: вкладки — Чат · Что умеет бот · Автопилоты */}
+      <div className="bv-tabs" role="tablist" aria-label="Разделы QEVO-бота">
+        {([['chat', 'Чат'], ['services', compact ? 'Что умеет' : 'Что умеет бот'], ['pilots', 'Автопилоты']] as const).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'is-on' : ''} onClick={() => { setTab(k); setHistoryOpen(false); }}>{label}</button>
+        ))}
+      </div>
 
-      <Suspense fallback={tab !== 'chat' ? <div className="anthill-pane dim">Загружаю…</div> : null}>
-        {tab === 'tasks' && <AnthillTasks onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />}
-        {tab === 'skills' && (
-          <AnthillSkills onRun={(x) => { setSkill(x); setTab('chat'); inputRef.current?.focus(); }} />
-        )}
-        {tab === 'memory' && <AnthillMemory />}
-        {tab === 'responses' && canManage && <AnthillResponses />}
-        {tab === 'admin' && canManage && <AnthillAdmin />}
-      </Suspense>
-
-      {tab === 'chat' && (
-        <div className="anthill-convtabs" role="tablist" aria-label="Разговоры с QEVO Bot">
-          {tabs.map((id) => {
-            const s = sessions.find((x) => String(x.id) === id);
-            const title = s && s.messages > 0 ? s.title : 'Новый разговор';
-            const on = id === sessionId;
-            return (
-              <div key={id} className={`anthill-convtab${on ? ' on' : ''}`} role="presentation">
-                <button role="tab" aria-selected={on} className="anthill-convtab-open" onClick={() => { if (!on) void openSession(id); }} title={title}>
-                  <Icon name="chat" size={13} /> <span>{title}</span>
-                </button>
-                <button
-                  className="anthill-convtab-x"
-                  aria-label={`Закрыть вкладку «${title}»`}
-                  title="Закрыть вкладку — разговор останется в «Истории»"
-                  onClick={() => {
-                    const rest = tabs.filter((x) => x !== id);
-                    setTabs(() => rest);
-                    if (on) {
-                      const next = rest[Math.min(tabs.indexOf(id), rest.length - 1)];
-                      if (next) void openSession(next); else { setSessionId(null); setMessages([]); }
-                    }
-                  }}
-                >
-                  <Icon name="close" size={12} />
-                </button>
-              </div>
-            );
-          })}
-          <button
-            className="anthill-convtab-new"
-            onClick={() => { setTab('chat'); fresh().catch((e) => setErr(e instanceof ApiError ? e.message : 'Не удалось начать новый разговор')); }}
-            title="Новый разговор — в новой вкладке"
-            aria-label="Новый разговор"
-          >
-            <Icon name="plus" size={15} />
-          </button>
-        </div>
+      {tab === 'services' && (
+        <Suspense fallback={<div className="anthill-pane dim">Загружаю…</div>}>
+          <BotServices conn={conn} onConnectMail={() => { setTab('chat'); setMailCard({}); }}
+            onPick={(s) => { setTab('chat'); setAsk(s); requestAnimationFrame(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }); }} />
+        </Suspense>
+      )}
+      {tab === 'pilots' && (
+        <Suspense fallback={<div className="anthill-pane dim">Загружаю…</div>}>
+          <BotPilots onExample={(t) => { setTab('chat'); void send(t); }} onOpenSession={(id) => { setTab('chat'); void openSession(id); }} />
+        </Suspense>
       )}
 
       {tab === 'chat' && historyOpen && (
-        <div className="anthill-history">
-          {sessions.length === 0 && <div className="dim anthill-history-empty">Разговоров пока нет.</div>}
-          {sessions.map((s) => (
+        <div className="anthill-history bv-history">
+          <div className="bv-history-head">
+            <b>История разговоров</b>
+            <span className="bv-sp" />
+            <button type="button" className="msg-icon" onClick={() => setHistoryOpen(false)} aria-label="Закрыть историю"><Icon name="close" size={14} /></button>
+          </div>
+          <input className="input" value={histQ} onChange={(e) => setHistQ(e.target.value)} placeholder="Поиск по названию" aria-label="Поиск по истории" autoFocus />
+          {histFound.length === 0 && <div className="dim anthill-history-empty">{sessions.length ? 'Ничего не нашлось.' : 'Разговоров пока нет — они появятся с первым сообщением.'}</div>}
+          {histFound.map((s) => (
             <div key={s.id} className={`anthill-session${String(s.id) === sessionId ? ' active' : ''}`}>
               <button className="anthill-session-open" onClick={() => { void openSession(String(s.id)); }}>
                 <span className="anthill-session-title">{s.title}</span>
@@ -683,13 +631,9 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
               <button
                 className="msg-icon"
                 onClick={async () => {
-                  if (!(await confirmAction({ title: `Удалить разговор «${s.title}»?`, description: 'Переписка с QEVO Bot пропадёт из истории.', danger: true }))) return;
+                  if (!(await confirmAction({ title: `Удалить разговор «${s.title}»?`, description: 'Переписка с QEVO-ботом пропадёт из истории.', danger: true }))) return;
                   api.anthillDelete(String(s.id))
-                    .then(() => {
-                      if (String(s.id) === sessionId) { setSessionId(null); setMessages([]); }
-                      setTabs((ids) => ids.filter((x) => x !== String(s.id)));
-                      loadSessions();
-                    })
+                    .then(() => { if (String(s.id) === sessionId) { setSessionId(null); setMessages([]); } loadSessions(); })
                     .catch(() => undefined);
                 }}
                 title="Удалить разговор"
@@ -704,17 +648,23 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
 
       {tab === 'chat' && (
       <div className="chat-feed anthill-feed" ref={feedRef}>
-        {((quickShown && messages.length > 0) || (messages.length === 0 && !live)) && (
+        {booting && messages.length === 0 && (
+          <div className="bv-boot" role="status"><span className="ui-spinner" /> Загружаю…</div>
+        )}
+        {!booting && messages.length === 0 && !live && !ask && (
           <div className="anthill-empty">
-            <Suspense fallback={null}>
+            <Suspense fallback={<div className="bv-boot" role="status"><span className="ui-spinner" /></div>}>
               <BotStart
-                onPrompt={(t) => { setQuickShown(false); void send(t); }}
+                name={user?.fullName ?? null}
+                compact={compact}
+                onAllServices={() => setTab('services')}
+                onPrompt={(t) => { void send(t); }}
                 onFill={fillDraft}
-                onVoice={() => { setQuickShown(false); if (!voice.recording) voice.toggle(); }}
-                onConnectMail={(resume) => { setQuickShown(false); setMailCard({ resume }); }}
+                onVoice={() => { if (!voice.recording) voice.toggle(); }}
+                onConnectMail={(resume) => { setMailCard({ resume }); }}
               />
             </Suspense>
-            {messages.length === 0 && context && <div className="dim">Под рукой {ctxLine} — можно спросить «что здесь осталось сделать?»</div>}
+            {context && <div className="dim">Под рукой {ctxLine} — можно спросить «что здесь осталось сделать?»</div>}
           </div>
         )}
 
@@ -834,6 +784,25 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
           </div>
         ))}
 
+        {ask && (
+          <Suspense fallback={null}>
+            <ServiceAsk
+              service={ask}
+              conn={conn}
+              onRun={(t) => { setAsk(null); void send(t); }}
+              onCancel={() => setAsk(null)}
+              onConnectMail={(resume) => { setAsk(null); setMailCard({ resume }); }}
+              onMatrix={() => { setAsk(null); setMatrix(true); }}
+              onSupport={() => { setAsk(null); openSupport(); }}
+            />
+          </Suspense>
+        )}
+        {matrix && (
+          <Suspense fallback={null}>
+            <BotMatrix onClose={() => setMatrix(false)} onPrompt={(t) => { setMatrix(false); void send(t); }} />
+          </Suspense>
+        )}
+
         {live && (
           <div className="anthill-msg anthill-assistant">
             {live.status && (
@@ -851,15 +820,9 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
 
       {tab === 'chat' && (
       <div className="anthill-compose">
-        {/*
-          Что открыто на экране — плашкой, а не галочкой.
-
-          Агент и так отвечает про то, что перед глазами: галочка требовала решения
-          там, где решение уже принято, и висела в композере постоянно. Плашка просто
-          сообщает, о чём пойдёт речь, и снимается крестиком, если речь о другом.
-        */}
+        {/* Что открыто на экране — плашкой, снимается крестиком. */}
         {context && useCtx && (
-          <div className="anthill-ctx anthill-chip" title="Агент учтёт то, что открыто у вас на экране">
+          <div className="anthill-ctx anthill-chip" title="Бот учтёт то, что открыто у вас на экране">
             <Icon name="link" size={12} /> {ctxLine}
             <button className="msg-icon" onClick={() => setUseCtx(false)} title="Спросить без привязки к странице" aria-label="Убрать контекст">
               <Icon name="close" size={12} />
@@ -874,19 +837,20 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
         {skill && (
           <div className="anthill-ctx anthill-chip anthill-skill-chosen">
             <Icon name="sparkles" size={12} /> Навык: {skill.name}
-            <button className="msg-icon" onClick={() => setSkill(null)} title="Пусть агент выберет сам" aria-label="Убрать навык">
+            <button className="msg-icon" onClick={() => setSkill(null)} title="Пусть бот выберет сам" aria-label="Убрать навык">
               <Icon name="close" size={12} />
             </button>
           </div>
         )}
-        <Toggle
-          className="anthill-deep-v2"
-          pressed={deep}
-          onPressedChange={setDeep}
-          title="Несколько волн поиска и отчёт по разделам: выводы, факты, риски, рекомендации. Дольше и дороже обычного ответа."
-        >
-          <Icon name="search" size={13} /> Глубокий анализ
-        </Toggle>
+        {/* п. 8: глубокий анализ — чипом над полем, пока включён */}
+        {deep && (
+          <div className="anthill-ctx anthill-chip bv-deep-chip" title="Несколько волн поиска и отчёт по разделам: выводы, факты, риски, рекомендации. Дольше обычного ответа.">
+            <Icon name="search" size={12} /> Глубокий анализ
+            <button className="msg-icon" onClick={() => setDeep(false)} title="Выключить глубокий анализ" aria-label="Выключить глубокий анализ">
+              <Icon name="close" size={12} />
+            </button>
+          </div>
+        )}
         <VoiceStatus onDismiss={voice.clearError} recording={voice.recording} transcribing={voice.transcribing} error={voice.error} quiet={voice.quiet} hint={holding ? (holdCancel ? 'отпустите — отменю' : 'отпустите — отправлю · смахните вверх — отмена') : 'нажмите ещё раз — отправлю'} />
         {att.length > 0 && (
           <div className="anthill-att-list">
@@ -908,21 +872,17 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
             accept="image/png,image/jpeg,image/webp,image/gif,.pdf,.docx,.xlsx,.txt,.md,.csv,.json"
             onChange={(e) => { addFiles([...(e.target.files ?? [])]); e.currentTarget.value = ''; }}
           />
-          <button
-            className="ui-btn ui-btn-ghost ui-btn-sm"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy || att.length >= 5}
-            title="Приложить скриншот, фото или документ — бот прочитает и ответит с учётом файла. Скриншот можно вставить Ctrl+V"
-            aria-label="Приложить файл"
-          >
-            <Icon name="paperclip" size={16} />
-          </button>
+          {/* п. 8: «+» — Приложить файл · Глубокий анализ */}
+          <DropdownMenu align="start" trigger={<button type="button" className="bv-icon-btn bv-plus" disabled={busy} title="Приложить файл или включить глубокий анализ" aria-label="Ещё возможности"><Icon name="plus" size={18} /></button>}>
+            <MenuItem onSelect={() => fileRef.current?.click()} disabled={att.length >= 5} icon={<Icon name="paperclip" size={15} />}>Приложить файл</MenuItem>
+            <MenuItem onSelect={() => setDeep(!deep)} icon={<Icon name={deep ? 'check' : 'search'} size={15} />}>Глубокий анализ{deep ? ' — включён' : ''}</MenuItem>
+          </DropdownMenu>
           <textarea
             ref={inputRef}
             className="input"
             rows={1}
             value={draft}
-            placeholder={busy ? 'QEVO Bot отвечает…' : deep ? 'Что разобрать по-крупному?' : 'Спросите или попросите сделать…'}
+            placeholder={busy ? 'QEVO-бот отвечает…' : deep ? 'Что разобрать по-крупному?' : compact ? 'Спросите…' : 'Спросите или попросите сделать…'}
             onChange={(e) => setDraft(e.target.value)}
             // скриншот из буфера (Ctrl+V) — сразу вложением
             onPaste={(e) => {
@@ -932,7 +892,7 @@ export function AnthillPanel({ context, onClose, onBack, fullscreen, onFullscree
             onKeyDown={draftEnter.onKeyDown}
             onCompositionEnd={draftEnter.onCompositionEnd}
             disabled={busy}
-            aria-label="Вопрос QEVO Bot"
+            aria-label="Вопрос QEVO-боту"
           />
           <button
             className={`${voice.recording ? 'ui-btn ui-btn-primary ui-btn-sm' : 'ui-btn ui-btn-ghost ui-btn-sm'} anthill-mic`}

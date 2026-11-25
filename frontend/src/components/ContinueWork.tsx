@@ -46,7 +46,7 @@ export default function ContinueWork({ onGo, compact = false }: { onGo: () => vo
       const chat = listChatDrafts().find((c) => c.key.startsWith('chat:') && c.key !== `chat:${route.chatId}` && c.text.replace(/[^\p{L}\p{N}]+/gu, '').length >= 3);
       if (chat) {
         const id = chat.key.slice(5);
-        out.push({ key: chat.key, icon: 'chat', text: chat.text.trim().slice(0, 60), hint: id === 'anthill' ? 'Вопрос QEVO Bot не отправлен' : 'Сообщение не отправлено', go: () => navigate({ section: 'chat', chatId: id }) });
+        out.push({ key: chat.key, icon: 'chat', text: chat.text.trim().slice(0, 60), hint: id === 'anthill' ? 'Вопрос QEVO-боту не отправлен' : 'Сообщение не отправлено', go: () => navigate({ section: 'chat', chatId: id }) });
       }
       if (alive) setItems(out.slice(0, 3));
     };

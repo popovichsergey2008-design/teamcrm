@@ -108,7 +108,7 @@ export default function SidebarLists({ onGo, part = 'fav' }: { onGo: () => void;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftsOpen, chats.length]);
   const chatLabel = (key: string) => key.startsWith('task:') ? `Чат задачи #${key.slice(5)}`
-    : key === 'chat:anthill' ? 'QEVO Bot' : (chatNames[key.slice(5)] ?? 'Чат'); // #4790: вопрос боту
+    : key === 'chat:anthill' ? 'QEVO-бот' : (chatNames[key.slice(5)] ?? 'Чат'); // #4790: вопрос боту
   const goChatDraft = async (key: string) => {
     onGo();
     const id = key.slice(5);

@@ -1,14 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Icon } from '../Icon';
+import { useEffect, useState } from 'react';
 import { Dialog } from '../ui/dialog';
 import { ApiError } from '../../lib/api';
 import { navigate } from '../../lib/router';
 import { toastSaved } from '../../lib/notifications';
 import { botApi, StartCard, StartScreen } from './bot-api';
-import { buildPrompt, CATALOG, Direction, dirStatus, needMet, Scenario, START_CHIPS, STATUS_LABEL } from './bot-catalog';
-import { BotAutopilots } from './BotAutopilots';
-import { BotMatrix } from './BotMatrix';
-import { request } from '../../lib/api';
+import { buildPrompt, Scenario } from './bot-catalog';
+import { SERVICE_COUNT } from './bot-services';
 import './bot-start.css';
 
 export interface BotStartProps {
@@ -23,24 +20,25 @@ export interface BotStartProps {
 }
 
 /**
- * «Помощь и бот → Новый разговор» (#4893, п. 1): сверху — 3–4 карточки по данным
- * человека с одной кнопкой результата, пример вопроса на его данных, чипы ролей и
- * разделов; десять аккордеонов ушли в каталог «Все возможности» (п. 6).
+ * Стартовый экран QEVO-бота (#5035, п. 4): приветствие и строка о безопасности, до 3
+ * карточек по данным человека (у каждой одна кнопка), 4 примера вопросов чипами —
+ * нажатие подставляет текст в строку, не отправляет — и ссылка «Все услуги бота».
+ * Чипы направлений, автопилоты и «Бот за неделю» переехали во вкладки.
+ * На телефоне — 2 карточки и 2 примера (п. 9).
  */
-export default function BotStart(p: BotStartProps) {
+const EXAMPLES: { label: string; fill?: string; voice?: boolean }[] = [
+  { label: 'Что я пропустил в чатах?', fill: 'Что я пропустил в чатах?' },
+  { label: 'Что решили про…?', fill: 'Что решили про ' },
+  { label: 'Найди свободный час с…', fill: 'Найди свободный час с ' },
+  { label: 'Поставь задачу голосом', voice: true },
+];
+
+export default function BotStart(p: BotStartProps & { name?: string | null; onAllServices: () => void; compact?: boolean }) {
   const [screen, setScreen] = useState<StartScreen | null>(null);
-  const [catalog, setCatalog] = useState<string | null>(null);
-  const [scenario, setScenario] = useState<Scenario | null>(null);
-  const [matrix, setMatrix] = useState(false);
-  // п. 11: «Бот за неделю» — числа из журнала действий бота, методика — по ссылке
-  const [week, setWeek] = useState<{ text: string; minutes: number; method: { key: string; minutes: number; what: string }[]; used: string[] } | null>(null);
-  const [method, setMethod] = useState(false);
-  const [fresh, setFresh] = useState(false);
   useEffect(() => {
-    void botApi.start().then(setScreen).catch(() => undefined);
-    void request<NonNullable<typeof week>>('GET', '/anthill/week').then(setWeek).catch(() => undefined);
+    void botApi.start().then(setScreen)
+      .catch(() => setScreen({ cards: [], example: '', web: false, tz: null, connections: { mail: false, calendar: false, telegram: false } }));
   }, []);
-  const conn = { mail: !!screen?.connections.mail, calendar: !!screen?.connections.calendar, web: !!screen?.web };
 
   const onCard = (c: StartCard) => {
     const a = c.action;
@@ -52,138 +50,42 @@ export default function BotStart(p: BotStartProps) {
     else if (a.kind === 'link') navigate(a.href);
     else if (a.kind === 'connect') { if (a.source === 'mail') p.onConnectMail(); else navigate({ section: 'calendar' }); }
   };
-
-  const pick = (s: Scenario) => {
-    setCatalog(null);
-    if (s.action === 'voice') { p.onVoice(); return; }
-    if (s.action === 'focus') { navigate({ section: 'focus' }); return; }
-    if (s.action === 'focus-review') { try { sessionStorage.setItem('teamcrm.focusReview', '1'); } catch { /* */ } navigate({ section: 'focus' }); return; }
-    if (s.action === 'pulse') { navigate({ section: 'radar' }); return; }
-    if (s.action === 'fill') { p.onFill(s.prompt); return; }
-    if (s.action === 'matrix') { void botApi.ran(s.id).catch(() => undefined); setMatrix(true); return; }
-    if (!needMet(s.needs, conn) && s.needs === 'mail') { p.onConnectMail(buildPrompt(s, defaults(s))); return; }
-    setScenario(s);
-  };
+  const h = new Date().getHours();
+  const hello = h < 5 ? 'Доброй ночи' : h < 12 ? 'Доброе утро' : h < 18 ? 'Добрый день' : 'Добрый вечер';
+  const first = (p.name ?? '').trim().split(' ')[0];
+  const cards = (screen?.cards ?? []).slice(0, p.compact ? 2 : 3);
+  // пример на данных человека («Что решили про „QEVO“ в ноябре?») — вместо общего второго
+  const examples = screen?.example ? [EXAMPLES[0], { label: screen.example, fill: screen.example }, ...EXAMPLES.slice(2)] : EXAMPLES;
+  const shown = p.compact ? [examples[0], examples[3]] : examples;
 
   return (
-    <div className="bs" aria-label="Новый разговор">
-      {screen === null ? <div className="bs-cards"><div className="bs-card bs-skel" /><div className="bs-card bs-skel" /></div> : (
-        <div className="bs-cards">
-          {screen.cards.map((c) => (
-            <div key={c.id} className="bs-card">
-              <div className="bs-card-text">{c.text}</div>
+    <div className="bv-start" aria-label="Новый разговор">
+      <h2 className="bv-hello">{p.compact ? 'Что сделать?' : `${hello}${first ? `, ${first}` : ''}. Что сделать?`}</h2>
+      {!p.compact && <p className="bv-sub">Бот видит только ваши задачи, чаты и встречи. Всё, что касается коллег, — только после вашего «да».</p>}
+      {screen === null ? (
+        <div className="bv-cards"><div className="bv-start-card bv-skel" /><div className="bv-start-card bv-skel" /></div>
+      ) : cards.length > 0 && (
+        <div className="bv-cards">
+          {cards.map((c) => (
+            <div key={c.id} className="bv-start-card">
+              <div className="bv-start-card-text">{c.text}</div>
               <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => onCard(c)}>{c.button}</button>
             </div>
           ))}
         </div>
       )}
-      {screen?.example && (
-        <button type="button" className="bs-example" onClick={() => p.onFill(screen.example)}>
-          <Icon name="sparkles" size={13} /> Например: «{screen.example}»
-        </button>
-      )}
-      <div className="bs-chips" role="group" aria-label="Роли и разделы">
-        {START_CHIPS.map((c) => (
-          <button key={c.dir} type="button" className="bs-chip" onClick={() => setCatalog(c.dir)}>{c.label}</button>
+      {!p.compact && <div className="bv-examples-label">Или спросите, например:</div>}
+      <div className="bv-examples">
+        {shown.map((e) => (
+          <button key={e.label} type="button" className="bv-example" onClick={() => (e.voice ? p.onVoice() : p.onFill(e.fill ?? e.label))}>{e.label}</button>
         ))}
-        <button type="button" className="bs-chip bs-chip-all" onClick={() => setCatalog('')}>Все возможности →</button>
       </div>
-      {week && week.minutes > 0 && (
-        <section className="bs-week" aria-label="Бот за неделю">
-          <div>{week.text}</div>
-          <div className="bs-acts">
-            <button type="button" className="ui-btn ui-btn-outline ui-btn-sm" onClick={() => { setFresh(true); setCatalog(''); }}>Что ещё поручить?</button>
-            <button type="button" className="fp-link bs-link" aria-expanded={method} onClick={() => setMethod((v) => !v)}>Как считали</button>
-          </div>
-          {method && (
-            <ul className="bs-method dim">
-              {week.method.map((m) => <li key={m.key}>{m.what} — {m.minutes} мин</li>)}
-              <li>Числа — из журнала действий бота («Настройки» → «Как бот действует»), за последние 7 дней.</li>
-            </ul>
-          )}
-        </section>
-      )}
-      {screen && <BotAutopilots web={conn.web} onPreview={setScenario} />}
-      {matrix && <BotMatrix onClose={() => setMatrix(false)} onPrompt={(t) => { setMatrix(false); p.onPrompt(t); }} />}
-      {catalog !== null && <Catalog focus={catalog} conn={conn} onPick={pick} onClose={() => { setCatalog(null); setFresh(false); }} onPilot={(s) => { setCatalog(null); setScenario(s); }} unused={fresh ? week?.used ?? [] : null} />}
-      {scenario && (
-        <Preview scenario={scenario} onClose={() => setScenario(null)}
-          onRun={(text) => { setScenario(null); void botApi.ran(scenario.id).catch(() => undefined); p.onPrompt(text); }}
-          onFill={(text) => { setScenario(null); p.onFill(text); }} />
-      )}
+      <button type="button" className="bv-all" onClick={p.onAllServices}>Все услуги бота{p.compact ? '' : ` — ${SERVICE_COUNT} штук`} →</button>
     </div>
   );
 }
 
 const defaults = (s: Scenario) => Object.fromEntries((s.params ?? []).map((x) => [x.key, x.def ?? (x.options ? x.options[0] : '')]));
-
-/** «Все возможности» (п. 6): направления со статусом, поиск, популярное в компании. */
-function Catalog({ focus, conn, onPick, onClose, onPilot, unused }: {
-  focus: string; conn: { mail: boolean; calendar: boolean; web: boolean }; onPick: (s: Scenario) => void; onClose: () => void;
-  onPilot: (s: Scenario) => void;
-  /** «Что ещё поручить?» (п. 11): сценарии, которыми человек ещё не пользовался. */
-  unused?: string[] | null;
-}) {
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState<string | null>(focus || null);
-  const [popular, setPopular] = useState<{ id: string; n: number }[]>([]);
-  useEffect(() => { void botApi.popular().then(setPopular).catch(() => undefined); }, []);
-  const all = useMemo(() => CATALOG.flatMap((d) => d.items.map((s) => ({ d, s }))), []);
-  const found = q.trim().length >= 2 ? all.filter(({ s, d }) => `${s.label} ${d.title}`.toLowerCase().includes(q.trim().toLowerCase())) : null;
-  const pop = popular.map((x) => all.find((a) => a.s.id === x.id)).filter((x): x is { d: Direction; s: Scenario } => !!x);
-  const row = ({ d, s }: { d: Direction; s: Scenario }) => {
-    const ok = needMet(s.needs, conn);
-    return (
-      <button key={`${d.id}-${s.id}`} type="button" className="bs-scn" onClick={() => onPick(s)}>
-        {s.wow && <Icon name="sparkles" size={12} />}
-        <span className="bs-scn-label">{s.label}</span>
-        {s.schedule && <span className="bs-badge">регулярно</span>}
-        {!ok && <span className={`bs-badge ${s.needs === 'web' ? 'plan' : 'connect'}`}>{s.needs === 'mail' ? 'подключить почту' : s.needs === 'web' ? 'нужен интернет по тарифу' : 'подключить календарь'}</span>}
-        <Icon name="arrow-right" size={13} />
-      </button>
-    );
-  };
-  return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }} size="lg" title="Все возможности бота">
-      <div className="bs-cat">
-        <input className="input" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск: письма, встречи, отчёты…" aria-label="Поиск по возможностям" />
-        {found ? (
-          <div className="bs-scns">{found.length ? found.map(row) : <div className="dim">Ничего не нашлось — спросите бота своими словами.</div>}</div>
-        ) : (
-          <>
-            {unused && (
-              <section>
-                <div className="bs-sub">Ещё не пробовали</div>
-                <div className="bs-scns">{all.filter(({ s }) => s.wow && !unused.includes(s.id)).slice(0, 8).map(row)}</div>
-              </section>
-            )}
-            {!focus && !unused && <BotAutopilots web={conn.web} onPreview={onPilot} />}
-            {pop.length > 0 && (
-              <section>
-                <div className="bs-sub">Популярное в вашей компании</div>
-                <div className="bs-scns">{pop.map(row)}</div>
-              </section>
-            )}
-            {CATALOG.map((d) => {
-              const st = dirStatus(d, conn);
-              const on = open === d.id;
-              return (
-                <section key={d.id} className={`bs-dir${on ? ' is-open' : ''}`}>
-                  <button type="button" className="bs-dir-head" aria-expanded={on} onClick={() => setOpen(on ? null : d.id)}>
-                    <Icon name={d.icon} size={15} /> <span className="bs-dir-title">{d.title}</span>
-                    <span className={`bs-status ${st}`}>{STATUS_LABEL[st]}</span>
-                    <Icon name={on ? 'chevron-up' : 'chevron-down'} size={14} />
-                  </button>
-                  {on && <div className="bs-scns">{d.items.map((s) => row({ d, s }))}</div>}
-                </section>
-              );
-            })}
-          </>
-        )}
-      </div>
-    </Dialog>
-  );
-}
 
 /**
  * Предпросмотр (п. 3): клик по сценарию не отправляет запрос сразу — параметры чипами с

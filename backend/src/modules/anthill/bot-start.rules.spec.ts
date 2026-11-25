@@ -3,13 +3,13 @@ import { buildCards, inMonth, isStale, quadrantOf, weekMinutes, weekText } from 
 const none = { meetings: 0, noAgenda: 0, firstNoAgenda: null, decisions: 0, needReply: 0, reports: 0, reportChats: [], project: null, members: 1 };
 
 describe('стартовый экран бота (#4893, п. 1)', () => {
-  it('только данные человека, не больше четырёх, без пустых', () => {
+  it('только данные человека, не больше трёх (#5035), без пустых', () => {
     const cards = buildCards({ ...none, meetings: 3, noAgenda: 1, firstNoAgenda: 'Планёрка', decisions: 27, needReply: 3, reports: 4 }, { mail: true, calendar: true, telegram: true });
-    expect(cards.map((c) => c.text)).toEqual(['3 встречи сегодня — к одной нет повестки', '27 решений ждут вас', '3 сообщения ждут ответа', '4 отчёта сотрудников за вчера']);
-    expect(cards.map((c) => c.button)).toEqual(['Подготовить', 'Разобрать за 15 мин', 'Что ответить', 'Свести в один']);
+    expect(cards.map((c) => c.text)).toEqual(['3 встречи сегодня — к одной нет повестки', '27 решений ждут вас', '3 сообщения ждут ответа']);
+    expect(cards.map((c) => c.button)).toEqual(['Подготовить', 'Разобрать за 15 мин', 'Что ответить']);
   });
   it('данных нет — первые шаги', () => {
-    expect(buildCards(none, { mail: false, calendar: false, telegram: false }).map((c) => c.id)).toEqual(['voice', 'invite', 'calendar', 'mail']);
+    expect(buildCards(none, { mail: false, calendar: false, telegram: false }).map((c) => c.id)).toEqual(['voice', 'invite', 'calendar']);
   });
   it('месяц в предложном', () => {
     expect([inMonth('октябрь'), inMonth('май'), inMonth('март')]).toEqual(['октябре', 'мае', 'марте']);

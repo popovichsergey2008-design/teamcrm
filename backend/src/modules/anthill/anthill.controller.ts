@@ -172,7 +172,8 @@ export class AnthillController {
     решают, что агенту позволено делать от имени каждого человека в организации.
   */
   @Get('admin')
-  @Roles('owner', 'manager')
+  // #5035: «Права и лимиты» видят все (только просмотр), меняет владелец
+  @Roles('owner', 'manager', 'member')
   adminSettings(@CurrentUser() u: AuthUser) {
     return this.admin.get(u.tenantId);
   }

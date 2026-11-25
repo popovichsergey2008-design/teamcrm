@@ -66,7 +66,7 @@ export function CallCard({ id, onClose, onJoin }: { id: string; onClose: () => v
               <div className="cal-first-kicker">Итоги</div>
               {card.live && <div className="dim cal-small">Созвон идёт — итоги появятся после его окончания.</div>}
               {!card.live && !m && <div className="dim cal-small">Созвон не записывался — итогов нет.</div>}
-              {processing && <div className="dim cal-small">QEVO Bot готовит итоги…</div>}
+              {processing && <div className="dim cal-small">QEVO-бот готовит итоги…</div>}
               {m?.status === 'error' && <div className="dim cal-small">Итоги не собраны — разговор не удалось разобрать. Откройте протокол и нажмите «Разобрать заново».</div>}
               {m?.summary && <div className="cal-small" style={{ whiteSpace: 'pre-line' }}>{m.summary}</div>}
               {!!m?.decisions.length && (

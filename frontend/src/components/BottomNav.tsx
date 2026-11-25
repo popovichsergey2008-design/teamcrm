@@ -148,7 +148,7 @@ function BotButton({ active }: { active: boolean }) {
   return (
     <>
       <button className={`bn-bot${active ? ' active' : ''}${voice.recording ? ' is-rec' : ''}`} data-tour="tab-bot"
-        aria-label="QEVO Bot — нажать: открыть, удерживать: сказать"
+        aria-label="QEVO-бот — нажать: открыть, удерживать: сказать"
         onPointerDown={down} onPointerMove={moveP} onPointerUp={upP}
         onPointerCancel={() => { window.clearTimeout(timer.current); if (held.current) { cancelled.current = true; held.current = false; setHolding(false); voice.cancel(); } }}
         onContextMenu={(e) => e.preventDefault()}>
