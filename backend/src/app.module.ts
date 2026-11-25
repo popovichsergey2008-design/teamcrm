@@ -109,6 +109,7 @@ import { FeedModule } from './modules/feed/feed.module';
 import { ProactiveModule } from './modules/proactive/proactive.module';
 import { CommitmentsModule } from './modules/commitments/commitments.module';
 import { WorkloadModule } from './modules/workload/workload.module';
+import { SecretaryDocsModule } from './modules/secretary-docs/secretary-docs.module';
 import { WorkloadActionsModule } from './modules/workload/workload-actions.module';
 import { SmartReplyModule } from './modules/smart-reply/smart-reply.module';
 import { SecretarySkillsModule } from './modules/secretary-skills/secretary-skills.module';
@@ -206,6 +207,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
     ProactiveModule,
     CommitmentsModule,
     WorkloadModule,
+    SecretaryDocsModule, // #1476: сроки документов, поздравления клиентам, проверка договора, чеки
     WorkloadActionsModule,
     SmartReplyModule,
     SecretarySkillsModule,

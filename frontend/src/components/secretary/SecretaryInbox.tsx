@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { api, ApiError, AssistantProposal, Commitment, ProactivePrefs, ProactiveQuality, ProactiveQualityExtra, ProactiveSettings, ProposalSummary } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { fetchBlob } from '../AuthedMedia';
@@ -44,7 +44,11 @@ const REASONS: { key: string; label: string }[] = [
 const SKILL_TITLE: Record<string, string> = {
   commitment: 'Обещания', workload: 'Страж нагрузки', reply: 'Ответы', followup: 'После встреч с клиентом',
   brief: 'Утренняя сводка', decision: 'Решения', postcall: 'Итоги встреч', autotask: 'Постановка задач',
+  docs: 'Сроки документов', greeting: 'Поздравления клиентам',
 };
+
+// #1476: «Документы» — сроки документов и чеки; отдельным куском, открывают редко
+const SecretaryDocs = lazy(() => import('./SecretaryDocs').then((m) => ({ default: m.SecretaryDocs })));
 
 function when(iso: string | null): string {
   if (!iso) return '';
@@ -53,11 +57,12 @@ function when(iso: string | null): string {
   return d.toDateString() === new Date().toDateString() ? time : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
 }
 
-export type SecretaryTab = 'inbox' | 'commitments' | 'settings';
+export type SecretaryTab = 'inbox' | 'commitments' | 'docs' | 'settings';
 
 export function SecretaryInbox({ tab, focusId, onNavigate }: { tab: SecretaryTab; focusId?: string | null; onNavigate: () => void }) {
   if (tab === 'commitments') return <Commitments onNavigate={onNavigate} />;
   if (tab === 'settings') return <Settings />;
+  if (tab === 'docs') return <Suspense fallback={<SkeletonList rows={4} />}><SecretaryDocs /></Suspense>;
   return <Inbox focusId={focusId ?? null} onNavigate={onNavigate} />;
 }
 

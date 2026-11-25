@@ -6,7 +6,8 @@
  * положить в ящик, до какого момента «отложить» и в каком порядке показывать.
  */
 
-export const SKILLS = ['commitment', 'workload', 'reply', 'followup', 'brief', 'decision', 'postcall', 'autotask'] as const;
+// #1476: docs — сроки документов, greeting — поздравления клиентам
+export const SKILLS = ['commitment', 'workload', 'reply', 'followup', 'brief', 'decision', 'postcall', 'autotask', 'docs', 'greeting'] as const;
 export type Skill = typeof SKILLS[number];
 
 export const PRIORITY_LABEL = ['Критично', 'Сегодня', 'Важно', 'К сведению'] as const;
@@ -23,6 +24,8 @@ export const SECTION_OF: Record<Skill, 'attention' | 'commitments' | 'replies' |
   postcall: 'meetings',
   // #4615: автоматически поставленная задача — проверить через 30 секунд
   autotask: 'attention',
+  docs: 'attention',
+  greeting: 'attention',
 };
 
 /** Причины 👎 (§109). */

@@ -110,6 +110,12 @@
 .cl-box > .ui-btn { align-self: flex-start; }
 .cl-box-dim { background: transparent; }
 .cl-mini-row { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 14px; }
+/* #1476 F11: «Важные даты» — форма добавления */
+.cl-dates-form { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
+.cl-dates-day { display: flex; gap: 6px; flex-wrap: wrap; }
+.cl-dates-day .input { width: auto; min-width: 70px; }
+.cl-dates-year { max-width: 90px; }
+.cl-dates-acts { display: flex; gap: 6px; }
 .cl-link-row, .cl-link { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; overflow-wrap: anywhere; }
 .cl-link-row:hover, .cl-link:hover { color: var(--accent); }
 .cl-link-row:focus-visible, .cl-link:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 4px; }

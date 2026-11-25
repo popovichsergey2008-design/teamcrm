@@ -55,6 +55,51 @@ export class ClientsService {
     this.realtime.emitToTenant(me.tenantId, event, { clientId });
   }
 
+  // ── важные даты (#1476 F11) ───────────────────────────────────────────────────
+  /** Дни рождения контактов, день компании, годовщина сотрудничества — видят все, кто видит клиента. */
+  async dates(me: Me, clientId: string) {
+    const c = await this.ctx(me);
+    await this.client(me, c, clientId);
+    const rows = await this.db.many<any>(
+      `SELECT d.id, d.kind, d.title, d.month, d.day, d.year, d.contact_id,
+              NULLIF(TRIM(concat_ws(' ', cc.first_name, cc.last_name)), '') AS person
+         FROM client_dates d LEFT JOIN client_contacts cc ON cc.id = d.contact_id
+        WHERE d.tenant_id=$1 AND d.client_id=$2 ORDER BY d.month, d.day`,
+      [me.tenantId, clientId],
+    );
+    return rows.map((r) => ({
+      id: String(r.id), kind: r.kind, title: r.title, month: r.month, day: r.day, year: r.year,
+      contactId: r.contact_id ? String(r.contact_id) : null, person: r.person,
+    }));
+  }
+
+  async addDate(me: Me, clientId: string, dto: { kind: string; contactId?: string | null; title?: string | null; month: number; day: number; year?: number | null }) {
+    const c = await this.ctx(me, 'client.edit', 'Править клиентов вам не разрешено');
+    await this.client(me, c, clientId);
+    const max = new Date(Date.UTC(2024, dto.month, 0)).getUTCDate(); // високосный год: 29 февраля допустимо
+    if (dto.day > max) throw AppException.validation('Такого дня в этом месяце нет');
+    if (dto.contactId) {
+      const ok = await this.db.one(`SELECT 1 FROM client_contacts WHERE tenant_id=$1 AND client_id=$2 AND id=$3`, [me.tenantId, clientId, dto.contactId]);
+      if (!ok) throw AppException.validation('Контакт не найден у этого клиента');
+    }
+    if (dto.kind === 'other' && !dto.title?.trim()) throw AppException.validation('Напишите, что за дата');
+    await this.db.query(
+      `INSERT INTO client_dates (tenant_id, client_id, contact_id, kind, title, month, day, year, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [me.tenantId, clientId, dto.contactId || null, dto.kind, dto.title?.trim().slice(0, 160) || null, dto.month, dto.day, dto.year ?? null, me.userId],
+    );
+    await this.repo.log(me.tenantId, clientId, me.userId, 'profile', 'Добавлена важная дата', { type: 'client', id: clientId });
+    return this.dates(me, clientId);
+  }
+
+  async removeDate(me: Me, id: string) {
+    const c = await this.ctx(me, 'client.edit', 'Править клиентов вам не разрешено');
+    const row = await this.db.one<{ client_id: string }>(`SELECT client_id FROM client_dates WHERE tenant_id=$1 AND id=$2`, [me.tenantId, id]);
+    if (!row) throw AppException.notFound('Дата не найдена');
+    await this.client(me, c, String(row.client_id));
+    await this.db.query(`DELETE FROM client_dates WHERE tenant_id=$1 AND id=$2`, [me.tenantId, id]);
+    return this.dates(me, String(row.client_id));
+  }
+
   // ── список ─────────────────────────────────────────────────────────────────────
   async list(me: Me, f: ListFilters) {
     const c = await this.ctx(me);

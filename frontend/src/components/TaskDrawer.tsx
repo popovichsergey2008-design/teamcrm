@@ -44,6 +44,9 @@ import { INBOX_CHANGED, inboxApi } from '../lib/inbox-api';
 const TaskAudioProof = lazy(() => import('./meetings/TaskAudioProof'));
 // «Было/стало» (#4657) — своим куском и со своим CSS: отчёт смотрят после сдачи, не в каждой карточке
 const BeforeAfterTab = lazy(() => import('./before-after/BeforeAfterTab'));
+// #1476 F21: «Проверить договор» у docx/pdf во вкладке «Файлы»
+const ContractReviewDialog = lazy(() => import('./ContractReview').then((m) => ({ default: m.ContractReviewDialog })));
+const isContractFile = (name: string) => /\.(docx?|pdf|rtf|odt)$/i.test(name);
 // #4798/#4799 → #5016: части потока работы расставлены по новой карточке
 import { BlockerDialog, FlowNotices, FlowRecords, flowTimeRows, HandoffDialog, LinksRows, ShareDialog, TaskFocusDialog, useTaskFlow } from './task-flow/TaskFlowPanel';
 import { TaskFamily } from './task-flow/TaskFamily';
@@ -1952,6 +1955,7 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
   // файлы за авторизацией: тянем blob с токеном, картинку показываем в попапе, остальное скачиваем
   /** Какое вложение сейчас открывается и на сколько процентов (-1 — размер неизвестен). */
   const [opening, setOpening] = useState<{ id: string; pct: number } | null>(null);
+  const [review, setReview] = useState<{ fileId: string; name: string } | null>(null);
   const open = async (f: any) => {
     setErr('');
     if (opening) return;
@@ -2042,6 +2046,11 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
             </div>
           </div>
           <span className="ts-file-acts">
+            {isContractFile(String(f.file_name ?? '')) && (
+              <button type="button" className="ts-link" title="Найти рискованные и нетиповые пункты договора" onClick={() => setReview({ fileId: String(f.file_id), name: String(f.file_name) })}>
+                <Icon name="shield" size={13} /> Проверить договор
+              </button>
+            )}
             <button type="button" className="ts-link" onClick={() => open(f)}>Открыть</button>
             <Button
               variant="ghost"
@@ -2062,6 +2071,11 @@ function FilesTab({ taskId, onRefresh, onCount }: { taskId: string; onRefresh: (
       {/* файлы Google Диска и документ по задаче (#1565) — рядом с обычными файлами */}
       <div className="ts-gfiles"><GoogleFilesBlock key={gkey} entityType="task" entityId={String(taskId)} /></div>
       {preview && <Lightbox items={[{ url: preview.url, name: preview.name, mime: preview.mime }]} onClose={closePreview} />}
+      {review && (
+        <Suspense fallback={null}>
+          <ContractReviewDialog fileId={review.fileId} fileName={review.name} taskId={taskId} onClose={() => setReview(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }

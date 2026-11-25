@@ -138,6 +138,15 @@ class MergeDto {
  * Раздел «Клиенты» (ТЗ-17, п. 66–71). Права проверяет сервис на каждом действии;
  * роль `client` (внешний пользователь портала) сюда не пускается вовсе.
  */
+class ClientDateDto {
+  @IsIn(['birthday', 'company', 'partnership', 'other']) kind!: string;
+  @IsOptional() @IsString() @MaxLength(20) contactId?: string | null;
+  @IsOptional() @IsString() @MaxLength(160) title?: string | null;
+  @IsInt() @Min(1) @Max(12) month!: number;
+  @IsInt() @Min(1) @Max(31) day!: number;
+  @IsOptional() @IsInt() @Min(1900) @Max(2100) year?: number | null;
+}
+
 @ApiTags('clients')
 @ApiBearerAuth()
 @Controller()
@@ -252,6 +261,22 @@ export class ClientsController {
   @Delete('clients/:id/permanent')
   remove(@CurrentUser() u: AuthUser, @Param('id') id: string) {
     return this.clients.remove(this.me(u), id);
+  }
+
+  // #1476 F11: важные даты клиента — накануне ответственному черновик поздравления
+  @Get('clients/:id/dates')
+  dates(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.clients.dates(this.me(u), id);
+  }
+
+  @Post('clients/:id/dates')
+  addDate(@CurrentUser() u: AuthUser, @Param('id') id: string, @Body() dto: ClientDateDto) {
+    return this.clients.addDate(this.me(u), id, dto);
+  }
+
+  @Delete('client-dates/:id')
+  removeDate(@CurrentUser() u: AuthUser, @Param('id') id: string) {
+    return this.clients.removeDate(this.me(u), id);
   }
 
   // контакты

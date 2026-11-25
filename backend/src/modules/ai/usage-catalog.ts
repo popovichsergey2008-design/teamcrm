@@ -27,6 +27,9 @@ export const AI_FEATURES: FeatureInfo[] = [
   { key: 'inbox_draft', title: 'Черновик задачи из входящего письма', where: 'Входящие', group: 'tasks' },
   { key: 'task_assistant', title: 'Помощник в обсуждении задачи', where: 'Карточка задачи → «Обсуждение»', group: 'tasks' },
   { key: 'task_before_after', title: 'Проверка «было/стало» по задаче', where: 'Карточка задачи → «Было/стало», и сама после сдачи', group: 'tasks' },
+  { key: 'contract_review', title: 'Проверка договора', where: 'Карточка задачи → Файлы → «Проверить договор»', group: 'knowledge' },
+  { key: 'receipt_ocr', title: 'Распознавание чека', where: 'AI-агент → Документы → Чеки', group: 'knowledge' },
+  { key: 'client_greeting', title: 'Черновик поздравления клиенту', where: 'AI-агент → Ждут решения (накануне даты из карточки клиента)', group: 'service' },
   { key: 'task_ai_reply', title: 'Предложить ответ / обновление статуса в задаче', where: 'Карточка задачи → кнопки у поля ввода', group: 'tasks' },
   { key: 'chat_assistant', title: 'Помощник в чате (@AI)', where: 'Чаты и миты → любой чат', group: 'service' },
   // интернет (ТЗ-33): не токены, а веб-кредиты — считаются в «Настройки → Тариф и ИИ»

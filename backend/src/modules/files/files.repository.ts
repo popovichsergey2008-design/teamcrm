@@ -84,6 +84,8 @@ export class FilesRepository {
                     OR EXISTS (SELECT 1 FROM chat_members cm WHERE cm.chat_id = c.id AND cm.user_id = $2::bigint)))
           -- голосовой бриф (ТЗ-21) — личный: только тому, кому его записали (он же «загрузил»)
           WHEN 'assistant_brief' THEN FALSE
+          -- чек для авансового отчёта (#1476) — личный: только тому, кто его загрузил
+          WHEN 'receipt' THEN FALSE
           -- файл Инфоцентра проекта (#4659): тем, кто видит проект; клиенту Инфоцентр не показываем
           WHEN 'project_hub' THEN NOT $5::boolean AND f.owner_id IS NOT NULL AND EXISTS (
             SELECT 1 FROM projects hp WHERE hp.id = f.owner_id AND hp.tenant_id = $1 AND ${proj('hp.id')})

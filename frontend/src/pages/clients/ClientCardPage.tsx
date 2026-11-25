@@ -15,6 +15,7 @@ import { getSocket } from '../../lib/socket';
 import { toastSaved } from '../../lib/notifications';
 import { ago, dateTimeRu, HEALTH, money, SOURCE, STAGE, STATUS, STATUS_KEYS, TYPE } from './labels';
 import { ContactsTab, DealsTab, NotesTab, ActivityTab, FilesTab, TasksTab, MeetingsTab, ChatsTab, ProjectsTab, ProfileTab } from './tabs';
+import { ClientDates } from './ClientDates';
 import { QuickTaskDialog, QuickMeetingDialog, MergeDialog } from './dialogs';
 import { useTitleHint } from '../../lib/page-title';
 import { Linkify } from '../../components/Linkify';
@@ -236,6 +237,7 @@ export function ClientCardPage({ clientId }: { clientId: string }) {
                   ))}
                 <Button variant="ghost" size="sm" onClick={() => setTab('contacts')}>Все контакты</Button>
               </section>
+              <ClientDates clientId={clientId} canEdit={can.edit} contacts={card.contacts.hidden ? [] : card.contacts.items} />
               {can.deals && (
                 <section className="cl-box">
                   <h3>Сделки</h3>

@@ -1,0 +1,24 @@
+/* #1476: окно «Проверка договора». Ленивый кусок. */
+.cr { display: flex; flex-direction: column; gap: 12px; font-size: var(--fs-sm); line-height: 1.45; }
+.cr-summary { margin: 0; font-size: var(--fs-md); }
+.cr-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--bg-elev-2); }
+.cr-facts dt { color: var(--text-mut); }
+.cr-facts dd { margin: 0; overflow-wrap: anywhere; }
+.cr-risks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cr-risk { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--radius); background: var(--bg-elev); }
+.cr-risk-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.cr-level { font-size: var(--fs-xs); font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.cr-high { border-left-color: var(--danger); }
+.cr-high .cr-level { background: var(--danger-soft); color: var(--danger); }
+.cr-medium { border-left-color: var(--warn); }
+.cr-medium .cr-level { background: var(--warn-soft); color: var(--warn); }
+.cr-low { border-left-color: var(--border-2); }
+.cr-low .cr-level { background: var(--bg-elev-2); color: var(--text-mut); border: 1px solid var(--border); }
+.cr-quote { margin: 0; padding: 4px 10px; border-left: 2px solid var(--border-2); color: var(--text-dim); font-style: italic; overflow-wrap: anywhere; }
+.cr-missing ul { margin: 4px 0 0; padding-left: 20px; }
+.cr-none { display: flex; gap: 6px; align-items: center; color: var(--ok); margin: 0; }
+.cr-disclaimer { font-size: var(--fs-xs); margin: 0; }
+.cr-wait { display: flex; flex-direction: column; gap: 10px; }
+.cr-err { display: flex; gap: 6px; align-items: center; }
+.cr-foot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; width: 100%; }
+.cr-note { margin-right: auto; display: inline-flex; gap: 4px; align-items: center; color: var(--ok); font-size: var(--fs-sm); }

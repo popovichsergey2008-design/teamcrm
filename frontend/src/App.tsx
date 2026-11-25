@@ -319,15 +319,16 @@ export function App() {
   const taskInRoute = route.taskId;
   useEffect(() => { if (taskInRoute) setNl(null); }, [taskInRoute]);
   const [paletteOpen, setPaletteOpen] = useState<{ voice?: boolean } | null>(null);
-  const [secretaryOpen, setSecretaryOpen] = useState<false | true | 'journal'>(false);
+  const [secretaryOpen, setSecretaryOpen] = useState<false | true | 'journal' | 'docs'>(false);
   /** Предложение секретаря из push или ссылки `/secretary/:id` (ТЗ-21). */
   const [secretaryFocus, setSecretaryFocus] = useState<string | null>(null);
   useEffect(() => {
     if (!user) return; // до входа адрес не трогаем — после входа ссылка сработает
-    const m = window.location.pathname.match(/^\/secretary(?:\/(\d+))?\/?$/);
+    // #1476: /secretary/docs — сразу вкладка «Документы» (ссылка из карточки о сроке документа)
+    const m = window.location.pathname.match(/^\/secretary(?:\/(\d+|docs))?\/?$/);
     if (!m) return;
-    setSecretaryFocus(m[1] ?? null);
-    setSecretaryOpen(true);
+    setSecretaryFocus(m[1] && m[1] !== 'docs' ? m[1] : null);
+    setSecretaryOpen(m[1] === 'docs' ? 'docs' : true);
     navigate('/focus', { replace: true });
   }, [route, user]);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -1108,7 +1109,7 @@ export function App() {
         <SecretaryPanel
           canManage={user.role === 'owner' || user.role === 'manager'}
           focusId={secretaryFocus}
-          initialTab={secretaryOpen === 'journal' ? 'journal' : undefined}
+          initialTab={secretaryOpen === 'journal' || secretaryOpen === 'docs' ? secretaryOpen : undefined}
           onClose={() => { setSecretaryOpen(false); setSecretaryFocus(null); }}
         />
       )}

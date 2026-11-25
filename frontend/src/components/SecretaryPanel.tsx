@@ -47,7 +47,7 @@ function when(iso: string): string {
   return sameDay ? time : `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')} ${time}`;
 }
 
-export function SecretaryPanel({ canManage = false, focusId = null, onClose, initialTab }: { canManage?: boolean; focusId?: string | null; onClose: () => void; initialTab?: 'journal' }) {
+export function SecretaryPanel({ canManage = false, focusId = null, onClose, initialTab }: { canManage?: boolean; focusId?: string | null; onClose: () => void; initialTab?: 'journal' | 'docs' }) {
   useEscape(onClose); // закрытие с клавиатуры, а не только крестиком
   /*
     Первая вкладка — «Ждут решения» (ТЗ-21): секретарь не только отчитывается о
@@ -97,6 +97,7 @@ export function SecretaryPanel({ canManage = false, focusId = null, onClose, ini
           items={[
             { value: 'inbox', label: 'Ждут решения', count: waiting.total },
             { value: 'commitments', label: 'Обещания' },
+            { value: 'docs', label: 'Документы' },
             { value: 'journal', label: 'Журнал' },
             { value: 'settings', label: 'Настройки' },
           ]}
