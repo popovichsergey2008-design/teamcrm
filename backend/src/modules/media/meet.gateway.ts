@@ -596,6 +596,12 @@ export class MeetGateway implements OnModuleInit {
         this.broadcast(room, pausing ? 'meet.producer-paused' : 'meet.producer-resumed', {
           meeting_id: room.id, user_id: c.userId, producer_id: producer.id, kind: producer.kind,
         }, c.userId);
+        // микрофон сняли с паузы во время записи — дорожки у него могло не быть (была пауза
+        // при старте записи) или она оборвалась: подхватываем; живую дорожку attach не дублирует
+        if (!pausing && producer.kind === 'audio' && this.recording.isRecording(room.id)) {
+          const participant = room.participants.get(c.userId);
+          if (participant) void this.recording.attachLate(room, participant);
+        }
         return;
       }
 

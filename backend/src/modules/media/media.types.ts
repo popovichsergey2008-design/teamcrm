@@ -26,6 +26,9 @@ export interface MsProducer {
   id: string;
   kind: string;
   appData: Record<string, unknown>;
+  /** Микрофон на паузе: mediasoup не шлёт RTP вовсе. */
+  readonly paused?: boolean;
+  readonly closed?: boolean;
   pause(): Promise<void>;
   resume(): Promise<void>;
   close(): void;

@@ -20,6 +20,8 @@ interface TrackRecorder {
   port: number;
   /** Смещение от начала записи: участник мог войти в середине разговора. */
   offsetSec: number;
+  /** ffmpeg завершился посреди записи: файл (что успел) остаётся, поток подхватит новая дорожка. */
+  dead?: boolean;
 }
 
 interface Session {
@@ -79,6 +81,8 @@ export class RecordingService {
   private readonly log = new Logger('Recording');
   private readonly sessions = new Map<string, Session>();
   private readonly usedPorts = new Set<number>();
+  /** Дорожки, которые заводятся прямо сейчас: attach асинхронный, два события подряд дали бы дубль. */
+  private readonly attaching = new Set<string>();
 
   constructor(private readonly diag: DiagService) {}
 
@@ -130,7 +134,7 @@ export class RecordingService {
     this.log.log(`запись начата: ${room.id}, дорожек ${session.tracks.size}`);
   }
 
-  /** Кто-то включил микрофон уже во время записи — добавляем его дорожку на ходу. */
+  /** Кто-то включил микрофон уже во время записи (или снял с паузы) — добавляем его дорожку на ходу. */
   async attachLate(room: MeetingRoom, participant: Participant): Promise<void> {
     const session = this.sessions.get(room.id);
     if (!session) return;
@@ -147,10 +151,29 @@ export class RecordingService {
     дорожки подписываются его именем.
   */
   private async attach(room: MeetingRoom, session: Session, participant: Participant): Promise<void> {
-    const audio = [...participant.producers.values()].find((p) => p.kind === 'audio');
+    const audio = [...participant.producers.values()].find((p) => p.kind === 'audio' && !p.closed);
     if (!audio) return;
-    if ([...session.tracks.values()].some((t) => t.consumer.producerId === audio.id)) return;
-    const key = session.tracks.has(participant.userId) ? `${participant.userId}~${audio.id.slice(0, 8)}` : participant.userId;
+    /*
+      26.11.2026 (Tokenalphabet): запись включили, когда у троих микрофон стоял на паузе.
+      Пауза — это ни одного RTP-пакета; ffmpeg через ~20 с выходит с «Connection timed out»,
+      и дорожка мертва до конца созвона: включили микрофон позже — их речь не писалась.
+      Теперь на паузе дорожку не заводим — её заведёт снятие с паузы (attachLate).
+    */
+    if (audio.paused) return;
+    if ([...session.tracks.values()].some((t) => !t.dead && t.consumer.producerId === audio.id)) return;
+    const busy = `${session.meetingId}:${audio.id}`;
+    if (this.attaching.has(busy)) return;
+    this.attaching.add(busy);
+    try {
+      await this.attachTrack(room, session, participant, audio.id);
+    } finally {
+      this.attaching.delete(busy);
+    }
+  }
+
+  private async attachTrack(room: MeetingRoom, session: Session, participant: Participant, producerId: string): Promise<void> {
+    let key = participant.userId;
+    for (let n = 2; session.tracks.has(key); n++) key = `${participant.userId}~${n}`;
 
     const port = this.allocPort();
     const transport = await room.router.createPlainTransport({
@@ -162,7 +185,7 @@ export class RecordingService {
 
     // consumer стартует на паузе: сначала поднимаем ffmpeg, иначе первые секунды уйдут в никуда
     const consumer = await transport.consume({
-      producerId: audio.id,
+      producerId,
       rtpCapabilities: room.router.rtpCapabilities,
       paused: true,
     });
@@ -189,10 +212,24 @@ export class RecordingService {
     proc.stderr?.on('data', (d) => this.log.warn(`ffmpeg ${participant.userId}: ${String(d).slice(0, 200)}`));
 
     await consumer.resume();
-    session.tracks.set(key, {
+    const track: TrackRecorder = {
       userId: participant.userId, displayName: participant.displayName,
       transport, consumer, proc, file, port,
       offsetSec: Math.max(0, (Date.now() - session.startedAt) / 1000),
+    };
+    session.tracks.set(key, track);
+    // ffmpeg вышел сам, а запись идёт: дорожка мертва — освобождаем поток, чтобы его
+    // подхватила новая дорожка при следующем включении микрофона
+    proc.once('exit', (code) => {
+      if (this.sessions.get(session.meetingId) !== session || track.dead) return;
+      track.dead = true;
+      try { consumer.close(); transport.close(); } catch { /* уже закрыто */ }
+      this.usedPorts.delete(port);
+      this.log.warn(`запись ${session.meetingId}: дорожка ${participant.displayName} оборвалась (ffmpeg ${code}) — подхватим при включении микрофона`);
+      this.diag.write({
+        tenantId: session.tenantId, scope: 'meet', refId: session.meetingId, userId: participant.userId,
+        side: 'server', event: 'recording.track-died', data: { name: participant.displayName, code, port },
+      });
     });
   }
 
@@ -204,8 +241,10 @@ export class RecordingService {
 
     const out: RecordedTrack[] = [];
     for (const t of session.tracks.values()) {
-      try { t.consumer.close(); t.transport.close(); } catch { /* уже закрыто */ }
-      this.usedPorts.delete(t.port);
+      if (!t.dead) {
+        try { t.consumer.close(); t.transport.close(); } catch { /* уже закрыто */ }
+        this.usedPorts.delete(t.port);
+      }
       // SIGINT, а не kill: ffmpeg должен корректно закрыть контейнер ogg, иначе файл битый
       await this.finish(t.proc);
       // Пустая дорожка — это либо человек промолчал, либо запись сорвалась.
