@@ -93,7 +93,7 @@ describe('RealAiProvider.generate({ fast }) — #4666', () => {
     expect(calls[0].url).toContain('openai');
     expect(calls[0].body).toMatchObject({ model: 'gpt-5.4-mini', reasoning_effort: 'low', max_completion_tokens: 2000 });
     expect(calls[0].body.max_tokens).toBeUndefined();
-    expect(calls[1].body).toMatchObject({ model: 'kimi-k2.6', thinking: { type: 'disabled' }, max_completion_tokens: 300 });
+    expect(calls[1].body).toMatchObject({ model: 'kimi-k2.6', thinking: { type: 'disabled' }, max_completion_tokens: 4300 });
     expect(p.lastModel).toBe('kimi-k2.6');
   });
 

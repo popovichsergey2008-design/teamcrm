@@ -279,7 +279,13 @@ function kimiExtras(model: string): { body: Record<string, unknown>; reserve: nu
     // рассуждение входит в max_completion_tokens: без запаса ответ обрывается пустым
     return { body: { reasoning_effort: effort }, reserve: effort === 'low' ? 8000 : 32000 };
   }
-  if (/^kimi-k2\.6/i.test(model)) return { body: { thinking: { type: 'disabled' } }, reserve: 0 };
+  /*
+    26.11.2026: у K2.6 запаса не было — потолок вызывающего резал ответ посреди JSON
+    (разбор созвона Tokenalphabet: задач 0). Потолки по умолчанию (1500) и в промптах
+    ставились под gpt-4o-mini, а Kimi пишет по-русски длиннее. Запас — как у K3: платим за
+    фактический ответ, а не за потолок; краткость задаёт промпт, а не обрыв.
+  */
+  if (/^kimi-k2\.6/i.test(model)) return { body: { thinking: { type: 'disabled' } }, reserve: 4000 };
   return { body: {}, reserve: 16000 }; // k2.7-code: рассуждение не выключается
 }
 

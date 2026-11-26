@@ -33,10 +33,10 @@ describe('Kimi как основной ИИ', () => {
     expect(calls[0].body.model).toBe('kimi-k2.6');
   });
 
-  it('K2.6 — без рассуждения', async () => {
+  it('K2.6 — без рассуждения, с запасом сверх потолка (26.11: ответ резался посреди JSON)', async () => {
     const p = new RealAiProvider(undefined, undefined, 'x', 'kimi-k2.6', undefined, 'sk-kimi');
     await p.generate('с', 'в', { maxTokens: 300 });
-    expect(calls[0].body).toMatchObject({ model: 'kimi-k2.6', thinking: { type: 'disabled' }, max_completion_tokens: 300 });
+    expect(calls[0].body).toMatchObject({ model: 'kimi-k2.6', thinking: { type: 'disabled' }, max_completion_tokens: 4300 });
   });
 
   it('у компании выбрана модель OpenAI — Kimi только запасной', async () => {
