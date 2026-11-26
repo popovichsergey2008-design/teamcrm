@@ -1,4 +1,4 @@
-import { RealAiProvider } from './ai.provider';
+import { RealAiProvider, openaiOutCap } from './ai.provider';
 import { estimateCost } from './usage-catalog';
 
 /*
@@ -59,5 +59,13 @@ describe('Kimi как основной ИИ', () => {
   it('расход Kimi считается по прайсу', () => {
     expect(estimateCost('kimi-k3', 1_000_000, 1_000_000)).toBe(18);
     expect(estimateCost('kimi-k2.6', 1_000_000, 0)).toBe(0.95);
+  });
+});
+
+describe('26.11: запас сверх потолка у запасных моделей', () => {
+  it('gpt-4o-mini — потолок + 4000, но не выше 16 384; неизвестная модель — как есть', () => {
+    expect(openaiOutCap('gpt-4o-mini', 1500)).toBe(5500);
+    expect(openaiOutCap('gpt-4o-mini', 14_000)).toBe(16_384);
+    expect(openaiOutCap('gpt-3.5-turbo', 1500)).toBe(1500);
   });
 });

@@ -273,6 +273,20 @@ export const YANDEX_KNOWN_MODELS = ['yandexgpt/latest', 'yandexgpt-5.1/latest', 
  * внутренних задач хватает «low»; KIMI_REASONING_EFFORT меняет это без выкладки кода.
  * У K2.6 рассуждение выключаем: он нужен как быстрая модель.
  */
+/**
+ * Запас сверх потолка вызывающего (26.11.2026). Потолки ставились под краткие ответы
+ * gpt-4o-mini, а длинный JSON (разбор созвона, чата) по-русски в них не влезал и резался
+ * посреди — разбор терял всё. Платим за фактический ответ, краткость задаёт промпт.
+ */
+export const OUT_HEADROOM = 4000;
+
+/** Потолок ответа для OpenAI без рассуждения: с запасом, но не выше предела модели. */
+export function openaiOutCap(model: string, maxTokens: number): number {
+  // gpt-4o, gpt-4o-mini, gpt-4.1*: предел ответа 16 384 (у 4.1 больше — берём общий)
+  if (/^gpt-4o|^gpt-4\.1/i.test(model)) return Math.min(maxTokens + OUT_HEADROOM, 16_384);
+  return maxTokens; // предел неизвестен — не рискуем отказом
+}
+
 function kimiExtras(model: string): { body: Record<string, unknown>; reserve: number } {
   if (/^kimi-k3/i.test(model)) {
     const effort = process.env.KIMI_REASONING_EFFORT || 'low';
@@ -285,7 +299,7 @@ function kimiExtras(model: string): { body: Record<string, unknown>; reserve: nu
     ставились под gpt-4o-mini, а Kimi пишет по-русски длиннее. Запас — как у K3: платим за
     фактический ответ, а не за потолок; краткость задаёт промпт, а не обрыв.
   */
-  if (/^kimi-k2\.6/i.test(model)) return { body: { thinking: { type: 'disabled' } }, reserve: 4000 };
+  if (/^kimi-k2\.6/i.test(model)) return { body: { thinking: { type: 'disabled' } }, reserve: OUT_HEADROOM };
   return { body: {}, reserve: 16000 }; // k2.7-code: рассуждение не выключается
 }
 
@@ -440,7 +454,7 @@ export class RealAiProvider implements AiProvider {
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
       body: JSON.stringify({
         model,
-        ...(reasoning ? { max_completion_tokens: Math.max(maxTokens * 4, 2000), reasoning_effort: 'low' } : { max_tokens: maxTokens }),
+        ...(reasoning ? { max_completion_tokens: Math.max(maxTokens * 4, 2000), reasoning_effort: 'low' } : { max_tokens: url.startsWith('https://api.openai.com/') ? openaiOutCap(model, maxTokens) : maxTokens }),
         messages: [{ role: 'system', content: system }, { role: 'user', content }],
       }),
       ...(signal ? { signal } : {}),
@@ -467,8 +481,8 @@ export class RealAiProvider implements AiProvider {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': this.anthropicKey!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      // у Claude 3.5 потолок ответа 8192 — больший запрос он отклоняет целиком
-      body: JSON.stringify({ model, max_tokens: Math.min(maxTokens, 8192), system, messages: [{ role: 'user', content }] }),
+      // запас сверх потолка, как у Kimi; у Claude 3.5 предел ответа 8192 — больший запрос он отклоняет целиком
+      body: JSON.stringify({ model, max_tokens: Math.min(maxTokens + OUT_HEADROOM, 8192), system, messages: [{ role: 'user', content }] }),
       ...(signal ? { signal } : {}),
     });
     const json: any = await res.json().catch(() => ({}));
