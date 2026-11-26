@@ -393,7 +393,7 @@ export class RealAiProvider implements AiProvider {
       : user;
     // на паузе (нет денег на счёте) — сразу к запасной модели, без похода в сеть
     if (kimiPaused(this.kimiKey)) throw new Error('Kimi на паузе: счёт не пополнен — отвечает запасная модель');
-    const res = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
+    const res = await fetchNet(`${KIMI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
       body: this.kimiBody(model, system, content, maxTokens),
@@ -414,7 +414,7 @@ export class RealAiProvider implements AiProvider {
 
   private async kimiStream(model: string, system: string, user: string, maxTokens: number, onDelta: (t: string) => void): Promise<string> {
     if (kimiPaused(this.kimiKey)) throw new Error('Kimi на паузе: счёт не пополнен — отвечает запасная модель');
-    const res = await fetch(`${KIMI_BASE_URL}/chat/completions`, {
+    const res = await fetchNet(`${KIMI_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${this.kimiKey}`, 'content-type': 'application/json' },
       body: this.kimiBody(model, system, user, maxTokens, true),
@@ -449,7 +449,7 @@ export class RealAiProvider implements AiProvider {
       включает и само рассуждение — даём запас и просим думать коротко: здесь ждёт человек.
     */
     const reasoning = isReasoningModel(model);
-    const res = await fetch(url, {
+    const res = await fetchNet(url, {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json', ...extraHeaders },
       body: JSON.stringify({
@@ -831,6 +831,41 @@ export class RealAiProvider implements AiProvider {
     const json: any = await res.json();
     const vec = json?.data?.[0]?.embedding;
     return Array.isArray(vec) && vec.length === EMBED_DIM ? vec : null;
+  }
+}
+
+/** Обрыв сети, а не ответ сервиса: повтор имеет смысл (как TelegramSender). */
+const NET_FAILURES = new Set([
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'EPIPE', 'EAI_AGAIN',
+]);
+
+export function netCode(e: unknown): string | null {
+  const c = (e as { cause?: { code?: string; name?: string } })?.cause;
+  const code = String(c?.code ?? '');
+  return code || (c?.name === 'SocketError' ? 'UND_ERR_SOCKET' : null);
+}
+
+/**
+ * fetch к модели через туннели на старом сервере (26.11.2026). Изредка соединение рвётся
+ * («fetch failed») — раньше это сразу уходило к запасной модели, а запасной OpenAI идёт
+ * тем же путём и рвался вместе с ним: вместо ответа заглушка. Теперь один повтор при
+ * сетевом обрыве (не при ошибке сервиса и не при отмене), а в лог — код и через сколько.
+ */
+export async function fetchNet(url: string, init: RequestInit, attempts = 2): Promise<Response> {
+  const t0 = Date.now();
+  for (let i = 1; ; i++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      const code = netCode(e);
+      const sec = Math.round((Date.now() - t0) / 1000);
+      const host = url.replace(/^https?:\/\/([^/]+).*$/, '$1');
+      if (!code || !NET_FAILURES.has(code) || init.signal?.aborted || i >= attempts) {
+        throw new Error(`${(e as Error).message}${code ? ` (${code}, ${host}, через ${sec} с)` : ''}`);
+      }
+      providerLog.warn(`сеть до ${host}: ${code} через ${sec} с — повтор`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 }
 
