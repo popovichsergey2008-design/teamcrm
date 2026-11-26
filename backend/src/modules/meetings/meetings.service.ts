@@ -18,7 +18,7 @@ import { TaskCardService } from '../taskcard/taskcard.service';
 import { SecretaryService } from '../secretary/secretary.service';
 import { TasksService } from '../tasks/tasks.service';
 import { describeFfmpegError, extractAudioChunks, mixTracks } from './audio.util';
-import { MEETING_PROMPT, SUMMARY_PROMPT, validateMeetingAnalysis } from './meeting-schema';
+import { MEETING_ANALYZE_MAX_TOKENS, MEETING_PROMPT, SUMMARY_PROMPT, parseModelJson, validateMeetingAnalysis } from './meeting-schema';
 import { draftConfidence, newsKind, speakerAt } from './postcall-rules';
 import { DraftRow, MeetingsRepository } from './meetings.repository';
 import { blocksOf, PostcallService } from './postcall.service';
@@ -864,7 +864,7 @@ ${PRIVACY_PROMPT_RULE}`, text.slice(0, 60_000), 'meeting_summary_quick', {
       .catch((e) => { this.log.warn(`встреча ${meetingId}: краткие итоги — ${(e as Error).message}`); return null; });
 
     const answer = await this.ai.generateWithModel(tenantId, `${MEETING_PROMPT}
-${PRIVACY_PROMPT_RULE}`, transcript, 'meeting_analyze');
+${PRIVACY_PROMPT_RULE}`, transcript, 'meeting_analyze', { maxTokens: MEETING_ANALYZE_MAX_TOKENS });
     /*
       Ключ есть, а ИИ не ответил (13.10: кончились деньги на API) — это сбой, а не
       «встреча без задач». Раньше заглушка сохранялась как итог, статус был «готово»,
@@ -872,7 +872,7 @@ ${PRIVACY_PROMPT_RULE}`, transcript, 'meeting_analyze');
     */
     if (answer.degraded) { await quick; throw new AiUnavailableError(); }
     const raw = answer.text;
-    const parsed = safeJson(raw);
+    const parsed = parseModelJson(raw);
     const { value, errors } = validateMeetingAnalysis(parsed);
     if (errors.length) this.log.warn(`meeting ${meetingId}: разбор с замечаниями — ${errors.join('; ')}`);
     const quickSummary = await quick;
@@ -1275,15 +1275,6 @@ ${PRIVACY_PROMPT_RULE}`, transcript, 'meeting_analyze');
     await this.repo.markDraftRejected(draftId);
     return { rejected: true };
   }
-}
-
-/** LLM любит обрамлять JSON пояснениями и ```-блоками — достаём объект из текста. */
-function safeJson(raw: string): unknown {
-  const cleaned = raw.replace(/```(?:json)?/gi, '').trim();
-  const start = cleaned.indexOf('{');
-  const end = cleaned.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { return null; }
 }
 
 /**

@@ -128,6 +128,65 @@ export function meetingPlans(v: unknown, limit = 5): MeetingPlan[] {
   return out;
 }
 
+/**
+ * Потолок ответа разбора встречи. 26.11.2026 (Tokenalphabet, созвон 42 мин): по умолчанию
+ * было 1500 — Kimi оборвал JSON посреди списка задач, полный ответ занял ~2300 токенов.
+ */
+export const MEETING_ANALYZE_MAX_TOKENS = 10_000;
+
+/**
+ * JSON из ответа модели: снимает ```-обрамление и пояснения вокруг объекта.
+ * Оборванный ответ (модель упёрлась в потолок) закрываем по последнему ЦЕЛОМУ элементу:
+ * недописанная задача отбрасывается, написанные целиком остаются.
+ */
+export function parseModelJson(raw: string): unknown {
+  const cleaned = String(raw ?? '').replace(/```(?:json)?/gi, '').trim();
+  const start = cleaned.indexOf('{');
+  if (start < 0) return null;
+  const end = cleaned.lastIndexOf('}');
+  if (end > start) {
+    try { return JSON.parse(cleaned.slice(start, end + 1)); } catch { /* оборван — чиним ниже */ }
+  }
+  return repairTruncated(cleaned.slice(start));
+}
+
+/**
+ * Обрезаем до последнего места, где закончился целый элемент, и дописываем закрывающие
+ * скобки. Строки разбираем честно: скобки и запятые внутри текста не считаются.
+ */
+function repairTruncated(s: string): unknown {
+  const stack: string[] = [];
+  let inStr = false;
+  let esc = false;
+  const cuts: { at: number; closers: string }[] = [];
+  // резать можно между целыми элементами списка или полями верхнего уровня, но не
+  // внутри задачи: недописанная задача без цитаты и срока хуже, чем никакой
+  const cutOk = () => stack.length === 1 || stack[stack.length - 1] === ']';
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+    else if (ch === '}' || ch === ']') {
+      stack.pop();
+      if (!stack.length) break;
+      if (cutOk()) cuts.push({ at: i + 1, closers: [...stack].reverse().join('') });
+    } else if (ch === ',' && cutOk()) {
+      cuts.push({ at: i, closers: [...stack].reverse().join('') });
+    }
+  }
+  for (let k = cuts.length - 1; k >= 0; k--) {
+    const c = cuts[k];
+    try { return JSON.parse(s.slice(0, c.at) + c.closers); } catch { /* пробуем раньше */ }
+  }
+  return null;
+}
+
 export function validateMeetingAnalysis(raw: unknown): { value: MeetingAnalysis | null; errors: string[] } {
   const errors: string[] = [];
   if (!raw || typeof raw !== 'object') return { value: null, errors: ['ответ модели не является объектом'] };

@@ -329,7 +329,8 @@ export class RealAiProvider implements AiProvider {
   private yandexChat(model: string, system: string, user: string, maxTokens: number, signal?: AbortSignal): Promise<string> {
     const y = this.yandex!;
     const id = model.startsWith(YANDEX_PREFIX) ? model.slice(YANDEX_PREFIX.length) : model;
-    return this.chatCompletion(`${YANDEX_BASE_URL}/chat/completions`, y.key, `gpt://${y.folder}/${id}`, system, user, maxTokens,
+    // у YandexGPT потолок ответа 8000
+    return this.chatCompletion(`${YANDEX_BASE_URL}/chat/completions`, y.key, `gpt://${y.folder}/${id}`, system, user, Math.min(maxTokens, 8000),
       { Authorization: `Api-Key ${y.key}`, 'OpenAI-Project': y.folder }, [], signal);
   }
 
@@ -460,7 +461,8 @@ export class RealAiProvider implements AiProvider {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'x-api-key': this.anthropicKey!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }),
+      // у Claude 3.5 потолок ответа 8192 — больший запрос он отклоняет целиком
+      body: JSON.stringify({ model, max_tokens: Math.min(maxTokens, 8192), system, messages: [{ role: 'user', content }] }),
       ...(signal ? { signal } : {}),
     });
     const json: any = await res.json().catch(() => ({}));

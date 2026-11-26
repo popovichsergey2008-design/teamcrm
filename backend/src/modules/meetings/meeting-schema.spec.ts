@@ -1,4 +1,4 @@
-import { meetingPlans, validateMeetingAnalysis } from './meeting-schema';
+import { meetingPlans, parseModelJson, validateMeetingAnalysis } from './meeting-schema';
 
 describe('Встречи: валидация разбора LLM', () => {
   const ok = {
@@ -69,5 +69,28 @@ describe('#4749: договорённости о следующей встреч
   it('разбор без поля meetings — пустой список, а не ошибка', () => {
     const { value } = validateMeetingAnalysis({ summary: 'итоги', tasks: [] });
     expect(value!.meetings).toEqual([]);
+  });
+});
+
+describe('26.11: ответ модели оборван потолком длины', () => {
+  const head = '```json\n{"summary":"Итоги: {скобки} и, запятые в тексте","decisions":[{"text":"Ставить ссылки на новый домен","at":"12:01"}],'
+    + '"tasks":[{"title":"Создать сообщество в Instagram","assignee":"Глеб","quote":"создай, пожалуйста"},'
+    + '{"title":"Закинуть список задач в Slack","assignee":"Виктор","author":"Павел","at":"28:22",';
+  it('целые задачи остаются, недописанная отбрасывается', () => {
+    const parsed = parseModelJson(head) as { tasks: { title: string }[] };
+    const { value, errors } = validateMeetingAnalysis(parsed);
+    expect(value!.summary).toContain('{скобки}');
+    expect(value!.tasks.map((t) => t.title)).toEqual(['Создать сообщество в Instagram']);
+    expect(value!.decisions).toHaveLength(1);
+    expect(errors).toEqual([]);
+  });
+  it('оборвано внутри строки — тоже чинится', () => {
+    const parsed = parseModelJson(head + '"quote":"закинь, пожа') as { tasks: unknown[] };
+    expect(parsed.tasks).toHaveLength(1);
+  });
+  it('целый ответ с пояснениями вокруг — как раньше; мусор — null', () => {
+    expect(parseModelJson('Вот разбор:\n```json\n{"summary":"x","tasks":[]}\n```\nГотово')).toEqual({ summary: 'x', tasks: [] });
+    expect(parseModelJson('не знаю')).toBeNull();
+    expect(parseModelJson('{"summary":')).toBeNull();
   });
 });
