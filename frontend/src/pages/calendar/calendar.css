@@ -337,3 +337,10 @@
   .cal-body.with-plan { flex-direction: column; }
   .cal-body.with-plan .cal-side { flex: 0 0 auto; position: static; max-height: none; overflow: visible; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; width: 100%; }
 }
+
+/* #5062: на телефоне колонка часов 40px (app.css) обрезала «10:00» слева — 12,5px × масштаб
+   шрифта шире колонки, видно было только «0». Здесь, а не в app.css: там предел веса первого экрана. */
+@media (max-width: 900px) {
+  .calendar-page .cal-grid, .calendar-page .cal-scroll { grid-template-columns: calc(46px * var(--fs-scale, 1)) repeat(var(--cal-days, 7), minmax(90px, 1fr)); }
+  .calendar-page .cal-hour span { right: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+}
