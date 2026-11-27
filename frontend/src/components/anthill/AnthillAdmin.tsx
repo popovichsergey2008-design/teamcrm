@@ -103,7 +103,13 @@ export function AnthillAdmin() {
 
   return (
     <div className="anthill-pane">
-      {!canEdit && <div className="dim">Только просмотр — меняет владелец организации.</div>}
+      {/* #5061: кто и где может поменять — по имени, а не «владелец» вообще */}
+      {!canEdit && (
+        <div className="dim">
+          Только просмотр — у вас роль «{user?.role === 'manager' ? 'руководитель' : 'сотрудник'}». Меняет владелец организации
+          {s.owners?.length ? <> — <b>{s.owners.join(', ')}</b></> : null}: здесь же, «⋯ → Настройки бота → Права и лимиты».
+        </div>
+      )}
       {err && <div className="error-text">{err}</div>}
       {saved && <div className="dim"><Icon name="check" size={12} /> Сохранено</div>}
 

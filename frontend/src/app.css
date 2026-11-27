@@ -888,8 +888,11 @@ body.nav-dragging-body, body.nav-dragging-body * { cursor: grabbing !important; 
 
 @media (max-width: 900px) {
   .calendar-page { padding: 10px; }
-  .cal-grid, .cal-scroll { grid-template-columns: 40px repeat(var(--cal-days, 7), minmax(90px, 1fr)); }
+  /* #5062: при 40px подпись «10:00» (12,5px × масштаб шрифта) вылезала влево и обрезалась —
+     видно было только «0». Колонка растёт вместе со шрифтом. */
+  .cal-grid, .cal-scroll { grid-template-columns: calc(46px * var(--fs-scale, 1)) repeat(var(--cal-days, 7), minmax(90px, 1fr)); }
   .cal-grid { overflow-x: auto; }
+  .cal-hour span { right: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 }
 
 /* ── проекты внутри меню ── */

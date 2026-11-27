@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icon';
 import { DropdownMenu, MenuItem } from '../../components/ui/dropdown-menu';
 import { ApiError, FocusCandidate } from '../../lib/api';
@@ -12,8 +12,10 @@ import { FavoriteStar } from '../../components/FavoriteStar';
  * «Открыть задачу», остальное — в «···». Оценки нет — ИИ предлагает «≈ 2 ч · верно / изменить»;
  * подтверждённая записывается в задачу. Шага нет — подсказка «Какой первый шаг?», без выдумок.
  */
-export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWork, onWhy, reasons, busy, projectId }: {
+export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWork, onWhy, reasons, busy, projectId, change }: {
   card: Card; minutes: number; onMinutes: (m: number) => void; projectId?: string | null;
+  /** #5049: «Поменять вручную / через ИИ» — та же панель, что у задач тройки */
+  change?: ReactNode;
   onStart: () => void; onOpen: () => void; onTakeToWork?: () => void; onWhy: () => void; reasons: string[]; busy: boolean;
 }) {
   const [est, setEst] = useState(card.estimate);
@@ -47,7 +49,10 @@ export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWo
         {/* #4983: главную задачу — в избранное */}
         {card.taskId && card.title && <FavoriteStar kind="task" id={card.taskId} title={card.title} projectId={projectId ?? undefined} />}
       </div>
-      <h2 className="fp-maintitle">{card.title}</h2>
+      {/* #5048: название ведёт в карточку — посмотреть детали до фокуса */}
+      <h2 className="fp-maintitle">
+        {card.taskId ? <button type="button" className="fp-titlelink" onClick={onOpen} title="Открыть задачу">{card.title}</button> : card.title}
+      </h2>
       <div className="fp-row">
         <span className="dim">Следующий шаг</span>
         <input className="fp-inline" value={step} placeholder="Какой первый шаг?" aria-label="Следующий шаг"
@@ -83,6 +88,7 @@ export function MainCard({ card, minutes, onMinutes, onStart, onOpen, onTakeToWo
         </DropdownMenu>
       </div>
       {showWhy && reasons.length > 0 && <ul className="fd-why">{reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
+      {change}
     </article>
   );
 }

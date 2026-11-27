@@ -135,7 +135,7 @@ export class FocusDayRepository {
     const [own, reviews, approvals] = await Promise.all([
       this.db.many<any>(
         // ТЗ-30: срок — личный (после возврата — срок доработки), кандидаты — только то, что на мне
-        `SELECT t.id, t.title, p.name AS project_name, ${personalDeadlineSql('t')} AS deadline_at, t.priority, t.is_blocked,
+        `SELECT t.id, t.title, t.project_id, p.name AS project_name, ${personalDeadlineSql('t')} AS deadline_at, t.priority, t.is_blocked,
                 t.estimate_hours, t.focus_date::text AS focus_date, t.created_at,
                 mt.meeting_id, mt.meeting_title
            FROM tasks t
@@ -155,7 +155,7 @@ export class FocusDayRepository {
         [tenantId, userId],
       ),
       this.db.many<any>(
-        `SELECT t.id, t.title, p.name AS project_name, t.deadline_at, t.priority, t.created_at,
+        `SELECT t.id, t.title, t.project_id, p.name AS project_name, t.deadline_at, t.priority, t.created_at,
                 ua.full_name AS assignee_name, t.updated_at
            FROM tasks t
            JOIN projects p ON p.id = t.project_id
@@ -181,7 +181,7 @@ export class FocusDayRepository {
     for (const t of own) {
       out.push({
         kind: 'task', key: `task:${t.id}`, taskId: String(t.id), approvalId: null,
-        title: t.title, projectName: t.project_name, deadlineAt: t.deadline_at, priority: t.priority,
+        title: t.title, projectId: String(t.project_id), projectName: t.project_name, deadlineAt: t.deadline_at, priority: t.priority,
         isBlocked: !!t.is_blocked, waiting: 0, waitingName: null,
         // Задачу завели из итогов созвона за последние сутки — поручение прозвучало вслух.
         meeting: t.meeting_title ? 100 : 0, meetingTitle: t.meeting_title ?? null,
@@ -193,7 +193,7 @@ export class FocusDayRepository {
     for (const t of reviews) {
       out.push({
         kind: 'review', key: `review:${t.id}`, taskId: String(t.id), approvalId: null,
-        title: `Проверить и принять: ${t.title}`, projectName: t.project_name, deadlineAt: t.deadline_at,
+        title: `Проверить и принять: ${t.title}`, projectId: String(t.project_id), projectName: t.project_name, deadlineAt: t.deadline_at,
         priority: t.priority, isBlocked: false, waiting: 1, waitingName: t.assignee_name ?? null,
         meeting: 0, meetingTitle: null, pinned: false, estimateHours: null,
         // на проверку сдали тогда, когда задачу последний раз трогали

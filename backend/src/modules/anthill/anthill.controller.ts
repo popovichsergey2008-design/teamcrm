@@ -174,8 +174,9 @@ export class AnthillController {
   @Get('admin')
   // #5035: «Права и лимиты» видят все (только просмотр), меняет владелец
   @Roles('owner', 'manager', 'member')
-  adminSettings(@CurrentUser() u: AuthUser) {
-    return this.admin.get(u.tenantId);
+  async adminSettings(@CurrentUser() u: AuthUser) {
+    const [settings, owners] = await Promise.all([this.admin.get(u.tenantId), this.admin.owners(u.tenantId)]);
+    return { ...settings, owners };
   }
 
   @Patch('admin')

@@ -349,7 +349,7 @@ export class FocusDayService {
       .slice(0, 100)
       .map((c) => ({
         key: c.key, kind: c.kind, taskId: c.taskId, approvalId: c.approvalId, title: c.title,
-        projectName: c.projectName, deadlineAt: c.deadlineAt, priority: c.priority,
+        projectId: c.projectId ?? null, projectName: c.projectName, deadlineAt: c.deadlineAt, priority: c.priority,
         score: c.score, reasons: c.reasons, blocked: c.isBlocked,
       }));
   }
@@ -464,6 +464,33 @@ export class FocusDayService {
       type: c.kind, taskId: c.taskId, approvalId: c.approvalId, rank, title: c.title,
       score: c.score, deadline: c.deadlineScore, unlock: c.unlockScore, meeting: c.meetingScore,
       base: c.baseScore, penalty: c.penalty, reasons: c.reasons, source: 'user', pinned: true,
+    });
+    await this.touched(plan);
+    this.changed(v);
+    return this.today(v, now);
+  }
+
+  /**
+   * #5049: «Поменять через ИИ» у одной задачи тройки (и у главного результата). Место не
+   * пустеет: на тот же номер встаёт лучшая из тех, что сегодня ещё не предлагались, —
+   * убранное заново не вернётся. Подменить нечем — план не трогаем, говорим об этом.
+   */
+  async swap(v: Viewer, itemId: string, reason: string | undefined, now = new Date()) {
+    const plan = await this.requirePlan(v, now);
+    const { tz, today } = await this.context(v, now);
+    const items = await this.repo.items(plan.id);
+    const item = items.find((i) => String(i.id) === String(itemId) && (i.status === 'active' || i.status === 'done'));
+    if (!item) throw AppException.notFound('Такого действия в плане нет');
+    const seen = new Set((await this.repo.allItems(plan.id)).map(keyOfItem));
+    const scored = (await this.scored(v, now, tz, today)).filter((c) => !seen.has(c.key));
+    const next = pickTop3(scored)[0] ?? [...scored].sort((a, b) => b.score - a.score)[0];
+    if (!next) throw AppException.conflict('Подменить нечем: других задач на сегодня нет');
+    const r = (CHANGE_REASONS as readonly string[]).includes(reason ?? '') ? reason! : null;
+    await this.repo.setItemStatus(plan.id, String(item.id), item.status === 'done' ? 'cleared' : 'replaced', item.status === 'done' ? 'done' : r);
+    await this.repo.insertItem(v.tenantId, plan.id, {
+      type: next.kind, taskId: next.taskId, approvalId: next.approvalId, rank: item.rank, title: next.title,
+      score: next.score, deadline: next.deadlineScore, unlock: next.unlockScore, meeting: next.meetingScore,
+      base: next.baseScore, penalty: next.penalty, reasons: next.reasons, source: 'ai', pinned: false,
     });
     await this.touched(plan);
     this.changed(v);

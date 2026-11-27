@@ -65,6 +65,19 @@ export class AnthillAdminService {
     return rest;
   }
 
+  /**
+   * #5061: «Права и лимиты» меняет только владелец; остальным в режиме просмотра
+   * называем его по имени — иначе непонятно, к кому идти.
+   */
+  async owners(tenantId: string): Promise<string[]> {
+    const rows = await this.db.many<{ full_name: string }>(
+      `SELECT u.full_name FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.tenant_id = $1 AND r.code = 'owner' AND u.is_active AND NOT u.is_service ORDER BY u.id LIMIT 5`,
+      [tenantId],
+    );
+    return rows.map((r) => r.full_name);
+  }
+
   /** Ключ веб-поиска — только для самого поиска, наружу он не уходит. */
   async webSearchKey(tenantId: string): Promise<string | null> {
     const s = await this.load(tenantId);

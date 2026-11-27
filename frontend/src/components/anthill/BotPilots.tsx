@@ -19,6 +19,14 @@ import './bot-v3.css';
  * перед встречей — одно время везде, по умолчанию за 15 минут. «Следующий запуск» —
  * подписью сервера в поясе расписания (18:00 не превращается в 22:00).
  */
+/** «2026-11-27» или ISO → «27 ноября», со временем — если оно задано. */
+function fmtDeadline(v: string): string {
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T12:00:00` : v);
+  if (Number.isNaN(d.getTime())) return v;
+  const withTime = !/^\d{4}-\d{2}-\d{2}$/.test(v) && (d.getHours() || d.getMinutes());
+  return d.toLocaleString('ru-RU', { day: 'numeric', month: 'long', ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}) });
+}
+
 type Kind = 'morning' | 'meeting' | 'evening' | 'staff' | 'silent' | 'week';
 interface Ready {
   id: Kind; title: string; hint: string;
@@ -218,7 +226,21 @@ export default function BotPilots({ onExample, onOpenSession }: { onExample: (pr
             <div key={a.id} className="bv-pilot">
               <div className="bv-pilot-text bv-pilot-static">
                 <b>{a.tool === 'create_scheduled_task' ? 'Делать регулярно' : a.tool === 'create_task' ? 'Создать задачу' : a.tool === 'create_reminder' ? 'Напоминание' : 'Действие бота'}</b>
-                <ClampText className="dim" lines={2}>{String((a.input as Record<string, unknown> | null)?.title ?? (a.input as Record<string, unknown> | null)?.text ?? (a.input as Record<string, unknown> | null)?.instruction ?? '')}</ClampText>
+                {a.preview ? (
+                  /* #5061: какую задачу, кому и к какому сроку — иначе «Да» вслепую */
+                  <>
+                    <ClampText lines={2}>{a.preview.title ?? 'Без названия'}</ClampText>
+                    <span className="dim">
+                      {[
+                        `Исполнитель: ${a.preview.assigneeName ?? 'не назначен'}`,
+                        `срок: ${a.preview.deadline ? fmtDeadline(a.preview.deadline) : 'не указан'}`,
+                        a.preview.projectName ? `проект: ${a.preview.projectName}` : null,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                  </>
+                ) : (
+                  <ClampText className="dim" lines={2}>{String((a.input as Record<string, unknown> | null)?.title ?? (a.input as Record<string, unknown> | null)?.text ?? (a.input as Record<string, unknown> | null)?.instruction ?? '')}</ClampText>
+                )}
               </div>
               <button type="button" className="ui-btn ui-btn-primary ui-btn-sm" onClick={() => void api.anthillConfirm(a.id).then(load).catch(fail)}><Icon name="check" size={13} /> Да</button>
               <button type="button" className="ui-btn ui-btn-ghost ui-btn-sm" onClick={() => void api.anthillReject(a.id).then(load).catch(fail)}>Отмена</button>

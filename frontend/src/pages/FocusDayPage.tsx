@@ -517,6 +517,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
                 {item.reasons.map((r) => <li key={r}>{r}</li>)}
               </ul>
             )}
+            {!done && !editing && changeBar(item)}
           </>
         )}
         {meetingSoon?.item.id === item.id && (
@@ -539,10 +540,71 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
     );
   };
 
-  const emptySlot = (rank: number) => {
-    const open = slotPick === rank;
+  /** #5038/#5049: выбор задачи на место #rank — в свободный слот или вместо текущей. */
+  const slotPicker = (rank: number, replacing = false) => {
     const q = slotQ.trim().toLowerCase();
     const tasks = (backlog ?? []).filter((c) => c.kind === 'task' && (!q || c.title.toLowerCase().includes(q) || (c.projectName ?? '').toLowerCase().includes(q)));
+    return (
+      <div className="fd-slot-pick" role="group" aria-label={`Задача на место #${rank}`}>
+        <div className="fd-slot-pick-head">
+          <input className="ui-input ui-input-sm" autoFocus placeholder="Найти задачу или проект" value={slotQ}
+            onChange={(e) => setSlotQ(e.target.value)} aria-label="Найти задачу"
+            onKeyDown={(e) => { if (e.key === 'Escape') setSlotPick(null); }} />
+          <Button variant="ghost" size="sm" onClick={() => setSlotPick(null)}>Отмена</Button>
+        </div>
+        {backlog === null && <SkeletonList rows={3} />}
+        {backlog !== null && tasks.length === 0 && <div className="dim fd-empty">{q ? 'Ничего не нашли.' : 'Других задач нет.'}</div>}
+        <div className="fd-slot-list">
+          {tasks.slice(0, 30).map((c) => (
+            <div key={c.key} className="fd-slot-row">
+              <button type="button" className="fd-slot-item" disabled={busy}
+                title={replacing ? `Поставить «${c.title}» вместо текущей` : `Поставить «${c.title}» на место #${rank}`}
+                onClick={() => { setSlotPick(null); void run(() => api.focusAdd(c.key, rank)); }}>
+                <span className="fd-bl-title">{c.title}</span>
+                {c.projectName && <span className="dim fd-bl-sub">{c.projectName}</span>}
+              </button>
+              {/* #5048: посмотреть задачу, прежде чем брать её в фокус */}
+              {c.taskId && c.projectId && (
+                <Button variant="ghost" size="sm" aria-label={`Открыть «${c.title}»`} title="Открыть задачу" onClick={() => open(c)}><Icon name="eye" size={13} /></Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  /**
+   * #5049: у главного результата и каждой задачи тройки — поменять самому или через ИИ;
+   * «Убрать» — если задача попала случайно. `withReasons` — для карточки, которая сама
+   * вопрос «Почему?» не рисует (главный результат).
+   */
+  const changeBar = (item: FocusItem, withReasons = false) => (
+    <div className="fd-change">
+      <div className="fd-change-acts" role="group" aria-label="Поменять задачу">
+        <Button variant="ghost" size="sm" disabled={busy} aria-expanded={slotPick === item.rank}
+          onClick={() => { setSlotQ(''); setSlotPick(slotPick === item.rank ? null : item.rank); }}>
+          <Icon name="list" size={13} /> Поменять вручную
+        </Button>
+        <Button variant="ghost" size="sm" disabled={busy} title="На это место встанет лучшая из задач, которых сегодня ещё не было в фокусе"
+          onClick={() => { setSlotPick(null); void run(() => api.focusSwap(item.id)); }}>
+          <Icon name="sparkles" size={13} /> Поменять через ИИ
+        </Button>
+        <Button variant="ghost" size="sm" disabled={busy} title="Убрать из фокуса — место освободится"
+          onClick={() => { setSlotPick(null); setAsking({ itemId: item.id, mode: 'remove' }); }}>
+          <Icon name="close" size={13} /> Убрать
+        </Button>
+      </div>
+      {slotPick === item.rank && slotPicker(item.rank, true)}
+      {withReasons && asking && 'itemId' in asking && asking.itemId === item.id && reasonPicker((r) => {
+        setAsking(null);
+        void run(() => api.focusRemove(item.id, r));
+      })}
+    </div>
+  );
+
+  const emptySlot = (rank: number) => {
+    const open = slotPick === rank;
     return (
       <div key={`free-${rank}`} className={`fd-card fd-free${open ? ' fd-free-open' : ''}`}>
         <span className="fd-rank">#{rank}</span>
@@ -551,28 +613,7 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           <Button variant="outline" size="sm" aria-expanded={false} onClick={() => { setSlotQ(''); setSlotPick(rank); }}>
             <Icon name="plus" size={14} /> Добавить вручную
           </Button>
-        ) : (
-          <div className="fd-slot-pick" role="group" aria-label={`Задача на место #${rank}`}>
-            <div className="fd-slot-pick-head">
-              <input className="ui-input ui-input-sm" autoFocus placeholder="Найти задачу или проект" value={slotQ}
-                onChange={(e) => setSlotQ(e.target.value)} aria-label="Найти задачу"
-                onKeyDown={(e) => { if (e.key === 'Escape') setSlotPick(null); }} />
-              <Button variant="ghost" size="sm" onClick={() => setSlotPick(null)}>Отмена</Button>
-            </div>
-            {backlog === null && <SkeletonList rows={3} />}
-            {backlog !== null && tasks.length === 0 && <div className="dim fd-empty">{q ? 'Ничего не нашли.' : 'Других задач нет.'}</div>}
-            <div className="fd-slot-list">
-              {tasks.slice(0, 30).map((c) => (
-                <button key={c.key} type="button" className="fd-slot-item" disabled={busy}
-                  title={`Поставить «${c.title}» на место #${rank}`}
-                  onClick={() => { setSlotPick(null); void run(() => api.focusAdd(c.key, rank)); }}>
-                  <span className="fd-bl-title">{c.title}</span>
-                  {c.projectName && <span className="dim fd-bl-sub">{c.projectName}</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        ) : slotPicker(rank)}
       </div>
     );
   };
@@ -843,7 +884,8 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
             <MainCard card={plus.main} minutes={focusMin} onMinutes={pickFocusMin} busy={busy}
               onStart={() => void startFocus(mainItem)} onOpen={() => open(mainItem)}
               onTakeToWork={mainItem.kind === 'task' && !mainItem.startedAt ? () => void takeToWork(mainItem) : undefined}
-              onWhy={() => undefined} reasons={mainItem.reasons} projectId={mainItem.projectId} />
+              onWhy={() => undefined} reasons={mainItem.reasons} projectId={mainItem.projectId}
+              change={changeBar(mainItem, true)} />
           ) : mission ? card(mission) : emptySlot(1)}
           {mission?.status === 'done' && activeItems.length < 3 && (
             <div className="fd-note">
@@ -936,7 +978,14 @@ export function FocusDayPage({ initial, onOpenTask, onJoinCall, active = true }:
           {listed.map((c) => (
             <div key={c.key} className={`fd-bl-row${c.blocked ? ' fd-bl-blocked' : ''}`}>
               <div className="fd-bl-main">
-                <span className="fd-bl-title"><Icon name={kindIcon(c.kind)} size={13} /> {c.title}</span>
+                {/* #5048: из «Остальных» — в карточку задачи: посмотреть детали до фокуса */}
+                {c.taskId && c.projectId ? (
+                  <button type="button" className="fd-bl-title fd-bl-link" title="Открыть задачу" onClick={() => open(c)}>
+                    <Icon name={kindIcon(c.kind)} size={13} /> {c.title}
+                  </button>
+                ) : (
+                  <span className="fd-bl-title"><Icon name={kindIcon(c.kind)} size={13} /> {c.title}</span>
+                )}
                 <span className="dim fd-bl-sub">{[c.projectName, ...c.reasons.slice(0, 2)].filter(Boolean).join(' · ')}</span>
               </div>
               {placing?.key === c.key ? (

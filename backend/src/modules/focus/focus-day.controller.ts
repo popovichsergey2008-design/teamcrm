@@ -123,6 +123,12 @@ export class FocusDayController {
     return this.day.remove(this.v(u), itemId, dto?.reason);
   }
 
+  /** #5049: «Поменять через ИИ» — на это же место лучшая из ещё не предложенных. */
+  @Post('items/:itemId/swap')
+  swap(@CurrentUser() u: AuthUser, @Param('itemId') itemId: string, @Body() dto: RemoveItemDto) {
+    return this.day.swap(this.v(u), itemId, dto?.reason);
+  }
+
   @Patch('items/:itemId/pin')
   pin(@CurrentUser() u: AuthUser, @Param('itemId') itemId: string, @Body() dto: PinDto) {
     return this.day.pin(this.v(u), itemId, dto.pinned);

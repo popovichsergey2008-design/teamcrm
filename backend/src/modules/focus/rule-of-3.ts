@@ -24,6 +24,8 @@ export interface Candidate {
   taskId: string | null;
   approvalId: string | null;
   title: string;
+  /** #5048: проект задачи — чтобы открыть карточку из списка */
+  projectId?: string | null;
   projectName: string | null;
   deadlineAt: string | Date | null;
   priority: string | null;

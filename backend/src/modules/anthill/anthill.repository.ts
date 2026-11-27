@@ -321,6 +321,16 @@ export class AnthillRepository {
   }
 
   /** Журнал действий человека — вкладка «История» и админский обзор. */
+  /** #5061: имена исполнителей и проектов — показать, какую задачу подтверждает человек. */
+  async names(tenantId: string, userIds: string[], projectIds: string[]): Promise<{ users: Map<string, string>; projects: Map<string, string> }> {
+    const ids = (xs: string[]) => [...new Set(xs.filter((x) => /^\d+$/.test(x)))];
+    const [u, p] = await Promise.all([
+      ids(userIds).length ? this.db.many<{ id: string; full_name: string }>(`SELECT id::text, full_name FROM users WHERE tenant_id=$1 AND id = ANY($2::bigint[])`, [tenantId, ids(userIds)]) : [],
+      ids(projectIds).length ? this.db.many<{ id: string; name: string }>(`SELECT id::text, name FROM projects WHERE tenant_id=$1 AND id = ANY($2::bigint[])`, [tenantId, ids(projectIds)]) : [],
+    ]);
+    return { users: new Map(u.map((r) => [r.id, r.full_name])), projects: new Map(p.map((r) => [r.id, r.name])) };
+  }
+
   actions(tenantId: string, userId: string, limit = 100): Promise<ActionRow[]> {
     return this.db.many<ActionRow>(
       `SELECT * FROM ai_tool_actions WHERE tenant_id=$1 AND user_id=$2 ORDER BY id DESC LIMIT $3`, [tenantId, userId, limit],

@@ -369,6 +369,8 @@ export interface FocusCandidate {
   taskId: string | null;
   approvalId: string | null;
   title: string;
+  /** #5048: проект — чтобы открыть карточку задачи из списка */
+  projectId?: string | null;
   projectName: string | null;
   deadlineAt?: string | null;
   priority?: string | null;
@@ -3046,6 +3048,9 @@ export const api = {
     request<FocusToday>('POST', '/focus/today/items', { key, ...(rank ? { rank } : {}), ...(reason ? { reason } : {}) }),
   focusRemove: (itemId: string, reason?: FocusChangeReason) =>
     request<FocusToday>('DELETE', `/focus/today/items/${itemId}`, reason ? { reason } : {}),
+  /** #5049: «Поменять через ИИ» — на это место лучшая из ещё не предложенных сегодня */
+  focusSwap: (itemId: string, reason?: FocusChangeReason) =>
+    request<FocusToday>('POST', `/focus/today/items/${itemId}/swap`, reason ? { reason } : {}),
   focusPin: (itemId: string, pinned: boolean) => request<FocusToday>('PATCH', `/focus/today/items/${itemId}/pin`, { pinned }),
   focusReorder: (ids: string[]) => request<FocusToday>('POST', '/focus/today/items/reorder', { ids }),
   focusDismiss: (key: string) => request<FocusToday>('POST', '/focus/today/dismiss', { key }),
@@ -3364,6 +3369,8 @@ export interface AnthillAction {
 /** Что агенту позволено в организации и сколько ему можно. */
 export interface AnthillAdmin {
   enabled: boolean;
+  /** #5061: владельцы организации — кто меняет права и лимиты */
+  owners?: string[];
   allowedRoles: string[];
   webSearch: boolean;
   /** Ключ наружу не отдаётся — только признак, что он задан. */
@@ -3460,6 +3467,8 @@ export interface AnthillActionRow {
   id: string; tool: string; status: string;
   input: Record<string, unknown>; output: Record<string, unknown> | null;
   error: string | null; createdAt: string;
+  /** #5061: «Создать задачу» — что именно создастся */
+  preview?: { title: string | null; assigneeName: string | null; deadline: string | null; projectName: string | null };
 }
 
 /** Что агент помнит о человеке: предпочтение (как работать) или рабочая тема. */

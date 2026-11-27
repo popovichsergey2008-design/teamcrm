@@ -1006,10 +1006,39 @@ export class AnthillService {
     return { status: 'undone', text };
   }
 
-  actions(tenantId: string, userId: string) {
-    return this.repo.actions(tenantId, userId).then((rows) => rows.map((a) => ({
-      id: String(a.id), tool: a.tool, status: a.status, input: a.input_json, output: a.output_json, error: a.error, createdAt: a.created_at,
-    })));
+  async actions(tenantId: string, userId: string) {
+    const rows = await this.repo.actions(tenantId, userId);
+    /*
+      #5061: «Ждут вашего решения: Создать задачу · Да · Отмена» — без названия, исполнителя и
+      срока «Да» нажимали вслепую. Задача лежит во вложенном input.task, имена — по номерам.
+    */
+    const taskOf = (a: { tool: string; input_json: unknown }) => {
+      const inp = (a.input_json ?? {}) as Record<string, unknown>;
+      return a.tool === 'create_task' ? ((inp.task ?? inp) as Record<string, unknown>) : null;
+    };
+    const tasks = rows.map(taskOf);
+    const str = (x: unknown) => (x === null || x === undefined || x === '' ? null : String(x));
+    const names = await this.repo.names(
+      tenantId,
+      tasks.map((t) => str(t?.assigneeId)).filter((x): x is string => !!x),
+      tasks.map((t) => str(t?.projectId)).filter((x): x is string => !!x),
+    );
+    return rows.map((a, i) => {
+      const t = tasks[i];
+      const assigneeId = str(t?.assigneeId);
+      const projectId = str(t?.projectId);
+      return {
+        id: String(a.id), tool: a.tool, status: a.status, input: a.input_json, output: a.output_json, error: a.error, createdAt: a.created_at,
+        ...(t ? {
+          preview: {
+            title: str(t.title),
+            assigneeName: assigneeId ? names.users.get(assigneeId) ?? null : null,
+            deadline: str(t.deadline ?? t.deadlineAt),
+            projectName: projectId ? names.projects.get(projectId) ?? null : null,
+          },
+        } : {}),
+      };
+    });
   }
 
   async feedback(tenantId: string, userId: string, messageId: string, vote: 1 | -1, reason?: string | null, comment?: string | null) {
