@@ -1656,6 +1656,22 @@ export class ChatsService {
   }
 
   /**
+   * #5063: «Кто прочитал» — только автору и только про его сообщение, как в Telegram:
+   * чужие отметки чтения другим участникам не показываем.
+   */
+  async readers(tenantId: string, chatId: string, user: { userId: string; role: string }, messageId: string) {
+    await this.access(tenantId, chatId, user);
+    const msg = await this.repo.findMessage(tenantId, messageId);
+    if (!msg || String(msg.chat_id) !== String(chatId)) throw AppException.notFound('Сообщение не найдено');
+    if (String(msg.author_id) !== String(user.userId)) throw AppException.forbidden('Кто прочитал, видно только автору сообщения');
+    const rows = await this.repo.readers(tenantId, chatId, messageId);
+    return {
+      read: rows.filter((r) => r.read_at).map((r) => ({ id: r.user_id, name: r.full_name, at: r.read_at!.toISOString() })),
+      unread: rows.filter((r) => !r.read_at).map((r) => ({ id: r.user_id, name: r.full_name })),
+    };
+  }
+
+  /**
    * Непрочитанное С ЭТОГО сообщения.
    *
    * Только чужое: своё сообщение «не дочитать» нельзя. Собеседник узнаёт, что

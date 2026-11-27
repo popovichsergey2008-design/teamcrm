@@ -417,6 +417,12 @@ export class ChatsController {
     return this.chats.remind(u.tenantId, id, u, mid, dto.remindAt);
   }
 
+  /** #5063: кто прочитал моё сообщение и кто ещё нет. */
+  @Get(':id/messages/:mid/readers')
+  readers(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {
+    return this.chats.readers(u.tenantId, id, u, mid);
+  }
+
   /** «Пометить как непрочитанное» с этого сообщения: оно и всё после него — снова новые. */
   @Post(':id/messages/:mid/unread')
   unreadFrom(@CurrentUser() u: AuthUser, @Param('id') id: string, @Param('mid') mid: string) {

@@ -30,6 +30,7 @@ import { DateInput } from '../components/DateInputLazy';
 // сведения о чате и QEVO Bot — по первому открытию (бюджет первого экрана, 02.11)
 const ChatInfoPanel = lazyComponent(() => import('../components/chat/ChatInfoPanel').then((m) => m.ChatInfoPanel));
 const AnthillPanel = lazyComponent(() => import('../components/anthill/AnthillPanel').then((m) => m.AnthillPanel));
+const ReadTicks = lazyComponent(() => import('./chat/ReadTicks').then((m) => m.ReadTicks));
 import { ChatAttachment } from '../components/ChatAttachment';
 import { Lightbox, type LightboxItem } from '../components/LightboxLazy';
 import { humanSize, isAnonymousClipboardName, isImageName, screenshotName } from '../lib/attachments';
@@ -3463,7 +3464,13 @@ export function ChatsPage({ onCall, onActiveChat, initialChatId, initialThreadId
                           В чате проекта участников поимённо нет — там показываем одну
                           галочку и не врём про прочтение.
                         */}
-                        {mine && !m.is_ai && (
+                        {/* #5063: в группе (собеседников больше одного) — кто прочитал, по нажатию */}
+                        {mine && !m.is_ai && (m.others ?? 0) > 1 && activeId && (
+                          <Suspense fallback={null}>
+                            <ReadTicks chatId={String(activeId)} messageId={String(m.id)} readBy={m.read_by ?? 0} others={m.others ?? 0} />
+                          </Suspense>
+                        )}
+                        {mine && !m.is_ai && (m.others ?? 0) <= 1 && (
                           (m.others ?? 0) > 0 && (m.read_by ?? 0) >= (m.others ?? 0) ? (
                             <span className="chat-ticks read" title={`Прочитали все (${m.read_by})`}>
                               <Icon name="check" size={12} /><Icon name="check" size={12} />

@@ -431,6 +431,23 @@ export class ChatsRepository {
   }
 
   /** Сообщение по id: нужно, чтобы проверить, что отвечают в том же чате. */
+  /**
+   * #5063: кто прочитал сообщение — поимённо, как в Telegram. Та же мерка, что у галочек
+   * (read_by): участник открывал чат после этого сообщения (last_read_at ≥ created_at).
+   */
+  readers(tenantId: string, chatId: string, messageId: string) {
+    return this.db.many<{ user_id: string; full_name: string; read_at: Date | null }>(
+      `SELECT cm.user_id::text, u.full_name,
+              CASE WHEN cm.last_read_at >= m.created_at THEN cm.last_read_at END AS read_at
+         FROM chat_messages m
+         JOIN chat_members cm ON cm.chat_id = m.chat_id AND cm.user_id <> m.author_id
+         JOIN users u ON u.id = cm.user_id
+        WHERE m.tenant_id = $1 AND m.chat_id = $2 AND m.id = $3 AND m.deleted_at IS NULL
+        ORDER BY (cm.last_read_at >= m.created_at) DESC NULLS LAST, cm.last_read_at DESC NULLS LAST, u.full_name`,
+      [tenantId, chatId, messageId],
+    );
+  }
+
   findMessage(tenantId: string, id: string) {
     return this.db.one<{ id: string; chat_id: string; thread_root_id: string | null; author_id: string | null }>(
       `SELECT id, chat_id, thread_root_id, author_id FROM chat_messages WHERE tenant_id=$1 AND id=$2 AND deleted_at IS NULL`,
