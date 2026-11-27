@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { assignable } from '../../lib/assignable';
 import { Icon } from '../Icon';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
@@ -234,7 +235,7 @@ export function BlockerDialog({ task, users, onClose, onSaved }: { task: Task; u
         </label>
         <label className="tf-field"><span>Кто может помочь</span>
           <Select ariaLabel="Кто может помочь" value={helperId} onValueChange={setHelperId}
-            options={[{ value: '', label: 'Не выбрано' }, ...users.map((u) => ({ value: String(u.id), label: u.fullName }))]} />
+            options={[{ value: '', label: 'Не выбрано' }, ...assignable(users).map((u) => ({ value: String(u.id), label: u.fullName }))]} />
         </label>
         <label className="tf-field"><span>Следующий шаг</span>
           <input className="ui-input" value={nextStepText} onChange={(e) => setNext(e.target.value)} placeholder="Например: написать в поддержку сервиса" />

@@ -22,6 +22,13 @@ export class ForecastRepository {
   /** Для пометки автора изменений задачи (ТЗ-32). */
   get dbHandle(): DbService { return this.db; }
 
+  /** Отключённого сотрудника в исполнители не ставим (27.11, два «Никиты»). */
+  userActive(tenantId: string, userId: string) {
+    return this.db.one<{ is_active: boolean; full_name: string }>(
+      `SELECT is_active, full_name FROM users WHERE tenant_id=$1 AND id=$2`, [tenantId, userId],
+    );
+  }
+
   getTask(tenantId: string, taskId: string): Promise<ForecastTaskRow | null> {
     return this.db.one<ForecastTaskRow>(
       `SELECT id, project_id, assignee_id, estimate_hours, deadline_at,

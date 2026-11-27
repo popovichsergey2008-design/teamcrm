@@ -69,8 +69,9 @@ function PeoplePick({ users, picked, multi, onPick, onClose, extra }: {
   const [q, setQ] = useState('');
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return users.filter((u) => !s || u.fullName.toLowerCase().includes(s));
-  }, [users, q]);
+    // отключённых не предлагаем — только если он уже стоит в поле (27.11, два «Никиты»)
+    return users.filter((u) => ((u as { isActive?: boolean }).isActive !== false || picked.includes(String(u.id))) && (!s || u.fullName.toLowerCase().includes(s)));
+  }, [users, q, picked]);
   return (
     <>
       <input className="ui-input ui-input-sm ts-pop-search" autoFocus placeholder="Найти человека" value={q} onChange={(e) => setQ(e.target.value)}

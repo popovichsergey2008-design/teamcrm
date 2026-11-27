@@ -61,6 +61,11 @@ export class ForecastService {
   async assign(tenantId: string, taskId: string, assigneeId: string, actorId: string, confirmOverload: boolean) {
     const task = await this.repo.getTask(tenantId, taskId);
     if (!task) throw AppException.notFound('Task not found');
+    if (String(task.assignee_id ?? '') !== String(assigneeId)) {
+      const u = await this.repo.userActive(tenantId, assigneeId);
+      if (!u) throw AppException.validation('Исполнитель не найден в организации');
+      if (!u.is_active) throw AppException.validation(`${u.full_name} отключён(а) в команде — выберите другого исполнителя`);
+    }
 
     const estimate = Number(task.estimate_hours ?? 0);
     const currentQueue = await this.velocity.openQueueHours(tenantId, assigneeId, taskId);

@@ -215,6 +215,7 @@ export class TasksService {
     await this.tags.assertGate(tenantId, {
       tagIds: dto.labelIds, tagsConfirmed: dto.tagsConfirmed, confirmedWithoutTags: dto.confirmedWithoutTags,
     });
+    if (dto.assigneeId) await this.assertAssignable(tenantId, String(dto.assigneeId));
     // страж нагрузки — ДО создания (ТЗ-21 §28): перегруз → предупреждение с вариантами
     if (dto.assigneeId) {
       await this.workload.guard({ tenantId, userId: user.userId }, {
@@ -417,6 +418,16 @@ export class TasksService {
     return { cleared: true };
   }
 
+  /**
+   * 27.11.2026, Tokenalphabet: двух «Никит» не различить, отключённый оставался в списке
+   * выбора — на него ушли четыре задачи. На отключённого сотрудника задачу не ставим.
+   */
+  async assertAssignable(tenantId: string, userId: string): Promise<void> {
+    const u = await this.repo.userActive(tenantId, userId);
+    if (!u) throw AppException.validation('Исполнитель не найден в организации');
+    if (!u.active) throw AppException.validation(`${u.name} отключён(а) в команде — выберите другого исполнителя`);
+  }
+
   async update(
     tenantId: string,
     id: string,
@@ -429,6 +440,9 @@ export class TasksService {
     this.assertVersion(existing, expectedVersion, dto);
     if (dto.clientId && !(await this.repo.clientExists(tenantId, dto.clientId))) {
       throw AppException.validation('Клиент не найден');
+    }
+    if (dto.assigneeId && String(dto.assigneeId) !== String(existing.assignee_id ?? '')) {
+      await this.assertAssignable(tenantId, String(dto.assigneeId));
     }
 
     const updated = await this.repo.update(tenantId, id, {

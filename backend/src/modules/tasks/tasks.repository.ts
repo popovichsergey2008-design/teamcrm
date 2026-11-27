@@ -608,6 +608,14 @@ export class TasksRepository {
     return new Set(rows.map((r) => String(r.id)));
   }
 
+  /** Отключённый сотрудник (или чужой): задачу на него не ставим. null — такого нет. */
+  async userActive(tenantId: string, userId: string): Promise<{ active: boolean; name: string } | null> {
+    const r = await this.db.one<{ is_active: boolean; full_name: string }>(
+      `SELECT is_active, full_name FROM users WHERE tenant_id = $1 AND id = $2`, [tenantId, userId],
+    );
+    return r ? { active: r.is_active, name: r.full_name } : null;
+  }
+
   async clientExists(tenantId: string, clientId: string): Promise<boolean> {
     const r = await this.db.one(`SELECT 1 FROM clients WHERE tenant_id = $1 AND id = $2`, [tenantId, clientId]);
     return !!r;

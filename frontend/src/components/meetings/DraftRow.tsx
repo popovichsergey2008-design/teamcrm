@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { assignable } from '../../lib/assignable';
 import { Icon } from '../Icon';
 import { DatePicker } from '../DatePicker';
 import { OptionSelect } from '../ui/option-select';
@@ -228,7 +229,7 @@ export function DraftRow({ draft, projects, users, onApply, onReject, onSaved, s
       <div className="draft-fields">
         <OptionSelect className="input" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} aria-label="Исполнитель">
           <option value="">— исполнитель —</option>
-          {users.map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+          {assignable(users, assigneeId).map((u) => <option key={u.id} value={u.id}>{u.fullName}</option>)}
         </OptionSelect>
         <OptionSelect className="input" value={projectId} onChange={(e) => { setProjectId(e.target.value); if (e.target.value) setErr(''); }} aria-label="Проект" aria-invalid={!projectId && !!err}>
           <option value="">— проект —</option>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { assignable } from '../lib/assignable';
 import { Icon } from './Icon';
 import { AiFeedback } from './AiFeedback';
 import { api, ApiError } from '../lib/api';
@@ -566,7 +567,7 @@ export function ChatAnalysisPanel({ canManage, onClose }: { canManage: boolean; 
                         onChange={(e) => setPatch((p) => ({ ...p, [a.id]: { ...p[a.id], assigneeId: e.target.value } }))}
                       >
                         <option value="">Исполнитель не выбран</option>
-                        {people.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                        {assignable(people).map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                       </OptionSelect>
                     )}
                     {noProject === a.id && <div className="error-text" style={{ fontSize: 12 }}>Выберите проект — без проекта задачу создать нельзя</div>}

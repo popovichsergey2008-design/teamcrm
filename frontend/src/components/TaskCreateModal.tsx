@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { assignable } from '../lib/assignable';
 import { DatePicker } from './DatePicker';
 import { Icon } from './Icon';
 import { api, ApiError, request, TagSettings } from '../lib/api';
@@ -467,7 +468,7 @@ export function TaskCreateModal({ projectId, columnId, columnName, projectName, 
   const people = users.map((u) => ({ id: String(u.id), name: u.fullName }));
   const userOptions = (empty: string) => [
     { value: '', label: empty },
-    ...users.map((u) => ({ value: String(u.id), label: u.fullName })),
+    ...assignable(users).map((u) => ({ value: String(u.id), label: u.fullName })),
   ];
   const canCreate = tagsReady(tagSettings, tags);
 

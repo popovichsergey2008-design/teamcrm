@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { assignable } from '../../lib/assignable';
 import { Icon } from '../Icon';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
@@ -113,7 +114,7 @@ export function HandoffDialog({ task, columnId, columnName, position, users, can
           <label className="tf-field">
             <span>Кто проверяет</span>
             <Select ariaLabel="Кто проверяет" value={reviewerId} onValueChange={setReviewerId}
-              options={users.map((u) => ({ value: String(u.id), label: u.fullName }))} />
+              options={assignable(users).map((u) => ({ value: String(u.id), label: u.fullName }))} />
           </label>
         )}
         {err && <div className="tv2-callout tv2-callout-danger" role="alert"><Icon name="alert" size={15} /> {err}</div>}
